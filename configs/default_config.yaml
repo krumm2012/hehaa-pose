@@ -1,0 +1,47 @@
+video_input_path: "data/input_video.mp4"
+video_output_path: "data/output_video.mp4"
+yolo_pose_model_path: "models/yolov8n-pose.pt" # or yolov8s-pose.pt etc.
+tracknet_model_path: "models/tracknetv2_weights.pth" # Adjust based on your TrackNet model
+
+# --- Adjustable Parameters ---
+pose_confidence_threshold: 0.5
+ball_confidence_threshold: 0.8 # For TrackNet
+static_ball_movement_threshold_px: 5 # Pixels
+static_ball_frames_threshold: 7 # Num frames to consider static
+
+# Swing classification parameters (these will need tuning)
+forehand_wrist_elbow_angle_min: 90
+forehand_wrist_elbow_angle_max: 170
+backhand_wrist_elbow_angle_min: 90
+backhand_wrist_elbow_angle_max: 170
+two_hand_wrist_distance_max_px: 50 # Max distance between wrists for two-handed
+dominant_hand: "right" # or "left"
+
+
+# Ball tracking and filtering parameters
+ball_trajectory_max_len: 40         # Max number of points in drawn trajectory
+max_lost_frames_for_track: 5        # After how many frames of no detection the ball is considered "lost"
+max_ball_match_distance_px: 25      # Max distance (px) to associate a new detection with the last known ball
+static_ball_movement_threshold_px: 5 # Movement (px) below which a ball is considered part of a static group
+static_ball_frames_threshold: 8     # Num frames a ball must be relatively still to be confirmed static
+
+# Ball size filtering parameters
+min_ball_radius: 3                  # 最小球半径（像素）
+max_ball_radius: 15                 # 最大球半径（像素）
+min_ball_movement: 8                # 最小球移动距离（像素/帧），小于此值被认为是静止球
+
+# 监控区域边界（矩形）
+# 可以设置为合适的网球场地区域，球只在此区域内被追踪
+use_boundary: true                  # 是否启用边界检查
+boundary_x1: 650                    # 左上角x坐标
+boundary_y1: 410                    # 左上角y坐标
+boundary_x2: 1420                   # 右下角x坐标
+boundary_y2: 980                    # 右下角y坐标
+draw_boundary: false                 # 是否在视频中绘制边界框
+
+# 显示控制
+draw_static_balls: false            # 是否绘制被识别为静态的球
+
+# Simulation specific parameters (only used if TrackNet model isn't loaded)
+sim_ball_detection_noise: 3         # Pixel noise for simulated moving ball detection
+sim_num_static_balls: 0             # 关闭静态球模拟
