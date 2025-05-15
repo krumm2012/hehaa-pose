@@ -4,3 +4,5 @@ scipy>=1.5.0
 pillow>=8.0.0
 pyyaml>=5.4.0
 ultralytics>=8.0.0  # For YOLOv8 pose estimation 
+requests>=2.25.0    # For HTTP requests (字体下载备选)
+urllib3>=1.26.0     # For URL handling 
