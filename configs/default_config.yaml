@@ -45,3 +45,12 @@ draw_static_balls: false            # 是否绘制被识别为静态的球
 # Simulation specific parameters (only used if TrackNet model isn't loaded)
 sim_ball_detection_noise: 3         # Pixel noise for simulated moving ball detection
 sim_num_static_balls: 0             # 关闭静态球模拟
+
+
+# ... (other existing configs)
+
+# Racket Detector Configs
+racket_yolo_model_path: "yolov8s.pt"  # Or "yolov8n.pt", "yolov8m.pt" etc.
+racket_confidence_threshold: 0.4     # Confidence for detecting a racket
+racket_lost_threshold_frames: 5      # How many frames before an associated racket is considered lost
+ball_radius_px: 10                   # Approximate ball radius in pixels for state detection

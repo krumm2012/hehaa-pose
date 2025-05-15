@@ -18,6 +18,30 @@ class PoseEstimator:
             "left_wrist", "right_wrist", "left_hip", "right_hip",
             "left_knee", "right_knee", "left_ankle", "right_ankle"
         ] # Standard COCO 17 keypoints
+        
+        # 定义骨架连接，每对表示连接两个关键点的线
+        self.skeleton = [
+            ["right_shoulder", "right_elbow"],  # 右上臂
+            ["right_elbow", "right_wrist"],     # 右前臂
+            ["left_shoulder", "left_elbow"],    # 左上臂
+            ["left_elbow", "left_wrist"],       # 左前臂
+            ["right_shoulder", "left_shoulder"], # 肩膀连线
+            ["right_hip", "left_hip"],          # 髋部连线
+            ["right_shoulder", "right_hip"],    # 右侧躯干
+            ["left_shoulder", "left_hip"],      # 左侧躯干
+            ["right_hip", "right_knee"],        # 右大腿
+            ["right_knee", "right_ankle"],      # 右小腿
+            ["left_hip", "left_knee"],          # 左大腿
+            ["left_knee", "left_ankle"],        # 左小腿
+        ]
+        
+        # 不同骨架部分的颜色
+        self.colors = {
+            "right_arm": (255, 140, 0),    # 橙色 - 右臂
+            "left_arm": (135, 206, 235),   # 天蓝色 - 左臂
+            "torso": (75, 0, 130),         # 靛蓝色 - 躯干
+            "legs": (50, 205, 50)          # 绿色 - 腿部
+        }
 
     def get_keypoints(self, frame):
         results = self.model(frame, verbose=False) # verbose=False to reduce console output
@@ -114,9 +138,90 @@ class PoseEstimator:
         return np.degrees(angle)
 
     def draw_keypoints(self, frame, person_keypoints_list):
-        for kpts_dict in person_keypoints_list:
-            for name, pt in kpts_dict.items():
-                if pt:
-                    cv2.circle(frame, pt, 3, (0, 255, 0), -1)
-                    # cv2.putText(frame, name, (pt[0]+5, pt[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (200,0,0), 1)
+        if not person_keypoints_list:
+            return frame
+            
+        # 绘制第一个检测到的人的姿势（通常是主要运动员）
+        keypoints = person_keypoints_list[0]
+        
+        # 定义头部关键点，我们将跳过这些点的绘制
+        head_keypoints = ["nose", "left_eye", "right_eye", "left_ear", "right_ear"]
+        
+        # 1. 首先获取人体框的范围，但排除头部关键点
+        valid_pts = [pt for name, pt in keypoints.items() if pt is not None and name not in head_keypoints]
+        if not valid_pts:
+            return frame
+            
+        x_coords = [pt[0] for pt in valid_pts]
+        y_coords = [pt[1] for pt in valid_pts]
+        
+        x_min, x_max = min(x_coords), max(x_coords)
+        y_min, y_max = min(y_coords), max(y_coords)
+        
+        # 添加边距
+        padding = 20
+        x_min = max(0, x_min - padding)
+        y_min = max(0, y_min - padding)
+        x_max = min(frame.shape[1], x_max + padding)
+        y_max = min(frame.shape[0], y_max + padding)
+        
+        # 2. 绘制人体框和标签
+        cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 0, 255), 2)
+        cv2.putText(frame, "tennis player", (x_max, y_max), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+        
+        # 3. 绘制关键点连接线（骨架），跳过任何连接头部关键点的线
+        for connection in self.skeleton:
+            name_a, name_b = connection
+            
+            # 跳过涉及头部关键点的连接
+            if name_a in head_keypoints or name_b in head_keypoints:
+                continue
+                
+            pt_a, pt_b = keypoints.get(name_a), keypoints.get(name_b)
+            
+            if pt_a and pt_b:
+                # 根据连接的部位选择不同颜色
+                if "arm" in name_a or "arm" in name_b or "wrist" in name_a or "wrist" in name_b or "elbow" in name_a or "elbow" in name_b:
+                    if "right" in name_a or "right" in name_b:
+                        color = self.colors["right_arm"]
+                    else:
+                        color = self.colors["left_arm"]
+                elif "hip" in name_a or "hip" in name_b or "shoulder" in name_a or "shoulder" in name_b:
+                    color = self.colors["torso"]
+                else:
+                    color = self.colors["legs"]
+                
+                cv2.line(frame, pt_a, pt_b, color, 2)
+        
+        # 4. 绘制关键点，但跳过头部关键点
+        for name, pt in keypoints.items():
+            # 跳过头部关键点
+            if name in head_keypoints:
+                continue
+                
+            if pt:
+                # 为不同部位的关键点使用不同颜色
+                if "wrist" in name or "elbow" in name:
+                    if "right" in name:
+                        color = self.colors["right_arm"]
+                    else:
+                        color = self.colors["left_arm"]
+                elif "shoulder" in name or "hip" in name:
+                    color = self.colors["torso"]
+                elif "knee" in name or "ankle" in name:
+                    color = self.colors["legs"]
+                else:
+                    color = (255, 0, 255)  # 紫色用于其他点
+                
+                # 关键点编号（对应图片中的编号）
+                point_id = self.keypoint_names.index(name)
+                
+                # 绘制关键点（圆点）
+                cv2.circle(frame, pt, 5, color, -1)
+                
+                # 显示关键点编号
+                cv2.putText(frame, str(point_id), (pt[0] + 5, pt[1] - 5), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                
         return frame
