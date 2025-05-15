@@ -167,7 +167,8 @@ class PoseEstimator:
         
         # 2. 绘制人体框和标签
         cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 0, 255), 2)
-        cv2.putText(frame, "tennis player", (x_max, y_max), 
+        # 将标签移动到人体框的右下角
+        cv2.putText(frame, "tennis player", (x_max - 120, y_max), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
         
         # 3. 绘制关键点连接线（骨架），跳过任何连接头部关键点的线
