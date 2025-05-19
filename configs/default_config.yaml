@@ -46,11 +46,15 @@ draw_static_balls: false            # 是否绘制被识别为静态的球
 sim_ball_detection_noise: 3         # Pixel noise for simulated moving ball detection
 sim_num_static_balls: 0             # 关闭静态球模拟
 
-
-# ... (other existing configs)
+# 字体配置
+font_dir: "fonts"                   # 字体文件目录
+preferred_chinese_font: "PingFang SC"  # 优先使用的中文字体名称
+auto_download_font: false            # 是否自动尝试下载字体（仅Mac系统）
 
 # Racket Detector Configs
 racket_yolo_model_path: "yolov8s.pt"  # Or "yolov8n.pt", "yolov8m.pt" etc.
 racket_confidence_threshold: 0.4     # Confidence for detecting a racket
 racket_lost_threshold_frames: 5      # How many frames before an associated racket is considered lost
 ball_radius_px: 10                   # Approximate ball radius in pixels for state detection
+
+enable_manual_boundary: False  # 是否允许启动时手动画定监控区域
