@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Tennis Coach - 智能网球教练</title>
+    <script src="https://cdn.tailwindcss.com/3.3.3"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Framer-Motion/10.16.4/motion.umd.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css" integrity="sha512-z3gLpd7yknf1YoNbCzqRKc4qyor8gaKU1qmn+CShxbuBusANI9QpRohGBreCFkKxLhei6S9CQXFEbbKuqLg0DA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+            background-color: #0c0a09; /* Tailwind stone-950 */
+            color: #e7e5e4; /* Tailwind stone-200 */
+            overflow-x: hidden;
+        }
+        .bento-card {
+            background-color: rgba(31, 41, 55, 0.75);
+            border: 1px solid rgba(75, 85, 99, 0.6);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 0 35px rgba(94, 234, 212, 0.2), 0 0 20px rgba(59, 130, 246, 0.15);
+        }
+        /* 为左侧主图像卡片添加特殊边框 */
+        .main-image-card-bordered {
+            border: 3px solid #5eead4; /* 亮青色边框 */
+            box-shadow: 0 0 15px rgba(94, 234, 212, 0.5), /* 边框外发光 */
+                        0 0 35px rgba(94, 234, 212, 0.2), 
+                        0 0 20px rgba(59, 130, 246, 0.15); /* 保留原有卡片阴影 */
+        }
+        .chinese-title-main {
+            font-weight: 900;
+            font-size: 2.75rem;
+            color: #f0fdfa;
+        }
+        .chinese-title-card {
+            font-weight: bold;
+            font-size: 1.625rem;
+            color: #ccfbf1;
+            line-height: 1.3;
+        }
+        .english-subtitle {
+            font-size: 0.8rem;
+            color: #a8a29e;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .data-value-large {
+            font-size: 3.25rem;
+            font-weight: 900;
+            color: #5eead4;
+            line-height: 1;
+            text-shadow: 0 0 12px rgba(94, 234, 212, 0.6);
+        }
+        .data-value-medium {
+            font-size: 2.125rem;
+            font-weight: bold;
+            color: #93c5fd;
+            line-height: 1;
+        }
+        .data-unit {
+            font-size: 0.9rem;
+            color: #a8a29e;
+            margin-left: 0.4rem;
+        }
+        .tech-gradient-text {
+            background: linear-gradient(to right, #a78bfa, #38bdf8, #5eead4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-fill-color: transparent;
+        }
+        .player-image-container { /* 这个类现在主要用于内部图片布局 */
+            position: relative;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            border-radius: calc(1rem - 3px); /* 配合外部边框调整圆角 */
+        }
+        .player-image-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.9;
+        }
+        .player-image-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 1.25rem;
+            background: linear-gradient(to top, rgba(12, 10, 9, 0.97), rgba(12, 10, 9, 0.1));
+        }
+        .outline-text-english {
+            color: #78716c;
+            -webkit-text-stroke: 0.5px #a8a29e;
+            paint-order: stroke fill;
+        }
+        .icon-style {
+            color: #5eead4;
+            margin-right: 0.6rem;
+            font-size: 1.25rem;
+            vertical-align: middle;
+        }
+        .status-text {
+            font-size: 1.25rem;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 md:p-8">
+
+    <div class="w-full max-w-7xl">
+        <header class="mb-10 text-center">
+            <h1 class="chinese-title-main sm:text-5xl md:text-6xl tech-gradient-text">AI实时运动分析平台</h1>
+            <p class="english-subtitle text-md sm:text-lg mt-2">REAL-TIME AI SPORTS ANALYSIS PLATFORM</p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            <!-- 主播放器/图像卡片 - 应用新的边框样式 -->
+            <div
+                class="bento-card main-image-card-bordered md:col-span-2 lg:col-span-2 lg:row-span-2 !p-0" <!-- !p-0 to remove padding from bento-card for this specific one -->
+            >
+                <div class="player-image-container">
+                    <img src="extracted_frames/output_video_frame_0021.png" alt="运动员动作帧" id="playerImage">
+                    <div class="player-image-overlay">
+                        <h2 class="chinese-title-card text-xl md:text-2xl leading-tight mb-0.5" id="osdTopLeftText">姿态类型分析 - 正手</h2>
+                        <p class="english-subtitle text-sm md:text-base" id="currentPhaseEn">PREPARATION</p>
+                        <div class="mt-3 text-xs sm:text-sm text-stone-400 flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span><i class="fas fa-clock icon-style"></i><span id="currentTime">16:04:13</span></span>
+                            <span><i class="fas fa-calendar-alt icon-style"></i>星期五 (FRIDAY)</span>
+                            <span class="font-mono bg-stone-700/80 px-2 py-0.5 rounded text-stone-300">ID: <span id="currentFrameID">21</span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 核心姿态指标卡片 -->
+            <div
+                class="bento-card"
+            >
+                <h3 class="chinese-title-card mb-1">核心姿态</h3>
+                <p class="english-subtitle mb-5">CORE POSTURE</p>
+                <div class="space-y-5">
+                    <div>
+                        <p class="text-sm text-stone-400"><i class="fas fa-arrows-rotate icon-style"></i>肩部转动 <span class="outline-text-english">(SHOULDER TURN)</span></p>
+                        <p><span class="data-value-large" id="shoulderTurn">175.3</span><span class="data-unit">°</span></p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-stone-400"><i class="fas fa-user-ninja icon-style"></i>非持拍手肘 <span class="outline-text-english">(NONDOM ARM ELBOW)</span></p>
+                        <p><span class="data-value-medium" id="nondomArmElbow">120.3</span><span class="data-unit">°</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 挥拍与系统状态卡片 -->
+            <div class="bento-card">
+                <h3 class="chinese-title-card mb-1">挥拍与状态</h3>
+                <p class="english-subtitle mb-5">SWING & STATUS</p>
+                <div class="space-y-5">
+                    <div>
+                        <p class="text-sm text-stone-400"><i class="fas fa-khanda icon-style"></i>持拍手肘 <span class="outline-text-english">(DOM ARM ELBOW)</span></p>
+                        <p><span class="data-value-medium" id="domArmElbow">134.2</span><span class="data-unit">°</span></p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-stone-400"><i class="fas fa-shield-halved icon-style"></i>系统提示 <span class="outline-text-english">(SYSTEM ALERT)</span></p>
+                        <p><span class="status-text text-amber-400" id="systemStatusZh">无球拍/球</span></p> 
+                        <p><span class="text-xs outline-text-english" id="systemStatusEn">NO RACKET/BALL</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 步法细节卡片 -->
+            <div class="bento-card lg:col-span-2">
+                <h3 class="chinese-title-card mb-1">步法分析</h3>
+                <p class="english-subtitle mb-5">FOOTWORK ANALYSIS</p>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-5 items-end">
+                    <div>
+                        <p class="text-sm text-stone-400"><i class="fas fa-ruler-horizontal icon-style"></i>站位宽度 <span class="outline-text-english">(STANCE WIDTH)</span></p>
+                        <p><span class="data-value-medium" id="stanceWidth">107</span><span class="data-unit">px</span></p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-stone-400"><i class="fas fa-shoe-prints icon-style"></i>站位类型 <span class="outline-text-english">(STANCE TYPE)</span></p>
+                        <p><span class="status-text text-sky-300" id="stanceTypeZh">开放式</span></p>
+                        <p><span class="text-xs outline-text-english" id="stanceTypeEn">OPEN</span></p>
+                    </div>
+                     <div class="sm:col-span-1">
+                        <p class="text-sm text-stone-400"><i class="fas fa-joint icon-style"></i>膝关节角度 <span class="outline-text-english">(KNEE ANGLES)</span></p>
+                        <p class="text-md font-medium"><span class="text-sky-400" id="leftKneeAngle">L: 179.4°</span> <span class="text-stone-500 mx-1">|</span> <span class="text-green-400" id="rightKneeAngle">R: 169.9°</span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="text-center mt-12 text-stone-500 text-xs">
+            <p>未来运动科技 - AI驱动表现提升 | FutureSport Dynamics - AI-Powered Performance Enhancement</p>
+            <p>© 2023 FutureSport Dynamics. 保留所有权利.</p>
+        </footer>
+    </div>
+
+    <script>
+        // Wait for DOM to be fully loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM fully loaded');
+            
+            // Store all images in array and preload them
+            const imagePaths = [
+                'extracted_frames/output_video_frame_0021.png',
+                'extracted_frames/output_video_frame_0037.png',
+                'extracted_frames/output_video_frame_0062.png',
+                'extracted_frames/output_video_frame_0087.png'
+            ];
+            
+            // Preload all images before starting
+            const preloadedImages = [];
+            let loadedCount = 0;
+            
+            function preloadImages() {
+                console.log('Preloading all images...');
+                imagePaths.forEach((path, index) => {
+                    preloadedImages[index] = new Image();
+                    preloadedImages[index].onload = function() {
+                        loadedCount++;
+                        console.log(`Image loaded (${loadedCount}/${imagePaths.length}): ${path}`);
+                        if (loadedCount === imagePaths.length) {
+                            console.log('All images loaded, starting animation');
+                            startDashboard();
+                        }
+                    };
+                    preloadedImages[index].onerror = function() {
+                        console.error(`Failed to load image: ${path}`);
+                        loadedCount++;
+                        if (loadedCount === imagePaths.length) {
+                            console.log('All images processed, starting animation anyway');
+                            startDashboard();
+                        }
+                    };
+                    preloadedImages[index].src = path;
+                });
+            }
+            
+            function startDashboard() {
+                const swingData = [
+                    {
+                        id: '21', timestamp: '16:04:13',
+                        osdTopLeftText: '姿态类型分析 - 正手', phaseEn: 'PREPARATION',
+                        image: imagePaths[0],
+                        shoulderTurn: '175.3', nondomArmElbow: '120.3', domArmElbow: '134.2',
+                        systemStatusZh: '无球拍/球', systemStatusEn: 'NO RACKET/BALL',
+                        stanceWidth: '107', stanceTypeZh: '开放式', stanceTypeEn: 'OPEN',
+                        leftKneeAngle: '179.4', rightKneeAngle: '169.9'
+                    },
+                    {
+                        id: '37', timestamp: '16:04:14',
+                        osdTopLeftText: '球拍状态分析 - 正手', phaseEn: 'FOLLOW-THROUGH',
+                        image: imagePaths[1],
+                        shoulderTurn: '180.0', nondomArmElbow: '115.4', domArmElbow: '82.2',
+                        systemStatusZh: '无球拍/球', systemStatusEn: 'NO RACKET/BALL',
+                        stanceWidth: '20', stanceTypeZh: '关闭式', stanceTypeEn: 'CLOSED',
+                        leftKneeAngle: '175.0', rightKneeAngle: '165.0'
+                    },
+                    {
+                        id: '62', timestamp: '16:04:15',
+                        osdTopLeftText: '姿态类型分析 - 双手反拍', phaseEn: 'PREPARATION',
+                        image: imagePaths[2],
+                        shoulderTurn: '105.2', nondomArmElbow: '105.2', domArmElbow: '99.7',
+                        systemStatusZh: '无球拍/球', systemStatusEn: 'NO RACKET/BALL',
+                        stanceWidth: '28', stanceTypeZh: '开放/半开放', stanceTypeEn: 'OPEN/SEMI-OPEN',
+                        leftKneeAngle: '148.6', rightKneeAngle: '144.9'
+                    },
+                    {
+                        id: '87', timestamp: '16:04:16',
+                        osdTopLeftText: '球拍状态分析 - 双手反拍', phaseEn: 'IDLE / OTHER',
+                        image: imagePaths[3],
+                        shoulderTurn: '178.5', nondomArmElbow: '75.8', domArmElbow: '118.0',
+                        systemStatusZh: '无球拍/球', systemStatusEn: 'NO RACKET/BALL',
+                        stanceWidth: '40', stanceTypeZh: '关闭式', stanceTypeEn: 'CLOSED',
+                        leftKneeAngle: '152.1', rightKneeAngle: '140.5'
+                    }
+                ];
+        
+                let currentDataIndex = 0;
+        
+                const elements = {
+                    playerImage: document.getElementById('playerImage'),
+                    osdTopLeftText: document.getElementById('osdTopLeftText'),
+                    currentPhaseEn: document.getElementById('currentPhaseEn'),
+                    currentTime: document.getElementById('currentTime'),
+                    currentFrameID: document.getElementById('currentFrameID'),
+                    
+                    shoulderTurn: document.getElementById('shoulderTurn'),
+                    nondomArmElbow: document.getElementById('nondomArmElbow'),
+                    domArmElbow: document.getElementById('domArmElbow'),
+                    
+                    systemStatusZh: document.getElementById('systemStatusZh'),
+                    systemStatusEn: document.getElementById('systemStatusEn'),
+                    
+                    stanceWidth: document.getElementById('stanceWidth'),
+                    stanceTypeZh: document.getElementById('stanceTypeZh'),
+                    stanceTypeEn: document.getElementById('stanceTypeEn'),
+                    leftKneeAngle: document.getElementById('leftKneeAngle'),
+                    rightKneeAngle: document.getElementById('rightKneeAngle')
+                };
+        
+                function updateDashboard() {
+                    const data = swingData[currentDataIndex];
+                    console.log('Updating dashboard with data for frame:', data.id);
+                    
+                    // Update the UI with current data
+                    elements.playerImage.src = data.image;
+                    elements.osdTopLeftText.textContent = data.osdTopLeftText;
+                    elements.currentPhaseEn.textContent = data.phaseEn.toUpperCase();
+                    elements.currentTime.textContent = data.timestamp;
+                    elements.currentFrameID.textContent = data.id;
+                    
+                    elements.shoulderTurn.textContent = data.shoulderTurn;
+                    elements.nondomArmElbow.textContent = data.nondomArmElbow;
+                    elements.domArmElbow.textContent = data.domArmElbow;
+                    
+                    elements.systemStatusZh.textContent = data.systemStatusZh;
+                    elements.systemStatusEn.textContent = data.systemStatusEn.toUpperCase();
+                    
+                    elements.stanceWidth.textContent = data.stanceWidth;
+                    elements.stanceTypeZh.textContent = data.stanceTypeZh;
+                    elements.stanceTypeEn.textContent = data.stanceTypeEn.toUpperCase();
+        
+                    elements.leftKneeAngle.textContent = `L: ${data.leftKneeAngle}°`;
+                    elements.rightKneeAngle.textContent = `R: ${data.rightKneeAngle}°`;
+        
+                    // Move to the next data point
+                    currentDataIndex = (currentDataIndex + 1) % swingData.length;
+                }
+                
+                // Initialize and start auto-updating
+                console.log('Starting dashboard updates');
+                updateDashboard();
+                
+                // Set up the regular interval for updates
+                setInterval(updateDashboard, 2000); // Every 2 seconds
+                console.log('Auto-update enabled every 2 seconds');
+            }
+            
+            // Start the process
+            preloadImages();
+        });
+    </script>
+</body>
+</html>
