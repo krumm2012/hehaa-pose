@@ -58,3 +58,15 @@ racket_lost_threshold_frames: 5      # How many frames before an associated rack
 ball_radius_px: 10                   # Approximate ball radius in pixels for state detection
 
 enable_manual_boundary: False  # 是否允许启动时手动画定监控区域
+
+# 视频文本显示控制
+display_options:
+  show_swing_type: true      # 显示挥拍类型
+  show_ball_position: true   # 显示球的位置
+  show_racket_state: true    # 显示球拍状态
+  show_pose_keypoints: true  # 显示姿势关键点
+  show_ball_trajectory: true # 显示球的轨迹
+  show_boundary: false       # 显示边界框
+  show_static_balls: false   # 显示静态球
+  show_fps: false           # 显示FPS
+  show_frame_number: false   # 显示帧号

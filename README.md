@@ -91,7 +91,16 @@ python frame_extractor.py --dir player-video --recursive
 - 球追踪参数（如灵敏度、过滤阈值等）
 - 姿势估计置信度阈值
 - 球拍检测参数和状态判断阈值
-- 可视化选项（现已默认不显示头部关键点）
+- 视频显示选项：
+  - `show_swing_type`: 显示挥拍类型
+  - `show_ball_position`: 显示球的位置
+  - `show_racket_state`: 显示球拍状态
+  - `show_pose_keypoints`: 显示姿势关键点
+  - `show_ball_trajectory`: 显示球的轨迹
+  - `show_boundary`: 显示边界框
+  - `show_static_balls`: 显示静态球
+  - `show_fps`: 显示FPS
+  - `show_frame_number`: 显示帧号
 
 ## 系统架构
 
