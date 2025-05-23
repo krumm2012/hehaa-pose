@@ -36,203 +36,155 @@ class FullSwingAnalyzer:
             return kp
         return None
 
-    def analyze_swing_components(self, person_keypoints_list, associated_rackets_info, kf_estimated_ball_pos, frame_dimensions):
+    def analyze_swing_components(self, keypoints_list, racket_results, ball_position, frame_dimensions):
         """
-        Analyzes various components of a tennis swing from a single frame.
-        Returns a dictionary of analyzed metrics.
+        分析挥拍动作的各个组成部分
+        :param keypoints_list: 关键点列表
+        :param racket_results: 球拍检测结果列表
+        :param ball_position: 球的位置 (x, y)，可能是None
+        :param frame_dimensions: 帧的尺寸 (height, width)
+        :return: 分析结果字典
         """
-        metrics = {
-            "phase_estimation": "Unknown",
-            "preparation": {},
-            "swing_motion": {},
-            "footwork": {},
-            "power_indicators": {}
+        if not keypoints_list:
+            return {}
+
+        # 获取第一个检测到的人的关键点
+        keypoints = keypoints_list[0]
+        
+        # 获取第一个检测到的球拍信息（如果有）
+        racket_info = racket_results[0] if racket_results else None
+
+        # 确保ball_position是有效的坐标
+        if isinstance(ball_position, (list, tuple)) and len(ball_position) >= 2:
+            ball_pos = ball_position
+        else:
+            ball_pos = None
+
+        # 分析结果字典
+        analysis = {
+            'preparation': self._analyze_preparation(keypoints),
+            'swing_motion': self._analyze_swing_motion(keypoints, racket_info, ball_pos),
+            'footwork': self._analyze_footwork(keypoints),
+            'power_indicators': self._analyze_power_indicators(keypoints)
         }
 
-        if not person_keypoints_list:
-            return metrics # Not enough info if no player
+        return analysis
 
-        # For simplicity, analyze the first detected person
-        player_kpts = person_keypoints_list[0]
-        frame_h, frame_w = frame_dimensions
+    def _analyze_preparation(self, keypoints):
+        """分析准备阶段的指标"""
+        metrics = {}
+        
+        # 分析肩部转动
+        if all(keypoints.get(kp) for kp in ["left_shoulder", "right_shoulder"]):
+            ls = np.array(keypoints["left_shoulder"])
+            rs = np.array(keypoints["right_shoulder"])
+            shoulder_vector = rs - ls
+            vertical_vector = np.array([0, 1])
+            shoulder_angle = self._calculate_angle_between_vectors(shoulder_vector, vertical_vector)
+            metrics['shoulder_turn'] = f"{shoulder_angle:.1f}°"
 
-        # --- Dominant/Non-Dominant Side Assignment ---
-        if self.dominant_hand == 'right':
-            dom_shoulder = self._get_keypoint(player_kpts, "right_shoulder")
-            dom_elbow = self._get_keypoint(player_kpts, "right_elbow")
-            dom_wrist = self._get_keypoint(player_kpts, "right_wrist")
-            dom_hip = self._get_keypoint(player_kpts, "right_hip")
-            dom_knee = self._get_keypoint(player_kpts, "right_knee")
-            dom_ankle = self._get_keypoint(player_kpts, "right_ankle")
-
-            nondom_shoulder = self._get_keypoint(player_kpts, "left_shoulder")
-            nondom_elbow = self._get_keypoint(player_kpts, "left_elbow")
-            nondom_wrist = self._get_keypoint(player_kpts, "left_wrist")
-            nondom_hip = self._get_keypoint(player_kpts, "left_hip")
-        else: # Left-handed
-            dom_shoulder = self._get_keypoint(player_kpts, "left_shoulder")
-            dom_elbow = self._get_keypoint(player_kpts, "left_elbow")
-            dom_wrist = self._get_keypoint(player_kpts, "left_wrist")
-            # ... (assign other dominant/non-dominant parts for left-hander)
-            nondom_shoulder = self._get_keypoint(player_kpts, "right_shoulder")
-            nondom_elbow = self._get_keypoint(player_kpts, "right_elbow")
-            nondom_wrist = self._get_keypoint(player_kpts, "right_wrist")
-            nondom_hip = self._get_keypoint(player_kpts, "right_hip")
-
-
-        # --- Racket Info ---
-        # Assuming player_id 0 for the main player
-        racket_info = associated_rackets_info.get(0)
-        racket_box = racket_center = racket_state = None
-        if racket_info:
-            racket_box = racket_info.get('box')
-            racket_state = racket_info.get('state')
-            if racket_box:
-                racket_center = ((racket_box[0] + racket_box[2]) / 2, (racket_box[1] + racket_box[3]) / 2)
-
-        # --- Phase Estimation (Very Basic) ---
-        # This is highly dependent on ball and racket state from racket_detector
-        if racket_state:
-            if "IMPACT" in racket_state:
-                metrics["phase_estimation"] = "Impact Phase"
-            elif "APPROACHING" in racket_state:
-                metrics["phase_estimation"] = "Forward Swing / Approaching Ball"
-            elif racket_center and dom_shoulder and \
-                 ((self.dominant_hand == 'right' and racket_center[0] < dom_shoulder[0] - (racket_box[2]-racket_box[0])/2) or \
-                  (self.dominant_hand == 'left' and racket_center[0] > dom_shoulder[0] + (racket_box[2]-racket_box[0])/2)):
-                metrics["phase_estimation"] = "Backswing / Preparation"
-            elif racket_center and dom_shoulder and \
-                 ((self.dominant_hand == 'right' and racket_center[0] > dom_shoulder[0] + (racket_box[2]-racket_box[0])) or \
-                  (self.dominant_hand == 'left' and racket_center[0] < dom_shoulder[0] - (racket_box[2]-racket_box[0]))):
-                metrics["phase_estimation"] = "Follow-Through (Basic)"
-            else:
-                metrics["phase_estimation"] = "Idle / Other"
-
-
-        # --- 1. 引拍 (Yǐnpāi - Preparation) ---
-        prep = metrics["preparation"]
-        if dom_shoulder and nondom_shoulder:
-            shoulder_angle_to_horizontal = np.arctan2(dom_shoulder[1] - nondom_shoulder[1], dom_shoulder[0] - nondom_shoulder[0]) * 180 / np.pi
-            prep["shoulder_turn_degrees"] = f"{abs(shoulder_angle_to_horizontal):.1f}" # Angle from horizontal
-            # More qualitative: Is non-dominant shoulder pointing towards net (assuming net is to player's side)
-            # This requires knowing camera orientation relative to court. For now, just the angle.
-
-        if racket_center and dom_shoulder:
-            racket_x_rel_shoulder = racket_center[0] - dom_shoulder[0]
-            racket_y_rel_shoulder = racket_center[1] - dom_shoulder[1]
-            prep["racket_pos_rel_dom_shoulder_px"] = f"({racket_x_rel_shoulder:.0f}, {racket_y_rel_shoulder:.0f})"
-            if (self.dominant_hand == 'right' and racket_x_rel_shoulder < -20) or \
-               (self.dominant_hand == 'left' and racket_x_rel_shoulder > 20):
-                prep["racket_takeback"] = "Yes (Behind Shoulder)"
-            else:
-                prep["racket_takeback"] = "No / Forward"
-
-        if nondom_elbow and nondom_shoulder and nondom_wrist:
-            nondom_arm_angle = self._calculate_angle(nondom_shoulder, nondom_elbow, nondom_wrist)
-            prep["nondom_arm_elbow_angle_deg"] = f"{nondom_arm_angle:.1f}" if nondom_arm_angle is not None else "N/A"
-            if nondom_arm_angle is not None and nondom_arm_angle > 140:
-                prep["nondom_arm_usage"] = "Extended (Good for balance/pointing)"
-            elif nondom_arm_angle is not None:
-                prep["nondom_arm_usage"] = "Bent"
-
-        # --- 2. 挥拍 (Huīpāi - Swing Motion, including impact) ---
-        swing = metrics["swing_motion"]
-        if racket_center and kf_estimated_ball_pos:
-            # Inferred contact point relative to body (at current frame if phase is "Impact")
-            # This is very simplified. True contact point analysis is complex.
-            body_center_x = self._get_midpoint(self._get_keypoint(player_kpts, "left_hip"), self._get_keypoint(player_kpts, "right_hip"))
-            if body_center_x: body_center_x = body_center_x[0]
-
-            if body_center_x and racket_center:
-                if abs(racket_center[0] - kf_estimated_ball_pos[0]) < 30 and \
-                   abs(racket_center[1] - kf_estimated_ball_pos[1]) < 30 : # If racket and ball are close
-                    if (self.dominant_hand == 'right' and racket_center[0] > body_center_x + 20) or \
-                       (self.dominant_hand == 'left' and racket_center[0] < body_center_x - 20):
-                        swing["inferred_contact_point"] = "In Front of Body"
-                    elif abs(racket_center[0] - body_center_x) <= 20 :
-                        swing["inferred_contact_point"] = "Side of Body"
-                    else:
-                        swing["inferred_contact_point"] = "Behind Body (Late)"
-                    swing["contact_height_ratio_frame"] = f"{racket_center[1] / frame_h:.2f}"
-                else:
-                    swing["inferred_contact_point"] = "Racket/Ball not at impact"
+        # 分析非惯用臂的扩展
+        if self.config['dominant_hand'] == "right":
+            non_dom_shoulder = keypoints.get("left_shoulder")
+            non_dom_elbow = keypoints.get("left_elbow")
+            non_dom_wrist = keypoints.get("left_wrist")
         else:
-            swing["inferred_contact_point"] = "N/A (No Racket/Ball)"
+            non_dom_shoulder = keypoints.get("right_shoulder")
+            non_dom_elbow = keypoints.get("right_elbow")
+            non_dom_wrist = keypoints.get("right_wrist")
 
-        if dom_elbow and dom_shoulder and dom_wrist:
-            dom_arm_angle = self._calculate_angle(dom_shoulder, dom_elbow, dom_wrist)
-            swing["dom_arm_elbow_angle_deg"] = f"{dom_arm_angle:.1f}" if dom_arm_angle is not None else "N/A"
-            if dom_arm_angle is not None and metrics["phase_estimation"] == "Impact Phase":
-                swing["arm_extension_at_impact"] = "Extended" if dom_arm_angle > 130 else "Bent"
-
-
-        # --- 3. 脚步 (Jiǎobù - Footwork) ---
-        foot = metrics["footwork"]
-        lknee = self._get_keypoint(player_kpts, "left_knee")
-        rknee = self._get_keypoint(player_kpts, "right_knee")
-        lankle = self._get_keypoint(player_kpts, "left_ankle")
-        rankle = self._get_keypoint(player_kpts, "right_ankle")
-
-        if lankle and rankle:
-            stance_width = np.linalg.norm(np.array(lankle) - np.array(rankle))
-            foot["stance_width_px"] = f"{stance_width:.0f}"
-            # Qualitative stance width (needs calibration or relation to player height)
-            # For now, just pixels.
-
-            # Stance type (very simplified, based on ankle X positions relative to dominant side)
-            # Assumes player is somewhat facing forward or sideways to camera.
-            # A true stance analysis needs orientation relative to net/ball.
-            if abs(lankle[0] - rankle[0]) < stance_width * 0.2: # Ankles almost aligned vertically
-                foot["stance_type_guess"] = "Neutral/Square (approx)"
-            elif (self.dominant_hand == 'right' and lankle[0] < rankle[0]) or \
-                 (self.dominant_hand == 'left' and rankle[0] < lankle[0]):
-                foot["stance_type_guess"] = "Open/Semi-Open (approx)"
-            else:
-                foot["stance_type_guess"] = "Closed (approx)"
-        else:
-            foot["stance_width_px"] = "N/A"
-            foot["stance_type_guess"] = "N/A"
-
-        if lknee and self._get_keypoint(player_kpts, "left_hip") and lankle:
-            left_knee_angle = self._calculate_angle(self._get_keypoint(player_kpts, "left_hip"), lknee, lankle)
-            foot["left_knee_angle_deg"] = f"{left_knee_angle:.1f}" if left_knee_angle is not None else "N/A"
-        if rknee and self._get_keypoint(player_kpts, "right_hip") and rankle:
-            right_knee_angle = self._calculate_angle(self._get_keypoint(player_kpts, "right_hip"), rknee, rankle)
-            foot["right_knee_angle_deg"] = f"{right_knee_angle:.1f}" if right_knee_angle is not None else "N/A"
-
-
-        # --- 4. 发力 (Fālì - Power Generation Indicators) ---
-        power = metrics["power_indicators"]
-        if lknee and rknee and (foot.get("left_knee_angle_deg", "N/A") != "N/A" and foot.get("right_knee_angle_deg", "N/A") != "N/A"):
-            avg_knee_angle = (float(foot["left_knee_angle_deg"]) + float(foot["right_knee_angle_deg"])) / 2
-            if avg_knee_angle < 140:
-                power["leg_bend_indicator"] = "Significant (Good for power)"
-            elif avg_knee_angle < 165:
-                power["leg_bend_indicator"] = "Moderate"
-            else:
-                power["leg_bend_indicator"] = "Straight Legs (Less power from legs)"
-        else:
-            power["leg_bend_indicator"] = "N/A"
-
-        # Hip-Shoulder Separation (simplified)
-        # Compare alignment of hips vs shoulders. If different, indicates rotation/coil.
-        if dom_hip and nondom_hip and dom_shoulder and nondom_shoulder:
-            hip_line_vec = np.array(dom_hip) - np.array(nondom_hip)
-            shoulder_line_vec = np.array(dom_shoulder) - np.array(nondom_shoulder)
-            # Normalize (optional, but good for consistent dot product)
-            hip_line_vec_norm = hip_line_vec / (np.linalg.norm(hip_line_vec) + 1e-6)
-            shoulder_line_vec_norm = shoulder_line_vec / (np.linalg.norm(shoulder_line_vec) + 1e-6)
-            
-            dot_prod = np.dot(hip_line_vec_norm, shoulder_line_vec_norm)
-            separation_angle_rad = np.arccos(np.clip(dot_prod, -1.0, 1.0))
-            separation_angle_deg = np.degrees(separation_angle_rad)
-            power["hip_shoulder_separation_deg"] = f"{separation_angle_deg:.1f}"
-            if separation_angle_deg > 15: # Arbitrary threshold
-                 power["body_coil_indicator"] = "Coiled (Potential for rotational power)"
-            else:
-                 power["body_coil_indicator"] = "Less Coil"
-        else:
-            power["hip_shoulder_separation_deg"] = "N/A"
-            power["body_coil_indicator"] = "N/A"
+        if all([non_dom_shoulder, non_dom_elbow, non_dom_wrist]):
+            arm_extension = self._calculate_angle(non_dom_shoulder, non_dom_elbow, non_dom_wrist)
+            metrics['non_dominant_arm_extension'] = f"{arm_extension:.1f}°"
 
         return metrics
+
+    def _analyze_swing_motion(self, keypoints, racket_info, ball_position):
+        """分析挥拍动作的指标"""
+        metrics = {}
+
+        # 获取惯用手腕位置
+        dom_wrist = keypoints.get("right_wrist" if self.config['dominant_hand'] == "right" else "left_wrist")
+        
+        if dom_wrist and ball_position:
+            # 计算击球点相对于身体的位置
+            contact_x_diff = ball_position[0] - dom_wrist[0]
+            metrics['contact_point_position'] = "Front" if abs(contact_x_diff) < 50 else \
+                                              "Side" if contact_x_diff < 0 else "Late"
+            
+            # 计算击球高度
+            metrics['contact_height'] = "Low" if ball_position[1] > dom_wrist[1] + 50 else \
+                                      "Mid" if abs(ball_position[1] - dom_wrist[1]) <= 50 else "High"
+
+        # 分析手臂伸展度
+        if self.config['dominant_hand'] == "right":
+            dom_shoulder = keypoints.get("right_shoulder")
+            dom_elbow = keypoints.get("right_elbow")
+            dom_wrist = keypoints.get("right_wrist")
+        else:
+            dom_shoulder = keypoints.get("left_shoulder")
+            dom_elbow = keypoints.get("left_elbow")
+            dom_wrist = keypoints.get("left_wrist")
+
+        if all([dom_shoulder, dom_elbow, dom_wrist]):
+            arm_extension = self._calculate_angle(dom_shoulder, dom_elbow, dom_wrist)
+            metrics['arm_extension'] = f"{arm_extension:.1f}°"
+
+        return metrics
+
+    def _analyze_footwork(self, keypoints):
+        """分析脚步工作的指标"""
+        metrics = {}
+
+        # 计算站姿宽度
+        left_ankle = keypoints.get("left_ankle")
+        right_ankle = keypoints.get("right_ankle")
+        if left_ankle and right_ankle:
+            stance_width = np.linalg.norm(np.array(left_ankle) - np.array(right_ankle))
+            metrics['stance_width'] = f"{stance_width:.1f}px"
+
+            # 简单的站姿类型判断
+            left_hip = keypoints.get("left_hip")
+            right_hip = keypoints.get("right_hip")
+            if left_hip and right_hip:
+                hip_center_x = (left_hip[0] + right_hip[0]) / 2
+                ankle_center_x = (left_ankle[0] + right_ankle[0]) / 2
+                stance_offset = hip_center_x - ankle_center_x
+                metrics['stance_type'] = "Open" if abs(stance_offset) > 30 else "Neutral"
+
+        # 计算膝盖角度
+        for side in ['left', 'right']:
+            hip = keypoints.get(f"{side}_hip")
+            knee = keypoints.get(f"{side}_knee")
+            ankle = keypoints.get(f"{side}_ankle")
+            if all([hip, knee, ankle]):
+                knee_angle = self._calculate_angle(hip, knee, ankle)
+                metrics[f'{side}_knee_angle'] = f"{knee_angle:.1f}°"
+
+        return metrics
+
+    def _analyze_power_indicators(self, keypoints):
+        """分析力量指标"""
+        metrics = {}
+
+        # 计算髋肩分离度
+        left_hip = keypoints.get("left_hip")
+        right_hip = keypoints.get("right_hip")
+        left_shoulder = keypoints.get("left_shoulder")
+        right_shoulder = keypoints.get("right_shoulder")
+
+        if all([left_hip, right_hip, left_shoulder, right_shoulder]):
+            hip_vector = np.array(right_hip) - np.array(left_hip)
+            shoulder_vector = np.array(right_shoulder) - np.array(left_shoulder)
+            separation_angle = self._calculate_angle_between_vectors(hip_vector, shoulder_vector)
+            metrics['hip_shoulder_separation'] = f"{separation_angle:.1f}°"
+
+        return metrics
+
+    def _calculate_angle_between_vectors(self, v1, v2):
+        """计算两个向量之间的角度"""
+        dot_product = np.dot(v1, v2)
+        norm_product = np.linalg.norm(v1) * np.linalg.norm(v2)
+        if norm_product == 0: return 0.0
+        angle = np.arccos(dot_product / norm_product)
+        return np.degrees(angle)

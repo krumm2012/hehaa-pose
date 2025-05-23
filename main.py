@@ -47,6 +47,9 @@ def main():
     video_path = config['video_input_path']
     print(f"配置加载完成，视频路径: {video_path}")
     
+    # 获取显示选项配置
+    display_opts = config.get('display_options', {})
+    
     # ========== 新增：手动画监控区域功能 ==========
     if config.get('enable_manual_boundary', False):
         print("手动画定监控区域模式已启用。即将弹出窗口，请用鼠标拖拽画出监控区域（矩形），松开左键确定。")
@@ -158,204 +161,117 @@ def main():
         elif frame_num % 100 == 0:  # 如果total_frames未知，则每100帧显示一次
             print(f"处理帧 {frame_num}...")
             
-        display_frame = frame.copy()  # 在副本上绘制
-        frame_dimensions = (frame_height, frame_width) # 传递给分析器 <-- NEW
+        display_frame = frame.copy()
 
-        # 1. 姿势估计
-        person_keypoints_list = pose_module.get_keypoints(frame)
-        
-        # 计算并显示关键关节角度
-        if person_keypoints_list and len(person_keypoints_list) > 0:
-            keypoints = person_keypoints_list[0]
+        # 处理姿势估计
+        pose_results = pose_module.get_keypoints(display_frame)
+        if pose_results and display_opts.get('show_pose_keypoints', True):
+            display_frame = pose_module.draw_keypoints(display_frame, pose_results)
             
-            # 计算手肘角度
-            if all(keypoints.get(kp) for kp in ["right_shoulder", "right_elbow", "right_wrist"]):
-                right_elbow_angle = pose_module.calculate_angle(
-                    keypoints["right_shoulder"], 
-                    keypoints["right_elbow"], 
-                    keypoints["right_wrist"]
-                )
-                # 在右手肘位置显示角度
-                if keypoints["right_elbow"]:
-                    elbow_pos = keypoints["right_elbow"]
-                    display_frame = put_chinese_text(display_frame, f"{right_elbow_angle:.0f}°", (elbow_pos[0] + 10, elbow_pos[1]), 0.5, (255, 140, 0))
+        # 处理球追踪
+        ball_positions = ball_module.predict_ball(display_frame)
+        ball_position = ball_positions[0] if ball_positions else None
+        if ball_position:
+            if display_opts.get('show_ball_position', True):
+                cv2.circle(display_frame, (int(ball_position[0]), int(ball_position[1])), 
+                          5, (0, 255, 0), -1)
             
-            # 计算左手肘角度
-            if all(keypoints.get(kp) for kp in ["left_shoulder", "left_elbow", "left_wrist"]):
-                left_elbow_angle = pose_module.calculate_angle(
-                    keypoints["left_shoulder"], 
-                    keypoints["left_elbow"], 
-                    keypoints["left_wrist"]
-                )
-                # 在左手肘位置显示角度
-                if keypoints["left_elbow"]:
-                    elbow_pos = keypoints["left_elbow"]
-                    display_frame = put_chinese_text(display_frame, f"{left_elbow_angle:.0f}°", (elbow_pos[0] + 10, elbow_pos[1]), 0.5, (135, 206, 235))
+            if display_opts.get('show_ball_trajectory', True):
+                # 绘制球的轨迹
+                ball_module.draw_trajectory(display_frame)
+        
+        # 处理球拍检测
+        racket_results = racket_module.detect_rackets(display_frame)
+        if racket_results and display_opts.get('show_racket_state', True):
+            # 绘制球拍状态
+            for racket in racket_results:
+                box = racket['box']
+                cv2.rectangle(display_frame, (int(box[0]), int(box[1])), 
+                            (int(box[2]), int(box[3])), (255, 0, 0), 2)
+        
+        # 显示挥拍类型
+        if pose_results and display_opts.get('show_swing_type', True):
+            swing_type = pose_module.classify_swing(pose_results)
+            if swing_type != "No Pose" and swing_type != "Incomplete Pose":
+                display_frame = put_chinese_text(display_frame, f"Swing Type: {swing_type}", (10, 30), 0.7, (255, 255, 255))
+        
+        # 显示边界框
+        if config['use_boundary'] and display_opts.get('show_boundary', False):
+            cv2.rectangle(display_frame, 
+                         (config['boundary_x1'], config['boundary_y1']),
+                         (config['boundary_x2'], config['boundary_y2']), 
+                         (0, 255, 0), 2)
+        
+        # 显示静态球
+        if display_opts.get('show_static_balls', False):
+            ball_module.draw_static_balls(display_frame)
+        
+        # 显示FPS
+        if display_opts.get('show_fps', False):
+            current_fps = (frame_num + 1) / (time.time() - start_time) if (time.time() - start_time) > 0 else 0
+            display_frame = put_chinese_text(display_frame, f"FPS: {current_fps:.1f}", (10, 60), 0.7, (0, 255, 0))
+        
+        # 显示帧号
+        if display_opts.get('show_frame_number', False):
+            display_frame = put_chinese_text(display_frame, f"Frame: {frame_num}", (10, 90), 0.7, (255, 255, 255))
+
+        # 创建半透明信息面板
+        if any([display_opts.get(opt, True) for opt in ['show_swing_type', 'show_ball_position', 'show_racket_state']]):
+            info_panel = display_frame.copy()
+            panel_height = 400
+            cv2.rectangle(info_panel, (30, 20), (330, panel_height), (0, 0, 0), -1)
+            alpha = 0.7
+            display_frame = cv2.addWeighted(info_panel, alpha, display_frame, 1 - alpha, 0)
             
-            # 计算躯干角度（肩部连线与垂直线的角度）
-            if all(keypoints.get(kp) for kp in ["right_shoulder", "left_shoulder"]):
-                rs = np.array(keypoints["right_shoulder"])
-                ls = np.array(keypoints["left_shoulder"])
-                shoulder_vector = rs - ls
-                vertical_vector = np.array([0, 1])
-                dot_product = np.dot(shoulder_vector, vertical_vector)
-                norm_product = np.linalg.norm(shoulder_vector) * np.linalg.norm(vertical_vector)
-                if norm_product > 0:
-                    torso_angle = np.degrees(np.arccos(dot_product / norm_product))
-                    # 在肩部中心位置显示躯干角度
-                    shoulder_center = ((rs[0] + ls[0]) // 2, (rs[1] + ls[1]) // 2)
-                    display_frame = put_chinese_text(display_frame, f"Torso: {torso_angle:.0f}°", (shoulder_center[0], shoulder_center[1] - 20), 0.5, (75, 0, 130))
-        
-        # 2. 绘制姿势关键点和骨架
-        display_frame = pose_module.draw_keypoints(display_frame, person_keypoints_list)
+            # 文本显示设置
+            text_x_offset = 50
+            text_y_offset = 50
+            line_height = 25
+            current_y = text_y_offset
 
-        # 3. 挥拍分类
-        swing_type = "No Swing"  # 默认值
-        if person_keypoints_list:  # 如果检测到人
-            # a>使用第一个检测到的人作为球员
-            swing_type = pose_module.classify_swing(person_keypoints_list)
+            # 显示基本挥拍类型
+            if display_opts.get('show_swing_type', True):
+                display_frame = put_chinese_text(display_frame, f"Swing Type: {swing_type}", (text_x_offset, current_y), 0.7, (255, 255, 255))
+                current_y += line_height
+            
+            # 显示球位置信息
+            if display_opts.get('show_ball_position', True):
+                if ball_position:
+                    display_frame = put_chinese_text(display_frame, f"Ball Position: ({int(ball_position[0])}, {int(ball_position[1])})", (text_x_offset, current_y), 0.7, (255, 255, 255))
+                else:
+                    display_frame = put_chinese_text(display_frame, "Ball: Not Detected", (text_x_offset, current_y), 0.7, (255, 255, 255))
+                current_y += line_height
 
-        # 4. 球拍检测和关联 <-- NEW
-        raw_racket_detections = racket_module.detect_rackets(frame)
-        associated_rackets_info = racket_module.associate_racket_to_player(raw_racket_detections, person_keypoints_list, frame_num)
+            # 添加球拍状态信息
+            if display_opts.get('show_racket_state', True) and racket_results:
+                for racket in racket_results:
+                    racket_state = racket.get('state', 'Unknown')
+                    display_frame = put_chinese_text(display_frame, f"Racket State: {racket_state}", (text_x_offset, current_y), 0.7, (255, 255, 255))
+                    current_y += line_height
 
-        # 5. 球检测 (使用 TrackNetV2 模型或模拟)
-        raw_ball_detections = ball_module.predict_ball(frame)
-        
-        # 可选：从检测到的坐标生成热图
-        # heatmap = ball_module.generate_heatmap_from_coords(raw_ball_detections, frame.shape)
-        # 可选：处理热图找到球的位置
-        # raw_ball_detections = ball_module.process_heatmap(heatmap, frame.shape)
-
-        # 6. 高级球处理：过滤静态球并追踪主要移动球
-        active_ball_this_frame_list = ball_module.advanced_ball_processing(raw_ball_detections, frame_num)
-
-        # 7. 确定球拍状态基于球的位置 <-- NEW
-        player_id_for_state = 0  # 使用第一个检测到的人作为主要球员
-        # 判断球拍状态（是否接近球、碰撞、跟随）
-        if player_id_for_state in associated_rackets_info and active_ball_this_frame_list:
-            racket_module.determine_racket_state(player_id_for_state, active_ball_this_frame_list[0], frame_height)
-
-        # 8. 执行完整的挥拍分析 <-- NEW
-        full_analysis_metrics = {}
-        if person_keypoints_list:  # 只有在检测到人时才进行分析
-            full_analysis_metrics = swing_analyzer.analyze_swing_components(
-                person_keypoints_list,
-                associated_rackets_info,  # 传递关联的球拍信息
-                active_ball_this_frame_list[0] if active_ball_this_frame_list else None,
-                frame_dimensions
-            )
-
-        # 每30帧应用一次轨迹平滑和离群值移除
-        if frame_num % 30 == 0:
-            ball_module.remove_outliers(threshold=3.0)
-            ball_module.interpolate_trajectory()
-
-        # 9. 绘制可视化
-        # 绘制关联的球拍和状态
-        display_frame = racket_module.draw_associated_rackets(display_frame)
-
-        # 绘制活动的球（如果有）
-        display_frame = ball_module.draw_ball(display_frame, active_ball_this_frame_list)
-        # 绘制基于内部历史的轨迹
-        display_frame = ball_module.draw_trajectory(display_frame)
-        # 绘制确认的静态球
-        display_frame = ball_module.draw_static_balls(display_frame)
-
-        # 10. 添加文本信息
-        # 创建半透明信息面板 - 扩大面板高度以容纳更多信息
-        info_panel = display_frame.copy()
-        panel_height = 400  # 增大高度以显示更多分析数据
-        cv2.rectangle(info_panel, (30, 20), (330, panel_height), (0, 0, 0), -1)
-        alpha = 0.7  # 透明度
-        display_frame = cv2.addWeighted(info_panel, alpha, display_frame, 1 - alpha, 0)
-        
-        # 文本显示设置
-        text_x_offset = 50
-        text_y_offset = 50
-        line_height = 25
-
-        # 显示基本挥拍类型
-        display_frame = put_chinese_text(display_frame, f"Swing Type: {swing_type}", (text_x_offset, text_y_offset), 0.7, (255, 255, 255))
-        current_y = text_y_offset + line_height
-        
-        # 显示球位置信息
-        if active_ball_this_frame_list:  # 检查列表是否非空
-            ball_pos = active_ball_this_frame_list[0]
-            display_frame = put_chinese_text(display_frame, f"Ball Position: ({int(ball_pos[0])}, {int(ball_pos[1])})", (text_x_offset, current_y), 0.7, (255, 255, 255))
-        else:
-            display_frame = put_chinese_text(display_frame, "Ball: Not Detected", (text_x_offset, current_y), 0.7, (255, 255, 255))
-        current_y += line_height
-
-        # 添加球拍状态信息
-        if player_id_for_state in racket_module.player_rackets:
-            racket_state = racket_module.player_rackets[player_id_for_state]['state']
-            display_frame = put_chinese_text(display_frame, f"Racket State: {racket_state}", (text_x_offset, current_y), 0.7, (255, 255, 255))
-        current_y += line_height
-
-        # 显示完整挥拍分析指标 <-- NEW
-        display_frame = put_chinese_text(display_frame, "--- Full Swing Analysis ---", (text_x_offset, current_y), 0.6, (0, 200, 200))
-        current_y += line_height
-        
-        # 显示挥拍阶段估计
-        phase_est = full_analysis_metrics.get("phase_estimation", "Unknown")
-        display_frame = put_chinese_text(display_frame, f"Estimated Phase: {phase_est}", (text_x_offset, current_y), 0.5, (0, 200, 200))
-        current_y += (line_height - 5)
-
-        # 显示其他分析指标
-        for category, cat_metrics in full_analysis_metrics.items():
-            if category == "phase_estimation": continue  # 已经显示过了
-            if isinstance(cat_metrics, dict) and cat_metrics:
-                display_frame = put_chinese_text(display_frame, f"[{category.upper()}]", (text_x_offset, current_y), 0.5, (200, 200, 0))
-                current_y += (line_height - 5)
+            # 显示完整挥拍分析指标
+            if display_opts.get('show_swing_type', True) and pose_results:
+                display_frame = put_chinese_text(display_frame, "--- Full Swing Analysis ---", (text_x_offset, current_y), 0.6, (0, 200, 200))
+                current_y += line_height
                 
-                for key, value in cat_metrics.items():
-                    if current_y > panel_height - 10: break  # 避免绘制超出面板
-                    display_text = f"  {key.replace('_', ' ').title()}: {value}"
-                    display_frame = put_chinese_text(display_frame, display_text, (text_x_offset + 10, current_y), 0.45, (220, 220, 220))
-                    current_y += (line_height - 7)
-                    
-                if current_y > panel_height - 10: break  # 避免绘制超出面板
+                # 显示挥拍阶段估计
+                phase_est = swing_analyzer.analyze_swing_components(pose_results, racket_results, ball_position, (frame_height, frame_width))
+                if isinstance(phase_est, dict):
+                    for category, cat_metrics in phase_est.items():
+                        if isinstance(cat_metrics, dict) and cat_metrics:
+                            display_frame = put_chinese_text(display_frame, f"[{category.upper()}]", (text_x_offset, current_y), 0.5, (200, 200, 0))
+                            current_y += (line_height - 7)
+                            
+                            for key, value in cat_metrics.items():
+                                if current_y > panel_height - 10: break
+                                display_text = f"  {key.replace('_', ' ').title()}: {value}"
+                                display_frame = put_chinese_text(display_frame, display_text, (text_x_offset + 10, current_y), 0.45, (220, 220, 220))
+                                current_y += (line_height - 7)
+                                
+                            if current_y > panel_height - 10: break
 
         # 添加帧号
         display_frame = put_chinese_text(display_frame, f"Frame: {frame_num}", (text_x_offset, panel_height - 10), 0.6, (255, 255, 255))
-
-        # 显示FPS
-        current_fps = (frame_num + 1) / (time.time() - start_time) if (time.time() - start_time) > 0 else 0
-        display_frame = put_chinese_text(display_frame, f"FPS: {current_fps:.1f}", (frame_width - 120, 30), 0.7, (0, 255, 0))
-
-        # 添加虚线边框效果(类似图片中的效果)
-        h, w = display_frame.shape[:2]
-        # 左上角点
-        cv2.circle(display_frame, (30, 30), 5, (0, 0, 255), -1)
-        # 右上角点
-        cv2.circle(display_frame, (w-30, 30), 5, (0, 0, 255), -1)
-        # 左下角点
-        cv2.circle(display_frame, (30, h-30), 5, (0, 0, 255), -1)
-        # 右下角点
-        cv2.circle(display_frame, (w-30, h-30), 5, (0, 0, 255), -1)
-        # 上中点
-        cv2.circle(display_frame, (w//2, 30), 5, (0, 0, 255), -1)
-        # 下中点
-        cv2.circle(display_frame, (w//2, h-30), 5, (0, 0, 255), -1)
-        # 左中点
-        cv2.circle(display_frame, (30, h//2), 5, (0, 0, 255), -1)
-        # 右中点
-        cv2.circle(display_frame, (w-30, h//2), 5, (0, 0, 255), -1)
-        
-        # 绘制虚线边框
-        # 上边线
-        for x in range(30, w-30, 10):
-            cv2.line(display_frame, (x, 30), (x+5, 30), (0, 0, 255), 1)
-        # 下边线
-        for x in range(30, w-30, 10):
-            cv2.line(display_frame, (x, h-30), (x+5, h-30), (0, 0, 255), 1)
-        # 左边线
-        for y in range(30, h-30, 10):
-            cv2.line(display_frame, (30, y), (30, y+5), (0, 0, 255), 1)
-        # 右边线
-        for y in range(30, h-30, 10):
-            cv2.line(display_frame, (w-30, y), (w-30, y+5), (0, 0, 255), 1)
 
         cv2.imshow("Tennis Analysis", display_frame)
         if out:
