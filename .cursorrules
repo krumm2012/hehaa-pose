@@ -1,0 +1,315 @@
+# 🎾 Tennis Analyzer - Cursor Rules
+
+## Project Overview
+You are an expert in deep learning, computer vision, and sports analytics, specifically focused on tennis video analysis using Python, PyTorch, OpenCV, and YOLO models.
+
+## Core Technologies
+- **Python 3.8+**: Primary language
+- **Computer Vision**: OpenCV, PIL/Pillow
+- **Deep Learning**: PyTorch, torchvision, ultralytics
+- **Video Processing**: cv2, numpy
+- **Configuration**: PyYAML
+- **Scientific Computing**: scipy, numpy
+
+## Code Style & Standards
+
+### Python Conventions
+- Use **snake_case** for variables, functions, and file names
+- Use **PascalCase** for class names
+- Use **UPPER_CASE** for constants
+- Maximum line length: 100 characters
+- Use type hints for function parameters and return values
+- Use docstrings for all classes and functions
+
+### Import Organization
+```python
+# Standard library imports
+import os
+import time
+from typing import Dict, List, Optional, Tuple, Union
+
+# Third-party imports
+import cv2
+import numpy as np
+import torch
+import yaml
+from ultralytics import YOLO
+
+# Local imports
+from ball_tracker import BallTracker
+from pose_estimator import PoseEstimator
+```
+
+### Error Handling
+- Always use try-catch blocks for file operations, model loading, and video processing
+- Log errors with descriptive messages
+- Provide fallback behavior when possible
+- Use custom exceptions for domain-specific errors
+
+## Computer Vision Best Practices
+
+### Image Processing
+- Always validate image dimensions and channels
+- Use appropriate color space conversions (BGR ↔ RGB ↔ HSV)
+- Apply noise filtering before detection (Gaussian blur, median filter)
+- Implement multi-scale processing for robust detection
+
+### Detection & Tracking
+- Use confidence thresholds to filter low-quality detections
+- Implement multi-frame consistency checks
+- Apply non-maximum suppression for overlapping detections
+- Use Kalman filters or similar for smooth tracking
+
+### Performance Optimization
+- Resize images for processing speed when possible
+- Use vectorized operations with numpy
+- Implement frame skipping for real-time processing
+- Cache expensive computations
+
+## Deep Learning Patterns
+
+### Model Management
+```python
+# Preferred model loading pattern
+def load_model(model_path: str, device: str = "cpu") -> torch.nn.Module:
+    """Load model with error handling and device placement."""
+    try:
+        model = YOLO(model_path)
+        model.to(device)
+        return model
+    except Exception as e:
+        logger.error(f"Failed to load model {model_path}: {e}")
+        raise ModelLoadError(f"Model loading failed: {e}")
+```
+
+### Inference Patterns
+- Always move tensors to correct device
+- Use torch.no_grad() for inference
+- Batch process when possible
+- Handle variable input sizes gracefully
+
+## Configuration Management
+
+### YAML Structure
+```yaml
+# Use hierarchical configuration structure
+video_processing:
+  input_path: "data/input_video.mp4"
+  output_path: "data/output_video.mp4"
+  
+ball_detection:
+  confidence_threshold: 0.7
+  min_radius: 5
+  max_radius: 25
+  
+optimization:
+  use_gpu: true
+  batch_size: 1
+```
+
+### Configuration Loading
+- Use safe_load() for YAML files
+- Validate configuration parameters
+- Provide sensible defaults
+- Support environment variable overrides
+
+## Testing & Validation
+
+### Test Structure
+```python
+def test_ball_detection():
+    """Test ball detection with known test cases."""
+    # Load test configuration
+    config = load_test_config()
+    
+    # Initialize detector
+    detector = BallTracker(config)
+    
+    # Test with known cases
+    for test_case in test_cases:
+        result = detector.detect(test_case.image)
+        assert_detection_quality(result, test_case.expected)
+```
+
+### Performance Testing
+- Always include processing speed benchmarks
+- Test with various video resolutions
+- Validate memory usage patterns
+- Test edge cases (empty frames, no detections)
+
+## Video Processing Patterns
+
+### Frame Processing Loop
+```python
+def process_video(video_path: str, config: Dict) -> None:
+    """Process video with proper resource management."""
+    cap = cv2.VideoCapture(video_path)
+    
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            # Process frame
+            result = process_frame(frame, config)
+            
+            # Handle result
+            if result:
+                save_or_display_result(result)
+                
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+```
+
+### Resource Management
+- Always release video capture objects
+- Close file handles in finally blocks
+- Use context managers when possible
+- Monitor memory usage for long videos
+
+## Ball Detection Specific Rules
+
+### Multi-Stage Filtering
+1. **Color Space Filtering**: HSV range filtering
+2. **Morphological Operations**: Noise removal
+3. **Size Filtering**: Area and radius constraints
+4. **Quality Assessment**: Shape, color, brightness evaluation
+5. **Temporal Consistency**: Multi-frame validation
+
+### Detection Parameters
+```python
+# Use descriptive parameter names
+BALL_DETECTION_PARAMS = {
+    "hsv_lower_bound": [20, 50, 50],
+    "hsv_upper_bound": [70, 255, 255],
+    "min_ball_area": 16,  # pixels²
+    "max_ball_area": 1600,  # pixels²
+    "quality_threshold": 0.45,
+    "circularity_threshold": 0.65
+}
+```
+
+## Debugging & Logging
+
+### Debug Visualization
+```python
+def debug_detection(frame: np.ndarray, detections: List, save_path: str = None):
+    """Create debug visualization with detection overlays."""
+    debug_frame = frame.copy()
+    
+    for detection in detections:
+        # Draw detection with quality score
+        cv2.circle(debug_frame, detection.center, detection.radius, (0, 255, 0), 2)
+        cv2.putText(debug_frame, f"Q:{detection.quality:.2f}", 
+                   detection.center, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255))
+    
+    if save_path:
+        cv2.imwrite(save_path, debug_frame)
+```
+
+### Logging Levels
+- **DEBUG**: Detailed processing information
+- **INFO**: Key processing milestones
+- **WARNING**: Unexpected but recoverable situations
+- **ERROR**: Processing failures
+
+## File Organization
+
+### Project Structure
+```
+tennis_analyzer/
+├── configs/              # Configuration files
+├── models/              # Pre-trained model files
+├── data/                # Input/output data
+├── tests/               # Test files
+├── utils/               # Utility modules
+├── core/                # Core detection modules
+└── scripts/             # Standalone scripts
+```
+
+### Naming Conventions
+- Configuration files: `*_config.yaml`
+- Test files: `test_*.py`
+- Demo scripts: `demo_*.py`
+- Utility modules: `*_utils.py`
+
+## Performance Guidelines
+
+### Memory Management
+- Use generators for large datasets
+- Clear intermediate results when possible
+- Monitor GPU memory usage
+- Use appropriate data types (uint8 for images)
+
+### Processing Speed
+- Profile bottlenecks regularly
+- Use multiprocessing for CPU-bound tasks
+- Optimize hot paths with numba/cython if needed
+- Cache expensive computations
+
+## Quality Assurance
+
+### Code Review Checklist
+- [ ] All functions have type hints and docstrings
+- [ ] Error handling is comprehensive
+- [ ] Configuration is externalized
+- [ ] Tests cover main functionality
+- [ ] Performance is within acceptable bounds
+- [ ] Memory usage is reasonable
+- [ ] Debug output is available
+
+### Pre-commit Checks
+- Run tests and ensure they pass
+- Check code formatting with black
+- Validate configuration files
+- Ensure no hardcoded paths or credentials
+- Verify model files are accessible
+
+## Documentation Standards
+
+### Function Documentation
+```python
+def detect_balls(frame: np.ndarray, config: Dict) -> List[BallDetection]:
+    """
+    Detect tennis balls in a video frame.
+    
+    Args:
+        frame: Input video frame (H, W, 3) BGR format
+        config: Detection configuration parameters
+        
+    Returns:
+        List of BallDetection objects with position and confidence
+        
+    Raises:
+        ValueError: If frame is invalid or config is missing required keys
+        
+    Example:
+        >>> frame = cv2.imread("test.jpg")
+        >>> config = load_config("ball_config.yaml")
+        >>> detections = detect_balls(frame, config)
+    """
+```
+
+### README Updates
+- Keep usage examples current
+- Document all configuration options
+- Include performance benchmarks
+- Provide troubleshooting guide
+
+## Security & Best Practices
+
+### File Handling
+- Validate file paths and extensions
+- Use absolute paths where possible
+- Check file permissions before processing
+- Sanitize user inputs
+
+### Model Security
+- Verify model file integrity
+- Use secure download sources
+- Validate model outputs
+- Handle model loading failures gracefully
+
+Remember: Prioritize code clarity, maintainability, and performance. Always test with real tennis video data and provide comprehensive debugging tools. 

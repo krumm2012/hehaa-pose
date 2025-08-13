@@ -5,7 +5,7 @@ tracknet_model_path: "models/tracknetv2_weights.pth" # Adjust based on your Trac
 
 # --- Adjustable Parameters ---
 pose_confidence_threshold: 0.5
-ball_confidence_threshold: 0.8 # For TrackNet
+ball_confidence_threshold: 0.75 # For TrackNet
 static_ball_movement_threshold_px: 5 # Pixels
 static_ball_frames_threshold: 7 # Num frames to consider static
 
@@ -26,15 +26,15 @@ static_ball_movement_threshold_px: 5 # Movement (px) below which a ball is consi
 static_ball_frames_threshold: 8     # Num frames a ball must be relatively still to be confirmed static
 
 # Ball size filtering parameters
-min_ball_radius: 3                  # 最小球半径（像素）
-max_ball_radius: 15                 # 最大球半径（像素）
+min_ball_radius: 9                  # 最小球半径（像素）
+max_ball_radius: 45                 # 最大球半径（像素）
 min_ball_movement: 8                # 最小球移动距离（像素/帧），小于此值被认为是静止球
 
 # 监控区域边界（矩形）
 # 可以设置为合适的网球场地区域，球只在此区域内被追踪
 use_boundary: true                  # 是否启用边界检查
 boundary_x1: 650                    # 左上角x坐标
-boundary_y1: 410                    # 左上角y坐标
+boundary_y1: 390                    # 左上角y坐标
 boundary_x2: 1420                   # 右下角x坐标
 boundary_y2: 980                    # 右下角y坐标
 draw_boundary: false                 # 是否在视频中绘制边界框
@@ -70,3 +70,185 @@ display_options:
   show_static_balls: false   # 显示静态球
   show_fps: false           # 显示FPS
   show_frame_number: false   # 显示帧号
+
+# 高级人脸检测器配置
+advanced_face_detection:
+  # 检测器优先级顺序：MTCNN + 增强OpenCV组合
+  detection_priority: ["mtcnn", "enhanced_opencv", "glip"]  # MTCNN优先，增强OpenCV作为备选
+  
+  # 检测器启用控制
+  detector_control:
+    enable_front_face: true              # 启用正面人脸检测器
+    enable_front_face_alt: false          # 启用备选正面人脸检测器
+    enable_front_face_alt2: true         # 启用第二备选正面人脸检测器
+    enable_profile_face: false           # 禁用侧脸检测器（默认关闭）
+    enable_full_body: false              # 禁用全身检测器（默认关闭）
+  
+  # OpenCV检测器参数配置
+  opencv_detection_params:
+    front_face:
+      scale_factor: 1.1                  # 图像金字塔缩放因子
+      min_neighbors: 3                   # 最小邻居数
+      confidence: 0.8                    # 置信度
+    front_face_alt:
+      scale_factor: 1.05                 # 更细的尺度
+      min_neighbors: 3                   # 最小邻居数
+      confidence: 0.75                   # 置信度
+    front_face_alt2:
+      scale_factor: 1.05                 # 更细的尺度
+      min_neighbors: 4                   # 稍高的邻居数
+      confidence: 0.75                   # 置信度
+    profile_face:
+      scale_factor: 1.05                 # 更细的尺度用于侧脸
+      min_neighbors: 2                   # 降低以提高侧脸检测率
+      confidence: 0.7                    # 侧面检测置信度适中
+      profile_ratio_tolerance: 0.8       # 侧脸宽高比容差
+    full_body:
+      scale_factor: 1.1                  # 标准尺度
+      min_neighbors: 5                   # 较高的邻居数
+      confidence: 0.6                    # 较低的置信度
+  
+  # 人脸尺寸约束 - 优化配置支持更大人脸
+  face_size_constraints:
+    min_face_size: 25                     # 最小人脸尺寸（保持对远距离小脸的检测）
+    max_face_size: 90                    # 最大人脸尺寸（从120大幅提高到300以适应近距离人脸）
+    min_aspect_ratio: 0.8                 # 最小宽高比（从0.5降低，支持更多侧脸形状）
+    max_aspect_ratio: 2.5                 # 最大宽高比（从2.0提高，支持更多侧脸形状）
+    relative_max_size: 0.5                # 相对于帧大小的最大比例
+  
+  # 质量评估参数
+  quality_assessment:
+    # 对比度评估
+    contrast_normalization_factor: 50.0   # 对比度标准化因子
+    # 亮度评估
+    target_brightness: 128                 # 目标亮度值
+    brightness_tolerance: 128              # 亮度容差
+    # 边缘检测
+    canny_low_threshold: 50               # Canny边缘检测低阈值
+    canny_high_threshold: 150             # Canny边缘检测高阈值
+    edge_density_factor: 10.0             # 边缘密度因子
+    # 尺寸评分
+    size_normalization_factor: 10000.0    # 尺寸标准化因子
+  
+  # 质量过滤参数 - 优化配置避免双重过滤
+  quality_filters:
+    min_confidence: 0.6                   # 上层检测器的最小置信度
+    min_quality_score: 0.2                # OpenCV检测器的质量分数（降低阈值）
+    enable_opencv_quality_filter: false   # 禁用OpenCV层的质量过滤，由上层统一处理
+    max_detections_per_frame: 3           # 每帧最大检测数量
+    enable_nms: true                      # 启用非极大值抑制
+    nms_iou_threshold: 0.4                # NMS IoU阈值（从0.45调回0.4）
+  
+  # 检测合并参数
+  detection_merging:
+    overlap_threshold: 0.3                # 重叠检测合并阈值
+    min_overlap_for_merge: 0.3           # 最小重叠度才进行合并
+  
+  # 人脸跟踪参数
+  face_tracking:
+    enable_tracking: false                 # 启用人脸跟踪
+    max_disappeared_frames: 8             # 最大消失帧数
+    max_match_distance: 50                # 最大匹配距离（像素）
+    smoothing_factor: 0.7                 # 平滑因子（0-1）
+    position_smooth_alpha: 0.7            # 位置平滑系数
+  
+  # 位置约束 - 完全关闭以允许侧脸检测
+  position_constraints:
+    exclude_edges: false                  # 关闭边缘排除
+    edge_margin_ratio: 0.02               # 边缘排除比例（最小化）
+    center_bias_weight: 0.0               # 中心偏好权重（关闭中心偏好）
+    max_distance_from_center: 1.0        # 距离中心最大距离（允许全屏）
+    center_preference: false              # 关闭中心偏好
+    center_weight: 1.5                    # 中心权重（当启用时）
+    exclude_logo_areas: false             # 关闭标志区域排除
+    logo_exclusion_zones: []              # 标志排除区域列表
+  
+  # MTCNN配置 - 更严格
+  mtcnn:
+    enabled: false                       # 启用MTCNN（Python 3.11环境支持）
+    min_face_size: 60                   # 最小人脸尺寸（从50提高到60像素）
+    scale_factor: 0.709                 # 图像金字塔缩放因子
+    steps_threshold: [0.8, 0.85, 0.85]  # 三阶段检测的置信度阈值（进一步提高）
+    device: "cpu"                       # 运行设备
+    confidence_threshold: 0.9           # 最终置信度阈值（从0.8提高到0.9）
+
+# GLIP模型配置 - 用于头像替换
+glip_model:
+  enabled: false                          # 启用GLIP模型头像替换（已关闭）
+  model_config_path: "models/glip_Swin_T_O365_GoldG.yaml"  # GLIP模型配置文件
+  model_checkpoint_path: "models/glip_tiny_model_o365_goldg_cc_sbu.pth"  # GLIP模型权重
+  confidence_threshold: 0.85               # 检测置信度阈值
+  text_prompt: "face . head"              # 检测文本提示词
+  device: "cpu"                          # 运行设备 ("cuda" 或 "cpu")
+  
+# 头像替换配置
+face_replacement:
+  enabled: true                          # 是否启用头像替换（已关闭）
+  judy_head_image_path: "assets/judy_head.png"  # Judy头像图片路径
+  judy_head_scale_factor: 0.8             # 头像缩放因子（减小尺寸）
+  blend_mode: "alpha"                     # 混合模式: "direct", "seamless", "alpha"
+  face_detection_method: "opencv"           # 人脸检测方法: "glip", "opencv", "mediapipe"
+  replacement_opacity: 0.95               # 替换头像的不透明度 (0.0-1.0)
+  face_margin_ratio: 0.05                 # 人脸边界扩展比例（减少边界扩展）
+  smooth_transition: true                 # 是否启用平滑过渡
+  track_faces: true                       # 是否跟踪人脸减少闪烁
+
+# 调试选项
+debug_mode: false                         # 是否显示检测框等调试信息
+
+# 🎯 ROI (兴趣区域) 配置
+roi_settings:
+  enabled: false                          # 是否启用ROI功能
+  interactive_selection: true             # 是否启用交互式ROI选择
+  auto_load_config: true                  # 是否自动加载ROI配置
+  roi_config_path: "configs/roi_config.yaml"  # ROI配置文件路径
+  
+  # ROI显示设置
+  visualization:
+    show_roi_boundary: true               # 显示ROI边界
+    show_roi_fill: true                   # 显示ROI填充
+    show_roi_points: true                 # 显示ROI角点
+    highlight_detections: true            # 高亮ROI内检测结果
+    show_roi_stats: true                  # 显示ROI统计信息
+    
+  # ROI边界颜色设置
+  colors:
+    boundary: [0, 255, 255]               # ROI边界颜色 (BGR)
+    fill: [0, 255, 255]                   # ROI填充颜色 (BGR)
+    points: [0, 255, 0]                   # ROI角点颜色 (BGR)
+    inside_detection: [0, 255, 0]         # ROI内检测颜色 (BGR)
+    outside_detection: [0, 0, 255]        # ROI外检测颜色 (BGR)
+
+# 🎬 ROI动作捕捉配置
+roi_motion_capture:
+  enabled: false                          # 是否启用ROI动作捕捉
+  pose_history_length: 30                 # 姿态历史记录长度
+  ball_history_length: 50                 # 球历史记录长度
+  racket_history_length: 30               # 球拍历史记录长度
+  
+  # 动作检测阈值
+  thresholds:
+    significant_movement: 15              # 显著运动阈值 (像素)
+    rapid_movement: 30                    # 快速运动阈值 (像素)
+    pose_change_threshold: 20             # 姿态变化阈值 (像素)
+    swing_velocity_threshold: 25          # 挥拍速度阈值 (像素/帧)
+  
+  # 动作分析设置
+  analysis:
+    enable_motion_trails: true            # 启用动作轨迹
+    enable_velocity_vectors: true         # 启用速度向量
+    enable_activity_heatmap: true         # 启用活动热力图
+    enable_coordination_detection: true   # 启用协调动作检测
+
+# 🔍 球检测详细日志配置
+ball_detection_debug:
+  enabled: true                         # 启用球检测调试日志 (默认关闭)
+  log_hsv_detection: true               # 记录HSV颜色检测过程
+  log_boundary_check: true              # 记录边界检查过程
+  log_size_filtering: true              # 记录尺寸过滤过程
+  log_static_filtering: false            # 记录静态球过滤过程
+  log_advanced_processing: true         # 记录高级球处理过程
+  log_simulation: false                  # 记录模拟检测过程
+  save_debug_frames: true              # 是否保存调试帧图像
+  debug_frame_interval: 10              # 调试帧保存间隔
+  max_log_detections: 10                # 每帧最多记录的检测数量

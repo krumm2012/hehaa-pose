@@ -1,0 +1,164 @@
+# 🎾 网球分析系统 - 完整优化配置文件
+# 解决球误识别问题，启用ROI功能，优化检测参数
+
+# ============== 基础视频设置 ==============
+video_input_path: "data/input_video.mp4"
+video_output_path: "data/output_video.mp4"
+yolo_pose_model_path: "models/yolov8n-pose.pt"
+tracknet_model_path: "models/tracknetv2_weights.pth"
+racket_yolo_model_path: "models/yolov8n.pt"
+
+# ============== 检测基础参数 ==============
+pose_confidence_threshold: 0.5
+ball_confidence_threshold: 0.75
+racket_confidence_threshold: 0.4
+
+# ============== 🎯 球检测核心参数 ==============
+# 球轨迹追踪参数
+ball_trajectory_max_len: 40
+max_lost_frames_for_track: 5
+max_ball_match_distance_px: 25
+
+# 静态球过滤参数 (统一定义，避免重复)
+static_ball_movement_threshold_px: 5     # 静态球移动阈值
+static_ball_frames_threshold: 8          # 静态球判定帧数
+
+# 🔧 球尺寸过滤参数 - 更宽松
+min_ball_radius: 3                       # 最小球半径
+max_ball_radius: 45                      # 最大球半径 - 允许更大的球
+min_ball_movement: 8                     # 最小移动距离
+
+# 🎯 噪点过滤参数 - 更宽松以减少误识别
+noise_filter_quality_threshold: 0.20     # 质量阈值：从0.4降到0.20
+noise_filter_circularity_threshold: 0.35 # 圆度阈值：从0.6降到0.35  
+noise_filter_min_edge_distance: 3        # 边缘距离：从15降到3
+
+# ============== 🚫 边界和掩码设置 ==============
+# 关闭原来的边界检查功能
+use_boundary: false
+boundary_x1: 0
+boundary_y1: 0
+boundary_x2: 9999
+boundary_y2: 9999
+draw_boundary: false
+
+# 关闭掩码区域
+use_mask_zones: false
+mask_zones: []
+
+# ============== 🎯 ROI区域功能 ==============
+roi_settings:
+  enabled: true                          # 启用ROI功能
+  interactive_selection: true            # 允许交互式选择
+  auto_load_config: true                 # 自动加载ROI配置
+  roi_config_path: "configs/roi_config.yaml"
+  
+  # ROI显示设置
+  visualization:
+    show_roi_boundary: true              # 显示ROI边界
+    show_roi_fill: true                  # 显示ROI填充
+    show_roi_points: true                # 显示ROI点
+    highlight_detections: true           # 高亮检测结果
+    show_roi_stats: true                 # 显示ROI统计
+    
+  # ROI颜色设置
+  colors:
+    boundary: [0, 255, 255]              # 边界颜色：黄色
+    fill: [0, 255, 255]                  # 填充颜色：黄色 
+    points: [0, 255, 0]                  # 点颜色：绿色
+    inside_detection: [0, 255, 0]        # ROI内检测：绿色
+    outside_detection: [0, 0, 255]       # ROI外检测：红色
+
+# ============== 🔍 调试和日志设置 ==============
+# 球检测调试
+ball_detection_debug:
+  log_detection: true                    # 记录检测过程
+  log_tracking: true                     # 记录追踪过程
+  log_filtering: true                    # 记录过滤过程
+  log_noise_filter: true                # 记录噪点过滤
+  log_static_filter: true               # 记录静态过滤
+  log_trajectory: true                   # 记录轨迹
+  log_roi_filtering: true                # 记录ROI过滤
+  log_hsv_detection: false              # HSV检测日志
+  log_boundary_check: false             # 边界检查日志
+  log_size_filtering: true              # 尺寸过滤日志
+  log_advanced_processing: false        # 高级处理日志
+  log_simulation: false                 # 模拟日志
+  save_debug_frames: true               # 保存调试帧
+  debug_frames_path: "debug_frames/"    # 调试帧路径
+  save_interval: 50                     # 保存间隔
+
+# 姿态检测调试
+pose_estimation_debug:
+  log_keypoints: false                  # 关键点日志
+  log_tracking: false                   # 追踪日志
+
+# 球拍检测调试
+racket_detection_debug:
+  log_detection: false                  # 检测日志
+  log_tracking: false                   # 追踪日志
+
+# ============== 🚫 人脸替换设置 ==============
+face_replacement:
+  enabled: false                        # 关闭人脸替换提高性能
+
+# ============== 📹 视频处理设置 ==============
+video_processing:
+  skip_frames: 0                        # 跳帧设置
+  show_fps: true                        # 显示FPS
+  output_fps: 25                        # 输出FPS
+
+# ============== 🎨 显示控制 ==============
+display_options:
+  show_swing_type: true                 # 显示挥拍类型
+  show_ball_position: true              # 显示球位置
+  show_racket_state: true               # 显示球拍状态
+  show_pose_keypoints: true             # 显示关键点
+  show_ball_trajectory: true            # 显示球轨迹
+  show_boundary: false                  # 显示边界（已关闭）
+  show_static_balls: true               # 显示静态球
+  show_fps: true                        # 显示FPS
+  show_frame_number: true               # 显示帧号
+
+# ============== 🎾 球拍检测参数 ==============
+racket_lost_threshold_frames: 5         # 球拍丢失阈值帧数
+ball_radius_px: 10                      # 球半径像素
+
+# ============== 📐 挥拍分类参数 ==============
+forehand_wrist_elbow_angle_min: 90      # 正手最小角度
+forehand_wrist_elbow_angle_max: 170     # 正手最大角度
+backhand_wrist_elbow_angle_min: 90      # 反手最小角度
+backhand_wrist_elbow_angle_max: 170     # 反手最大角度
+two_hand_wrist_distance_max_px: 50      # 双手距离最大值
+dominant_hand: "right"                  # 主导手
+
+# ============== 📝 字体设置 ==============
+font_dir: "fonts"                       # 字体目录
+preferred_chinese_font: "PingFang SC"   # 首选中文字体
+auto_download_font: false               # 自动下载字体
+
+# ============== 🔧 其他设置 ==============
+enable_manual_boundary: false           # 手动边界
+debug_mode: true                        # 调试模式
+
+# ============== 🎯 模拟参数 ==============
+sim_ball_detection_noise: 2             # 模拟检测噪音
+sim_num_static_balls: 0                 # 模拟静态球数量
+
+# ============== 高级人脸检测 (关闭) ==============
+advanced_face_detection:
+  detection_priority: ["enhanced_opencv"]
+  detector_control:
+    enable_front_face: false
+    enable_front_face_alt: false
+    enable_front_face_alt2: false
+    enable_profile_face: false
+    enable_full_body: false
+
+# ============== GLIP模型 (关闭) ==============
+glip_model:
+  enabled: false
+
+# ============== MTCNN (关闭) ==============
+mtcnn:
+  enabled: false

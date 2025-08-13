@@ -1,0 +1,16 @@
+# ROI (兴趣区域) 配置文件
+# 这个文件用于存储用户定义的兴趣区域设置
+
+roi_enabled: true
+# 使用从test_roi_config.yaml中获取的坐标
+roi_points: 
+  - [847, 67]
+  - [1943, 69]
+  - [2181, 1273]
+  - [677, 1249]
+roi_description: "4-point ROI: [[847, 67], [1943, 69], [2181, 1273], [677, 1249]]"
+
+# 最后更新时间
+last_updated: "2024-12-19 16:30:00"
+created_by: "Tennis Analyzer System"
+version: "1.0"

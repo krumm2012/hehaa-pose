@@ -1,0 +1,127 @@
+# 性能优化版配置文件
+# 基于roi_enabled_config.yaml，增加性能优化设置
+
+# 继承基础配置
+video_input_path: "data/input_video.mp4"
+video_output_path: "data/output_video_optimized.mp4"
+yolo_pose_model_path: "models/yolov8n-pose.pt"
+tracknet_model_path: "models/tracknetv2_weights.pth"
+
+# 基础检测参数
+pose_confidence_threshold: 0.5
+ball_confidence_threshold: 0.75
+racket_confidence_threshold: 0.4
+
+# 🚀 性能优化设置
+performance_optimization:
+  enable_parallel_detection: true    # 启用并行检测
+  skip_frames: 1                     # 每隔1帧进行检测（提高2倍速度）
+  max_workers: 4                     # 最大工作线程数
+  enable_gpu_acceleration: true      # 启用GPU加速（如果可用）
+  buffer_size: 30                    # 视频缓冲区大小
+  minimal_ui: true                   # 简化UI显示
+  headless: false                    # 是否无头模式（不显示窗口）
+  
+  # 检测优化
+  detection_optimization:
+    pose_skip_ratio: 2               # 姿态检测每2帧执行一次
+    ball_skip_ratio: 1               # 球检测每帧执行
+    racket_skip_ratio: 3             # 球拍检测每3帧执行一次
+    
+  # 渲染优化
+  render_optimization:
+    cache_fonts: true                # 缓存字体
+    simplified_info_panel: true      # 简化信息面板
+    reduce_transparency: true        # 减少透明度计算
+    batch_text_rendering: true       # 批量文本渲染
+
+# 🎯 ROI功能（保持原有功能）
+roi_settings:
+  enabled: true
+  interactive_selection: true
+  auto_load_config: true
+  roi_config_path: "configs/roi_config.yaml"
+  
+  visualization:
+    show_roi_boundary: true
+    show_roi_fill: false             # 关闭填充以提高性能
+    show_roi_points: false           # 关闭角点显示
+    highlight_detections: true
+    show_roi_stats: true
+    
+  colors:
+    boundary: [0, 255, 255]
+    fill: [0, 255, 255]
+    points: [0, 255, 0]
+    inside_detection: [0, 255, 0]
+    outside_detection: [0, 0, 255]
+
+# 🎬 动作捕捉（简化版）
+roi_motion_capture:
+  enabled: false                     # 暂时关闭以提高性能
+  pose_history_length: 15            # 减少历史长度
+  ball_history_length: 25
+  racket_history_length: 15
+
+# 📊 显示选项（性能优化）
+display_options:
+  show_swing_type: false             # 关闭复杂的挥拍分析
+  show_ball_position: true
+  show_racket_state: true
+  show_pose_keypoints: true
+  show_ball_trajectory: false        # 关闭轨迹绘制
+  show_boundary: false
+  show_static_balls: false
+  show_fps: true                     # 保持FPS显示用于监控
+  show_frame_number: false
+
+# 🎾 球检测优化
+ball_trajectory_max_len: 20          # 减少轨迹长度
+max_lost_frames_for_track: 3         # 减少跟踪帧数
+max_ball_match_distance_px: 20
+static_ball_movement_threshold_px: 5
+static_ball_frames_threshold: 5      # 减少静态球判断帧数
+min_ball_radius: 4
+max_ball_radius: 25
+min_ball_movement: 8
+
+# 边界检查（简化）
+use_boundary: false
+boundary_x1: 0
+boundary_y1: 0
+boundary_x2: 9999
+boundary_y2: 9999
+use_mask_zones: false
+
+# 🤖 姿态检测优化
+# 降低置信度要求可以减少计算量，但可能影响准确性
+pose_optimization:
+  reduce_keypoints: true             # 只检测关键关节点
+  skip_hand_detection: true          # 跳过手部检测
+  simplified_skeleton: true          # 简化骨架绘制
+
+# 📹 人脸替换（关闭以提高性能）
+face_replacement:
+  enabled: false
+
+# 🏓 球拍检测优化
+racket_yolo_model_path: "yolov8n.pt"  # 使用更小的模型
+racket_lost_threshold_frames: 3        # 减少跟踪帧数
+ball_radius_px: 8
+
+# 🔤 字体配置
+font_dir: "fonts"
+preferred_chinese_font: "PingFang SC"
+auto_download_font: false
+
+# 🐛 调试选项（性能模式下关闭大部分日志）
+ball_detection_debug:
+  enabled: false                     # 关闭调试日志以提高性能
+  log_hsv_detection: false
+  log_boundary_check: false
+  log_roi_filtering: true            # 只保留ROI过滤日志
+  log_size_filtering: false
+  log_static_filtering: false
+  save_debug_frames: false
+
+debug_mode: false

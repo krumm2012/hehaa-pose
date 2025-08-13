@@ -5,10 +5,14 @@ from pose_estimator import PoseEstimator
 from ball_tracker import BallTracker
 from racket_detector import RacketDetector # <-- IMPORT
 from full_swing_analyzer import FullSwingAnalyzer # <-- IMPORT NEW ANALYZER
+from head_replacement_processor import HeadReplacementProcessor  # <-- NEW IMPORT
+from roi_manager import ROIManager  # <-- ROI IMPORT
+from enhanced_motion_capture import EnhancedMotionCapture  # <-- MOTION CAPTURE IMPORT
 import os
 import numpy as np
 import time
 from PIL import Image, ImageDraw, ImageFont
+from collections import deque
 
 def load_config(config_path="configs/default_config.yaml"):
     with open(config_path, 'r', encoding='utf-8') as f:
@@ -41,9 +45,39 @@ def put_chinese_text(img, text, position, font_size=24, color=(255,255,255)):
     draw.text(position, text, font=font, fill=(color[2], color[1], color[0]))
     return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
-def main():
-    print("开始加载配置...")
-    config = load_config()
+
+def save_highlight_frame(frame: np.ndarray, out_dir: str, frame_num: int, tag: str = "hit") -> str:
+    """保存精彩瞬间帧到指定目录（兼容保留）"""
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+    except Exception:
+        pass
+    filename = f"highlight_{frame_num:06d}_{tag}.jpg"
+    path = os.path.join(out_dir, filename)
+    cv2.imwrite(path, frame)
+    return path
+
+def save_highlight_clip(frames_map: dict, out_dir: str, center_frame_num: int, fps: int, tag: str = "hit") -> str:
+    """保存以 center 为中心，按帧号排序的一段视频"""
+    try:
+        os.makedirs(out_dir, exist_ok=True)
+    except Exception:
+        pass
+    ordered_nums = sorted(frames_map.keys())
+    if not ordered_nums:
+        return ""
+    h, w = frames_map[ordered_nums[0]].shape[:2]
+    filename = f"highlight_{center_frame_num:06d}_{tag}.mp4"
+    path = os.path.join(out_dir, filename)
+    writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'mp4v'), fps if fps > 0 else 25, (w, h))
+    for fn in ordered_nums:
+        writer.write(frames_map[fn])
+    writer.release()
+    return path
+
+def main(config_path="configs/default_config.yaml"):
+    print("正在加载配置...")
+    config = load_config(config_path)
     video_path = config['video_input_path']
     print(f"配置加载完成，视频路径: {video_path}")
     
@@ -117,15 +151,124 @@ def main():
                           fps if fps > 0 else 25,  # 如果原始fps为0，提供默认值
                           (frame_width, frame_height))
 
+    # 精彩瞬间配置
+    highlights_cfg = config.get('highlights', {})
+    highlight_enabled = highlights_cfg.get('enabled', True)
+    highlight_dir = highlights_cfg.get('output_dir', 'data/highlights')
+    hit_distance_factor = float(highlights_cfg.get('hit_distance_factor', 1.2))
+    racket_radius_factor = float(highlights_cfg.get('racket_radius_factor', 1.0))
+    distance_scale = float(highlights_cfg.get('distance_scale', 1.0))
+    cooldown_frames = int(highlights_cfg.get('cooldown_frames', 12))
+    max_highlights = int(highlights_cfg.get('max_highlights', 50))
+
+    last_hit_frame = -10**9
+    highlight_count = 0
+
+    # 击球判定的时序变量（用于寻找局部最小距离）
+    prev2_dist = None
+    prev_dist = None
+    prev_effective_racket_radius = None
+    prev_threshold = None
+    prev_inside_flag = False
+    prev_display_snapshot = None
+    prev_frame_num_snapshot = None
+    consecutive_inside_count = 0
+    max_consecutive_inside_allowed = int(highlights_cfg.get('max_inside_frames', 2))
+
+    # 高光视频上下文：缓存最近帧，及等待收集未来帧的任务
+    recent_frames = deque(maxlen=60)
+    pending_clips = []  # 每项: {start, end, center, frames:{frame_num: frame}}
+
+    # 🎯 初始化ROI管理器
+    print("🎯 初始化ROI管理器...")
+    roi_manager = ROIManager(config)
+    print("✅ ROI管理器创建完成")
+    
+    print(f"ROI设置状态: {config.get('roi_settings', {})}")
+    
+    # 🔍 调试：详细检查ROI配置
+    roi_settings = config.get('roi_settings', {})
+    print(f"🔍 [调试] 详细ROI配置:")
+    print(f"   - enabled: {roi_settings.get('enabled', 'NOT_FOUND')}")
+    print(f"   - interactive_selection: {roi_settings.get('interactive_selection', 'NOT_FOUND')}")
+    print(f"   - auto_load_config: {roi_settings.get('auto_load_config', 'NOT_FOUND')}")
+    
+    # 检查是否需要ROI交互式选择
+    if roi_settings.get('enabled', False):
+        if roi_settings.get('auto_load_config', True):
+            roi_config_path = roi_settings.get('roi_config_path', 'configs/roi_config.yaml')
+            if os.path.exists(roi_config_path):
+                if roi_manager.load_roi_config(roi_config_path):
+                    print("✅ ROI配置已从文件加载")
+                else:
+                    print("⚠️ ROI配置文件存在但未启用或无效，将启动交互式选择")
+        
+        # 如果没有ROI或需要交互式选择
+        if not roi_manager.is_roi_set and roi_settings.get('interactive_selection', True):
+            print("🎯 启动ROI交互式选择...")
+            # 读取第一帧用于ROI选择
+            cap_tmp = cv2.VideoCapture(video_path)
+            ret, first_frame = cap_tmp.read()
+            cap_tmp.release()
+            
+            if ret:
+                selected_points = roi_manager.interactive_roi_selection(first_frame, "选择网球场兴趣区域")
+                if selected_points and len(selected_points) == 4:
+                    print(f"✅ ROI选择完成: {selected_points}")
+                    # 保存ROI配置
+                    roi_manager.save_roi_config(roi_settings.get('roi_config_path', 'configs/roi_config.yaml'))
+                else:
+                    print("⚠️ ROI选择取消或无效")
+            else:
+                print("❌ 无法读取视频第一帧进行ROI选择")
+    else:
+        print("🎯 ROI功能未启用")
+
+    # 显示最终ROI状态
+    print(f"🎯 ROI最终状态: {'已设置' if roi_manager.is_roi_set else '未设置'}")
+    if roi_manager.is_roi_set:
+        roi_stats = roi_manager.get_roi_stats()
+        print(f"   ROI面积: {roi_stats.get('roi_area', 0):.0f} 像素²")
+        print(f"   ROI点数: {len(roi_manager.roi_points)}")
+
+    # 🎬 初始化增强动作捕捉
+    motion_capture = None
+    if config.get('roi_motion_capture', {}).get('enabled', False):
+        print("初始化增强动作捕捉模块...")
+        motion_capture = EnhancedMotionCapture(config)
+
     # 初始化组件
-    print("初始化姿势估计模块...")
-    pose_module = PoseEstimator(config['yolo_pose_model_path'], config)
-    print("初始化球追踪模块...")
-    ball_module = BallTracker(config.get('tracknet_model_path', None), config)
-    print("初始化球拍检测模块...")
-    racket_module = RacketDetector(config['racket_yolo_model_path'], config)
-    print("初始化完整挥拍分析模块...") # <-- NEW
-    swing_analyzer = FullSwingAnalyzer(config) # <-- NEW
+    print("🤖 初始化姿势估计模块...")
+    pose_module = PoseEstimator(config['yolo_pose_model_path'], config, roi_manager)
+    print("✅ 姿势估计模块初始化完成")
+    
+    print("🎾 初始化球追踪模块...")
+    ball_module = BallTracker(config.get('tracknet_model_path', None), config, roi_manager)
+    print("✅ 球追踪模块初始化完成")
+    
+    print("🏓 初始化球拍检测模块...")
+    racket_module = RacketDetector(config['racket_yolo_model_path'], config, roi_manager)
+    print("✅ 球拍检测模块初始化完成")
+    
+    print("🏸 初始化完整挥拍分析模块...")
+    swing_analyzer = FullSwingAnalyzer(config)
+    print("✅ 完整挥拍分析模块初始化完成")
+    
+    print("🎬 开始视频处理循环...")
+    
+    # 初始化头像替换处理器
+    print("初始化头像替换模块...")
+    head_processor = HeadReplacementProcessor(config)
+    status = head_processor.get_status()
+    print(f"头像替换状态: {status}")
+    if status['enabled']:
+        print(f"检测方法: {status['current_detection_method']}")
+        # 从配置中获取混合模式
+        blend_mode = config.get('face_replacement', {}).get('blend_mode', 'alpha')
+        print(f"混合模式: {blend_mode}")
+        # 检查Judy头像是否加载
+        judy_loaded = config.get('face_replacement', {}).get('judy_head_image_path', '') != ''
+        print(f"Judy头像路径已配置: {judy_loaded}")
 
     # 进度和时间跟踪
     frame_num = 0
@@ -138,6 +281,22 @@ def main():
         if not ret:
             print("视频处理完成!")
             break
+
+        # 缓存最近帧
+        recent_frames.append((frame_num, frame.copy()))
+
+        # 处理待生成短视频的任务（收集未来帧）
+        if pending_clips:
+            still_pending = []
+            for task in pending_clips:
+                if frame_num <= task['end'] and ret:
+                    task['frames'][frame_num] = frame.copy()
+                    still_pending.append(task)
+                else:
+                    # 任务完成，保存短视频
+                    clip_path = save_highlight_clip(task['frames'], highlight_dir, task['center'], fps, tag="hit")
+                    print(f"🎞️ 精彩瞬间短视频已保存: {clip_path}")
+            pending_clips = still_pending
 
         # 显示进度
         if total_frames > 0 and frame_num % (fps if fps > 0 else 30) == 0:  # 大约每秒打印一次
@@ -161,35 +320,216 @@ def main():
         elif frame_num % 100 == 0:  # 如果total_frames未知，则每100帧显示一次
             print(f"处理帧 {frame_num}...")
             
+        # 🎯 第一步：ROI预处理 - 在所有检测之前进行ROI区域提取
         display_frame = frame.copy()
+        roi_cropped_frame = None
+        roi_offset = (0, 0)  # ROI区域在原图中的偏移量
+        
+        if roi_manager.is_roi_set:
+            # 提取ROI区域用于检测，这样可以大幅减少检测计算量
+            roi_mask = roi_manager.get_roi_mask(frame.shape[:2])
+            if roi_mask is not None:
+                # 找到ROI的边界矩形
+                roi_bbox = roi_manager.get_roi_bounding_box()
+                if roi_bbox:
+                    x1, y1, x2, y2 = roi_bbox
 
-        # 处理姿势估计
-        pose_results = pose_module.get_keypoints(display_frame)
+                    # 在ROI外接矩形基础上扩张边距，避免裁剪导致的边界效应
+                    margin = int(config.get('roi_settings', {}).get('crop_margin', 12))  # 默认12，可设8~16
+                    x1_expanded = max(0, x1 - margin)
+                    y1_expanded = max(0, y1 - margin)
+                    x2_expanded = min(frame.shape[1], x2 + margin)
+                    y2_expanded = min(frame.shape[0], y2 + margin)
+
+                    roi_offset = (x1_expanded, y1_expanded)
+                    roi_cropped_frame = frame[y1_expanded:y2_expanded, x1_expanded:x2_expanded]
+                    if frame_num % 30 == 0:  # 每30帧显示一次ROI信息
+                        print(f"🎯 [帧{frame_num}] ROI区域提取(含边距{margin}px): {roi_cropped_frame.shape} at offset {roi_offset}")
+                else:
+                    roi_cropped_frame = frame
+            else:
+                roi_cropped_frame = frame
+        else:
+            roi_cropped_frame = frame
+
+        # 确定用于检测的帧（ROI裁剪帧或完整帧）
+        detection_frame = roi_cropped_frame if roi_cropped_frame is not None else frame
+
+        # **头像替换处理** - 已关闭以提高性能
+        # display_frame = head_processor.process_frame(display_frame)
+
+        # 🤖 处理姿势估计 - 根据配置决定使用完整帧还是ROI区域
+        pose_detection_frame = frame  # 默认使用完整帧进行姿态检测
+        pose_use_roi = config.get('pose_estimation_debug', {}).get('use_roi_detection', False)
+        
+        if pose_use_roi and detection_frame is not None:
+            pose_detection_frame = detection_frame
+            if frame_num % 30 == 0:  # 每30帧显示一次检测信息
+                print(f"🤖 [帧{frame_num}] 开始姿态检测（ROI模式），检测区域: {detection_frame.shape}")
+        else:
+            if frame_num % 30 == 0:  # 每30帧显示一次检测信息
+                print(f"🤖 [帧{frame_num}] 开始姿态检测（全帧模式），检测区域: {pose_detection_frame.shape}")
+        
+        pose_results = pose_module.get_keypoints(pose_detection_frame)
+        
+        # 如果使用了ROI模式进行姿态检测，需要将检测结果坐标转换回原图坐标系
+        if pose_use_roi and roi_offset != (0, 0) and pose_results:
+            pose_results = roi_manager.adjust_detection_coordinates(pose_results, roi_offset, "pose")
+            
         if pose_results and display_opts.get('show_pose_keypoints', True):
             display_frame = pose_module.draw_keypoints(display_frame, pose_results)
             
-        # 处理球追踪
-        ball_positions = ball_module.predict_ball(display_frame)
-        ball_position = ball_positions[0] if ball_positions else None
+        # 🎾 处理球追踪 - 在ROI区域内检测
+        if frame_num % 30 == 0:  # 每30帧显示一次检测信息
+            print(f"🎾 [帧{frame_num}] 开始球检测，检测区域: {detection_frame.shape}")
+        ball_positions = ball_module.predict_ball(detection_frame)
+        
+        # 坐标转换
+        if roi_offset != (0, 0) and ball_positions:
+            ball_positions = roi_manager.adjust_detection_coordinates(ball_positions, roi_offset, "ball")
+
+        # 先在主流程中过滤 ROI 外的球，避免静止球（ROI外）参与轨迹与抢占
+        if roi_manager.is_roi_set:
+            roi_cfg = config.get('roi_settings', {})
+            if roi_cfg.get('filter_balls_outside_roi', True):
+                ball_positions = roi_manager.filter_detections_by_roi(ball_positions or [], "ball")
+
+        # 使用仅含 ROI 内候选的结果进行轨迹追踪与选球
+        active_balls = ball_module.advanced_ball_processing(ball_positions or [], frame_num)
+        ball_position = active_balls[0] if active_balls else (ball_positions[0] if ball_positions else None)
+        
         if ball_position:
             if display_opts.get('show_ball_position', True):
                 cv2.circle(display_frame, (int(ball_position[0]), int(ball_position[1])), 
                           5, (0, 255, 0), -1)
             
-            if display_opts.get('show_ball_trajectory', True):
-                # 绘制球的轨迹
+            if display_opts.get('show_ball_trajectory', True) and config.get('ball_tracking_enabled', True):
+                # 绘制球的轨迹（仅在追踪启用时）
                 ball_module.draw_trajectory(display_frame)
         
-        # 处理球拍检测
-        racket_results = racket_module.detect_rackets(display_frame)
+        # 🏓 处理球拍检测 - 在ROI区域内检测
+        if frame_num % 30 == 0:  # 每30帧显示一次检测信息
+            print(f"🏓 [帧{frame_num}] 开始球拍检测，检测区域: {detection_frame.shape}")
+        racket_results = racket_module.detect_rackets(detection_frame)
+        
+        # 坐标转换
+        if roi_offset != (0, 0) and racket_results:
+            racket_results = roi_manager.adjust_detection_coordinates(racket_results, roi_offset, "racket")
+
+        # ⭐ 精彩瞬间（改进）：使用前后帧距离变化寻找局部最小距离帧
+        if (highlight_enabled and ball_position and racket_results 
+                and highlight_count < max_highlights):
+            bx, by = float(ball_position[0]), float(ball_position[1])
+
+            # 选择一个代表性的球拍（默认取最大框）
+            selected_racket = None
+            max_area = -1
+            for racket in racket_results:
+                if not isinstance(racket, dict) or 'box' not in racket:
+                    continue
+                x1, y1, x2, y2 = racket['box']
+                area = max(1, (x2 - x1) * (y2 - y1))
+                if area > max_area:
+                    max_area = area
+                    selected_racket = racket
+
+            if selected_racket:
+                x1, y1, x2, y2 = selected_racket['box']
+                cx = (x1 + x2) / 2.0
+                cy = (y1 + y2) / 2.0
+                rw = max(1.0, (x2 - x1))
+                rh = max(1.0, (y2 - y1))
+                effective_racket_radius = max(rw, rh) / 2.0
+
+                ball_r = float(config.get('ball_radius_px', 10))
+                impact_threshold = (effective_racket_radius * racket_radius_factor + ball_r * hit_distance_factor) * distance_scale
+
+                dist = ((bx - cx) ** 2 + (by - cy) ** 2) ** 0.5
+                inside_now = dist <= impact_threshold
+
+                # 记录当前帧，若进入阈值区域则保存快照，候选为局部最小距离帧
+                if inside_now:
+                    consecutive_inside_count = min(max_consecutive_inside_allowed, consecutive_inside_count + 1)
+                    # 更新候选：当距离更小或还没有候选时
+                    if prev_display_snapshot is None or (prev_dist is not None and dist < prev_dist):
+                        prev_display_snapshot = display_frame.copy()
+                        prev_frame_num_snapshot = frame_num
+                else:
+                    consecutive_inside_count = 0
+
+                # 寻找局部最小：前一帧在阈值内，当前帧距离开始回升或离开阈值
+                if (
+                    prev_dist is not None and prev2_dist is not None and
+                    prev_dist <= ((prev_effective_racket_radius or effective_racket_radius) * racket_radius_factor + ball_r * hit_distance_factor) * distance_scale and
+                    prev_dist <= prev2_dist and  # 下降到前一帧
+                    dist >= prev_dist and        # 当前回升
+                    prev_display_snapshot is not None and
+                    (frame_num - last_hit_frame) >= cooldown_frames
+                ):
+                    # 在回升点触发保存，使用之前记录的最佳快照
+                    # 生成以中心帧为核心的前后5帧短视频
+                    # 1) 收集过去帧
+                    clip_frames = {}
+                    for fn, fr in list(recent_frames):
+                        if prev_frame_num_snapshot - 5 <= fn <= prev_frame_num_snapshot:
+                            clip_frames[fn] = fr.copy()
+                    # 2) 创建未来帧收集任务（前5帧，后15帧）
+                    pending_clips.append({
+                        'start': prev_frame_num_snapshot + 1,
+                        'end': prev_frame_num_snapshot + 15,
+                        'center': prev_frame_num_snapshot,
+                        'frames': clip_frames
+                    })
+                    last_hit_frame = prev_frame_num_snapshot
+                    highlight_count += 1
+                    print(f"⭐ 精彩瞬间-击球(最小距离): 计划保存短视频（前5后15），中心帧 {prev_frame_num_snapshot} (total={highlight_count})")
+                    # 重置候选
+                    prev_display_snapshot = None
+                    prev_frame_num_snapshot = None
+
+                # 更新时序状态
+                prev2_dist = prev_dist
+                prev_dist = dist
+                prev_effective_racket_radius = effective_racket_radius
+                prev_threshold = impact_threshold
+                prev_inside_flag = inside_now
+            
         if racket_results and display_opts.get('show_racket_state', True):
             # 绘制球拍状态
             for racket in racket_results:
-                box = racket['box']
-                cv2.rectangle(display_frame, (int(box[0]), int(box[1])), 
-                            (int(box[2]), int(box[3])), (255, 0, 0), 2)
+                if isinstance(racket, dict) and 'box' in racket:
+                    box = racket['box']
+                    cv2.rectangle(display_frame, (int(box[0]), int(box[1])), 
+                                (int(box[2]), int(box[3])), (255, 0, 0), 2)
+        
+        # 🎬 ROI增强动作捕捉
+        if motion_capture and roi_manager.is_roi_set:
+            # 分析ROI内的动作
+            motion_analysis = motion_capture.analyze_roi_motion(
+                pose_results if pose_results else [],
+                ball_positions if ball_positions else [],
+                racket_results if racket_results else [],
+                frame_num
+            )
+            
+            # 绘制动作分析结果
+            if roi_settings.get('visualization', {}).get('show_roi_stats', True):
+                display_frame = motion_capture.draw_motion_analysis(display_frame, motion_analysis)
+        
+        # 🎯 绘制ROI
+        if roi_manager.is_roi_set and roi_settings.get('visualization', {}).get('show_roi_boundary', True):
+            display_frame = roi_manager.draw_roi(display_frame, 
+                                               roi_settings.get('visualization', {}).get('show_roi_fill', True))
+            
+            # 高亮ROI内的检测结果
+            if roi_settings.get('visualization', {}).get('highlight_detections', True):
+                if ball_positions:
+                    display_frame = roi_manager.highlight_roi_detections(display_frame, ball_positions, "ball")
+                if racket_results:
+                    display_frame = roi_manager.highlight_roi_detections(display_frame, racket_results, "racket")
         
         # 显示挥拍类型
+        swing_type = "No Pose"  # 默认值
         if pose_results and display_opts.get('show_swing_type', True):
             swing_type = pose_module.classify_swing(pose_results)
             if swing_type != "No Pose" and swing_type != "Incomplete Pose":
@@ -203,13 +543,24 @@ def main():
                          (0, 255, 0), 2)
         
         # 显示静态球
-        if display_opts.get('show_static_balls', False):
+        if display_opts.get('show_static_balls', False) and config.get('ball_tracking_enabled', True):
             ball_module.draw_static_balls(display_frame)
         
         # 显示FPS
         if display_opts.get('show_fps', False):
             current_fps = (frame_num + 1) / (time.time() - start_time) if (time.time() - start_time) > 0 else 0
             display_frame = put_chinese_text(display_frame, f"FPS: {current_fps:.1f}", (10, 60), 0.7, (0, 255, 0))
+        
+        # 🎯 显示ROI状态信息
+        if roi_manager.is_roi_set:
+            roi_info = f"ROI: Active ({len(roi_manager.roi_points)} points)"
+            cv2.putText(display_frame, roi_info, (10, frame_height - 50), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            
+            # 显示检测统计
+            detection_info = f"Poses:{len(pose_results)} Balls:{len(ball_positions) if ball_positions else 0} Rackets:{len(racket_results) if racket_results else 0}"
+            cv2.putText(display_frame, detection_info, (10, frame_height - 20), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         
         # 显示帧号
         if display_opts.get('show_frame_number', False):
@@ -290,6 +641,22 @@ def main():
     print(f"处理完成! 共处理 {frames_processed} 帧")
     print(f"总处理时间: {total_time:.2f} 秒")
     print(f"平均处理速度: {avg_fps:.2f} FPS")
+    
+    # 显示头像替换统计信息
+    if head_processor.enabled:
+        final_status = head_processor.get_status()
+        stats = final_status.get('stats', {})
+        print(f"\n头像替换统计:")
+        print(f"  处理的帧数: {stats.get('frames_processed', 0)}")
+        print(f"  检测到的人脸: {stats.get('faces_detected', 0)}")
+        print(f"  替换的人脸: {stats.get('faces_replaced', 0)}")
+        if stats.get('frames_processed', 0) > 0:
+            avg_faces = stats.get('faces_detected', 0) / stats.get('frames_processed', 1)
+            print(f"  平均每帧人脸数: {avg_faces:.2f}")
+            detection_rate = (stats.get('faces_detected', 0) / stats.get('frames_processed', 1)) * 100
+            print(f"  检测成功率: {detection_rate:.1f}%")
+        print(f"  检测方法使用: {stats.get('detection_method_usage', {})}")
+        print(f"  错误数量: {stats.get('error_count', 0)}")
 
     print("释放资源...")
     cap.release()
@@ -299,4 +666,11 @@ def main():
     print("程序结束")
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    
+    parser = argparse.ArgumentParser(description='网球分析系统')
+    parser.add_argument('--config', '-c', default='configs/default_config.yaml',
+                       help='配置文件路径 (默认: configs/default_config.yaml)')
+    
+    args = parser.parse_args()
+    main(args.config)

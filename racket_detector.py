@@ -4,11 +4,19 @@ import cv2
 import numpy as np
 
 class RacketDetector:
-    def __init__(self, model_path, config):
+    def __init__(self, model_path, config, roi_manager=None):
         self.model = YOLO(model_path)
         self.config = config
+        self.roi_manager = roi_manager  # ROI管理器引用
         self.target_class_id = 38  # COCO class ID for "tennis racket"
         self.confidence_threshold = self.config.get('racket_confidence_threshold', 0.3)
+        
+        # 当在 ROI 裁剪帧上做检测时，内部 ROI 过滤会因坐标系不一致而误删结果。
+        # 默认关闭，若明确需要在原始全帧上过滤，再在配置中开启：
+        # roi_settings.apply_roi_filter_in_modules: true
+        self.apply_roi_filter_in_detector = (
+            self.config.get('roi_settings', {}).get('apply_roi_filter_in_modules', False)
+        )
 
         # For associating racket to player and simple state tracking
         self.player_rackets = {} # {player_id: {'box': [], 'confidence': 0, 'last_seen_frame': 0, 'state': 'unknown'}}
@@ -35,6 +43,12 @@ class RacketDetector:
                         'confidence': float(confidences[i]),
                         'class_name': self.model.names[self.target_class_id]
                     })
+        
+        # 🎯 ROI过滤（可选）
+        # 注意：当在 ROI 裁剪帧上进行检测时，这里会因坐标系不同导致误过滤，因此默认关闭。
+        if self.apply_roi_filter_in_detector and self.roi_manager and self.roi_manager.is_roi_set:
+            detections = self.roi_manager.filter_detections_by_roi(detections, "racket")
+        
         return detections
 
     def associate_racket_to_player(self, racket_detections, person_keypoints_list, frame_num):

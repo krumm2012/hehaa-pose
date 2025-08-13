@@ -9,9 +9,10 @@ import cv2
 # 11: left_hip, 12: right_hip, ...
 
 class PoseEstimator:
-    def __init__(self, model_path, config):
+    def __init__(self, model_path, config, roi_manager=None):
         self.model = YOLO(model_path)
         self.config = config
+        self.roi_manager = roi_manager  # ROI管理器引用
         self.keypoint_names = [
             "nose", "left_eye", "right_eye", "left_ear", "right_ear",
             "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
@@ -65,6 +66,14 @@ class PoseEstimator:
                 else: # If confidence scores are not available, take all
                     valid_kpts = {name: (int(keypoints_xy[i,0]), int(keypoints_xy[i,1])) for i, name in enumerate(self.keypoint_names)}
                     person_keypoints_list.append(valid_kpts)
+
+        # 🎯 应用ROI过滤
+        if self.roi_manager and self.roi_manager.is_roi_set:
+            filtered_keypoints = []
+            for keypoints in person_keypoints_list:
+                filtered_keypoints_dict = self.roi_manager.filter_detections_by_roi([keypoints], "pose")
+                filtered_keypoints.extend(filtered_keypoints_dict)
+            person_keypoints_list = filtered_keypoints
 
         return person_keypoints_list # List of dictionaries, one per person
 
@@ -166,7 +175,7 @@ class PoseEstimator:
         y_max = min(frame.shape[0], y_max + padding)
         
         # 2. 绘制人体框和标签
-        cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 0, 255), 2)
+        #cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), (0, 0, 255), 2)
         # 将标签移动到人体框的右下角
         cv2.putText(frame, "tennis player", (x_max - 120, y_max), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
@@ -225,4 +234,77 @@ class PoseEstimator:
                 cv2.putText(frame, str(point_id), (pt[0] + 5, pt[1] - 5), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
                 
+        return frame
+
+    @staticmethod
+    def draw_keypoints_static(frame, person_keypoints_list):
+        """轻量级静态绘制函数，避免在无实例场景下出错。
+        仅绘制第一个人的主要骨架与关键点，跳过头部关键点。
+        """
+        if not person_keypoints_list:
+            return frame
+
+        # 使用与实例方法一致的设置（本地副本）
+        head_keypoints = ["nose", "left_eye", "right_eye", "left_ear", "right_ear"]
+        keypoint_names = [
+            "nose", "left_eye", "right_eye", "left_ear", "right_ear",
+            "left_shoulder", "right_shoulder", "left_elbow", "right_elbow",
+            "left_wrist", "right_wrist", "left_hip", "right_hip",
+            "left_knee", "right_knee", "left_ankle", "right_ankle"
+        ]
+        skeleton = [
+            ["right_shoulder", "right_elbow"],
+            ["right_elbow", "right_wrist"],
+            ["left_shoulder", "left_elbow"],
+            ["left_elbow", "left_wrist"],
+            ["right_shoulder", "left_shoulder"],
+            ["right_hip", "left_hip"],
+            ["right_shoulder", "right_hip"],
+            ["left_shoulder", "left_hip"],
+            ["right_hip", "right_knee"],
+            ["right_knee", "right_ankle"],
+            ["left_hip", "left_knee"],
+            ["left_knee", "left_ankle"],
+        ]
+        colors = {
+            "right_arm": (255, 140, 0),
+            "left_arm": (135, 206, 235),
+            "torso": (75, 0, 130),
+            "legs": (50, 205, 50)
+        }
+
+        keypoints = person_keypoints_list[0]
+        valid_pts = [pt for name, pt in keypoints.items() if pt is not None and name not in head_keypoints]
+        if not valid_pts:
+            return frame
+
+        # 绘制连接
+        for name_a, name_b in skeleton:
+            if name_a in head_keypoints or name_b in head_keypoints:
+                continue
+            pt_a = keypoints.get(name_a)
+            pt_b = keypoints.get(name_b)
+            if pt_a and pt_b:
+                if any(k in name_a+name_b for k in ["wrist", "elbow"]):
+                    color = colors["right_arm"] if ("right" in name_a or "right" in name_b) else colors["left_arm"]
+                elif any(k in name_a+name_b for k in ["hip", "shoulder"]):
+                    color = colors["torso"]
+                else:
+                    color = colors["legs"]
+                cv2.line(frame, pt_a, pt_b, color, 2)
+
+        # 绘制点
+        for name, pt in keypoints.items():
+            if name in head_keypoints or pt is None:
+                continue
+            if "wrist" in name or "elbow" in name:
+                color = colors["right_arm"] if "right" in name else colors["left_arm"]
+            elif "shoulder" in name or "hip" in name:
+                color = colors["torso"]
+            elif "knee" in name or "ankle" in name:
+                color = colors["legs"]
+            else:
+                color = (255, 0, 255)
+            cv2.circle(frame, pt, 5, color, -1)
+
         return frame

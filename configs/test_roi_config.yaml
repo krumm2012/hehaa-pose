@@ -1,0 +1,14 @@
+created_by: Tennis Analyzer System
+last_updated: '2025-08-13 15:23:36'
+roi_description: '4-point ROI: [[1097, 138], [856, 1331], [2318, 1344], [1959, 150]]'
+roi_enabled: true
+roi_points:
+- - 1097
+  - 138
+- - 856
+  - 1331
+- - 2318
+  - 1344
+- - 1959
+  - 150
+version: '1.0'

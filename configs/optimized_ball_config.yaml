@@ -1,0 +1,93 @@
+video_input_path: "data/input_video.mp4"
+video_output_path: "data/output_video.mp4"
+yolo_pose_model_path: "models/yolov8n-pose.pt"
+tracknet_model_path: "models/tracknetv2_weights.pth"
+
+# === 🎾 专门优化的球检测参数 ===
+
+# 基础检测阈值
+pose_confidence_threshold: 0.5
+ball_confidence_threshold: 0.7  # 提高球检测置信度
+static_ball_movement_threshold_px: 5  # 更严格的静止球阈值
+static_ball_frames_threshold: 3  # 减少判断静止所需帧数
+min_ball_movement: 5  # 最小球移动距离
+
+# 🎯 精确的球检测边界 (排除更多背景干扰)
+boundary_x1: 350  # 左边界更严格
+boundary_y1: 250  # 上边界更严格  
+boundary_x2: 1550 # 右边界更严格
+boundary_y2: 900  # 下边界更严格
+
+# 🔍 优化的球尺寸范围
+min_ball_radius: 3   # 稍微增大最小半径
+max_ball_radius: 30  # 减小最大半径，排除大型绿色物体
+
+# 🎨 HSV颜色检测参数 (更精确)
+hsv_lower_hue: 25    # 更集中的色调范围
+hsv_upper_hue: 60    
+hsv_lower_sat: 60    # 提高饱和度下限
+hsv_upper_sat: 255
+hsv_lower_val: 60    # 提高亮度下限
+hsv_upper_val: 255
+
+# 🧠 球质量评估参数
+ball_quality_threshold: 0.4  # 提高质量阈值
+color_weight: 0.6           # 增加颜色匹配权重
+brightness_weight: 0.2      # 亮度一致性权重
+circularity_weight: 0.2     # 圆度权重
+
+# 📏 Hough圆检测参数 (更精确)
+hough_dp: 1
+hough_min_dist: 10   # 增加圆之间最小距离
+hough_param1: 35     # 提高边缘检测阈值
+hough_param2: 8      # 提高圆检测阈值
+
+# 🏃‍♂️ 改进的球追踪参数
+ball_trajectory_max_len: 30          # 轨迹长度
+max_lost_frames_for_track: 5         # 减少允许丢失帧数
+max_ball_match_distance_px: 35       # 减小匹配距离
+
+# 🎨 可视化设置 (颜色标识)
+show_ball_trajectory: true           # 显示球轨迹 (绿色)
+draw_static_balls: true             # 绘制静态球 (蓝色)
+show_ball_candidates: false         # 不显示候选球
+show_color_legend: true             # 显示颜色图例
+trajectory_thickness: 3             # 轨迹线粗细
+trajectory_color: [0, 255, 0]      # 轨迹颜色 (绿色)
+ball_circle_color: [0, 0, 255]     # 运动球颜色 (红色)
+static_ball_color: [255, 100, 0]   # 静止球颜色 (蓝色)
+ball_circle_thickness: 2            # 球标记粗细
+use_boundary: true                  # 启用边界检查
+draw_boundary: true                 # 显示边界 (黄色)
+
+# 🔧 调试设置
+enable_ball_debug: true             # 启用球检测调试
+save_debug_frames: false           # 不保存调试帧
+debug_log_level: "info"            # 调试日志级别
+
+# === 其他模块设置 (简化以专注球检测) ===
+
+# 姿态检测
+dominant_hand: "right"
+
+# 挥拍分类参数
+forehand_wrist_elbow_angle_min: 90
+forehand_wrist_elbow_angle_max: 170
+backhand_wrist_elbow_angle_min: 90
+backhand_wrist_elbow_angle_max: 170
+two_hand_wrist_distance_max_px: 50
+
+# 人脸替换 (禁用以提高性能)
+face_replacement:
+  enabled: false
+
+# 显示设置
+display:
+  show_pose_landmarks: true
+  show_ball_trajectory: true
+  show_racket_state: false
+  show_swing_classification: true
+  
+# 性能优化
+process_every_nth_frame: 1          # 处理每一帧
+enable_gpu_acceleration: false      # 禁用GPU加速 (避免兼容性问题) 

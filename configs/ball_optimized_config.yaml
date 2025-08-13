@@ -1,0 +1,98 @@
+# 🎾 球检测优化配置文件
+# 专门解决球误识别问题，更宽松的过滤阈值
+
+# 视频设置
+video_input_path: "data/input_video.mp4"
+video_output_path: "data/output_video.mp4"
+yolo_pose_model_path: "models/yolov8n-pose.pt"
+tracknet_model_path: "models/tracknetv2_weights.pth"
+
+# 基础参数
+pose_confidence_threshold: 0.5
+ball_confidence_threshold: 0.75
+racket_yolo_model_path: "models/yolov8n.pt"
+
+# 🎯 球检测参数 - 优化版
+ball_trajectory_max_len: 40
+max_lost_frames_for_track: 5
+max_ball_match_distance_px: 25
+static_ball_movement_threshold_px: 5
+static_ball_frames_threshold: 8
+
+# 🔧 更宽松的球检测范围
+min_ball_radius: 3
+max_ball_radius: 45                      # 从30增加到45，允许更大的球
+min_ball_movement: 8
+
+# 🎯 更宽松的噪点过滤参数 - 减少误识别
+noise_filter_quality_threshold: 0.20     # 从0.4降低到0.20，更宽松的质量要求
+noise_filter_circularity_threshold: 0.35 # 从0.6降低到0.35，更宽松的圆度要求
+noise_filter_min_edge_distance: 3        # 从15降低到3，更宽松的边缘距离要求
+
+# 静态球过滤参数
+static_ball_movement_threshold_px: 5     # 静态球移动阈值
+static_ball_frames_threshold: 8          # 静态球判定帧数
+
+# 🚫 关闭原来的边界检查功能
+use_boundary: false
+boundary_x1: 0
+boundary_y1: 0
+boundary_x2: 9999
+boundary_y2: 9999
+use_mask_zones: false
+
+# 🎯 启用ROI功能
+roi_settings:
+  enabled: True
+  interactive_selection: True
+  auto_load_config: True
+  roi_config_path: "configs/roi_config.yaml"
+  
+  # ROI显示设置
+  visualization:
+    show_roi_boundary: true
+    show_roi_fill: true
+    show_roi_points: true
+    highlight_detections: true
+    show_roi_stats: true
+    
+  # ROI边界颜色设置
+  colors:
+    boundary: [0, 255, 255]    # 黄色
+    fill: [0, 255, 255]        # 黄色
+    points: [0, 255, 0]        # 绿色
+    inside_detection: [0, 255, 0]   # 绿色
+    outside_detection: [0, 0, 255]  # 红色
+
+# 球检测调试设置
+ball_detection_debug:
+  log_detection: true
+  log_tracking: true
+  log_filtering: true
+  log_noise_filter: true
+  log_static_filter: true
+  log_trajectory: true
+  log_roi_filtering: true              # 启用ROI过滤日志
+  save_debug_frames: true
+  debug_frames_path: "debug_frames/"
+  save_interval: 50
+
+# 姿态检测设置
+pose_estimation_debug:
+  log_keypoints: false
+  log_tracking: false
+
+# 球拍检测设置
+racket_detection_debug:
+  log_detection: false
+  log_tracking: false
+
+# 人脸替换 (关闭以提高性能)
+face_replacement:
+  enabled: false
+
+# 视频处理设置
+video_processing:
+  skip_frames: 0
+  show_fps: true
+  output_fps: 25

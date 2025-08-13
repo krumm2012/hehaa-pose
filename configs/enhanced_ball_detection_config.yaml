@@ -1,0 +1,177 @@
+video_input_path: "data/input_video.mp4"
+video_output_path: "data/output_video.mp4"
+yolo_pose_model_path: "models/yolov8n-pose.pt"
+tracknet_model_path: "models/tracknetv2_weights.pth"
+
+# --- 🎾 优化球检测参数 ---
+pose_confidence_threshold: 0.5
+ball_confidence_threshold: 0.75  # 降低阈值提高检测率
+static_ball_movement_threshold_px: 3  # 减小阈值提高静止球识别精度
+static_ball_frames_threshold: 5  # 减少帧数，更快识别静止球
+
+# Swing classification parameters
+forehand_wrist_elbow_angle_min: 90
+forehand_wrist_elbow_angle_max: 170
+backhand_wrist_elbow_angle_min: 90
+backhand_wrist_elbow_angle_max: 170
+two_hand_wrist_distance_max_px: 50
+dominant_hand: "right"
+
+# 🏃‍♂️ 改进的球追踪和过滤参数
+ball_trajectory_max_len: 50             # 增加轨迹长度
+max_lost_frames_for_track: 8            # 增加容错帧数
+max_ball_match_distance_px: 40          # 增大匹配距离
+static_ball_movement_threshold_px: 3    # 更严格的静止阈值
+static_ball_frames_threshold: 5         # 更少的帧数要求
+
+# 🔍 优化的球尺寸过滤参数
+min_ball_radius: 2                      # 降低最小半径，捕获远距离小球
+max_ball_radius: 35                     # 增大最大半径，捕获近距离大球
+min_ball_movement: 4                    # 降低最小移动距离，提高敏感度
+
+# 📐 更宽松的监控区域边界
+use_boundary: true
+boundary_x1: 300                        # 大幅扩展边界
+boundary_y1: 200                        
+boundary_x2: 1600                       
+boundary_y2: 1080                       
+draw_boundary: true                     # 显示边界以便调试
+
+# 显示控制
+draw_static_balls: true                 # 显示静态球以便调试
+
+# Simulation specific parameters
+sim_ball_detection_noise: 2             # 减少模拟噪音
+sim_num_static_balls: 0
+
+# 字体配置
+font_dir: "fonts"
+preferred_chinese_font: "PingFang SC"
+auto_download_font: false
+
+# Racket Detector Configs
+racket_yolo_model_path: "yolov8n.pt"
+racket_confidence_threshold: 0.4
+racket_lost_threshold_frames: 5
+ball_radius_px: 10
+
+enable_manual_boundary: false
+
+# 🎨 增强的视频文本显示控制
+display_options:
+  show_swing_type: true
+  show_ball_position: true
+  show_racket_state: true
+  show_pose_keypoints: true
+  show_ball_trajectory: true            # 确保轨迹显示开启
+  show_boundary: true                   # 显示边界
+  show_static_balls: true               # 显示静态球
+  show_fps: true
+  show_frame_number: true
+
+# 高级人脸检测器配置
+advanced_face_detection:
+  detection_priority: ["enhanced_opencv"]
+  
+  detector_control:
+    enable_front_face: true
+    enable_front_face_alt: false
+    enable_front_face_alt2: false
+    enable_profile_face: false
+    enable_full_body: false
+  
+  opencv_detection_params:
+    front_face:
+      scale_factor: 1.1
+      min_neighbors: 3
+      confidence: 0.8
+  
+  face_size_constraints:
+    min_face_size: 25
+    max_face_size: 90
+    min_aspect_ratio: 0.8
+    max_aspect_ratio: 2.5
+    relative_max_size: 0.5
+  
+  quality_assessment:
+    contrast_normalization_factor: 50.0
+    target_brightness: 128
+    brightness_tolerance: 128
+    canny_low_threshold: 50
+    canny_high_threshold: 150
+    edge_density_factor: 10.0
+    size_normalization_factor: 10000.0
+  
+  quality_filters:
+    min_confidence: 0.6
+    min_quality_score: 0.2
+    enable_opencv_quality_filter: false
+    max_detections_per_frame: 3
+    enable_nms: true
+    nms_iou_threshold: 0.4
+  
+  detection_merging:
+    overlap_threshold: 0.3
+    min_overlap_for_merge: 0.3
+  
+  face_tracking:
+    enable_tracking: true
+    max_disappeared_frames: 8
+    max_match_distance: 50
+    smoothing_factor: 0.7
+    position_smooth_alpha: 0.7
+  
+  position_constraints:
+    exclude_edges: false
+    edge_margin_ratio: 0.02
+    center_bias_weight: 0.0
+    max_distance_from_center: 1.0
+    center_preference: false
+    center_weight: 1.5
+    exclude_logo_areas: false
+    logo_exclusion_zones: []
+  
+  mtcnn:
+    enabled: false
+    min_face_size: 60
+    scale_factor: 0.709
+    steps_threshold: [0.8, 0.85, 0.85]
+    device: "cpu"
+    confidence_threshold: 0.9
+
+# GLIP模型配置
+glip_model:
+  enabled: false
+  model_config_path: "models/glip_Swin_T_O365_GoldG.yaml"
+  model_checkpoint_path: "models/glip_tiny_model_o365_goldg_cc_sbu.pth"
+  confidence_threshold: 0.85
+  text_prompt: "face . head"
+  device: "cpu"
+  
+# 🚫 关闭头像替换以提高性能
+face_replacement:
+  enabled: false                        # 关闭头像替换
+  judy_head_image_path: "assets/judy_head.png"
+  judy_head_scale_factor: 0.8
+  blend_mode: "alpha"
+  face_detection_method: "opencv"
+  replacement_opacity: 0.95
+  face_margin_ratio: 0.05
+  smooth_transition: true
+  track_faces: true
+
+# 调试选项
+debug_mode: true                        # 启用调试模式
+
+# 🔍 详细的球检测调试配置
+ball_detection_debug:
+  enabled: true                         # 启用详细调试
+  log_hsv_detection: true               # 记录HSV检测
+  log_boundary_check: true              # 记录边界检查
+  log_size_filtering: true              # 记录尺寸过滤
+  log_static_filtering: true            # 记录静态过滤
+  log_advanced_processing: true         # 记录高级处理
+  log_simulation: false                 # 关闭模拟日志
+  save_debug_frames: true               # 保存调试帧
+  debug_frame_interval: 5               # 每5帧保存一次
+  max_log_detections: 20                # 增加日志检测数量 

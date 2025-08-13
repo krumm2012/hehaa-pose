@@ -28,13 +28,14 @@ Thumbs.db
 
 # 虚拟环境
 venv/
+venv_311/
 env/
 .env
 .venv/
 ENV/
 env.bak/
 venv.bak/
-
+venv_311.bak/
 # 日志文件
 *.log
 logs/

@@ -1,0 +1,127 @@
+# ROI启用配置文件 - 专门用于测试ROI功能
+# 基于default_config.yaml，启用ROI相关功能
+
+# 继承基础配置
+video_input_path: "data/input_video.mp4"
+video_output_path: "data/output_video_roi.mp4"
+yolo_pose_model_path: "models/yolov8n-pose.pt"
+tracknet_model_path: "models/tracknetv2_weights.pth"
+
+# 基础检测参数
+pose_confidence_threshold: 0.5
+ball_confidence_threshold: 0.75
+racket_confidence_threshold: 0.4
+
+# 挥拍分析参数
+forehand_wrist_elbow_angle_min: 90
+forehand_wrist_elbow_angle_max: 170
+backhand_wrist_elbow_angle_min: 90
+backhand_wrist_elbow_angle_max: 170
+two_hand_wrist_distance_max_px: 50
+dominant_hand: "right"
+
+# 球检测参数
+ball_trajectory_max_len: 40
+max_lost_frames_for_track: 5
+max_ball_match_distance_px: 25
+static_ball_movement_threshold_px: 5
+static_ball_frames_threshold: 8
+min_ball_radius: 3
+max_ball_radius: 30
+min_ball_movement: 8
+
+# 🎯 优化球检测过滤参数 - 减少误识别
+noise_filter_quality_threshold: 0.25      # 降低质量阈值 (从0.4降至0.25)
+noise_filter_circularity_threshold: 0.3   # 降低圆度阈值 (从0.6降至0.3)
+noise_filter_min_edge_distance: 5         # 降低边缘距离要求 (从15降至5)
+
+# 🚫 关闭原来的边界检查功能，改用ROI替代
+use_boundary: false               # 原边界处理已关闭
+boundary_x1: 0                   # 保留定义以避免错误，但功能已关闭
+boundary_y1: 0                   # 保留定义以避免错误，但功能已关闭
+boundary_x2: 9999                # 保留定义以避免错误，但功能已关闭
+boundary_y2: 9999                # 保留定义以避免错误，但功能已关闭
+use_mask_zones: false             # 屏蔽区域也关闭
+
+# 🎯 启用ROI功能
+roi_settings:
+  enabled: True                          # 启用ROI功能
+  interactive_selection: true             # 启用交互式ROI选择
+  auto_load_config: true                 # 禁用自动加载，强制交互式选择
+  roi_config_path: "configs/roi_config.yaml"  # ROI配置文件路径
+  
+  # ROI显示设置
+  visualization:
+    show_roi_boundary: true               # 显示ROI边界
+    show_roi_fill: true                   # 显示ROI填充
+    show_roi_points: true                 # 显示ROI角点
+    highlight_detections: true            # 高亮ROI内检测结果
+    show_roi_stats: true                  # 显示ROI统计信息
+    
+  # ROI边界颜色设置
+  colors:
+    boundary: [0, 255, 255]               # ROI边界颜色 (BGR) - 黄色
+    fill: [0, 255, 255]                   # ROI填充颜色 (BGR) - 黄色
+    points: [0, 255, 0]                   # ROI角点颜色 (BGR) - 绿色
+    inside_detection: [0, 255, 0]         # ROI内检测颜色 (BGR) - 绿色
+    outside_detection: [0, 0, 255]        # ROI外检测颜色 (BGR) - 红色
+
+# 🎬 启用ROI动作捕捉
+roi_motion_capture:
+  enabled: true                           # 启用ROI动作捕捉
+  pose_history_length: 30                 # 姿态历史记录长度
+  ball_history_length: 50                 # 球历史记录长度
+  racket_history_length: 30               # 球拍历史记录长度
+  
+  # 动作检测阈值
+  thresholds:
+    significant_movement: 15              # 显著运动阈值 (像素)
+    rapid_movement: 30                    # 快速运动阈值 (像素)
+    pose_change_threshold: 20             # 姿态变化阈值 (像素)
+    swing_velocity_threshold: 25          # 挥拍速度阈值 (像素/帧)
+  
+  # 动作分析设置
+  analysis:
+    enable_motion_trails: true            # 启用动作轨迹
+    enable_velocity_vectors: true         # 启用速度向量
+    enable_activity_heatmap: true         # 启用活动热力图
+    enable_coordination_detection: true   # 启用协调动作检测
+
+# 显示控制
+display_options:
+  show_swing_type: true      # 显示挥拍类型
+  show_ball_position: true   # 显示球的位置
+  show_racket_state: true    # 显示球拍状态
+  show_pose_keypoints: true  # 显示姿势关键点
+  show_ball_trajectory: true # 显示球的轨迹
+  show_boundary: false       # 不显示传统边界框
+  show_static_balls: false   # 不显示静态球
+  show_fps: true            # 显示FPS
+  show_frame_number: true    # 显示帧号
+
+# 球检测调试 (启用以查看ROI效果)
+ball_detection_debug:
+  enabled: true              # 启用调试以查看ROI过滤效果
+  log_hsv_detection: true
+  log_boundary_check: true
+  log_roi_filtering: true     # 启用ROI过滤日志
+  log_size_filtering: true
+  log_static_filtering: false
+  save_debug_frames: false
+
+# 人脸替换 (关闭以提高性能和专注ROI功能)
+face_replacement:
+  enabled: false             # 已关闭人脸替换以专注ROI功能和提高性能
+
+# 其他球拍检测配置
+racket_yolo_model_path: "yolov8s.pt"
+racket_lost_threshold_frames: 5
+ball_radius_px: 10
+
+# 字体配置
+font_dir: "fonts"
+preferred_chinese_font: "PingFang SC"
+auto_download_font: false
+
+# 调试选项
+debug_mode: false

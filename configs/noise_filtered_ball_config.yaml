@@ -1,0 +1,142 @@
+video_input_path: "data/input_video.mp4"
+video_output_path: "data/ball_color_identification_output.mp4"
+yolo_pose_model_path: "models/yolov8n-pose.pt"
+tracknet_model_path: "models/tracknetv2_weights.pth"
+
+# === 🧹 专门优化的噪点过滤参数 ===
+
+# 基础检测阈值
+pose_confidence_threshold: 0.5
+ball_confidence_threshold: 0.55  # 降低阈值提高检测率 (从0.6降至0.55)
+static_ball_movement_threshold_px: 4  # 提高静止球阈值，避免运动球误判 (从2提高到4)
+static_ball_frames_threshold: 4  # 稍微减少判断帧数，快速响应 (从5降至4)
+min_ball_movement: 5  # 调整为与静止阈值匹配 (从6降至5)
+
+# 🔍 适中的球尺寸范围 (进一步放宽以提高运动球检测)
+min_ball_radius: 3   # 进一步放宽最小半径 (从4降至3)
+max_ball_radius: 30  # 进一步增大最大半径 (从28增至30)
+min_ball_area: 8     # 大幅降低最小面积 (π * r² ≈ π * 1.6²)
+max_ball_area: 120  # 调整最大面积 (π * r² ≈ π * 28²)
+
+# 🎯 精确的球检测边界 (排除更多背景干扰)
+boundary_x1: 380  # 左边界更严格
+boundary_y1: 280  # 上边界更严格  
+boundary_x2: 1520 # 右边界更严格
+boundary_y2: 880  # 下边界更严格
+
+# 🧠 更宽松的球质量评估参数 (进一步降低阈值适应运动球)
+ball_quality_threshold: 0.4  # 进一步降低质量阈值 (从0.4降至0.35)
+noise_filter_quality_threshold: 0.45      # 大幅降低噪点过滤质量阈值 (从0.45降至0.35)
+noise_filter_circularity_threshold: 0.5  # 进一步放宽圆度阈值 (从0.6降至0.5)
+noise_filter_min_edge_distance: 10        # 进一步放宽边缘距离 (从15降至10)
+
+# 🎨 HSV颜色检测参数 (平衡精确度和检测率)
+hsv_lower_hue: 20    # 稍微扩大色调范围 (从22降至20)
+hsv_upper_hue: 65    # 稍微扩大色调范围 (从58增至65)
+hsv_lower_sat: 45    # 降低饱和度下限提高检测率 (从55降至45)
+hsv_upper_sat: 255
+hsv_lower_val: 55    # 降低亮度下限适应更多光照 (从65降至55)
+hsv_upper_val: 255
+
+# 🏃‍♂️ 优化的球追踪参数 (提高运动球追踪能力)
+ball_trajectory_max_len: 50             # 增加轨迹长度便于分析 (从40增至50)
+max_lost_frames_for_track: 8            # 增加容错帧数减少丢球 (从6增至8)
+max_ball_match_distance_px: 45          # 增大匹配距离适应快速移动 (从35增至45)
+
+# 📐 边界和显示设置
+use_boundary: true
+draw_boundary: true                     # 显示边界以便调试
+
+# 🎨 可视化设置 (颜色标识)
+show_ball_trajectory: true              # 显示球轨迹 (绿色)
+draw_static_balls: true                 # 绘制静态球 (蓝色)
+show_ball_candidates: false             # 不显示候选球 (减少干扰)
+show_color_legend: true                 # 显示颜色图例
+trajectory_thickness: 3                 # 轨迹线粗细
+trajectory_color: [0, 255, 0]          # 轨迹颜色 (绿色)
+ball_circle_color: [0, 0, 255]         # 运动球颜色 (红色)
+static_ball_color: [255, 100, 0]       # 静止球颜色 (蓝色)
+ball_circle_thickness: 2                # 球标记粗细
+use_boundary: true                      # 启用边界检查
+draw_boundary: true                     # 显示边界 (黄色)
+
+# 🔧 图像预处理参数 (噪点过滤)
+enable_gaussian_blur: true              # 启用高斯滤波
+gaussian_kernel_size: 3                 # 高斯核大小
+gaussian_sigma: 0.5                     # 高斯标准差
+enable_median_filter: true              # 启用中值滤波
+median_kernel_size: 3                   # 中值滤波核大小
+
+# 🧹 形态学操作参数
+morphology_operations: [
+  {type: "open", kernel_size: 1, iterations: 1},     # 去除微小噪点
+  {type: "close", kernel_size: 2, iterations: 1},    # 填充小空洞
+  {type: "open", kernel_size: 2, iterations: 1},     # 再次去除噪点
+  {type: "dilate", kernel_size: 3, iterations: 1}    # 最后膨胀
+]
+
+# Simulation specific parameters (关闭模拟减少干扰)
+sim_ball_detection_noise: 0             # 无模拟噪音
+sim_num_static_balls: 0                 # 无模拟静态球
+
+# 字体配置
+font_dir: "fonts"
+preferred_chinese_font: "PingFang SC"
+auto_download_font: false
+
+# Racket Detector Configs (简化以专注球检测)
+racket_yolo_model_path: "yolov8n.pt"
+racket_confidence_threshold: 0.6        # 提高阈值减少干扰
+racket_lost_threshold_frames: 5
+ball_radius_px: 10
+
+enable_manual_boundary: false
+
+# 🎨 视频文本显示控制
+display_options:
+  show_swing_type: false                # 关闭挥拍显示
+  show_ball_position: true              # 显示球位置
+  show_racket_state: false              # 关闭球拍状态
+  show_pose_keypoints: false            # 关闭姿态点
+  show_ball_trajectory: true            # 确保轨迹显示开启
+  show_boundary: true                   # 显示边界
+  show_static_balls: true               # 显示静态球
+  show_fps: true
+  show_frame_number: true
+
+# 高级人脸检测器配置 (简化以专注球检测)
+advanced_face_detection:
+  detection_priority: ["enhanced_opencv"]
+  
+  detector_control:
+    enable_front_face: false            # 关闭人脸检测减少干扰
+    enable_front_face_alt: false
+    enable_front_face_alt2: false
+    enable_profile_face: false
+    enable_full_body: false
+
+# 🚫 关闭头像替换以提高性能
+face_replacement:
+  enabled: false
+
+# 调试选项
+debug_mode: true                        # 启用调试模式
+
+# 🔍 详细的球检测调试配置 (专注运动球问题)
+ball_detection_debug:
+  enabled: true                         # 启用详细调试
+  log_hsv_detection: true               # 记录HSV检测
+  log_boundary_check: true              # 记录边界检查
+  log_size_filtering: true              # 记录尺寸过滤
+  log_static_filtering: true            # 重点记录静态过滤过程
+  log_noise_filtering: true             # 记录噪点过滤
+  log_advanced_processing: true        # 启用高级处理日志监控运动球
+  log_simulation: false                 # 关闭模拟日志
+  save_debug_frames: true               # 启用调试帧保存以分析问题
+  debug_frame_interval: 5               # 更频繁保存调试帧 (从10改为5)
+  max_log_detections: 20                # 增加日志检测数量便于分析 (从15增至20)
+
+# 🎯 性能优化设置
+enable_gpu_acceleration: false         # 禁用GPU加速 (避免兼容性问题)
+process_every_nth_frame: 1             # 处理每一帧
+max_fps: 30                            # 限制最大帧率 
