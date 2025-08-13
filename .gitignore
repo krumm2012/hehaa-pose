@@ -6,7 +6,9 @@ __pycache__/
 .Python
 env/
 venv/
+venv_311
 .venv/
+.venv_311/
 pip-wheel-metadata/
 .pytest_cache/
 
