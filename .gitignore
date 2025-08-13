@@ -1,3 +1,64 @@
-tennis-tracking
-player-video
-data
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-wheel-metadata/
+.pytest_cache/
+
+# Byte-compiled / logs
+*.log
+*.tmp
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.idea/
+.vscode/
+.cursor/
+.cursorignore
+
+# Build / Dist
+build/
+dist/
+*.egg-info/
+
+# Data & Outputs (ignore heavy artifacts; keep analysis results)
+data/**
+!data/analysis_results/
+!data/analysis_results/**
+!data/.gitkeep
+
+# Videos and frames (large)
+player-video/**
+frames_*/
+debug_frames/
+extracted_frames/
+false_detection_analysis/
+frames_70_90_analysis/
+
+# Models (ignore binaries)
+models/*.pt
+models/*.pth
+models/*.onnx
+
+# Large images (keep assets and selected analysis frames)
+*.jpg
+*.jpeg
+*.png
+!assets/**
+!frames_70_90_analysis/*.jpg
+!frames_70_90_analysis/*.png
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# Node/Frontend (if any)
+node_modules/
