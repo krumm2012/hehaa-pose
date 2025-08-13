@@ -179,6 +179,7 @@ video_processing:
   show_fps: true                        # 显示FPS
   output_fps: 25                        # 输出FPS
   resize_factor: 1.0                    # 视频缩放因子
+  max_frames: 0                         # 0=不限制；>0 用于快速验证时限制最大处理帧数
 
 # 性能优化设置
 performance_optimization:
@@ -284,3 +285,14 @@ highlights:
   cooldown_frames: 12
   max_highlights: 50
   distance_scale: 5  # 放大击球距离阈值5倍
+  # 放宽高级限制，确保能有输出（如需收紧再打开）
+  min_inside_frames: 1
+  min_relative_threshold_ratio: 2.0
+  min_exit_increase_px: 0
+  min_enter_decrease_px: 0
+  min_speed_px_per_frame: 0
+  pre_frames: 5
+  post_frames: 15
+  save_center_image: true
+  annotate_center_image: true
+  racket_selection: nearest  # nearest|max_area

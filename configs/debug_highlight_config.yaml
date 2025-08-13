@@ -1,0 +1,152 @@
+# Debug highlight config: headless, limited frames for quick validation
+video_input_path: "data/input_video.mp4"
+video_output_path: "data/output_video_debug.mp4"
+yolo_pose_model_path: "models/yolov8n-pose.pt"
+tracknet_model_path: "models/tracknetv2_weights.pth"
+racket_yolo_model_path: "models/yolov8n.pt"
+
+# Reuse core settings from comprehensive, with minor overrides
+pose_estimation_debug:
+  log_tracking: true
+  use_roi_detection: false
+pose_confidence_threshold: 0.5
+pose_keypoint_confidence: 0.3
+
+ball_tracking_enabled: true
+static_filter_only: false
+ball_trajectory_max_len: 50
+max_lost_frames_for_track: 8
+max_ball_match_distance_px: 52
+
+min_ball_radius: 18
+max_ball_radius: 45
+min_ball_area: 180
+min_ball_movement: 7
+
+static_ball_movement_threshold_px: 6
+static_ball_frames_threshold: 10
+
+hsv_lower_hue: 20
+hsv_upper_hue: 70
+hsv_lower_sat: 50
+hsv_upper_sat: 255
+hsv_lower_val: 55
+hsv_upper_val: 255
+
+hough_dp: 1
+hough_min_dist: 36
+hough_param1: 35
+hough_param2: 6
+
+ball_detection_strategy:
+  prefer_largest_ball: false
+
+racket_confidence_threshold: 0.4
+racket_tracking_enabled: true
+
+# Swing analysis parameters (to avoid KeyErrors in pose estimator/classifier)
+forehand_wrist_elbow_angle_min: 90
+forehand_wrist_elbow_angle_max: 170
+backhand_wrist_elbow_angle_min: 90
+backhand_wrist_elbow_angle_max: 170
+two_hand_wrist_distance_max_px: 50
+dominant_hand: "right"
+swing_detection_enabled: true
+swing_velocity_threshold: 15
+swing_acceleration_threshold: 5
+swing_angle_change_threshold: 30
+swing_phases:
+  preparation_duration: 10
+  execution_duration: 8
+  follow_through_duration: 12
+
+# Disable legacy boundary
+use_boundary: false
+boundary_x1: 0
+boundary_y1: 0
+boundary_x2: 9999
+boundary_y2: 9999
+draw_boundary: false
+
+# ROI settings
+roi_settings:
+  enabled: true
+  interactive_selection: false
+  auto_load_config: true
+  roi_config_path: "configs/roi_config.yaml"
+  crop_margin: 12
+  visualization:
+    show_roi_boundary: true
+    show_roi_fill: false
+    show_roi_points: true
+    highlight_detections: true
+    show_roi_stats: true
+
+ball_detection_debug:
+  log_detection: true
+  log_tracking: true
+  log_filtering: true
+  log_noise_filter: true
+  log_static_filtering: true
+  log_size_filtering: true
+  log_mask_zones: true
+  log_trajectory: true
+  log_roi_filtering: true
+  log_hsv_detection: true
+  log_boundary_check: false
+  log_advanced_processing: true
+  save_debug_frames: true
+  debug_frames_path: "debug_frames/"
+  debug_frame_interval: 25
+  max_log_detections: 15
+
+video_processing:
+  skip_frames: 0
+  show_fps: true
+  output_fps: 25
+  resize_factor: 1.0
+  max_frames: 230
+
+performance_optimization:
+  use_gpu: true
+  batch_processing: false
+  multi_threading: true
+  memory_optimization: true
+  enable_parallel_detection: true
+  skip_frames: 0
+  max_workers: 4
+  enable_gpu_acceleration: true
+  minimal_ui: true
+  headless: true
+
+display_options:
+  show_swing_type: true
+  show_ball_position: true
+  show_ball_trajectory: true
+  show_racket_state: true
+  show_boundary: false
+  show_static_balls: true
+  show_fps: true
+  show_frame_number: true
+
+ball_radius_px: 10
+
+highlights:
+  enabled: true
+  output_dir: "data/highlights/"
+  hit_distance_factor: 1.5
+  racket_radius_factor: 1.15
+  cooldown_frames: 12
+  max_highlights: 50
+  distance_scale: 5
+  pre_frames: 5
+  post_frames: 15
+  save_center_image: true
+  annotate_center_image: true
+  racket_selection: nearest
+  # 抑制误触发的高级条件
+  min_inside_frames: 1
+  min_relative_threshold_ratio: 2.0    # 极大放宽（基本不限制）
+  min_exit_increase_px: 0              # 关闭此限制
+  min_enter_decrease_px: 0             # 关闭此限制
+  min_speed_px_per_frame: 0            # 关闭速度限制

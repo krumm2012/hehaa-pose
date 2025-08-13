@@ -160,6 +160,24 @@ def main(config_path="configs/default_config.yaml"):
     distance_scale = float(highlights_cfg.get('distance_scale', 1.0))
     cooldown_frames = int(highlights_cfg.get('cooldown_frames', 12))
     max_highlights = int(highlights_cfg.get('max_highlights', 50))
+    pre_frames = int(highlights_cfg.get('pre_frames', 5))
+    post_frames = int(highlights_cfg.get('post_frames', 15))
+    save_center_image = bool(highlights_cfg.get('save_center_image', True))
+    annotate_center_image = bool(highlights_cfg.get('annotate_center_image', True))
+    racket_selection_mode = str(highlights_cfg.get('racket_selection', 'nearest')).lower()
+    # 高级抑制条件
+    min_inside_frames = int(highlights_cfg.get('min_inside_frames', 1))
+    min_relative_threshold_ratio = float(highlights_cfg.get('min_relative_threshold_ratio', 1.2))
+    min_exit_increase_px = float(highlights_cfg.get('min_exit_increase_px', 20.0))
+    min_speed_px_per_frame = float(highlights_cfg.get('min_speed_px_per_frame', 8.0))
+    min_enter_decrease_px = float(highlights_cfg.get('min_enter_decrease_px', 20.0))
+
+    # Headless/最小化UI与最大帧数快速验证
+    perf_opts = config.get('performance_optimization', {})
+    headless = bool(perf_opts.get('headless', False))
+    minimal_ui = bool(perf_opts.get('minimal_ui', False))
+    vp_opts = config.get('video_processing', {})
+    max_frames_limit = int(vp_opts.get('max_frames', 0)) if vp_opts.get('max_frames', 0) else 0
 
     last_hit_frame = -10**9
     highlight_count = 0
@@ -421,17 +439,32 @@ def main(config_path="configs/default_config.yaml"):
                 and highlight_count < max_highlights):
             bx, by = float(ball_position[0]), float(ball_position[1])
 
-            # 选择一个代表性的球拍（默认取最大框）
+            # 选择一个代表性的球拍：优先离球最近
             selected_racket = None
-            max_area = -1
-            for racket in racket_results:
-                if not isinstance(racket, dict) or 'box' not in racket:
-                    continue
-                x1, y1, x2, y2 = racket['box']
-                area = max(1, (x2 - x1) * (y2 - y1))
-                if area > max_area:
-                    max_area = area
-                    selected_racket = racket
+            if racket_selection_mode == 'nearest' and ball_position:
+                bx_tmp, by_tmp = float(ball_position[0]), float(ball_position[1])
+                best_dist = float('inf')
+                for racket in racket_results:
+                    if not isinstance(racket, dict) or 'box' not in racket:
+                        continue
+                    x1, y1, x2, y2 = racket['box']
+                    cx_tmp = (x1 + x2) / 2.0
+                    cy_tmp = (y1 + y2) / 2.0
+                    d_tmp = ((bx_tmp - cx_tmp) ** 2 + (by_tmp - cy_tmp) ** 2) ** 0.5
+                    if d_tmp < best_dist:
+                        best_dist = d_tmp
+                        selected_racket = racket
+            else:
+                # 回退：取最大面积
+                max_area = -1
+                for racket in racket_results:
+                    if not isinstance(racket, dict) or 'box' not in racket:
+                        continue
+                    x1, y1, x2, y2 = racket['box']
+                    area = max(1, (x2 - x1) * (y2 - y1))
+                    if area > max_area:
+                        max_area = area
+                        selected_racket = racket
 
             if selected_racket:
                 x1, y1, x2, y2 = selected_racket['box']
@@ -446,6 +479,8 @@ def main(config_path="configs/default_config.yaml"):
 
                 dist = ((bx - cx) ** 2 + (by - cy) ** 2) ** 0.5
                 inside_now = dist <= impact_threshold
+                if frame_num % 5 == 0:
+                    print(f"[HL] frame={frame_num} dist={dist:.2f} thr={impact_threshold:.2f} inside={inside_now}")
 
                 # 记录当前帧，若进入阈值区域则保存快照，候选为局部最小距离帧
                 if inside_now:
@@ -466,26 +501,62 @@ def main(config_path="configs/default_config.yaml"):
                     prev_display_snapshot is not None and
                     (frame_num - last_hit_frame) >= cooldown_frames
                 ):
-                    # 在回升点触发保存，使用之前记录的最佳快照
-                    # 生成以中心帧为核心的前后5帧短视频
-                    # 1) 收集过去帧
-                    clip_frames = {}
-                    for fn, fr in list(recent_frames):
-                        if prev_frame_num_snapshot - 5 <= fn <= prev_frame_num_snapshot:
-                            clip_frames[fn] = fr.copy()
-                    # 2) 创建未来帧收集任务（前5帧，后15帧）
-                    pending_clips.append({
-                        'start': prev_frame_num_snapshot + 1,
-                        'end': prev_frame_num_snapshot + 15,
-                        'center': prev_frame_num_snapshot,
-                        'frames': clip_frames
-                    })
-                    last_hit_frame = prev_frame_num_snapshot
-                    highlight_count += 1
-                    print(f"⭐ 精彩瞬间-击球(最小距离): 计划保存短视频（前5后15），中心帧 {prev_frame_num_snapshot} (total={highlight_count})")
-                    # 重置候选
-                    prev_display_snapshot = None
-                    prev_frame_num_snapshot = None
+                    # 额外抑制条件：需要在阈值内停留至少若干帧、局部最小足够小、离开阶段距离有明显增加、球速足够高
+                    passed = True
+                    if consecutive_inside_count < min_inside_frames:
+                        passed = False
+                    if not (prev_threshold is not None and prev_dist <= prev_threshold * min_relative_threshold_ratio):
+                        passed = False
+                    if (dist - prev_dist) < min_exit_increase_px:
+                        passed = False
+                    # 3b) 进入阶段距离下降幅度
+                    if (prev2_dist - prev_dist) < min_enter_decrease_px:
+                        passed = False
+                    recent_speed = 0.0
+                    try:
+                        if len(ball_module.tracked_balls_history) >= 2:
+                            p1 = np.array(ball_module.tracked_balls_history[-1]['coords'], dtype=float)
+                            p0 = np.array(ball_module.tracked_balls_history[-2]['coords'], dtype=float)
+                            recent_speed = float(np.linalg.norm(p1 - p0))
+                    except Exception:
+                        recent_speed = 0.0
+                    if recent_speed < min_speed_px_per_frame:
+                        passed = False
+
+                    if not passed:
+                        prev_display_snapshot = None
+                        prev_frame_num_snapshot = None
+                    else:
+                        # 在回升点触发保存，使用之前记录的最佳快照
+                        # 生成以中心帧为核心的前后短视频
+                        # 1) 收集过去帧（可配置 pre_frames）
+                        clip_frames = {}
+                        for fn, fr in list(recent_frames):
+                            if prev_frame_num_snapshot - pre_frames <= fn <= prev_frame_num_snapshot:
+                                clip_frames[fn] = fr.copy()
+                        # 2) 创建未来帧收集任务（可配置：前pre_frames，后post_frames）
+                        pending_clips.append({
+                            'start': prev_frame_num_snapshot + 1,
+                            'end': prev_frame_num_snapshot + post_frames,
+                            'center': prev_frame_num_snapshot,
+                            'frames': clip_frames
+                        })
+                        # 3) 保存中心帧图片（带可选注释）
+                        if save_center_image and prev_display_snapshot is not None:
+                            snapshot = prev_display_snapshot.copy()
+                            if annotate_center_image:
+                                cv2.circle(snapshot, (int(bx), int(by)), 8, (0, 0, 255), -1)
+                                cv2.circle(snapshot, (int(cx), int(cy)), 8, (255, 0, 0), -1)
+                                cv2.putText(snapshot, f"HIT dist={prev_dist:.1f}", (int(bx)+10, int(by)-10),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
+                            img_path = save_highlight_frame(snapshot, highlight_dir, prev_frame_num_snapshot, tag="hit")
+                            print(f"📸 精彩瞬间中心帧已保存: {img_path}")
+                        last_hit_frame = prev_frame_num_snapshot
+                        highlight_count += 1
+                        print(f"⭐ 精彩瞬间-击球(最小距离): 计划保存短视频（前5后15），中心帧 {prev_frame_num_snapshot} (total={highlight_count})")
+                        # 重置候选
+                        prev_display_snapshot = None
+                        prev_frame_num_snapshot = None
 
                 # 更新时序状态
                 prev2_dist = prev_dist
@@ -624,12 +695,19 @@ def main(config_path="configs/default_config.yaml"):
         # 添加帧号
         display_frame = put_chinese_text(display_frame, f"Frame: {frame_num}", (text_x_offset, panel_height - 10), 0.6, (255, 255, 255))
 
-        cv2.imshow("Tennis Analysis", display_frame)
+        if not headless:
+            cv2.imshow("Tennis Analysis", display_frame)
         if out:
             out.write(display_frame)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            print("User pressed 'q', exiting program")
+        if not headless:
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                print("User pressed 'q', exiting program")
+                break
+
+        # 可配置的最大帧数限制，便于快速验证
+        if max_frames_limit > 0 and frame_num >= max_frames_limit:
+            print(f"达到最大验证帧数 {max_frames_limit}，提前结束运行以便快速验证")
             break
         frame_num += 1
 
