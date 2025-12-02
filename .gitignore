@@ -67,4 +67,4 @@ node_modules/
 __pycache__/*.pyc
 clips/highlights/recordings/
 debug_frames/
-.gitignore
+debug_frames/
