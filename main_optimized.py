@@ -235,13 +235,17 @@ class OptimizedRenderer:
             cv2.putText(display_frame, detection_info, (10, frame_height - 20), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
-def main_optimized(config_path="configs/roi_enabled_config.yaml"):
+def main_optimized(config_path="configs/roi_enabled_config.yaml", input_path: str = None, output_path: str = None):
     """优化版本的主处理函数"""
     print("🚀 启动优化版本视频处理")
     print("=" * 50)
     
     # 加载配置
     config = load_config(config_path)
+    if input_path:
+        config['video_input_path'] = input_path
+    if output_path:
+        config['video_output_path'] = output_path
     video_path = config['video_input_path']
     
     # 添加性能优化配置（如果不存在）
@@ -389,6 +393,23 @@ def main_optimized(config_path="configs/roi_enabled_config.yaml"):
             print("💡 可以考虑启用更多并行优化")
 
 if __name__ == "__main__":
-    import sys
-    config_path = sys.argv[1] if len(sys.argv) > 1 else "configs/roi_enabled_config.yaml"
-    main_optimized(config_path)
+    import argparse, os
+    parser = argparse.ArgumentParser(description='优化版网球分析系统')
+    parser.add_argument('--config', '-c', default='configs/roi_enabled_config.yaml', help='配置文件路径')
+    parser.add_argument('--input', '-i', default=None, help='输入视频路径或URL，覆盖配置文件')
+    parser.add_argument('--output', '-o', default=None, help='输出视频完整路径，覆盖配置文件')
+    parser.add_argument('--output_dir', default=None, help='输出目录（与输入同名文件）')
+    args = parser.parse_args()
+
+    final_output = args.output
+    if not final_output and args.output_dir:
+        in_base = os.path.basename(args.input) if args.input else None
+        if not in_base:
+            in_base = os.path.basename(load_config(args.config)['video_input_path'])
+        if not in_base:
+            in_base = 'output_video.mp4'
+        elif not os.path.splitext(in_base)[1]:
+            in_base = f"{in_base}.mp4"
+        final_output = os.path.join(args.output_dir, in_base)
+
+    main_optimized(args.config, input_path=args.input, output_path=final_output)

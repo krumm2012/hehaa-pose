@@ -12,6 +12,7 @@ import os
 import numpy as np
 import time
 from PIL import Image, ImageDraw, ImageFont
+import json
 from collections import deque
 
 def load_config(config_path="configs/default_config.yaml"):
@@ -75,11 +76,27 @@ def save_highlight_clip(frames_map: dict, out_dir: str, center_frame_num: int, f
     writer.release()
     return path
 
-def main(config_path="configs/default_config.yaml"):
+def main(config_path="configs/default_config.yaml", input_path: str = None, output_path: str = None, original_name: str = None, output_dir: str = None):
     print("正在加载配置...")
     config = load_config(config_path)
+    # 覆盖输入/输出路径（如通过命令行传入）
+    if input_path:
+        config['video_input_path'] = input_path
+    if output_path:
+        config['video_output_path'] = output_path
+    # 如果指定了输出目录，更新高光文件输出目录
+    if output_dir:
+        if 'highlights' not in config:
+            config['highlights'] = {}
+        config['highlights']['output_dir'] = output_dir
+        print(f"高光文件输出目录设置为: {output_dir}")
+
     video_path = config['video_input_path']
+    # 如果提供了原始文件名，在日志中显示，否则显示实际路径
+    display_name = original_name if original_name else video_path
     print(f"配置加载完成，视频路径: {video_path}")
+    if original_name:
+        print(f"处理文件: {original_name}")
     
     # 获取显示选项配置
     display_opts = config.get('display_options', {})
@@ -144,7 +161,10 @@ def main(config_path="configs/default_config.yaml"):
 
     # 确保输出目录存在
     output_path = create_output_directory(config['video_output_path'])
-    print(f"创建输出视频: {output_path}")
+    if original_name:
+        print(f"创建输出视频: {output_path} (来源: {original_name})")
+    else:
+        print(f"创建输出视频: {output_path}")
     
     out = cv2.VideoWriter(output_path,
                           cv2.VideoWriter_fourcc(*'mp4v'),
@@ -551,6 +571,61 @@ def main(config_path="configs/default_config.yaml"):
                                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
                             img_path = save_highlight_frame(snapshot, highlight_dir, prev_frame_num_snapshot, tag="hit")
                             print(f"📸 精彩瞬间中心帧已保存: {img_path}")
+
+                        # 4) 生成分析JSON与阶段占位截图（与最终mp4同名基名）
+                        try:
+                            base_name = f"highlight_{prev_frame_num_snapshot:06d}_hit"
+                            base_path = os.path.join(highlight_dir, base_name)
+
+                            # 分析当前帧的指标（使用最新的 pose/racket/ball）
+                            try:
+                                analysis = swing_analyzer.analyze_swing_components(
+                                    pose_results if pose_results else [],
+                                    racket_results if racket_results else [],
+                                    (ball_position[0], ball_position[1]) if ball_position else None,
+                                    (frame_height, frame_width)
+                                )
+                            except Exception as _e:
+                                print(f"分析组件计算失败: {_e}")
+                                analysis = {}
+
+                            analysis_payload = {
+                                "frame_center": int(prev_frame_num_snapshot),
+                                "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                                "analysis": analysis
+                            }
+
+                            # 写入 .analysis.json
+                            try:
+                                with open(f"{base_path}.analysis.json", "w", encoding="utf-8") as f:
+                                    json.dump(analysis_payload, f, ensure_ascii=False, indent=2)
+                                print(f"📝 分析JSON已保存: {base_path}.analysis.json")
+                            except Exception as _e:
+                                print(f"保存分析JSON失败: {_e}")
+
+                            # 生成阶段占位截图（先用同一张snapshot占位，后续可替换为阶段化帧）
+                            try:
+                                if prev_display_snapshot is not None:
+                                    phase_tags = [
+                                        ("prep", "准备"),
+                                        ("turn", "转身"),
+                                        ("drop", "降拍"),
+                                        ("swing", "挥拍"),
+                                        ("foot", "步伐")
+                                    ]
+                                    for tag, zh in phase_tags:
+                                        out_img = prev_display_snapshot.copy()
+                                        # 轻微标注角标，便于区分（不影响主流程）
+                                        try:
+                                            cv2.putText(out_img, zh, (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2)
+                                        except Exception:
+                                            pass
+                                        cv2.imwrite(f"{base_path}_{tag}.jpg", out_img)
+                                    print(f"🖼️ 阶段占位截图已保存: {base_path}_[prep|turn|drop|swing|foot].jpg")
+                            except Exception as _e:
+                                print(f"保存阶段占位截图失败: {_e}")
+                        except Exception as e_inner:
+                            print(f"生成分析侧车文件失败: {e_inner}")
                         last_hit_frame = prev_frame_num_snapshot
                         highlight_count += 1
                         print(f"⭐ 精彩瞬间-击球(最小距离): 计划保存短视频（前5后15），中心帧 {prev_frame_num_snapshot} (total={highlight_count})")
@@ -745,10 +820,33 @@ def main(config_path="configs/default_config.yaml"):
 
 if __name__ == "__main__":
     import argparse
-    
+    import os
+
     parser = argparse.ArgumentParser(description='网球分析系统')
     parser.add_argument('--config', '-c', default='configs/default_config.yaml',
-                       help='配置文件路径 (默认: configs/default_config.yaml)')
-    
+                        help='配置文件路径 (默认: configs/default_config.yaml)')
+    parser.add_argument('--input', '-i', default=None, help='输入视频路径或URL，覆盖配置文件')
+    parser.add_argument('--output', '-o', default=None, help='输出视频完整路径，覆盖配置文件')
+    parser.add_argument('--output_dir', default=None, help='输出目录（与输入同名文件）')
+    parser.add_argument('--original_name', default=None, help='原始文件名（用于显示和日志）')
+
     args = parser.parse_args()
-    main(args.config)
+
+    # 处理 output_dir 生成完整输出文件路径
+    final_output = args.output
+    if not final_output and args.output_dir:
+        # 如果有原始文件名，使用原始文件名作为输出文件名基础
+        if args.original_name:
+            in_base = args.original_name
+        else:
+            in_base = os.path.basename(args.input) if args.input else None
+            if not in_base:
+                in_base = os.path.basename(load_config(args.config)['video_input_path'])
+        # 确保扩展名
+        if not in_base:
+            in_base = 'output_video.mp4'
+        elif not os.path.splitext(in_base)[1]:
+            in_base = f"{in_base}.mp4"
+        final_output = os.path.join(args.output_dir, in_base)
+
+    main(args.config, input_path=args.input, output_path=final_output, original_name=args.original_name, output_dir=args.output_dir)

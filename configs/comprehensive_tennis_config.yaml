@@ -132,6 +132,8 @@ roi_settings:
     show_roi_points: true                # 显示ROI点
     highlight_detections: true           # 高亮检测结果
     show_roi_stats: true                 # 显示ROI统计
+  logging:
+    log_coordinate_adjustment: false     # 关闭坐标转换日志
     
   # ROI颜色设置
   colors:

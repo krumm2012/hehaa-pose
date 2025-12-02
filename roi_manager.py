@@ -43,6 +43,10 @@ class ROIManager:
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
             self.logger.setLevel(logging.INFO)
+        # 坐标转换日志开关（默认关闭）
+        self.log_coord_adjust = bool(
+            self.config.get('roi_settings', {}).get('logging', {}).get('log_coordinate_adjustment', False)
+        )
     
     def interactive_roi_selection(self, frame: np.ndarray, window_name: str = "ROI Selection") -> List[Tuple[int, int]]:
         """
@@ -554,5 +558,6 @@ class ROIManager:
             # 未知类型，返回原始检测结果
             return detections
         
-        print(f"🔄 [坐标转换] {detection_type}: {len(detections)} → {len(adjusted_detections)} 个检测结果，偏移量: {roi_offset}")
+        if self.log_coord_adjust:
+            print(f"🔄 [坐标转换] {detection_type}: {len(detections)} → {len(adjusted_detections)} 个检测结果，偏移量: {roi_offset}")
         return adjusted_detections

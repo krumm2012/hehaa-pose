@@ -81,6 +81,8 @@ roi_settings:
     show_roi_points: true
     highlight_detections: true
     show_roi_stats: true
+  logging:
+    log_coordinate_adjustment: false
 
 ball_detection_debug:
   log_detection: true
