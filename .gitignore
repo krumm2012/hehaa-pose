@@ -65,3 +65,4 @@ models/*.onnx
 # Node/Frontend (if any)
 node_modules/
 __pycache__/*.pyc
+clips/highlights/recordings/
