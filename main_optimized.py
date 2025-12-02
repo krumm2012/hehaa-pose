@@ -281,7 +281,8 @@ def main_optimized(config_path="configs/roi_enabled_config.yaml", input_path: st
     
     # 输出视频设置
     output_path = create_output_directory(config['video_output_path'])
-    out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (frame_width, frame_height))
+    out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'avc1'),
+                          fps, (frame_width, frame_height))
     
     # ROI初始化
     print("🎯 初始化ROI管理器...")

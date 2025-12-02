@@ -138,7 +138,7 @@ def create_ball_detection_video(input_video, output_video, config_path, show_pro
         print(f"📁 创建输出目录: {output_dir}")
     
     # 创建视频写入器
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fourcc = cv2.VideoWriter_fourcc(*'avc1')
     video_writer = cv2.VideoWriter(output_video, fourcc, fps, (frame_width, frame_height))
     
     if not video_writer.isOpened():

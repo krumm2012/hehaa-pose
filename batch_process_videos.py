@@ -61,9 +61,9 @@ def process_video(video_path, config):
     
     # 创建视频写入对象
     out = cv2.VideoWriter(output_path,
-                        cv2.VideoWriter_fourcc(*'mp4v'),
-                        fps if fps > 0 else 25,
-                        (frame_width, frame_height))
+                          cv2.VideoWriter_fourcc(*'avc1'),
+                          fps if fps > 0 else 25,
+                          (frame_width, frame_height))
     
     # 初始化组件
     pose_module = PoseEstimator(config['yolo_pose_model_path'], config)

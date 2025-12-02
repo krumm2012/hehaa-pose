@@ -20,7 +20,7 @@ def create_test_video():
     os.makedirs('data', exist_ok=True)
     
     # 创建视频写入器
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fourcc = cv2.VideoWriter_fourcc(*'avc1')
     out = cv2.VideoWriter('data/input_video.mp4', fourcc, fps, (width, height))
     
     print(f"正在创建测试视频: data/input_video.mp4")

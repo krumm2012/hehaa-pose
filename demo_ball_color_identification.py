@@ -186,7 +186,7 @@ def demo_ball_color_identification():
     print(f"🎬 输出视频路径: {output_video_path}")
     
     # 创建视频写入器
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fourcc = cv2.VideoWriter_fourcc(*'avc1')
     video_writer = cv2.VideoWriter(output_video_path, fourcc, fps, (frame_width, frame_height))
     
     if not video_writer.isOpened():

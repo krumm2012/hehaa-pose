@@ -70,7 +70,8 @@ def save_highlight_clip(frames_map: dict, out_dir: str, center_frame_num: int, f
     h, w = frames_map[ordered_nums[0]].shape[:2]
     filename = f"highlight_{center_frame_num:06d}_{tag}.mp4"
     path = os.path.join(out_dir, filename)
-    writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'mp4v'), fps if fps > 0 else 25, (w, h))
+    writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*'avc1'),
+                             fps if fps > 0 else 25, (w, h))
     for fn in ordered_nums:
         writer.write(frames_map[fn])
     writer.release()
@@ -167,7 +168,7 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
         print(f"创建输出视频: {output_path}")
     
     out = cv2.VideoWriter(output_path,
-                          cv2.VideoWriter_fourcc(*'mp4v'),
+                          cv2.VideoWriter_fourcc(*'avc1'),
                           fps if fps > 0 else 25,  # 如果原始fps为0，提供默认值
                           (frame_width, frame_height))
 
