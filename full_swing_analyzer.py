@@ -12,7 +12,8 @@ class FullSwingAnalyzer:
             "left_wrist", "right_wrist", "left_hip", "right_hip",
             "left_knee", "right_knee", "left_ankle", "right_ankle"
         ]
-        self.dominant_hand = self.config.get('dominant_hand', 'right')
+        swing_config = self.config.get('swing_analysis', {})
+        self.dominant_hand = swing_config.get('dominant_hand', 'right')
 
     def _calculate_angle(self, p1, p2, p3): # p2 is the vertex
         """Calculates the angle between three points (p1-p2-p3)."""
@@ -95,7 +96,7 @@ class FullSwingAnalyzer:
 
         if all([non_dom_shoulder, non_dom_elbow, non_dom_wrist]):
             arm_extension = self._calculate_angle(non_dom_shoulder, non_dom_elbow, non_dom_wrist)
-            metrics['non_dominant_arm_extension'] = f"{arm_extension:.1f}°"
+            metrics['off_arm_ext'] = f"{arm_extension:.1f}°"
 
         return metrics
 
@@ -108,12 +109,13 @@ class FullSwingAnalyzer:
         
         if dom_wrist and ball_position:
             # 计算击球点相对于身体的位置
+            # 计算击球点相对于身体的位置
             contact_x_diff = ball_position[0] - dom_wrist[0]
-            metrics['contact_point_position'] = "Front" if abs(contact_x_diff) < 50 else \
-                                              "Side" if contact_x_diff < 0 else "Late"
+            metrics['hit_point'] = "Front" if abs(contact_x_diff) < 50 else \
+                                               "Side" if contact_x_diff < 0 else "Late"
             
             # 计算击球高度
-            metrics['contact_height'] = "Low" if ball_position[1] > dom_wrist[1] + 50 else \
+            metrics['hit_height'] = "Low" if ball_position[1] > dom_wrist[1] + 50 else \
                                       "Mid" if abs(ball_position[1] - dom_wrist[1]) <= 50 else "High"
 
         # 分析手臂伸展度
@@ -128,7 +130,7 @@ class FullSwingAnalyzer:
 
         if all([dom_shoulder, dom_elbow, dom_wrist]):
             arm_extension = self._calculate_angle(dom_shoulder, dom_elbow, dom_wrist)
-            metrics['arm_extension'] = f"{arm_extension:.1f}°"
+            metrics['arm_ext'] = f"{arm_extension:.1f}°"
 
         return metrics
 
@@ -159,7 +161,8 @@ class FullSwingAnalyzer:
             ankle = keypoints.get(f"{side}_ankle")
             if all([hip, knee, ankle]):
                 knee_angle = self._calculate_angle(hip, knee, ankle)
-                metrics[f'{side}_knee_angle'] = f"{knee_angle:.1f}°"
+                lbl = "L" if side == "left" else "R"
+                metrics[f'{lbl}_knee_angle'] = f"{knee_angle:.1f}°"
 
         return metrics
 
@@ -177,7 +180,7 @@ class FullSwingAnalyzer:
             hip_vector = np.array(right_hip) - np.array(left_hip)
             shoulder_vector = np.array(right_shoulder) - np.array(left_shoulder)
             separation_angle = self._calculate_angle_between_vectors(hip_vector, shoulder_vector)
-            metrics['hip_shoulder_separation'] = f"{separation_angle:.1f}°"
+            metrics['hip_shoulder_sep'] = f"{separation_angle:.1f}°"
 
         return metrics
 

@@ -1,0 +1,328 @@
+# YOLO26-pose 配置文件
+# 基于 comprehensive_tennis_config.yaml，使用 YOLO26-pose 模型
+
+# ==================== 基础视频设置 ====================
+video_input_path: "data/input_video.mp4"
+video_output_path: "data/output_video.mp4"
+save_video: true                               # 是否保存结果视频
+
+# 🆕 使用 YOLO26-pose 模型 (Core ML 格式)
+yolo_pose_model_path: "models/yolo26m-pose.mlpackage"
+pose_compute_units: "ALL"  # 姿态检测计算单元: CPU, GPU, ANE, ALL
+
+tracknet_model_path: "models/tracknetv2_weights.pth"
+racket_yolo_model_path: "models/yolov8n.pt"
+
+# ==================== 🎯 YOLO26n 统一检测配置 ====================
+unified_detection:
+  enabled: true                                # 启用统一检测（替代 HSV + YOLOv8n）
+  model_path: "yolo26n.mlpackage"              # YOLO26n Core ML 模型
+  ball_confidence_threshold: 0.02              # 球检测置信度阈值
+  racket_confidence_threshold: 0.35            # 球拍检测置信度阈值 (平衡准确性和召回率)
+  compute_units: "ALL"                         # 计算单元: CPU, GPU, ANE, ALL
+  # CPU: 仅使用 CPU
+  # GPU: 使用 CPU + GPU (Metal)
+  # ANE: 使用 CPU + Apple Neural Engine
+  # ALL: 自动选择最优（推荐）
+
+# ==================== 🚀 I/O Pipeline 配置 ====================
+io_pipeline:
+  enabled: false                                # 启用 I/O Pipeline（并行读写）
+  buffer_size: 3                               # 缓冲区大小（2-4 推荐）
+
+# ==================== 🚀 异步处理配置 ====================
+async_detection:
+  enabled: true                              # 启用异步并行检测
+  max_workers: 3                             # 工作线程数（姿态、球、球拍）
+
+# ==================== ⚡ 速度分析配置 ====================
+speed_analysis:
+  enabled: true                              # 启用速度分析
+  pixel_to_meter: 0.01                       # 像素到米转换比例（需校准）
+  show_ball_speed: true                      # 显示球速
+  show_swing_speed: true                     # 显示挥拍速度
+
+# ==================== 🏸 挥拍分析配置 ====================
+swing_analysis:
+  enabled: true
+  dominant_hand: "right"                     # 球员惯用手: "right" 或 "left"
+  mirror_view: true                          # 🆕 视角镜像: 如果球员面向摄像头（左边是右手），设为 true
+  two_hand_wrist_distance_max_px: 60         # 判定双反的手腕距离阈值
+  min_swing_confidence: 0.5                  # 挥拍分析最小置信度
+
+# ==================== 🎯 击球点分析配置 ====================
+hit_zone_analysis:
+  enabled: true                              # 启用击球点分析
+  sweet_spot_ratio: 0.3                      # 甜区比例
+  show_hit_quality: true                     # 显示击球质量
+
+# ==================== 🤖 姿态检测参数 ====================
+pose_confidence_threshold: 0.5           # 姿态检测置信度阈值
+pose_keypoint_confidence: 0.3            # 关键点置信度阈值
+
+pose_estimation_debug:
+  log_keypoints: false                   # 关键点日志
+  log_tracking: true                     # 姿态追踪日志
+  use_roi_detection: false               # 是否在ROI区域内检测姿态（false=全帧检测，推荐）
+
+# 姿态关键点过滤
+pose_tracking_enabled: true              # 启用姿态追踪
+pose_smoothing_factor: 0.7               # 姿态平滑因子
+
+# ==================== 🎾 球检测核心参数 ====================
+ball_confidence_threshold: 0.75
+ball_tracking_enabled: true
+static_filter_only: false
+ball_trajectory_max_len: 50
+max_lost_frames_for_track: 8
+max_ball_match_distance_px: 52
+
+# 球尺寸过滤参数
+min_ball_radius: 18
+max_ball_radius: 45
+min_ball_area: 180
+min_ball_movement: 7
+
+# 静态球过滤参数
+static_ball_movement_threshold_px: 6
+static_ball_frames_threshold: 10
+
+# 噪点过滤参数
+noise_filter_quality_threshold: 0.45
+noise_filter_circularity_threshold: 0.56
+noise_filter_min_edge_distance: 12
+
+# HSV颜色空间过滤参数
+hsv_lower_hue: 20
+hsv_upper_hue: 70
+hsv_lower_sat: 50
+hsv_upper_sat: 255
+hsv_lower_val: 55
+hsv_upper_val: 255
+
+# Hough圆检测
+hough_dp: 1
+hough_min_dist: 36
+hough_param1: 35
+hough_param2: 6
+
+# 球检测策略
+ball_detection_strategy:
+  prefer_largest_ball: false
+
+# ==================== 🏓 球拍检测参数 ====================
+racket_confidence_threshold: 0.4
+racket_lost_threshold_frames: 5
+racket_detection_debug:
+  log_detection: true
+  log_tracking: true
+
+racket_tracking_enabled: true
+racket_smoothing_factor: 0.6
+racket_match_distance_threshold: 80
+
+# ==================== 🏸 挥拍动作分析参数 ====================
+forehand_wrist_elbow_angle_min: 90
+forehand_wrist_elbow_angle_max: 170
+backhand_wrist_elbow_angle_min: 90
+backhand_wrist_elbow_angle_max: 170
+two_hand_wrist_distance_max_px: 50
+dominant_hand: "right"
+
+swing_detection_enabled: true
+swing_velocity_threshold: 15
+swing_acceleration_threshold: 5
+swing_angle_change_threshold: 30
+
+swing_phases:
+  preparation_duration: 10
+  execution_duration: 8
+  follow_through_duration: 12
+
+# ==================== 🚫 边界和掩码设置 ====================
+use_boundary: false
+boundary_x1: 0
+boundary_y1: 0
+boundary_x2: 9999
+boundary_y2: 9999
+draw_boundary: false
+
+use_mask_zones: true
+draw_mask_zones: true
+mask_zones:
+  - name: "interference_881_244"
+    x: 866
+    y: 229
+    width: 30
+    height: 30
+
+# ==================== 🎯 ROI区域功能 ====================
+roi_settings:
+  enabled: true
+  interactive_selection: false
+  auto_load_config: true
+  roi_config_path: "configs/roi_config.yaml"
+  crop_margin: 12
+  
+  visualization:
+    show_roi_boundary: false
+    show_roi_fill: false
+    show_roi_points: true
+    highlight_detections: true
+    show_roi_stats: true
+  
+  logging:
+    log_coordinate_adjustment: false
+    
+  colors:
+    boundary: [0, 255, 255]
+    fill: [0, 255, 255]
+    points: [0, 255, 0]
+    inside_detection: [0, 255, 0]
+    outside_detection: [0, 0, 255]
+
+# ==================== 🔍 调试和日志设置 ====================
+ball_detection_debug:
+  log_detection: false
+  log_tracking: false
+  log_filtering: false
+  log_noise_filter: false
+  log_static_filtering: false
+  log_size_filtering: false
+  log_mask_zones: false
+  log_trajectory: false
+  log_roi_filtering: false
+  log_hsv_detection: false
+  log_boundary_check: false
+  log_advanced_processing: false
+  log_simulation: false
+  save_debug_frames: false
+  debug_frames_path: "debug_frames/"
+  debug_frame_interval: 25
+  max_log_detections: 15
+
+swing_analysis_debug:
+  log_swing_detection: false
+  log_swing_classification: false
+  log_swing_phases: false
+  log_swing_metrics: false
+
+# ==================== 🚫 人脸替换设置 ====================
+face_replacement:
+  enabled: false
+
+# ==================== 📹 视频处理设置 ====================
+video_processing:
+  skip_frames: 0
+  show_fps: true
+  output_fps: 25
+  resize_factor: 1.0
+  max_frames: 0
+
+# 性能优化设置
+performance_optimization:
+  use_gpu: true
+  batch_processing: false
+  multi_threading: true
+  memory_optimization: true
+  enable_parallel_detection: true
+  skip_frames: 0
+  max_workers: 4
+  enable_gpu_acceleration: true
+  minimal_ui: true
+  headless: true
+
+# ==================== 🎨 显示控制 ====================
+display_options:
+  show_swing_type: true
+  show_swing_phase: true
+  show_ball_position: true
+  show_ball_trajectory: true
+  show_racket_state: true
+  show_racket_trajectory: true
+  show_pose_keypoints: true
+  show_pose_skeleton: true
+  show_velocity_vectors: true
+  show_angle_measurements: true
+  show_boundary: false
+  show_static_balls: true
+  show_fps: true
+  show_frame_number: true
+  show_detection_confidence: true
+
+# 文字显示设置
+text_display:
+  font_size: 16
+  font_thickness: 2
+  text_color: [255, 255, 255]
+  background_color: [0, 0, 0]
+  text_alpha: 0.7
+
+# ==================== 📊 数据输出设置 ====================
+data_export:
+  export_enabled: true
+  export_format: "csv"
+  export_path: "data/analysis_results/"
+  export_ball_trajectory: true
+  export_racket_trajectory: true
+  export_pose_keypoints: true
+  export_swing_analysis: true
+  export_frame_statistics: true
+
+# ==================== 📝 字体设置 ====================
+font_dir: "fonts"
+preferred_chinese_font: "PingFang SC"
+auto_download_font: false
+
+# ==================== 🔧 其他设置 ====================
+enable_manual_boundary: false
+debug_mode: true
+ball_radius_px: 10
+
+# ==================== 🎯 模拟参数 ====================
+sim_ball_detection_noise: 1
+sim_num_static_balls: 0
+
+# ==================== 高级功能设置 ====================
+advanced_face_detection:
+  detection_priority: []
+  detector_control:
+    enable_front_face: false
+    enable_front_face_alt: false
+    enable_front_face_alt2: false
+    enable_profile_face: false
+    enable_full_body: false
+
+glip_model:
+  enabled: false
+
+mtcnn:
+  enabled: false
+
+# ==================== 📈 性能监控 ====================
+performance_monitoring:
+  enabled: true
+  log_processing_time: true
+  log_memory_usage: true
+  log_fps: true
+  save_performance_report: true
+
+# ==================== ⭐ 精彩瞬间设置 ====================
+highlights:
+  enabled: false
+  output_dir: "data/highlights/"
+  hit_distance_factor: 1.5
+  racket_radius_factor: 1.15
+  cooldown_frames: 12
+  max_highlights: 50
+  distance_scale: 5
+  min_inside_frames: 1
+  min_relative_threshold_ratio: 2.0
+  min_exit_increase_px: 0
+  min_enter_decrease_px: 0
+  min_speed_px_per_frame: 0
+  pre_frames: 5
+  post_frames: 15
+  save_center_image: true
+  annotate_center_image: true
+  racket_selection: nearest

@@ -11,6 +11,8 @@ venv_311
 .venv_311/
 pip-wheel-metadata/
 .pytest_cache/
+venv_yolo26/
+venv_tracknet/
 
 # Byte-compiled / logs
 *.log

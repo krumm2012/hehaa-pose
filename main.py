@@ -8,6 +8,11 @@ from full_swing_analyzer import FullSwingAnalyzer # <-- IMPORT NEW ANALYZER
 from head_replacement_processor import HeadReplacementProcessor  # <-- NEW IMPORT
 from roi_manager import ROIManager  # <-- ROI IMPORT
 from enhanced_motion_capture import EnhancedMotionCapture  # <-- MOTION CAPTURE IMPORT
+from async_detector import AsyncDetector  # <-- ASYNC DETECTOR
+from speed_analyzer import SpeedAnalyzer  # <-- SPEED ANALYZER
+from hit_zone_analyzer import HitZoneAnalyzer  # <-- HIT ZONE ANALYZER
+from yolo26n_unified_detector import YOLO26nUnifiedDetector, BallDetectionWrapper, RacketDetectionWrapper  # <-- UNIFIED DETECTOR
+from video_io_pipeline import VideoIOPipeline  # <-- I/O PIPELINE
 import os
 import numpy as np
 import time
@@ -161,16 +166,22 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
     print(f"视频信息 - 宽度: {frame_width}, 高度: {frame_height}, FPS: {fps}, 总帧数 (估计): {total_frames if total_frames > 0 else 'N/A'}")
 
     # 确保输出目录存在
-    output_path = create_output_directory(config['video_output_path'])
-    if original_name:
-        print(f"创建输出视频: {output_path} (来源: {original_name})")
-    else:
-        print(f"创建输出视频: {output_path}")
+    save_video_enabled = config.get('save_video', True)
+    out = None
     
-    out = cv2.VideoWriter(output_path,
-                          cv2.VideoWriter_fourcc(*'avc1'),
-                          fps if fps > 0 else 25,  # 如果原始fps为0，提供默认值
-                          (frame_width, frame_height))
+    if save_video_enabled:
+        output_path = create_output_directory(config['video_output_path'])
+        if original_name:
+            print(f"创建输出视频: {output_path} (来源: {original_name})")
+        else:
+            print(f"创建输出视频: {output_path}")
+        
+        out = cv2.VideoWriter(output_path,
+                              cv2.VideoWriter_fourcc(*'avc1'),
+                              fps if fps > 0 else 25,  # 如果原始fps为0，提供默认值
+                              (frame_width, frame_height))
+    else:
+        print("💡 [配置] 已禁用视频保存，处理完成后将不会产生输出视频。")
 
     # 精彩瞬间配置
     highlights_cfg = config.get('highlights', {})
@@ -281,17 +292,75 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
     pose_module = PoseEstimator(config['yolo_pose_model_path'], config, roi_manager)
     print("✅ 姿势估计模块初始化完成")
     
-    print("🎾 初始化球追踪模块...")
-    ball_module = BallTracker(config.get('tracknet_model_path', None), config, roi_manager)
-    print("✅ 球追踪模块初始化完成")
+    # 🎯 检查是否启用统一检测
+    unified_config = config.get('unified_detection', {})
+    use_unified_detection = unified_config.get('enabled', False)
     
-    print("🏓 初始化球拍检测模块...")
-    racket_module = RacketDetector(config['racket_yolo_model_path'], config, roi_manager)
-    print("✅ 球拍检测模块初始化完成")
+    if use_unified_detection:
+        print("� 初始化 YOLO26n 统一检测器...")
+        unified_detector = YOLO26nUnifiedDetector(
+            unified_config.get('model_path', 'yolo26n.mlpackage'),
+            unified_config,
+            roi_manager
+        )
+        # 创建兼容包装器
+        ball_module = BallDetectionWrapper(unified_detector)
+        racket_module = RacketDetectionWrapper(unified_detector)
+        print("✅ 统一检测器初始化完成")
+    else:
+        print("�🎾 初始化球追踪模块...")
+        ball_module = BallTracker(config.get('tracknet_model_path', None), config, roi_manager)
+        print("✅ 球追踪模块初始化完成")
+        
+        print("🏓 初始化球拍检测模块...")
+        racket_module = RacketDetector(config['racket_yolo_model_path'], config, roi_manager)
+        print("✅ 球拍检测模块初始化完成")
     
     print("🏸 初始化完整挥拍分析模块...")
     swing_analyzer = FullSwingAnalyzer(config)
     print("✅ 完整挥拍分析模块初始化完成")
+    
+    # 🚀 初始化异步检测器（如果未使用统一检测）
+    async_config = config.get('async_detection', {})
+    if async_config.get('enabled', True) and not use_unified_detection:
+        print("🚀 初始化异步检测器...")
+        async_detector = AsyncDetector(max_workers=async_config.get('max_workers', 3))
+        print("✅ 异步检测器初始化完成")
+        use_async = True
+    else:
+        use_async = False
+        if use_unified_detection:
+            print("ℹ️  使用统一检测，异步检测已禁用")
+        else:
+            print("⚠️ 异步检测已禁用，使用顺序检测")
+    
+    # ⚡ 初始化速度分析器
+    speed_config = config.get('speed_analysis', {})
+    if speed_config.get('enabled', True):
+        print("⚡ 初始化速度分析器...")
+        speed_analyzer = SpeedAnalyzer(
+            fps=fps,
+            pixel_to_meter=speed_config.get('pixel_to_meter', 0.01)
+        )
+        print("✅ 速度分析器初始化完成")
+        use_speed_analysis = True
+        prev_ball_pos = None  # 用于计算球速
+    else:
+        use_speed_analysis = False
+        print("⚠️ 速度分析已禁用")
+    
+    # 🎯 初始化击球点分析器
+    hit_zone_config = config.get('hit_zone_analysis', {})
+    if hit_zone_config.get('enabled', True):
+        print("🎯 初始化击球点分析器...")
+        hit_zone_analyzer = HitZoneAnalyzer(
+            sweet_spot_ratio=hit_zone_config.get('sweet_spot_ratio', 0.3)
+        )
+        print("✅ 击球点分析器初始化完成")
+        use_hit_zone_analysis = True
+    else:
+        use_hit_zone_analysis = False
+        print("⚠️ 击球点分析已禁用")
     
     print("🎬 开始视频处理循环...")
     
@@ -409,7 +478,36 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
             if frame_num % 30 == 0:  # 每30帧显示一次检测信息
                 print(f"🤖 [帧{frame_num}] 开始姿态检测（全帧模式），检测区域: {pose_detection_frame.shape}")
         
-        pose_results = pose_module.get_keypoints(pose_detection_frame)
+        # 🚀 异步并行检测（姿态、球、球拍）
+        if use_async:
+            detection_results = async_detector.detect_async(
+                frame=pose_detection_frame,
+                roi_frame=detection_frame,
+                roi_offset=roi_offset,
+                pose_estimator=pose_module,
+                ball_tracker=ball_module,
+                racket_detector=racket_module,
+                frame_count=frame_num
+            )
+            pose_results = detection_results['keypoints']
+            ball_positions = detection_results['balls']
+            racket_detections = detection_results['rackets']
+            
+            # 显示性能信息
+            if frame_num % 100 == 0:
+                timing = detection_results['timing']
+                print(f"⚡ [帧{frame_num}] 异步检测: {timing['total']*1000:.1f}ms "
+                      f"(姿态:{timing['pose']*1000:.1f}ms, "
+                      f"球:{timing['ball']*1000:.1f}ms, "
+                      f"球拍:{timing['racket']*1000:.1f}ms, "
+                      f"效率:{timing['parallel_efficiency']:.2f}x)")
+        else:
+            # 顺序检测（原方法）
+            pose_results = pose_module.get_keypoints(pose_detection_frame)
+            if frame_num % 30 == 0:
+                print(f"🎾 [帧{frame_num}] 开始球检测，检测区域: {detection_frame.shape}")
+            ball_positions = ball_module.predict_ball(detection_frame)
+            racket_detections = racket_module.detect_rackets(detection_frame)
         
         # 如果使用了ROI模式进行姿态检测，需要将检测结果坐标转换回原图坐标系
         if pose_use_roi and roi_offset != (0, 0) and pose_results:
@@ -418,10 +516,7 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
         if pose_results and display_opts.get('show_pose_keypoints', True):
             display_frame = pose_module.draw_keypoints(display_frame, pose_results)
             
-        # 🎾 处理球追踪 - 在ROI区域内检测
-        if frame_num % 30 == 0:  # 每30帧显示一次检测信息
-            print(f"🎾 [帧{frame_num}] 开始球检测，检测区域: {detection_frame.shape}")
-        ball_positions = ball_module.predict_ball(detection_frame)
+        # 🎾 处理球追踪结果
         
         # 坐标转换
         if roi_offset != (0, 0) and ball_positions:
@@ -446,17 +541,40 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
                 # 绘制球的轨迹（仅在追踪启用时）
                 ball_module.draw_trajectory(display_frame)
         
-        # 🏓 处理球拍检测 - 在ROI区域内检测
-        if frame_num % 30 == 0:  # 每30帧显示一次检测信息
-            print(f"🏓 [帧{frame_num}] 开始球拍检测，检测区域: {detection_frame.shape}")
-        racket_results = racket_module.detect_rackets(detection_frame)
-        
+        # 🏓 处理球拍检测结果
         # 坐标转换
-        if roi_offset != (0, 0) and racket_results:
-            racket_results = roi_manager.adjust_detection_coordinates(racket_results, roi_offset, "racket")
+        if roi_offset != (0, 0) and racket_detections:
+            racket_detections = roi_manager.adjust_detection_coordinates(racket_detections, roi_offset, "racket")
+
+        # 🏃‍♂️ 速度分析
+        if use_speed_analysis and ball_position:
+            current_ball_pos = (ball_position[0], ball_position[1])
+            if prev_ball_pos:
+                ball_speed_kmh = speed_analyzer.calculate_ball_speed(prev_ball_pos, current_ball_pos)
+                if ball_speed_kmh is not None and ball_speed_kmh > 0:
+                    if display_opts.get('show_ball_speed', True):
+                        cv2.putText(display_frame, f"{ball_speed_kmh:.1f} km/h", 
+                                    (int(ball_position[0]) + 15, int(ball_position[1]) - 15), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            prev_ball_pos = current_ball_pos
+
+        # 🎯 击球点分析
+        if use_hit_zone_analysis and ball_position and racket_detections:
+            racket_box = racket_detections[0]['box'] if racket_detections else None
+            if racket_box:
+                hit_analysis = hit_zone_analyzer.analyze_hit_zone(
+                    ball_pos=(ball_position[0], ball_position[1]),
+                    racket_bbox=tuple(racket_box)
+                )
+                if hit_analysis and display_opts.get('show_hit_quality', True):
+                    quality_text = f"Q:{hit_analysis['quality']*100:.0f}%"
+                    color = (0, 255, 0) if hit_analysis['quality'] > 0.7 else (0, 165, 255)
+                    cv2.putText(display_frame, quality_text, 
+                                (int(ball_position[0]) + 15, int(ball_position[1]) + 20), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
         # ⭐ 精彩瞬间（改进）：使用前后帧距离变化寻找局部最小距离帧
-        if (highlight_enabled and ball_position and racket_results 
+        if (highlight_enabled and ball_position and racket_detections 
                 and highlight_count < max_highlights):
             bx, by = float(ball_position[0]), float(ball_position[1])
 
@@ -465,7 +583,7 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
             if racket_selection_mode == 'nearest' and ball_position:
                 bx_tmp, by_tmp = float(ball_position[0]), float(ball_position[1])
                 best_dist = float('inf')
-                for racket in racket_results:
+                for racket in racket_detections:
                     if not isinstance(racket, dict) or 'box' not in racket:
                         continue
                     x1, y1, x2, y2 = racket['box']
@@ -478,7 +596,7 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
             else:
                 # 回退：取最大面积
                 max_area = -1
-                for racket in racket_results:
+                for racket in racket_detections:
                     if not isinstance(racket, dict) or 'box' not in racket:
                         continue
                     x1, y1, x2, y2 = racket['box']
@@ -582,7 +700,7 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
                             try:
                                 analysis = swing_analyzer.analyze_swing_components(
                                     pose_results if pose_results else [],
-                                    racket_results if racket_results else [],
+                                    racket_detections if racket_detections else [],
                                     (ball_position[0], ball_position[1]) if ball_position else None,
                                     (frame_height, frame_width)
                                 )
@@ -641,9 +759,9 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
                 prev_threshold = impact_threshold
                 prev_inside_flag = inside_now
             
-        if racket_results and display_opts.get('show_racket_state', True):
+        if racket_detections and display_opts.get('show_racket_state', True):
             # 绘制球拍状态
-            for racket in racket_results:
+            for racket in racket_detections:
                 if isinstance(racket, dict) and 'box' in racket:
                     box = racket['box']
                     cv2.rectangle(display_frame, (int(box[0]), int(box[1])), 
@@ -655,7 +773,7 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
             motion_analysis = motion_capture.analyze_roi_motion(
                 pose_results if pose_results else [],
                 ball_positions if ball_positions else [],
-                racket_results if racket_results else [],
+                racket_detections if racket_detections else [],
                 frame_num
             )
             
@@ -672,8 +790,8 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
             if roi_settings.get('visualization', {}).get('highlight_detections', True):
                 if ball_positions:
                     display_frame = roi_manager.highlight_roi_detections(display_frame, ball_positions, "ball")
-                if racket_results:
-                    display_frame = roi_manager.highlight_roi_detections(display_frame, racket_results, "racket")
+                if racket_detections:
+                    display_frame = roi_manager.highlight_roi_detections(display_frame, racket_detections, "racket")
         
         # 显示挥拍类型
         swing_type = "No Pose"  # 默认值
@@ -705,7 +823,7 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
             
             # 显示检测统计
-            detection_info = f"Poses:{len(pose_results)} Balls:{len(ball_positions) if ball_positions else 0} Rackets:{len(racket_results) if racket_results else 0}"
+            detection_info = f"Poses:{len(pose_results)} Balls:{len(ball_positions) if ball_positions else 0} Rackets:{len(racket_detections) if racket_detections else 0}"
             cv2.putText(display_frame, detection_info, (10, frame_height - 20), 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         
@@ -716,8 +834,9 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
         # 创建半透明信息面板
         if any([display_opts.get(opt, True) for opt in ['show_swing_type', 'show_ball_position', 'show_racket_state']]):
             info_panel = display_frame.copy()
-            panel_height = 400
-            cv2.rectangle(info_panel, (30, 20), (330, panel_height), (0, 0, 0), -1)
+            panel_height = 600  # 增加面板高度以显示更多指标
+            panel_width = 400   # 增加宽度防止截断
+            cv2.rectangle(info_panel, (30, 20), (panel_width, panel_height), (0, 0, 0), -1)
             alpha = 0.7
             display_frame = cv2.addWeighted(info_panel, alpha, display_frame, 1 - alpha, 0)
             
@@ -729,23 +848,28 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
 
             # 显示基本挥拍类型
             if display_opts.get('show_swing_type', True):
-                display_frame = put_chinese_text(display_frame, f"Swing Type: {swing_type}", (text_x_offset, current_y), 0.7, (255, 255, 255))
+                display_frame = put_chinese_text(display_frame, f"Swing: {swing_type}", (text_x_offset, current_y), 0.7, (255, 255, 255))
                 current_y += line_height
             
             # 显示球位置信息
             if display_opts.get('show_ball_position', True):
-                if ball_position:
-                    display_frame = put_chinese_text(display_frame, f"Ball Position: ({int(ball_position[0])}, {int(ball_position[1])})", (text_x_offset, current_y), 0.7, (255, 255, 255))
-                else:
-                    display_frame = put_chinese_text(display_frame, "Ball: Not Detected", (text_x_offset, current_y), 0.7, (255, 255, 255))
+                ball_text = "Ball: Detected" if ball_position else "Ball: Not Detected"
+                ball_color = (0, 255, 0) if ball_position else (0, 0, 255)
+                display_frame = put_chinese_text(display_frame, ball_text, (text_x_offset, current_y), 0.7, ball_color)
                 current_y += line_height
 
             # 添加球拍状态信息
-            if display_opts.get('show_racket_state', True) and racket_results:
-                for racket in racket_results:
-                    racket_state = racket.get('state', 'Unknown')
-                    display_frame = put_chinese_text(display_frame, f"Racket State: {racket_state}", (text_x_offset, current_y), 0.7, (255, 255, 255))
-                    current_y += line_height
+            if display_opts.get('show_racket_state', True):
+                if racket_detections:
+                    best_racket = max(racket_detections, key=lambda x: x.get('confidence', 0))
+                    conf = best_racket.get('confidence', 0)
+                    racket_text = f"Racket: Detected ({conf:.2f})"
+                    racket_color = (0, 255, 0)
+                else:
+                    racket_text = "Racket: Not Detected"
+                    racket_color = (0, 0, 255)
+                display_frame = put_chinese_text(display_frame, racket_text, (text_x_offset, current_y), 0.7, racket_color)
+                current_y += line_height
 
             # 显示完整挥拍分析指标
             if display_opts.get('show_swing_type', True) and pose_results:
@@ -753,7 +877,7 @@ def main(config_path="configs/default_config.yaml", input_path: str = None, outp
                 current_y += line_height
                 
                 # 显示挥拍阶段估计
-                phase_est = swing_analyzer.analyze_swing_components(pose_results, racket_results, ball_position, (frame_height, frame_width))
+                phase_est = swing_analyzer.analyze_swing_components(pose_results, racket_detections, ball_position, (frame_height, frame_width))
                 if isinstance(phase_est, dict):
                     for category, cat_metrics in phase_est.items():
                         if isinstance(cat_metrics, dict) and cat_metrics:

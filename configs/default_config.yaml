@@ -183,8 +183,8 @@ glip_model:
   
 # 头像替换配置
 face_replacement:
-  enabled: true                          # 是否启用头像替换（已关闭）
-  judy_head_image_path: "assets/judy_head.png"  # Judy头像图片路径
+  enabled: false                         # 是否启用头像替换（已关闭以提高性能）
+  judy_head_image_path: "assets/judy-head.png"  # Judy头像图片路径
   judy_head_scale_factor: 0.8             # 头像缩放因子（减小尺寸）
   blend_mode: "alpha"                     # 混合模式: "direct", "seamless", "alpha"
   face_detection_method: "opencv"           # 人脸检测方法: "glip", "opencv", "mediapipe"
