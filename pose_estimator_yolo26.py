@@ -284,38 +284,27 @@ class PoseEstimatorYOLO26:
         
         return person_keypoints_list
     
-    def classify_swing(self, keypoints_dict: List[Dict]) -> str:
+    def classify_swing(self, keypoints_dict: Dict[int, Dict[str, List[float]]]) -> str:
+        """实例方法映射到静态方法"""
+        if not keypoints_dict: return "No Person"
+        return self.classify_swing_static(keypoints_dict[0], self.config)
+
+    @staticmethod
+    def classify_swing_static(kpts: Dict[str, List[float]], config: Dict) -> str:
         """
-        分类挥拍类型
-        
-        Args:
-            keypoints_dict: 关键点字典列表
-            
-        Returns:
-            挥拍类型字符串
+        判断正手、反手或双反 (静态方法，不依赖模型实例)
         """
-        if not keypoints_dict:
-            return "No Pose"
-        
-        # 取第一个检测到的人
-        kpts = keypoints_dict[0]
-        
         # 必需的关键点
         lw = kpts.get("left_wrist")
         rw = kpts.get("right_wrist")
         ls = kpts.get("left_shoulder")
         rs = kpts.get("right_shoulder")
-        le = kpts.get("left_elbow")
-        re = kpts.get("right_elbow")
         
-        if not all([lw, rw, ls, rs, le, re]):
+        if not all([lw, rw, ls, rs]):
             return "Incomplete Pose"
         
-        # 双手反手判断
-        wrist_dist = np.linalg.norm(np.array(lw) - np.array(rw))
-        
-        # 获取配置 (修正读取层级)
-        swing_config = self.config.get('swing_analysis', {})
+        # 获取配置 (解析字典)
+        swing_config = config.get('swing_analysis', {})
         is_mirror = swing_config.get('mirror_view', False)
         dominant_hand = swing_config.get('dominant_hand', 'right')
         
@@ -327,7 +316,6 @@ class PoseEstimatorYOLO26:
         if wrist_dist < swing_config.get('two_hand_wrist_distance_max_px', 60):
             avg_wrist_x = (lw[0] + rw[0]) / 2
             
-            # 判断逻辑：如果手腕在身体惯用手对侧，即为双反
             if not is_mirror:
                 is_backhand_side = (dominant_hand == "right" and avg_wrist_x < body_center_x) or \
                                  (dominant_hand == "left" and avg_wrist_x > body_center_x)
@@ -344,18 +332,16 @@ class PoseEstimatorYOLO26:
         else:
             active_wrist, active_shoulder = lw, ls
         
-        # 判断正反手：
+        # 判断正反手
         if not is_mirror:
-            # 非镜像（从背后看）：右手球员，手在肩膀左侧(x < shoulder)是反手
             if (dominant_hand == "right" and active_wrist[0] < active_shoulder[0]) or \
                (dominant_hand == "left" and active_wrist[0] > active_shoulder[0]):
                 return "Backhand"
         else:
-            # 镜像（面向摄像头）：右手球员，手在肩膀右侧(x > shoulder)是反手
             if (dominant_hand == "right" and active_wrist[0] > active_shoulder[0]) or \
                (dominant_hand == "left" and active_wrist[0] < active_shoulder[0]):
                 return "Backhand"
-        
+                
         return "Forehand"
     
     def calculate_angle(self, p1: Tuple, p2: Tuple, p3: Tuple) -> float:

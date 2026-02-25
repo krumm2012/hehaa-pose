@@ -7,8 +7,8 @@ video_output_path: "data/output_video.mp4"
 save_video: true                               # 是否保存结果视频
 
 # 🆕 使用 YOLO26-pose 模型 (Core ML 格式)
-yolo_pose_model_path: "models/yolo26m-pose.mlpackage"
-pose_compute_units: "ALL"  # 姿态检测计算单元: CPU, GPU, ANE, ALL
+yolo_pose_model_path: "yolo26n-pose.mlpackage"
+pose_compute_units: "ANE"                      # 👈 锁定在 ANE (Neural Engine)
 
 tracknet_model_path: "models/tracknetv2_weights.pth"
 racket_yolo_model_path: "models/yolov8n.pt"
@@ -19,7 +19,7 @@ unified_detection:
   model_path: "yolo26n.mlpackage"              # YOLO26n Core ML 模型
   ball_confidence_threshold: 0.02              # 球检测置信度阈值
   racket_confidence_threshold: 0.35            # 球拍检测置信度阈值 (平衡准确性和召回率)
-  compute_units: "ALL"                         # 计算单元: CPU, GPU, ANE, ALL
+  compute_units: "GPU"                         # 👈 锁定在 GPU (Metal)
   # CPU: 仅使用 CPU
   # GPU: 使用 CPU + GPU (Metal)
   # ANE: 使用 CPU + Apple Neural Engine
