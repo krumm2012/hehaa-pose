@@ -47,17 +47,26 @@ OVERLAY_RECORD_FIELDS = [
     "frame_id",
     "event_id",
     "event_type",
-    "phase",
+    "milestone",
+    "motion_phase",
+    "model_raw_label",
+    "raw_label_conflict",
     "is_peak_frame",
+    "is_contact_frame",
     "event_start_frame",
     "event_end_frame",
     "peak_frame",
+    "contact_frame",
+    "bounce_frame",
+    "shot_direction",
     "motion_energy",
     "raw_swing_type",
     "wrist_speed",
     "racket_speed",
     "ball_racket_distance",
     "contact_score",
+    "event_contact_confidence",
+    "racket_lag_at_contact",
     "two_hand_distance",
 ]
 
@@ -70,6 +79,11 @@ def load_json(path: str) -> Dict:
 def default_event_json(frame_json_path: str) -> str:
     path = Path(frame_json_path)
     return str(path.with_name(f"{path.stem}_swing_events.json"))
+
+
+def default_coach_json(frame_json_path: str) -> str:
+    path = Path(frame_json_path)
+    return str(path.with_name(f"{path.stem}_coach_dataset.json"))
 
 
 def default_output_video(frame_json_path: str) -> str:
@@ -101,6 +115,104 @@ def build_event_lookup(analysis: Dict) -> Tuple[Dict[int, Dict], Dict[int, Dict]
             "event": event,
         }
     return events, traces
+
+
+def build_coach_lookup(coach_data: Optional[Dict]) -> Dict[int, Dict]:
+    if not isinstance(coach_data, dict):
+        return {}
+    return {
+        int(event["event_id"]): event
+        for event in coach_data.get("events", [])
+        if isinstance(event, dict) and event.get("event_id") is not None
+    }
+
+
+def _coach_frame(coach_event: Optional[Dict], *names: str) -> Optional[int]:
+    coach_event = coach_event or {}
+    containers = [
+        coach_event.get("frames") or {},
+        coach_event.get("ball") or {},
+        coach_event.get("racket") or {},
+    ]
+    for name in names:
+        for container in containers:
+            value = container.get(name)
+            if value is None:
+                continue
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def _event_stroke_type(event: Optional[Dict]) -> str:
+    if not event:
+        return "No Event"
+    return event.get("stroke_type") or event.get("event_type") or "Unknown"
+
+
+def resolve_osd_state(frame_id: int, trace: Optional[Dict], event: Optional[Dict], coach_event: Optional[Dict] = None) -> Dict:
+    trace = trace or {}
+    event_type = _event_stroke_type(event)
+    model_raw_label = trace.get("raw_swing_type") or trace.get("swing_type") or "-"
+    raw_label_conflict = bool(event and model_raw_label not in ("-", event_type))
+    peak_frame = _coach_frame(coach_event, "peak_frame", "peak") or (event.get("peak_frame") if event else None)
+    contact_frame = _coach_frame(coach_event, "contact_frame", "contact")
+    bounce_frame = _coach_frame(coach_event, "bounce_frame", "bounce")
+    is_peak = peak_frame is not None and frame_id == int(peak_frame)
+    is_contact = contact_frame is not None and frame_id == int(contact_frame)
+    is_bounce = bounce_frame is not None and frame_id == int(bounce_frame)
+
+    if is_peak:
+        milestone = "PEAK"
+    elif is_contact:
+        milestone = "CONTACT"
+    elif is_bounce:
+        milestone = "BOUNCE_CANDIDATE"
+    elif event:
+        milestone = "IN_EVENT"
+    else:
+        milestone = "NO_EVENT"
+
+    ball = (coach_event or {}).get("ball") or {}
+    racket = (coach_event or {}).get("racket") or {}
+    frames = (coach_event or {}).get("frames") or {}
+
+    return {
+        "frame_id": frame_id,
+        "event_id": event.get("event_id") if event else None,
+        "event_type": event_type,
+        "milestone": milestone,
+        "motion_phase": trace.get("phase", "ready"),
+        "model_raw_label": model_raw_label,
+        "raw_label_conflict": raw_label_conflict,
+        "is_peak_frame": bool(is_peak),
+        "is_contact_frame": bool(is_contact),
+        "event_start_frame": event.get("start_frame") if event else None,
+        "event_end_frame": event.get("end_frame") if event else None,
+        "peak_frame": peak_frame,
+        "contact_frame": contact_frame,
+        "bounce_frame": bounce_frame,
+        "shot_direction": ball.get("shot_direction"),
+        "motion_energy": trace.get("motion_energy"),
+        "raw_swing_type": model_raw_label,
+        "wrist_speed": trace.get("wrist_speed"),
+        "racket_speed": trace.get("racket_speed"),
+        "ball_racket_distance": trace.get("ball_racket_distance"),
+        "contact_score": trace.get("contact_score"),
+        "event_contact_confidence": frames.get("contact_confidence") or ball.get("contact_confidence"),
+        "racket_lag_at_contact": racket.get("racket_lag_at_contact"),
+        "two_hand_distance": trace.get("two_hand_distance"),
+    }
+
+
+def _fmt(value, digits: int = 1) -> str:
+    if value is None:
+        return "-"
+    if isinstance(value, float):
+        return f"{value:.{digits}f}"
+    return str(value)
 
 
 def _draw_text(frame, text: str, pos: Tuple[int, int], scale: float, color: Tuple[int, int, int], thickness: int = 1) -> None:
@@ -155,32 +267,40 @@ def _event_progress(event: Optional[Dict], frame_id: int) -> float:
     return max(0.0, min(1.0, (frame_id - start) / max(1, end - start)))
 
 
-def draw_unified_overlay(frame, frame_record: Dict, trace_bundle: Optional[Dict], event_count: int) -> Dict:
+def draw_unified_overlay(
+    frame,
+    frame_record: Dict,
+    trace_bundle: Optional[Dict],
+    event_count: int,
+    coach_event: Optional[Dict] = None,
+) -> Dict:
     frame_id = int(frame_record.get("frame_id", 0))
     trace = (trace_bundle or {}).get("trace") or {}
     event = (trace_bundle or {}).get("event")
-    event_id = event.get("event_id") if event else None
-    event_type = event.get("stroke_type", "No Event") if event else "No Event"
-    phase = trace.get("phase", "ready")
-    peak_frame = event.get("peak_frame") if event else None
-    is_peak = peak_frame is not None and frame_id == int(peak_frame)
+    state = resolve_osd_state(frame_id, trace, event, coach_event)
+    event_id = state["event_id"]
+    event_type = state["event_type"]
+    motion_phase = state["motion_phase"]
+    peak_frame = state["peak_frame"]
+    is_peak = state["is_peak_frame"]
     color = STROKE_COLORS.get(event_type, STROKE_COLORS["Unknown"])
-    phase_color = PHASE_COLORS.get(phase, PHASE_COLORS["ready"])
+    phase_color = PHASE_COLORS.get(motion_phase, PHASE_COLORS["ready"])
+    raw_color = (0, 190, 255) if state["raw_label_conflict"] else (210, 210, 210)
 
     _draw_pose_if_available(frame, frame_record.get("pose"))
     _draw_ball_and_racket(frame, frame_record)
 
     panel_w = min(520, max(430, frame.shape[1] // 4))
-    _draw_panel(frame, 24, 24, panel_w, 250)
+    _draw_panel(frame, 24, 24, panel_w, 322)
 
     title = f"Event {event_id}/{event_count}: {event_type}" if event else "Event -/{}: No Event".format(event_count)
     _draw_text(frame, title, (44, 62), 0.72, color, 2)
-    _draw_text(frame, f"Frame: {frame_id:04d} | Phase: {phase}", (44, 96), 0.52, phase_color, 1)
+    _draw_text(frame, f"Frame: {frame_id:04d} | Milestone: {state['milestone']}", (44, 96), 0.52, color, 1)
 
     if event:
         _draw_text(
             frame,
-            f"Range: {event['start_frame']}-{event['end_frame']} | Peak: {event.get('peak_frame', '-')}",
+            f"Range: {event['start_frame']}-{event['end_frame']} | Contact: {_fmt(state['contact_frame'], 0)} | Peak: {_fmt(peak_frame, 0)}",
             (44, 126),
             0.5,
             (230, 230, 230),
@@ -190,19 +310,27 @@ def draw_unified_overlay(frame, frame_record: Dict, trace_bundle: Optional[Dict]
         _draw_text(frame, "Range: outside swing event", (44, 126), 0.5, (180, 180, 180), 1)
 
     metric_lines = [
-        f"raw_label: {trace.get('raw_swing_type', frame_record.get('swing_type', '-'))}",
-        f"energy: {trace.get('motion_energy', '-')}  wrist: {trace.get('wrist_speed', '-')}",
-        f"racket: {trace.get('racket_speed', '-')}  2Hdist: {trace.get('two_hand_distance', '-')}",
-        f"contact: {trace.get('contact_score', '-')}  ball-racket: {trace.get('ball_racket_distance', '-')}",
+        (f"motion_phase: {motion_phase}", phase_color),
+        (f"model_raw: {state['model_raw_label']}{' (evidence)' if state['raw_label_conflict'] else ''}", raw_color),
+        (f"energy: {_fmt(state['motion_energy'])}  wrist: {_fmt(state['wrist_speed'])}", (210, 210, 210)),
+        (f"racket: {_fmt(state['racket_speed'])}  2Hdist: {_fmt(state['two_hand_distance'])}", (210, 210, 210)),
+        (
+            f"frame_contact: {_fmt(state['contact_score'])}  event_conf: {_fmt(state['event_contact_confidence'], 3)}",
+            (210, 210, 210),
+        ),
+        (f"ball-racket: {_fmt(state['ball_racket_distance'])}  bounce: {_fmt(state['bounce_frame'], 0)}", (210, 210, 210)),
+        (f"shot: {_fmt(state['shot_direction'])}  racket_lag: {_fmt(state['racket_lag_at_contact'])}", (210, 210, 210)),
     ]
     y = 158
-    for line in metric_lines:
-        _draw_text(frame, line, (44, y), 0.46, (210, 210, 210), 1)
-        y += 26
+    for line, line_color in metric_lines:
+        _draw_text(frame, line, (44, y), 0.44, line_color, 1)
+        y += 23
 
     if is_peak:
         cv2.rectangle(frame, (10, 10), (frame.shape[1] - 10, frame.shape[0] - 10), color, 8)
         _draw_text(frame, "PEAK FRAME", (frame.shape[1] - 280, 70), 0.9, color, 2)
+    if state["is_contact_frame"]:
+        _draw_text(frame, "CONTACT FRAME", (frame.shape[1] - 330, 112), 0.82, (0, 255, 0), 2)
 
     # Unified event progress bar.
     bar_x, bar_y = 44, frame.shape[0] - 46
@@ -216,23 +344,7 @@ def draw_unified_overlay(frame, frame_record: Dict, trace_bundle: Optional[Dict]
         cv2.line(frame, (peak_x, bar_y - 7), (peak_x, bar_y + bar_h + 7), (255, 255, 255), 2)
     _draw_text(frame, "Unified Swing Event Timeline", (bar_x, bar_y - 10), 0.5, (230, 230, 230), 1)
 
-    return {
-        "frame_id": frame_id,
-        "event_id": event_id,
-        "event_type": event_type,
-        "phase": phase,
-        "is_peak_frame": bool(is_peak),
-        "event_start_frame": event.get("start_frame") if event else None,
-        "event_end_frame": event.get("end_frame") if event else None,
-        "peak_frame": peak_frame,
-        "motion_energy": trace.get("motion_energy"),
-        "raw_swing_type": trace.get("raw_swing_type", frame_record.get("swing_type")),
-        "wrist_speed": trace.get("wrist_speed"),
-        "racket_speed": trace.get("racket_speed"),
-        "ball_racket_distance": trace.get("ball_racket_distance"),
-        "contact_score": trace.get("contact_score"),
-        "two_hand_distance": trace.get("two_hand_distance"),
-    }
+    return state
 
 
 def render_event_video(
@@ -244,6 +356,8 @@ def render_event_video(
 ) -> Dict:
     frame_data = load_json(frame_json_path)
     analysis = load_json(event_json_path)
+    coach_json_path = default_coach_json(frame_json_path)
+    coach_lookup = build_coach_lookup(load_json(coach_json_path)) if os.path.exists(coach_json_path) else {}
     frames = frame_data.get("frames", [])
     video_info = frame_data.get("video_info") or {}
     source_video = input_video_path or video_info.get("path")
@@ -278,7 +392,10 @@ def render_event_video(
         if not ok:
             break
         frame_record = frame_records.get(frame_id, {"frame_id": frame_id})
-        record = draw_unified_overlay(frame, frame_record, frame_lookup.get(frame_id), len(events))
+        trace_bundle = frame_lookup.get(frame_id)
+        event = (trace_bundle or {}).get("event")
+        coach_event = coach_lookup.get(int(event["event_id"])) if event and event.get("event_id") is not None else None
+        record = draw_unified_overlay(frame, frame_record, trace_bundle, len(events), coach_event)
         records.append(record)
         writer.write(frame)
         frame_id += 1

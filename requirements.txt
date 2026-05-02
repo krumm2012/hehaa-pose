@@ -88,10 +88,3 @@ imutils>=0.5.4               # 图像处理辅助工具
 # - 系统会自动使用增强OpenCV检测
 # - 所有功能仍然正常工作
 # - 检测效果优秀，性能稳定
-
-# 安装GLIP模型
-pip install git+https://github.com/microsoft/GLIP.git
-
-# 下载模型文件到models/目录
-# 然后运行
-python main.py 

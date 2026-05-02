@@ -5,8 +5,16 @@ import json
 from swing_event_classifier import classify_swing_event
 from swing_event_analyzer import analyze_frame_records
 from swing_event_segmenter import segment_swing_events
-from swing_event_video_renderer import build_event_lookup, default_event_json, default_output_video
+from swing_event_video_renderer import (
+    build_coach_lookup,
+    build_event_lookup,
+    default_coach_json,
+    default_event_json,
+    default_output_video,
+    resolve_osd_state,
+)
 from swing_motion_features import extract_motion_features
+from swing_coach_data_collector import build_coach_dataset, default_coach_output_path
 
 
 class SwingMotionFeatureTests(unittest.TestCase):
@@ -201,6 +209,153 @@ class SwingEventAnalyzerTests(unittest.TestCase):
         self.assertEqual(analysis["summary"]["swing_event_type_counts"], {"Forehand": 3})
 
 
+class SwingCoachDataCollectorTests(unittest.TestCase):
+    def test_builds_coach_dataset_with_event_key_metrics(self):
+        frames = []
+        for idx, x in enumerate([10, 20, 35, 50, 65, 80, 88, 92]):
+            frames.append(
+                {
+                    "frame_id": idx,
+                    "timestamp": idx / 25.0,
+                    "swing_type": "Forehand",
+                    "ball": [x + 4, 120],
+                    "rackets": [{"box": [x, 100, x + 10, 130], "confidence": 0.9}],
+                    "pose": {
+                        "right_wrist": [x, 120],
+                        "left_wrist": [x + 80, 120],
+                        "right_shoulder": [20, 80],
+                        "left_shoulder": [0, 80],
+                        "right_elbow": [x - 8, 108],
+                        "left_hip": [0, 150],
+                        "right_hip": [20, 150],
+                        "left_knee": [0, 190],
+                        "right_knee": [22, 190],
+                        "left_ankle": [0, 230],
+                        "right_ankle": [28, 230],
+                    },
+                }
+            )
+        analysis = analyze_frame_records(
+            frames,
+            min_peak_energy=8.0,
+            active_energy=6.0,
+            min_event_frames=3,
+            max_internal_gap=1,
+            min_event_gap=3,
+        )
+
+        dataset = build_coach_dataset({"video_info": {"fps": 25, "path": "sample.mp4"}, "frames": frames}, analysis)
+
+        self.assertEqual(dataset["metadata"]["video_path"], "sample.mp4")
+        self.assertGreaterEqual(len(dataset["events"]), 1)
+        event = dataset["events"][0]
+        self.assertIn("contact_frame", event["frames"])
+        self.assertIn("racket_speed_at_contact", event["racket"])
+        self.assertIn("contact_point_relative_to_body", event["body"])
+        self.assertIn("phase_durations_frames", event["timing"])
+        self.assertIn("overall_score", event["scores"])
+        self.assertIn("estimated_spin", event["ball"])
+        self.assertIn("landing_point", event["ball"])
+        self.assertIn("racket_face_angle_deg", event["racket"])
+        self.assertIn("weight_transfer", event["body"])
+        self.assertIn("recovery_time_frames", event["timing"])
+        self.assertIn("data_quality", event)
+        self.assertIn("missing_fields", event["data_quality"])
+        self.assertIsNotNone(event["racket"]["low_to_high_ratio"])
+        self.assertIsNotNone(event["racket"]["swing_path_type"])
+        self.assertIsNotNone(event["body"]["weight_transfer"])
+        self.assertIsNotNone(event["body"]["balance_state"])
+        self.assertIsNotNone(event["body"]["stance_type"])
+        self.assertIsNotNone(event["body"]["unit_turn_quality"])
+        self.assertIsNotNone(event["body"]["contact_too_close_to_body"])
+        self.assertIsNotNone(event["body"]["late_contact"])
+        self.assertIsNotNone(event["timing"]["recovery_time_frames"])
+        self.assertIsNotNone(event["timing"]["tempo_consistency"])
+
+    def test_default_coach_output_path(self):
+        self.assertEqual(default_coach_output_path("data/output_video.json"), "data/output_video_coach_dataset.json")
+
+    def test_phase_one_estimates_direction_interpolated_peak_and_racket_lag(self):
+        frames = []
+        features = []
+        frame_trace = []
+        for frame_id in range(7):
+            pose = {
+                "right_wrist": [100 + frame_id * 2, 120],
+                "left_wrist": [180, 120],
+                "right_shoulder": [120, 80],
+                "left_shoulder": [80, 80],
+                "right_elbow": [105, 105],
+                "left_hip": [80, 160],
+                "right_hip": [120, 160],
+                "left_knee": [80, 200],
+                "right_knee": [120, 200],
+                "left_ankle": [80, 240],
+                "right_ankle": [122, 240],
+            }
+            frames.append({"frame_id": frame_id, "timestamp": frame_id / 25.0, "pose": pose})
+            racket_center = None if frame_id == 3 else (90 + frame_id * 10, 130 - frame_id * 4)
+            features.append(
+                {
+                    "frame_id": frame_id,
+                    "timestamp": frame_id / 25.0,
+                    "raw_swing_type": "Forehand",
+                    "has_pose": True,
+                    "wrist": (100 + frame_id * 2, 120),
+                    "racket_center": racket_center,
+                    "ball": (200 + frame_id * 15, 180 - abs(frame_id - 4) * 8),
+                    "wrist_speed": 8.0,
+                    "racket_speed": 12.0,
+                    "racket_accel": 2.0,
+                    "ball_speed": 10.0,
+                    "ball_racket_distance": 35.0,
+                    "contact_score": 0.8 if frame_id == 2 else 0.1,
+                    "two_hand_distance": 80.0,
+                    "active_wrist_x_offset": -30.0,
+                    "arm_extension_deg": 150.0,
+                    "shoulder_turn_deg": 85.0,
+                    "hip_shoulder_sep_deg": 12.0,
+                }
+            )
+            frame_trace.append(
+                {
+                    "frame": frame_id,
+                    "event_id": 1,
+                    "phase": "forward_swing" if frame_id <= 3 else "follow_through",
+                    "motion_energy": 20.0,
+                    "raw_swing_type": "Forehand",
+                }
+            )
+        event_analysis = {
+            "events": [
+                {
+                    "event_id": 1,
+                    "start_frame": 0,
+                    "end_frame": 6,
+                    "duration_frames": 7,
+                    "peak_frame": 3,
+                    "stroke_type": "Forehand",
+                    "confidence": 0.9,
+                    "evidence": {},
+                }
+            ],
+            "features": features,
+            "frame_trace": frame_trace,
+        }
+
+        dataset = build_coach_dataset({"video_info": {"fps": 25, "path": "sample.mp4"}, "frames": frames}, event_analysis)
+        event = dataset["events"][0]
+
+        self.assertEqual(event["ball"]["shot_direction"], "screen_right")
+        self.assertGreater(event["ball"]["shot_direction_confidence"], 0.0)
+        self.assertEqual(event["ball"]["shot_direction_space"], "screen")
+        self.assertIn("bounce_confidence", event["ball"])
+        self.assertEqual(event["racket"]["racket_center_at_peak_source"], "interpolated")
+        self.assertGreater(event["racket"]["racket_center_at_peak_confidence"], 0.0)
+        self.assertIsNotNone(event["racket"]["racket_lag_at_contact"])
+        self.assertGreater(event["racket"]["racket_lag_confidence"], 0.0)
+
+
 class SwingEventVideoRendererTests(unittest.TestCase):
     def test_builds_event_lookup_and_default_paths(self):
         analysis = {
@@ -213,7 +368,53 @@ class SwingEventVideoRendererTests(unittest.TestCase):
         self.assertEqual(events[1]["stroke_type"], "Forehand")
         self.assertEqual(traces[12]["event"]["event_id"], 1)
         self.assertEqual(default_event_json("data/output_video.json"), "data/output_video_swing_events.json")
+        self.assertEqual(default_coach_json("data/output_video.json"), "data/output_video_coach_dataset.json")
         self.assertEqual(default_output_video("data/output_video.json"), "data/output_video_swing_annotated.mp4")
+
+    def test_builds_coach_lookup(self):
+        dataset = {"events": [{"event_id": 2, "frames": {"contact_frame": 41}}]}
+
+        lookup = build_coach_lookup(dataset)
+
+        self.assertEqual(lookup[2]["frames"]["contact_frame"], 41)
+
+    def test_resolves_osd_state_with_coach_milestones_and_raw_conflict(self):
+        event = {"event_id": 1, "start_frame": 25, "end_frame": 77, "peak_frame": 46, "stroke_type": "Forehand"}
+        trace = {
+            "frame": 46,
+            "phase": "forward_swing",
+            "raw_swing_type": "Backhand",
+            "motion_energy": 79.5,
+            "contact_score": 0.0,
+        }
+        coach_event = {
+            "frames": {"contact_frame": 41, "contact_confidence": 0.5561},
+            "ball": {"shot_direction": "screen_right", "contact_confidence": 0.5561, "bounce_frame": 46},
+            "racket": {"racket_lag_at_contact": 132.0},
+        }
+
+        state = resolve_osd_state(46, trace, event, coach_event)
+
+        self.assertEqual(state["event_type"], "Forehand")
+        self.assertEqual(state["milestone"], "PEAK")
+        self.assertEqual(state["motion_phase"], "forward_swing")
+        self.assertEqual(state["model_raw_label"], "Backhand")
+        self.assertTrue(state["raw_label_conflict"])
+        self.assertEqual(state["contact_frame"], 41)
+        self.assertEqual(state["bounce_frame"], 46)
+        self.assertEqual(state["shot_direction"], "screen_right")
+        self.assertEqual(state["racket_lag_at_contact"], 132.0)
+
+    def test_resolves_contact_milestone_without_hiding_motion_phase(self):
+        event = {"event_id": 1, "start_frame": 25, "end_frame": 77, "peak_frame": 46, "stroke_type": "Forehand"}
+        trace = {"frame": 41, "phase": "ready", "raw_swing_type": "Forehand", "contact_score": 0.5561}
+        coach_event = {"frames": {"contact_frame": 41, "peak_frame": 46}}
+
+        state = resolve_osd_state(41, trace, event, coach_event)
+
+        self.assertEqual(state["milestone"], "CONTACT")
+        self.assertEqual(state["motion_phase"], "ready")
+        self.assertFalse(state["raw_label_conflict"])
 
 
 if __name__ == "__main__":

@@ -11,6 +11,9 @@ from PIL import Image
 import time
 from collections import deque
 
+from ball_candidate_selector import select_ball_candidate
+from racket_candidate_selector import racket_center, select_racket_candidate
+
 
 class YOLO26nUnifiedDetector:
     """YOLO26n Core ML 统一检测器 - 同时检测球和球拍"""
@@ -69,6 +72,7 @@ class YOLO26nUnifiedDetector:
         
         # 球追踪历史（用于过滤静态球）
         self.ball_history = deque(maxlen=10)
+        self.racket_history = deque(maxlen=10)
         self.static_threshold = config.get('static_ball_movement_threshold_px', 6)
         
         # 性能统计
@@ -103,8 +107,9 @@ class YOLO26nUnifiedDetector:
         # 解析结果
         ball_detections, racket_detections = self._parse_predictions(predictions)
         
-        # 过滤静态球
-        ball_detections = self._filter_static_balls(ball_detections)
+        # 在已有候选中选择真实运动球/主拍；不增加模型推理，只做轻量距离打分。
+        ball_detections = self._filter_static_balls(ball_detections, racket_detections)
+        racket_detections = self._select_primary_racket(racket_detections, ball_detections)
         
         return ball_detections, racket_detections, inference_time
     
@@ -211,13 +216,24 @@ class YOLO26nUnifiedDetector:
         
         return [x1, y1, x2, y2]
     
-    def _filter_static_balls(self, ball_detections):
-        """过滤静态球"""
+    def _filter_static_balls(self, ball_detections, racket_detections=None):
+        """Select the active ball and filter persistent static false positives."""
         if not ball_detections:
             return []
         
-        # 取置信度最高的球
-        best_ball = max(ball_detections, key=lambda x: x['confidence'])
+        previous_position = self.ball_history[-1] if self.ball_history else None
+        selector_config = {
+            **self.config,
+            "frame_height": getattr(self, "original_height", None),
+        }
+        best_ball = select_ball_candidate(
+            ball_detections,
+            previous_position=previous_position,
+            racket_detections=racket_detections,
+            config=selector_config,
+        )
+        if best_ball is None:
+            return []
         ball_pos = best_ball['position']
         
         # 添加到历史
@@ -233,6 +249,33 @@ class YOLO26nUnifiedDetector:
                 return []
         
         return [best_ball]
+
+    def _select_primary_racket(self, racket_detections, ball_detections=None):
+        """Keep only the active racket, suppressing mirror/reflection candidates."""
+        if not racket_detections:
+            return []
+
+        ball_position = None
+        if ball_detections:
+            ball_position = ball_detections[0].get("position")
+        previous_center = self.racket_history[-1] if self.racket_history else None
+        selector_config = {
+            **self.config,
+            "frame_height": getattr(self, "original_height", None),
+        }
+        best_racket = select_racket_candidate(
+            racket_detections,
+            ball_position=ball_position,
+            previous_center=previous_center,
+            config=selector_config,
+        )
+        if best_racket is None:
+            return []
+
+        center = racket_center(best_racket)
+        if center is not None:
+            self.racket_history.append(center)
+        return [best_racket]
     
     def get_average_detection_time(self):
         """获取平均检测时间"""

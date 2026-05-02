@@ -175,17 +175,17 @@ roi_settings:
   auto_load_config: true
   roi_config_path: "configs/roi_config.yaml"
   crop_margin: 12
-  
+
   visualization:
     show_roi_boundary: false
     show_roi_fill: false
     show_roi_points: true
     highlight_detections: true
     show_roi_stats: true
-  
+
   logging:
     log_coordinate_adjustment: false
-    
+
   colors:
     boundary: [0, 255, 255]
     fill: [0, 255, 255]
