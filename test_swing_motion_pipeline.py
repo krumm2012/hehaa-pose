@@ -1,6 +1,7 @@
 import unittest
 from pathlib import Path
 import json
+import tempfile
 
 from swing_event_classifier import classify_swing_event
 from swing_event_analyzer import analyze_frame_records
@@ -15,6 +16,7 @@ from swing_event_video_renderer import (
 )
 from swing_motion_features import extract_motion_features
 from swing_coach_data_collector import build_coach_dataset, default_coach_output_path
+from swing_report_builder import build_report_payload, default_report_path, write_report_html
 
 
 class SwingMotionFeatureTests(unittest.TestCase):
@@ -208,6 +210,51 @@ class SwingEventAnalyzerTests(unittest.TestCase):
         self.assertEqual(analysis["summary"]["swing_event_count"], 3)
         self.assertEqual(analysis["summary"]["swing_event_type_counts"], {"Forehand": 3})
 
+    def test_event_quality_flags_capture_missing_detection_and_diagnostics(self):
+        frames = []
+        for idx, x in enumerate([10, 25, 45, 70, 92, 112, 128, 138]):
+            pose = {
+                "right_wrist": [x, 110],
+                "left_wrist": [x + 90, 110],
+                "right_shoulder": [40, 80],
+                "right_elbow": [x - 8, 98],
+                "left_shoulder": [0, 80],
+                "left_hip": [0, 150],
+                "right_hip": [40, 150],
+            }
+            frames.append(
+                {
+                    "frame_id": idx,
+                    "timestamp": idx / 25.0,
+                    "swing_type": "Forehand",
+                    "ball": [x + 4, 120] if idx not in {2, 3, 4} else None,
+                    "rackets": [{"box": [x, 100, x + 10, 130], "confidence": 0.9}] if idx != 5 else [],
+                    "pose": pose if idx != 3 else {},
+                    "detection_diagnostics": {
+                        "rejections": {"static_hard_mask": 2 if idx == 3 else 0, "upper_mirror_unsupported": 1 if idx == 4 else 0},
+                        "continuity_disabled": idx == 4,
+                    },
+                }
+            )
+
+        analysis = analyze_frame_records(
+            frames,
+            min_peak_energy=8.0,
+            active_energy=6.0,
+            min_event_frames=3,
+            max_internal_gap=1,
+            min_event_gap=3,
+        )
+
+        event = analysis["events"][0]
+        flags = event["quality_flags"]
+        self.assertLess(flags["ball_frame_ratio"], 1.0)
+        self.assertLess(flags["pose_frame_ratio"], 1.0)
+        self.assertIn("ball_track_gaps", flags["warnings"])
+        self.assertIn("pose_gaps", flags["warnings"])
+        self.assertEqual(flags["diagnostic_rejection_counts"]["static_hard_mask"], 2)
+        self.assertEqual(flags["diagnostic_rejection_counts"]["upper_mirror_unsupported"], 1)
+
 
 class SwingCoachDataCollectorTests(unittest.TestCase):
     def test_builds_coach_dataset_with_event_key_metrics(self):
@@ -261,6 +308,8 @@ class SwingCoachDataCollectorTests(unittest.TestCase):
         self.assertIn("recovery_time_frames", event["timing"])
         self.assertIn("data_quality", event)
         self.assertIn("missing_fields", event["data_quality"])
+        self.assertIn("quality_flags", event)
+        self.assertIn("event_quality_flags", event["data_quality"])
         self.assertIsNotNone(event["racket"]["low_to_high_ratio"])
         self.assertIsNotNone(event["racket"]["swing_path_type"])
         self.assertIsNotNone(event["body"]["weight_transfer"])
@@ -354,6 +403,75 @@ class SwingCoachDataCollectorTests(unittest.TestCase):
         self.assertGreater(event["racket"]["racket_center_at_peak_confidence"], 0.0)
         self.assertIsNotNone(event["racket"]["racket_lag_at_contact"])
         self.assertGreater(event["racket"]["racket_lag_confidence"], 0.0)
+
+
+class SwingReportBuilderTests(unittest.TestCase):
+    def test_default_report_path(self):
+        self.assertEqual(default_report_path("data/output_video.json"), "data/output_video_swing_report.html")
+
+    def test_writes_standalone_video_json_report(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            frame_json = root / "sample.json"
+            event_json = root / "sample_swing_events.json"
+            coach_json = root / "sample_coach_dataset.json"
+            video_path = root / "sample_swing_annotated.mp4"
+            report_path = root / "sample_swing_report.html"
+            video_path.write_bytes(b"fake mp4")
+            frame_json.write_text(
+                json.dumps({"video_info": {"path": "sample.mp4", "fps": 25}, "frames": [{"frame_id": 0}]}),
+                encoding="utf-8",
+            )
+            event_json.write_text(
+                json.dumps(
+                    {
+                        "summary": {"swing_event_count": 1, "swing_event_type_counts": {"Forehand": 1}},
+                        "events": [
+                            {
+                                "event_id": 1,
+                                "start_frame": 0,
+                                "end_frame": 5,
+                                "peak_frame": 3,
+                                "stroke_type": "Forehand",
+                                "confidence": 0.8,
+                                "quality_flags": {"warnings": ["ball_track_gaps"], "review_recommended": True},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            coach_json.write_text(
+                json.dumps(
+                    {
+                        "summary": {"event_count": 1},
+                        "events": [
+                            {
+                                "event_id": 1,
+                                "scores": {"overall_score": 0.62},
+                                "diagnosis_tags": ["low_contact_confidence"],
+                                "data_quality": {"pose_frame_ratio": 0.75},
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            payload = build_report_payload(str(frame_json), str(event_json), str(coach_json), str(video_path))
+            write_report_html(payload, str(report_path))
+            html = report_path.read_text(encoding="utf-8")
+
+        self.assertIn("<video", html)
+        self.assertIn("sample_swing_annotated.mp4", html)
+        self.assertIn("ball_track_gaps", html)
+        self.assertIn("low_contact_confidence", html)
+        self.assertIn("annotation-stroke", html)
+        self.assertIn("annotation-valid-hit", html)
+        self.assertIn("downloadAnnotations", html)
+        self.assertIn("annotation-import-file", html)
+        self.assertIn("applyImportedAnnotations", html)
+        self.assertIn("importAnnotations", html)
 
 
 class SwingEventVideoRendererTests(unittest.TestCase):

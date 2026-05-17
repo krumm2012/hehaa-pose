@@ -145,6 +145,7 @@ class MultiprocessPipeline:
             f2 = executor.submit(pose_estimator.get_keypoints, frame_ptr)
 
             ball, racket, _ = f1.result()
+            ball_diagnostics = detector.get_last_ball_diagnostics()
             pose = f2.result()
 
             self.q_analyzer.put({
@@ -152,7 +153,8 @@ class MultiprocessPipeline:
                 'slot': slot,
                 'ball': ball,
                 'racket': racket,
-                'pose': pose
+                'pose': pose,
+                'ball_diagnostics': ball_diagnostics,
             })
 
         for s in shms: s.close()
@@ -191,11 +193,14 @@ class MultiprocessPipeline:
         collect_frame_results = bool(perf_cfg.get('collect_frame_results', True))
         json_dump_indent = perf_cfg.get('json_dump_indent', 4)
         frame_results_path = None
+        diagnostics_path = None
         frame_results_fp = None
+        diagnostics_records = []
         first_frame_record = True
         if collect_frame_results:
             output_base = out_file if out_file else create_output_directory(self.config['video_output_path'])
             frame_results_path = os.path.splitext(output_base)[0] + '.json'
+            diagnostics_path = os.path.splitext(output_base)[0] + '_diagnostics.json'
             frame_results_fp = open(frame_results_path, 'w', encoding='utf-8')
             frame_results_fp.write('{\n')
             frame_results_fp.write('  "video_info": {\n')
@@ -251,11 +256,18 @@ class MultiprocessPipeline:
                     poses=poses,
                     phase_metrics=detailed_data,
                 )
+                frame_record["detection_diagnostics"] = data.get("ball_diagnostics") or {}
                 if frame_results_fp is not None:
                     if not first_frame_record:
                         frame_results_fp.write(',\n')
                     frame_results_fp.write(json.dumps(frame_record, ensure_ascii=False))
                     first_frame_record = False
+                diagnostics_records.append({
+                    "frame_id": fid,
+                    "timestamp": round(fid / self.fps, 3) if self.fps else 0.0,
+                    "ball_selected": [norm_ball_pos[0], norm_ball_pos[1]] if norm_ball_pos else None,
+                    "ball_diagnostics": data.get("ball_diagnostics") or {},
+                })
 
             # --- 2. 视觉渲染流程 (原生 OpenCV 绘制，性能极大提升) ---
             # 背景半透明面板
@@ -337,6 +349,112 @@ class MultiprocessPipeline:
             frame_results_fp.write('}\n')
             frame_results_fp.close()
             print(f"📊 [Analyzer] 数据已保存至: {frame_results_path}")
+            if diagnostics_path:
+                tuning_suggestions = []
+                total_diag_frames = len(diagnostics_records)
+                decisions = {}
+                rejection_counts = {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0,
+                }
+                continuity_disabled = 0
+                selected_none = 0
+                for rec in diagnostics_records:
+                    diag = rec.get("ball_diagnostics") or {}
+                    decision = diag.get("final_decision", "unknown")
+                    decisions[decision] = decisions.get(decision, 0) + 1
+                    rej = diag.get("rejections") or {}
+                    for k in rejection_counts:
+                        rejection_counts[k] += int(rej.get(k, 0) or 0)
+                    if not bool(diag.get("continuity_enabled", True)):
+                        continuity_disabled += 1
+                    if rec.get("ball_selected") is None:
+                        selected_none += 1
+
+                no_ball_ratio = (selected_none / total_diag_frames) if total_diag_frames else 0.0
+                cfg_u = self.config.get("unified_detection", {})
+                if rejection_counts["upper_mirror_unsupported"] > 0:
+                    cur = float(cfg_u.get("ball_play_area_min_y_ratio_hard", 0.35))
+                    if no_ball_ratio <= 0.40:
+                        nxt = min(0.50, round(cur + 0.03, 3))
+                        tuning_suggestions.append({
+                            "priority": "high",
+                            "issue": "Upper mirror interference detected",
+                            "recommendation": f"Increase ball_play_area_min_y_ratio_hard from {cur} to {nxt}",
+                            "parameter": "unified_detection.ball_play_area_min_y_ratio_hard",
+                        })
+                    else:
+                        nxt = max(0.20, round(cur - 0.02, 3))
+                        tuning_suggestions.append({
+                            "priority": "medium",
+                            "issue": "Upper mirror interference exists but no-ball ratio is already high",
+                            "recommendation": f"Keep mirror gate conservative for now; if recall is poor, try lowering ball_play_area_min_y_ratio_hard from {cur} to {nxt}",
+                            "parameter": "unified_detection.ball_play_area_min_y_ratio_hard",
+                        })
+                if rejection_counts["low_conf_unsupported"] > max(10, total_diag_frames * 0.08):
+                    cur = float(cfg_u.get("ball_min_selected_confidence", 0.05))
+                    nxt = max(0.03, round(cur - 0.01, 3))
+                    tuning_suggestions.append({
+                        "priority": "medium",
+                        "issue": "Many low-confidence unsupported rejections",
+                        "recommendation": f"Try lowering ball_min_selected_confidence from {cur} to {nxt} to reduce no-ball gaps",
+                        "parameter": "unified_detection.ball_min_selected_confidence",
+                    })
+                if rejection_counts["static_hard_mask"] > max(20, total_diag_frames * 0.15) and no_ball_ratio > 0.20:
+                    cur = int(cfg_u.get("static_ball_hard_mask_min_seen_frames", 4))
+                    nxt = min(8, cur + 1)
+                    tuning_suggestions.append({
+                        "priority": "medium",
+                        "issue": "Static hard mask may be too aggressive in this clip",
+                        "recommendation": f"Increase static_ball_hard_mask_min_seen_frames from {cur} to {nxt}",
+                        "parameter": "unified_detection.static_ball_hard_mask_min_seen_frames",
+                    })
+                if continuity_disabled > max(10, total_diag_frames * 0.08):
+                    cur = float(cfg_u.get("ball_max_motion_for_continuity_px", 140.0))
+                    nxt = min(220.0, round(cur + 20.0, 1))
+                    tuning_suggestions.append({
+                        "priority": "low",
+                        "issue": "Continuity frequently disabled by motion spike gate",
+                        "recommendation": f"Consider raising ball_max_motion_for_continuity_px from {cur} to {nxt} if true tracks are fragmented",
+                        "parameter": "unified_detection.ball_max_motion_for_continuity_px",
+                    })
+                if no_ball_ratio > 0.35:
+                    tuning_suggestions.append({
+                        "priority": "high",
+                        "issue": "No-ball frames ratio is high",
+                        "recommendation": "Primary recommendation: relax hard gates first (min_selected_confidence, continuity motion gate, hard-mask maturity) before tightening mirror gates",
+                        "parameter": "composite",
+                    })
+
+                diagnostics_payload = {
+                    "video_info": {
+                        "path": self.video_path,
+                        "fps": self.fps,
+                        "resolution": [self.width, self.height],
+                    },
+                    "config_snapshot": {
+                        "ball_min_selected_confidence": cfg_u.get("ball_min_selected_confidence"),
+                        "ball_play_area_min_y_ratio_hard": cfg_u.get("ball_play_area_min_y_ratio_hard"),
+                        "ball_max_motion_for_continuity_px": cfg_u.get("ball_max_motion_for_continuity_px"),
+                        "static_ball_hard_mask_min_seen_frames": cfg_u.get("static_ball_hard_mask_min_seen_frames"),
+                        "static_ball_hard_mask_radius_px": cfg_u.get("static_ball_hard_mask_radius_px"),
+                    },
+                    "summary": {
+                        "total_frames": total_diag_frames,
+                        "no_ball_frames": selected_none,
+                        "no_ball_ratio": round(no_ball_ratio, 4),
+                        "final_decision_counts": decisions,
+                        "rejection_counts": rejection_counts,
+                        "continuity_disabled_frames": continuity_disabled,
+                    },
+                    "tuning_suggestions": tuning_suggestions,
+                    "frames": diagnostics_records,
+                }
+                with open(diagnostics_path, "w", encoding="utf-8") as fp:
+                    json.dump(diagnostics_payload, fp, ensure_ascii=False, indent=json_dump_indent)
+                print(f"🩺 [Analyzer] 诊断数据已保存至: {diagnostics_path}")
 
         cv2.destroyAllWindows()
         for s in shms: s.close()

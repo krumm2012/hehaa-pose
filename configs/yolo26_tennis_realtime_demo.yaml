@@ -7,7 +7,7 @@ video_output_path: "data/output_video.mp4"
 save_video: true                               # 是否保存结果视频
 
 # 🆕 使用 YOLO26-pose 模型 (Core ML 格式)
-yolo_pose_model_path: "yolo26n-pose.mlpackage"
+yolo_pose_model_path: "yolo26m-pose.mlpackage"
 pose_compute_units: "ANE"                      # 👈 锁定在 ANE (Neural Engine)
 
 tracknet_model_path: "models/tracknetv2_weights.pth"
@@ -22,10 +22,30 @@ unified_detection:
   compute_units: "ANE"                         # 👈 锁定在 ANE (Neural Engine)
   ball_continuity_weight: 0.45                 # 多球候选重排序：上一帧轨迹连续性权重
   ball_continuity_distance_px: 180             # 连续性奖励距离窗口，避免镜中球短暂高置信抢占
+  ball_velocity_prediction_weight: 0.55        # 速度预测连续性权重（抑制静止球首帧抢焦点）
+  ball_velocity_prediction_distance_px: 120    # 速度预测位置容忍窗口
+  ball_max_motion_for_continuity_px: 140       # 前后帧位移超过该阈值时，禁用连续性追踪（防止跳到镜像/幻球）
+  ball_min_selected_confidence: 0.05           # 最终主球最低置信度（无连续性/无球拍支撑时）
+  ball_play_area_min_y_ratio_hard: 0.35        # 主球硬下限区域（上半镜像区域剔除，需无支撑才生效）
   ball_racket_proximity_weight: 0.20           # 多球候选重排序：主球拍附近轻量奖励
   ball_racket_proximity_distance_px: 360       # 球拍距离奖励窗口
   ball_mirror_min_y_ratio: 0.03                # 顶部镜像区域轻惩罚阈值（画面高度比例）
   ball_top_mirror_penalty: 0.25                # 顶部镜像候选惩罚，不硬过滤以保留泛化
+  static_ball_suppression_enabled: true        # 启用静止球时序抑制（训练多球场景）
+  static_ball_grid_size_px: 40                 # 静止球锚点网格尺寸
+  static_ball_match_distance_px: 26            # 静止球锚点匹配距离
+  static_ball_min_seen_frames: 6               # 连续出现达到该帧数后判定为静止候选
+  static_ball_decay_frames: 50                 # 长时间未出现后移除静止锚点
+  static_ball_penalty_max: 0.50                # 静止球最大置信惩罚
+  static_ball_keep_if_near_prev_ratio: 0.80    # 靠近上一帧轨迹时降低惩罚
+  static_ball_keep_if_near_racket_ratio: 0.65  # 靠近主拍时降低惩罚
+  static_ball_hard_mask_enabled: true          # 对持久静止球做硬屏蔽，避免抢占主追踪焦点
+  static_ball_hard_mask_min_seen_frames: 4     # 命中该帧数后进入静态屏蔽区（更快屏蔽地上静止球）
+  static_ball_hard_mask_radius_px: 30          # 静态屏蔽区半径
+  static_ball_hard_mask_allow_near_prev: true  # 贴近上一帧主轨迹时允许放行，降低断轨风险
+  static_ball_hard_mask_allow_near_prev_min_motion_px: 16 # 仅当前一帧轨迹速度足够大时才允许 near_prev 放行
+  static_ball_hard_mask_allow_near_prev_distance_px: 24 # 即使速度低，若与上一帧极近也允许放行，避免误杀真实轨迹
+  static_ball_hard_mask_allow_near_racket: false # 不因靠近球拍而放行，避免“地上球”抢焦点
   racket_ball_proximity_weight: 0.35           # 多拍候选重排序：靠近运动球的主拍优先
   racket_ball_proximity_distance_px: 460       # 主拍-球距离奖励窗口
   racket_continuity_weight: 0.25               # 多拍候选重排序：上一帧主拍连续性权重
@@ -69,8 +89,14 @@ hit_zone_analysis:
   show_hit_quality: true                     # 显示击球质量
 
 # ==================== 🤖 姿态检测参数 ====================
-pose_confidence_threshold: 0.5           # 姿态检测置信度阈值
+pose_confidence_threshold: 0.4           # 姿态检测置信度阈值
 pose_keypoint_confidence: 0.3            # 关键点置信度阈值
+pose_smoothing_enabled: true             # 关键点时序平滑开关
+pose_smoothing_alpha: 0.45               # EMA 平滑系数（越小越稳，越大越跟手）
+pose_smoothing_max_jump_px: 90           # 单帧最大跳变限幅
+pose_smoothing_hold_missing_frames: 2    # 短时丢点时保持上一帧关键点
+pose_smoothing_reset_frames: 8           # 连续无人帧后重置平滑状态
+pose_smoothing_min_valid_points: 5       # 有效关键点太少时不做平滑更新
 
 pose_estimation_debug:
   log_keypoints: false                   # 关键点日志

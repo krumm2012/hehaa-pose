@@ -3,8 +3,12 @@
 
 import numpy as np
 import cv2
-import coremltools as ct
 from typing import List, Dict, Tuple, Optional
+
+try:
+    import coremltools as ct
+except ModuleNotFoundError:
+    ct = None
 
 # COCO Keypoint indices (YOLO26-pose 使用标准 COCO 17 关键点)
 # 0: nose, 1: left_eye, 2: right_eye, 3: left_ear, 4: right_ear,
@@ -25,6 +29,11 @@ class PoseEstimatorYOLO26:
             roi_manager: ROI 管理器 (可选)
         """
         print(f"🤖 加载 YOLO26-pose 模型: {model_path}")
+        if ct is None:
+            raise ImportError(
+                "coremltools is required to initialize PoseEstimatorYOLO26. "
+                "Install coremltools or run tests that do not instantiate the CoreML model."
+            )
 
         # 获取计算单元配置
         pose_compute_units_str = config.get('pose_compute_units', 'ALL')
@@ -88,6 +97,24 @@ class PoseEstimatorYOLO26:
         # 置信度阈值
         self.confidence_threshold = config.get('pose_confidence_threshold', 0.5)
         self.keypoint_confidence = config.get('pose_keypoint_confidence', 0.3)
+
+        # 时序平滑配置（抑制骨骼节点跳动）
+        self.pose_smoothing_enabled = bool(config.get('pose_smoothing_enabled', True))
+        self.pose_smoothing_alpha = float(config.get('pose_smoothing_alpha', 0.45))
+        self.pose_smoothing_alpha = max(0.05, min(1.0, self.pose_smoothing_alpha))
+        self.pose_smoothing_max_jump_px = float(config.get('pose_smoothing_max_jump_px', 90.0))
+        self.pose_smoothing_max_jump_px = max(10.0, self.pose_smoothing_max_jump_px)
+        self.pose_smoothing_hold_missing_frames = int(config.get('pose_smoothing_hold_missing_frames', 2))
+        self.pose_smoothing_hold_missing_frames = max(0, self.pose_smoothing_hold_missing_frames)
+        self.pose_smoothing_reset_frames = int(config.get('pose_smoothing_reset_frames', 8))
+        self.pose_smoothing_reset_frames = max(1, self.pose_smoothing_reset_frames)
+        self.pose_smoothing_min_valid_points = int(config.get('pose_smoothing_min_valid_points', 5))
+        self.pose_smoothing_min_valid_points = max(1, self.pose_smoothing_min_valid_points)
+
+        # 平滑状态缓存（仅跟踪主人物）
+        self._smoothed_keypoints: Dict[str, Optional[Tuple[int, int]]] = {}
+        self._missing_counts: Dict[str, int] = {name: 0 for name in self.keypoint_names}
+        self._no_person_frames = 0
 
     def _get_input_size(self) -> Tuple[int, int]:
         """获取模型输入尺寸"""
@@ -282,7 +309,74 @@ class PoseEstimatorYOLO26:
                 filtered_keypoints.extend(filtered_keypoints_dict)
             person_keypoints_list = filtered_keypoints
 
+        # 时序平滑（在 ROI 过滤后做，保证输出稳定）
+        person_keypoints_list = self._apply_temporal_smoothing(person_keypoints_list)
+
         return person_keypoints_list
+
+    def _apply_temporal_smoothing(self, person_keypoints_list: List[Dict]) -> List[Dict]:
+        """Temporal smoothing for the primary person keypoints."""
+        if not self.pose_smoothing_enabled:
+            return person_keypoints_list
+
+        if not person_keypoints_list:
+            self._no_person_frames += 1
+            if self._no_person_frames >= self.pose_smoothing_reset_frames:
+                self._smoothed_keypoints = {}
+                self._missing_counts = {name: 0 for name in self.keypoint_names}
+            return person_keypoints_list
+
+        self._no_person_frames = 0
+        primary = person_keypoints_list[0] or {}
+        valid_points = sum(1 for name in self.keypoint_names if primary.get(name) is not None)
+        if valid_points < self.pose_smoothing_min_valid_points:
+            return person_keypoints_list
+
+        if not self._smoothed_keypoints:
+            initialized = {}
+            for name in self.keypoint_names:
+                pt = primary.get(name)
+                initialized[name] = (int(pt[0]), int(pt[1])) if pt is not None else None
+            self._smoothed_keypoints = initialized
+            self._missing_counts = {name: 0 for name in self.keypoint_names}
+            smoothed_primary = dict(initialized)
+            return [smoothed_primary] + person_keypoints_list[1:]
+
+        smoothed_primary: Dict[str, Optional[Tuple[int, int]]] = {}
+        alpha = self.pose_smoothing_alpha
+        max_jump = self.pose_smoothing_max_jump_px
+
+        for name in self.keypoint_names:
+            prev = self._smoothed_keypoints.get(name)
+            cur = primary.get(name)
+
+            if cur is None:
+                self._missing_counts[name] = self._missing_counts.get(name, 0) + 1
+                if prev is not None and self._missing_counts[name] <= self.pose_smoothing_hold_missing_frames:
+                    smoothed_primary[name] = prev
+                else:
+                    smoothed_primary[name] = None
+                continue
+
+            self._missing_counts[name] = 0
+            cur_xy = np.array([float(cur[0]), float(cur[1])], dtype=float)
+            if prev is None:
+                smoothed_primary[name] = (int(round(cur_xy[0])), int(round(cur_xy[1])))
+                continue
+
+            prev_xy = np.array([float(prev[0]), float(prev[1])], dtype=float)
+            delta = cur_xy - prev_xy
+            dist = float(np.linalg.norm(delta))
+
+            # Jump clamp: prevent single-frame outliers from snapping skeleton.
+            if dist > max_jump and dist > 1e-6:
+                cur_xy = prev_xy + delta * (max_jump / dist)
+
+            smooth_xy = prev_xy * (1.0 - alpha) + cur_xy * alpha
+            smoothed_primary[name] = (int(round(smooth_xy[0])), int(round(smooth_xy[1])))
+
+        self._smoothed_keypoints = dict(smoothed_primary)
+        return [smoothed_primary] + person_keypoints_list[1:]
 
     def classify_swing(self, keypoints_dict: Dict[int, Dict[str, List[float]]]) -> str:
         """实例方法映射到静态方法"""

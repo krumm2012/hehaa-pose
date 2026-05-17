@@ -13,6 +13,7 @@ from collections import deque
 
 from ball_candidate_selector import select_ball_candidate
 from racket_candidate_selector import racket_center, select_racket_candidate
+from static_ball_filter import StaticBallFilter
 
 
 class YOLO26nUnifiedDetector:
@@ -49,6 +50,8 @@ class YOLO26nUnifiedDetector:
         
         # 获取模型输入尺寸
         spec = self.model.get_spec()
+        self._coreml_input_names = {inp.name for inp in spec.description.input}
+        self._coreml_output_names = {out.name for out in spec.description.output}
         input_desc = spec.description.input[0]
         if hasattr(input_desc.type, 'imageType'):
             self.input_height = input_desc.type.imageType.height
@@ -66,6 +69,10 @@ class YOLO26nUnifiedDetector:
         # 置信度阈值
         self.ball_conf_threshold = config.get('ball_confidence_threshold', 0.02)
         self.racket_conf_threshold = config.get('racket_confidence_threshold', 0.3)
+        self.coreml_iou_threshold = float(config.get('coreml_iou_threshold', 0.45))
+        self.coreml_confidence_threshold = float(
+            config.get('coreml_confidence_threshold', min(self.ball_conf_threshold, self.racket_conf_threshold))
+        )
         
         print(f"   球检测阈值: {self.ball_conf_threshold}")
         print(f"   球拍检测阈值: {self.racket_conf_threshold}")
@@ -74,11 +81,17 @@ class YOLO26nUnifiedDetector:
         self.ball_history = deque(maxlen=10)
         self.racket_history = deque(maxlen=10)
         self.static_threshold = config.get('static_ball_movement_threshold_px', 6)
+        self.static_ball_filter = StaticBallFilter(config)
         
         # 性能统计
         self.detection_times = deque(maxlen=100)
+        self.last_ball_diagnostics = {}
         
         print("✅ YOLO26n 统一检测器初始化完成")
+
+    def get_last_ball_diagnostics(self):
+        """Return lightweight diagnostics for the last ball-selection step."""
+        return dict(self.last_ball_diagnostics) if isinstance(self.last_ball_diagnostics, dict) else {}
     
     def detect_unified(self, frame):
         """
@@ -98,7 +111,12 @@ class YOLO26nUnifiedDetector:
         
         # 推理
         start_time = time.time()
-        predictions = self.model.predict({'image': input_image})
+        predict_inputs = {'image': input_image}
+        if 'iouThreshold' in self._coreml_input_names:
+            predict_inputs['iouThreshold'] = self.coreml_iou_threshold
+        if 'confidenceThreshold' in self._coreml_input_names:
+            predict_inputs['confidenceThreshold'] = self.coreml_confidence_threshold
+        predictions = self.model.predict(predict_inputs)
         inference_time = time.time() - start_time
         
         # 记录性能
@@ -130,7 +148,7 @@ class YOLO26nUnifiedDetector:
         """解析模型输出"""
         ball_detections = []
         racket_detections = []
-        
+
         # YOLO26n Core ML 输出格式: var_1441 [1, 300, 6]
         # 格式: [x_center, y_center, width, height, confidence, class_id]
         if 'var_1441' in predictions:
@@ -193,7 +211,63 @@ class YOLO26nUnifiedDetector:
                             'area': int(box_area),
                             'aspect_ratio': round(aspect_ratio, 2)
                         })
-        
+        # 兼容带 NMS 的 CoreML 检测输出（坐标 + 80类置信）
+        elif 'coordinates' in predictions and 'confidence' in predictions:
+            coordinates = np.asarray(predictions['coordinates'])
+            confidence = np.asarray(predictions['confidence'])
+            if coordinates.ndim == 1:
+                coordinates = coordinates.reshape(1, -1)
+            if confidence.ndim == 1:
+                confidence = confidence.reshape(1, -1)
+            num_det = min(coordinates.shape[0], confidence.shape[0])
+            for i in range(num_det):
+                coord = coordinates[i]
+                cls_conf = confidence[i]
+                if coord.shape[0] < 4 or cls_conf.shape[0] <= max(self.ball_class_id, self.racket_class_id):
+                    continue
+
+                # coordinates is (xc, yc, w, h), usually normalized [0,1].
+                xc, yc, bw, bh = float(coord[0]), float(coord[1]), float(coord[2]), float(coord[3])
+                if max(abs(xc), abs(yc), abs(bw), abs(bh)) <= 2.0:
+                    xc *= self.original_width
+                    yc *= self.original_height
+                    bw *= self.original_width
+                    bh *= self.original_height
+                x1 = max(0.0, min(self.original_width, xc - bw / 2.0))
+                y1 = max(0.0, min(self.original_height, yc - bh / 2.0))
+                x2 = max(0.0, min(self.original_width, xc + bw / 2.0))
+                y2 = max(0.0, min(self.original_height, yc + bh / 2.0))
+                box = [x1, y1, x2, y2]
+
+                ball_conf = float(cls_conf[self.ball_class_id])
+                if ball_conf >= self.ball_conf_threshold:
+                    ball_detections.append({
+                        'position': [(box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0],
+                        'box': box,
+                        'confidence': ball_conf,
+                        'radius': max(1, int((box[2] - box[0]) / 2.0)),
+                    })
+
+                racket_conf = float(cls_conf[self.racket_class_id])
+                if racket_conf >= self.racket_conf_threshold:
+                    box_width = box[2] - box[0]
+                    box_height = box[3] - box[1]
+                    box_area = box_width * box_height
+                    max_area = (self.original_width * self.original_height) / 10
+                    min_area = 500
+                    aspect_ratio = box_height / max(box_width, 1)
+                    min_aspect_ratio = 0.3
+                    max_aspect_ratio = 10.0
+                    if (min_area <= box_area <= max_area and
+                        min_aspect_ratio <= aspect_ratio <= max_aspect_ratio):
+                        racket_detections.append({
+                            'box': [int(b) for b in box],
+                            'confidence': racket_conf,
+                            'class_name': 'tennis racket',
+                            'area': int(box_area),
+                            'aspect_ratio': round(aspect_ratio, 2),
+                        })
+
         return ball_detections, racket_detections
     
     def _scale_box(self, x_center, y_center, width, height):
@@ -218,22 +292,222 @@ class YOLO26nUnifiedDetector:
     
     def _filter_static_balls(self, ball_detections, racket_detections=None):
         """Select the active ball and filter persistent static false positives."""
+        diagnostics = {
+            "raw_candidates": len(ball_detections or []),
+            "kept_candidates": 0,
+            "continuity_enabled": True,
+            "continuity_disabled_reason": None,
+            "rejections": {
+                "static_hard_mask": 0,
+                "low_conf_unsupported": 0,
+                "upper_mirror_unsupported": 0,
+                "track_became_static": 0,
+            },
+            "selected": None,
+            "final_decision": "no_candidates",
+            "top_candidates": [],
+        }
         if not ball_detections:
+            self.static_ball_filter.update([])
+            self.last_ball_diagnostics = diagnostics
             return []
-        
+
         previous_position = self.ball_history[-1] if self.ball_history else None
+        previous_velocity = None
+        previous_motion_px = None
+        if len(self.ball_history) >= 2:
+            previous_velocity = [
+                float(self.ball_history[-1][0] - self.ball_history[-2][0]),
+                float(self.ball_history[-1][1] - self.ball_history[-2][1]),
+            ]
+            previous_motion_px = float(
+                np.linalg.norm(
+                    np.array(self.ball_history[-1], dtype=float) - np.array(self.ball_history[-2], dtype=float)
+                )
+            )
+        previous_in_static_zone = bool(
+            previous_position is not None
+            and self.static_ball_filter.should_mask(
+                previous_position,
+                near_previous_track=False,
+                near_racket=False,
+            )
+        )
+        max_motion_for_continuity = float(
+            self.config.get("ball_max_motion_for_continuity_px", 140.0)
+        )
+        continuity_enabled = (
+            (previous_motion_px is None or previous_motion_px <= max_motion_for_continuity)
+            and not previous_in_static_zone
+        )
+        diagnostics["continuity_enabled"] = bool(continuity_enabled)
+        if not continuity_enabled:
+            if previous_in_static_zone:
+                diagnostics["continuity_disabled_reason"] = "previous_in_static_zone"
+            else:
+                diagnostics["continuity_disabled_reason"] = "previous_motion_too_large"
+        scoring_previous_position = previous_position if continuity_enabled else None
+        scoring_previous_velocity = previous_velocity if continuity_enabled else None
+        continuity_distance = float(self.config.get("ball_continuity_distance_px", 180.0))
+        continuity_keep_ratio = float(self.config.get("static_ball_keep_if_near_prev_ratio", 0.8))
+        racket_distance = float(self.config.get("ball_racket_proximity_distance_px", 360.0))
+        racket_keep_ratio = float(self.config.get("static_ball_keep_if_near_racket_ratio", 0.65))
+        hard_mask_allow_near_prev_min_motion_px = float(
+            self.config.get("static_ball_hard_mask_allow_near_prev_min_motion_px", 16.0)
+        )
+        hard_mask_allow_near_prev_distance_px = float(
+            self.config.get("static_ball_hard_mask_allow_near_prev_distance_px", 24.0)
+        )
+        near_prev_threshold = continuity_distance * continuity_keep_ratio
+        near_racket_threshold = racket_distance * racket_keep_ratio
+
+        racket_centers = []
+        for racket in racket_detections or []:
+            center = racket_center(racket)
+            if center is not None:
+                racket_centers.append(center)
+
+        self.static_ball_filter.update([det.get("position") for det in ball_detections if det.get("position")])
+        adjusted_candidates = []
+        for det in ball_detections:
+            pos = det.get("position")
+            if not pos:
+                continue
+            dist_to_prev = None
+            if previous_position is not None:
+                dist_to_prev = float(
+                    np.linalg.norm(np.array(pos, dtype=float) - np.array(previous_position, dtype=float))
+                )
+            near_prev = (
+                scoring_previous_position is not None
+                and np.linalg.norm(np.array(pos, dtype=float) - np.array(scoring_previous_position, dtype=float)) <= near_prev_threshold
+            )
+            near_racket = any(
+                np.linalg.norm(np.array(pos, dtype=float) - np.array(center, dtype=float)) <= near_racket_threshold
+                for center in racket_centers
+            )
+            near_prev_for_mask = bool(
+                near_prev
+                and (
+                    (previous_motion_px is not None and previous_motion_px >= hard_mask_allow_near_prev_min_motion_px)
+                    or (
+                        dist_to_prev is not None
+                        and dist_to_prev <= hard_mask_allow_near_prev_distance_px
+                        and not previous_in_static_zone
+                    )
+                )
+            )
+            if self.static_ball_filter.should_mask(
+                pos,
+                near_previous_track=near_prev_for_mask,
+                near_racket=near_racket,
+            ):
+                diagnostics["rejections"]["static_hard_mask"] += 1
+                diagnostics["top_candidates"].append({
+                    "position": [float(pos[0]), float(pos[1])],
+                    "raw_confidence": float(det.get("confidence", 0.0)),
+                    "adjusted_confidence": 0.0,
+                    "masked": True,
+                    "near_prev": bool(near_prev),
+                    "near_racket": bool(near_racket),
+                    "reason": "static_hard_mask",
+                })
+                continue
+            penalty = self.static_ball_filter.penalty(
+                pos,
+                near_previous_track=near_prev,
+                near_racket=near_racket,
+            )
+            adjusted = dict(det)
+            adjusted["confidence"] = max(0.0, float(det.get("confidence", 0.0)) - penalty)
+            adjusted["static_penalty"] = float(penalty)
+            adjusted_candidates.append(adjusted)
+            diagnostics["top_candidates"].append({
+                "position": [float(pos[0]), float(pos[1])],
+                "raw_confidence": float(det.get("confidence", 0.0)),
+                "adjusted_confidence": float(adjusted["confidence"]),
+                "masked": False,
+                "near_prev": bool(near_prev),
+                "near_racket": bool(near_racket),
+                "reason": "kept",
+            })
+
+        diagnostics["kept_candidates"] = len(adjusted_candidates)
         selector_config = {
             **self.config,
             "frame_height": getattr(self, "original_height", None),
         }
         best_ball = select_ball_candidate(
-            ball_detections,
-            previous_position=previous_position,
+            adjusted_candidates,
+            previous_position=scoring_previous_position,
+            previous_velocity=scoring_previous_velocity,
             racket_detections=racket_detections,
             config=selector_config,
         )
         if best_ball is None:
+            diagnostics["final_decision"] = "no_candidate_after_filter"
+            diagnostics["top_candidates"] = sorted(
+                diagnostics["top_candidates"],
+                key=lambda c: c.get("adjusted_confidence", 0.0),
+                reverse=True,
+            )[:8]
+            self.last_ball_diagnostics = diagnostics
             return []
+
+        best_pos = best_ball.get("position")
+        best_conf = float(best_ball.get("confidence", 0.0))
+        near_prev_selected = (
+            scoring_previous_position is not None
+            and best_pos is not None
+            and np.linalg.norm(np.array(best_pos, dtype=float) - np.array(scoring_previous_position, dtype=float)) <= near_prev_threshold
+        )
+        near_racket_selected = False
+        if best_pos is not None and racket_centers:
+            near_racket_selected = any(
+                np.linalg.norm(np.array(best_pos, dtype=float) - np.array(center, dtype=float)) <= near_racket_threshold
+                for center in racket_centers
+            )
+
+        supported_track = near_prev_selected or near_racket_selected
+        min_selected_conf = float(self.config.get("ball_min_selected_confidence", 0.05))
+        if best_conf < min_selected_conf and not supported_track:
+            diagnostics["rejections"]["low_conf_unsupported"] += 1
+            diagnostics["selected"] = {
+                "position": [float(best_pos[0]), float(best_pos[1])] if best_pos is not None else None,
+                "confidence": float(best_conf),
+                "supported_track": False,
+            }
+            diagnostics["final_decision"] = "reject_low_conf_unsupported"
+            diagnostics["top_candidates"] = sorted(
+                diagnostics["top_candidates"],
+                key=lambda c: c.get("adjusted_confidence", 0.0),
+                reverse=True,
+            )[:8]
+            self.last_ball_diagnostics = diagnostics
+            return []
+
+        mirror_hard_min_y_ratio = self.config.get("ball_play_area_min_y_ratio_hard")
+        if mirror_hard_min_y_ratio is not None and best_pos is not None:
+            try:
+                hard_min_y = float(mirror_hard_min_y_ratio) * float(self.original_height)
+                if float(best_pos[1]) < hard_min_y and not supported_track:
+                    diagnostics["rejections"]["upper_mirror_unsupported"] += 1
+                    diagnostics["selected"] = {
+                        "position": [float(best_pos[0]), float(best_pos[1])],
+                        "confidence": float(best_conf),
+                        "supported_track": False,
+                    }
+                    diagnostics["final_decision"] = "reject_upper_mirror_unsupported"
+                    diagnostics["top_candidates"] = sorted(
+                        diagnostics["top_candidates"],
+                        key=lambda c: c.get("adjusted_confidence", 0.0),
+                        reverse=True,
+                    )[:8]
+                    self.last_ball_diagnostics = diagnostics
+                    return []
+            except (TypeError, ValueError):
+                pass
+
         ball_pos = best_ball['position']
         
         # 添加到历史
@@ -246,8 +520,33 @@ class YOLO26nUnifiedDetector:
             
             if movement < self.static_threshold:
                 # 静止球，过滤掉
+                diagnostics["rejections"]["track_became_static"] += 1
+                diagnostics["selected"] = {
+                    "position": [float(ball_pos[0]), float(ball_pos[1])],
+                    "confidence": float(best_conf),
+                    "supported_track": bool(supported_track),
+                }
+                diagnostics["final_decision"] = "reject_track_became_static"
+                diagnostics["top_candidates"] = sorted(
+                    diagnostics["top_candidates"],
+                    key=lambda c: c.get("adjusted_confidence", 0.0),
+                    reverse=True,
+                )[:8]
+                self.last_ball_diagnostics = diagnostics
                 return []
-        
+
+        diagnostics["selected"] = {
+            "position": [float(ball_pos[0]), float(ball_pos[1])],
+            "confidence": float(best_conf),
+            "supported_track": bool(supported_track),
+        }
+        diagnostics["final_decision"] = "selected"
+        diagnostics["top_candidates"] = sorted(
+            diagnostics["top_candidates"],
+            key=lambda c: c.get("adjusted_confidence", 0.0),
+            reverse=True,
+        )[:8]
+        self.last_ball_diagnostics = diagnostics
         return [best_ball]
 
     def _select_primary_racket(self, racket_detections, ball_detections=None):

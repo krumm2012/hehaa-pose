@@ -611,6 +611,8 @@ def build_coach_dataset(frame_data: Dict, event_analysis: Dict) -> Dict:
         timing = _timing_metrics(event, frame_markers, event_traces, fps)
         scores = _quality_scores(event, body, racket, ball, timing)
         data_quality = _data_quality(event_features, ball, racket, body, timing)
+        event_quality_flags = event.get("quality_flags") or {}
+        data_quality["event_quality_flags"] = event_quality_flags
         coach_events.append(
             {
                 "event_id": int(event["event_id"]),
@@ -618,13 +620,16 @@ def build_coach_dataset(frame_data: Dict, event_analysis: Dict) -> Dict:
                 "confidence": event.get("confidence"),
                 "is_valid_hit": True,
                 "is_shadow_swing": ball.get("trajectory_quality", 0.0) == 0.0,
+                "quality_flags": event_quality_flags,
                 "frames": frame_markers,
                 "ball": ball,
                 "racket": racket,
                 "body": body,
                 "timing": timing,
                 "scores": scores,
-                "diagnosis_tags": _diagnosis_tags(scores, body, racket, ball, timing),
+                "diagnosis_tags": sorted(
+                    set(_diagnosis_tags(scores, body, racket, ball, timing) + list(event_quality_flags.get("warnings") or []))
+                ),
                 "data_quality": data_quality,
                 "classification_evidence": event.get("evidence", {}),
                 "frame_trace": _event_trace_rows(event, traces_by_frame, features_by_frame),

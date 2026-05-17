@@ -129,6 +129,72 @@ def _phase_counts(features: List[Dict], energy: List[float], start_idx: int, end
     return phases, frame_phases
 
 
+def _best_contact_frame(features: List[Dict], start_idx: int, end_idx: int, peak_idx: int) -> int:
+    event_features = features[start_idx : end_idx + 1]
+    scored = [f for f in event_features if f.get("contact_score") is not None]
+    if not scored:
+        return int(features[peak_idx]["frame_id"])
+    peak_frame = int(features[peak_idx]["frame_id"])
+    best = max(
+        scored,
+        key=lambda f: (
+            float(f.get("contact_score") or 0.0),
+            -abs(int(f.get("frame_id", peak_frame)) - peak_frame),
+        ),
+    )
+    if float(best.get("contact_score") or 0.0) <= 0.0:
+        return int(features[peak_idx]["frame_id"])
+    return int(best["frame_id"])
+
+
+def _event_quality_flags(features: List[Dict], start_idx: int, end_idx: int, classification: Dict, contact_frame: int) -> Dict:
+    event_features = features[start_idx : end_idx + 1]
+    total = max(1, len(event_features))
+    pose_frames = sum(1 for f in event_features if f.get("has_pose"))
+    ball_frames = sum(1 for f in event_features if f.get("ball") is not None)
+    racket_frames = sum(1 for f in event_features if f.get("racket_center") is not None)
+    diagnostic_counts = {}
+    continuity_disabled = 0
+    for feature in event_features:
+        diagnostics = feature.get("detection_diagnostics") or {}
+        for key, value in (diagnostics.get("rejections") or {}).items():
+            diagnostic_counts[key] = diagnostic_counts.get(key, 0) + int(value or 0)
+        if diagnostics.get("continuity_disabled"):
+            continuity_disabled += 1
+
+    evidence = classification.get("evidence") or {}
+    warnings = []
+    ball_ratio = ball_frames / total
+    racket_ratio = racket_frames / total
+    pose_ratio = pose_frames / total
+    if ball_ratio < 0.65:
+        warnings.append("ball_track_gaps")
+    if racket_ratio < 0.65:
+        warnings.append("racket_track_gaps")
+    if pose_ratio < 0.90:
+        warnings.append("pose_gaps")
+    if float(evidence.get("screen_left_true_right_ratio") or 0.0) >= 0.58:
+        warnings.append("mirror_handedness_rule_applied")
+    if diagnostic_counts.get("static_hard_mask", 0) > 0:
+        warnings.append("static_ball_mask_in_event")
+    if diagnostic_counts.get("upper_mirror_unsupported", 0) > 0:
+        warnings.append("mirror_ball_rejection_in_event")
+    if continuity_disabled > 0:
+        warnings.append("ball_continuity_disabled")
+    if contact_frame == int(features[start_idx + max(0, min(end_idx - start_idx, (end_idx - start_idx) // 2))]["frame_id"]):
+        warnings.append("contact_frame_needs_review")
+
+    return {
+        "pose_frame_ratio": round(pose_ratio, 4),
+        "ball_frame_ratio": round(ball_ratio, 4),
+        "racket_frame_ratio": round(racket_ratio, 4),
+        "diagnostic_rejection_counts": dict(sorted(diagnostic_counts.items())),
+        "continuity_disabled_frames": int(continuity_disabled),
+        "warnings": sorted(set(warnings)),
+        "review_recommended": bool(warnings),
+    }
+
+
 def _screen_left_true_right_forehand_evidence(event_features: List[Dict]) -> Dict:
     offsets = [float(f["active_wrist_x_offset"]) for f in event_features if f.get("active_wrist_x_offset") is not None]
     if not offsets:
@@ -206,6 +272,8 @@ def _segment_by_peaks(
             continue
         classification = _classify_peak_event(features, start_idx, end_idx, peak_idx, fps)
         event_id = len(events) + 1
+        contact_frame = _best_contact_frame(features, start_idx, end_idx, peak_idx)
+        quality_flags = _event_quality_flags(features, start_idx, end_idx, classification, contact_frame)
         phase_counts, event_frame_phases = _phase_counts(features, energy, start_idx, end_idx, peak_energy)
         for idx in range(start_idx, end_idx + 1):
             frame_to_event[features[idx]["frame_id"]] = event_id
@@ -217,10 +285,12 @@ def _segment_by_peaks(
                 "end_frame": int(features[end_idx]["frame_id"]),
                 "duration_frames": int(end_idx - start_idx + 1),
                 "peak_frame": int(features[peak_idx]["frame_id"]),
+                "contact_frame": contact_frame,
                 "peak_energy": round(float(peak_energy), 4),
                 "stroke_type": classification["stroke_type"],
                 "confidence": classification["confidence"],
                 "evidence": classification["evidence"],
+                "quality_flags": quality_flags,
                 "phase_counts": dict(sorted(phase_counts.items())),
             }
         )
@@ -324,6 +394,10 @@ def segment_swing_events(
         event_features = features[start_idx : end_idx + 1]
         classification = classify_swing_event(event_features)
         event_id = len(events) + 1
+        peak_rel = segment_energy.index(peak_energy) if segment_energy else 0
+        peak_idx = start_idx + peak_rel
+        contact_frame = _best_contact_frame(features, start_idx, end_idx, peak_idx)
+        quality_flags = _event_quality_flags(features, start_idx, end_idx, classification, contact_frame)
         phases = []
         for idx in range(start_idx, end_idx + 1):
             phase = _phase_for(features[idx], energy[idx], peak_energy)
@@ -336,10 +410,13 @@ def segment_swing_events(
                 "start_frame": int(features[start_idx]["frame_id"]),
                 "end_frame": int(features[end_idx]["frame_id"]),
                 "duration_frames": int(end_idx - start_idx + 1),
+                "peak_frame": int(features[peak_idx]["frame_id"]),
+                "contact_frame": contact_frame,
                 "peak_energy": round(float(peak_energy), 4),
                 "stroke_type": classification["stroke_type"],
                 "confidence": classification["confidence"],
                 "evidence": classification["evidence"],
+                "quality_flags": quality_flags,
                 "phase_counts": {phase: phases.count(phase) for phase in sorted(set(phases))},
             }
         )
