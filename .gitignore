@@ -14,6 +14,10 @@ pip-wheel-metadata/
 venv_yolo26/
 venv_tracknet/
 
+# Local archives and model packages
+archives/
+*.mlpackage/
+
 # Byte-compiled / logs
 *.log
 *.tmp
@@ -39,6 +43,7 @@ data/**
 !data/analysis_results/
 !data/analysis_results/**
 !data/.gitkeep
+data/analysis_results/.DS_Store
 
 # Videos and frames (large)
 player-video/**
@@ -58,6 +63,7 @@ frame_*_analysis.jpg
 *_test_result.jpg
 roi_*_test.jpg
 mask_zone_*_result.jpg
+mask_zone_*-test_result.jpg
 logs_frame_*.txt
 run_*.log
 *_predict_analysis.csv
