@@ -44,9 +44,24 @@ data/**
 player-video/**
 frames_*/
 debug_frames/
+debug_frames_*/
 extracted_frames/
 false_detection_analysis/
 frames_70_90_analysis/
+output/
+test_output/
+test_*.mp4
+
+# Generated diagnostics and one-off debug artifacts
+debug_frame_*.jpg
+frame_*_analysis.jpg
+*_test_result.jpg
+roi_*_test.jpg
+mask_zone_*_result.jpg
+logs_frame_*.txt
+run_*.log
+*_predict_analysis.csv
+adjusted_params_analysis.csv
 
 # Models (ignore binaries)
 models/*.pt
