@@ -2,14 +2,15 @@
 
 ## Pipeline
 
-The current swing review flow is a four-step offline loop:
+The current swing review flow is a five-step offline loop:
 
 1. `main_pipe.py` generates frame JSON with pose, ball, racket, and detection diagnostics.
 2. `swing_event_analyzer.py` converts frame labels into event-level swings.
 3. `swing_coach_data_collector.py` expands each event into coach-oriented metrics.
 4. `swing_event_video_renderer.py` and `swing_report_builder.py` produce review artifacts.
+5. `swing_evaluation.py` compares model events with human annotation JSON and writes objective accuracy metrics.
 
-This keeps realtime detection separate from event-level review. The event JSON is the source of truth for counting and classification; the video and report are audit surfaces.
+This keeps realtime detection separate from event-level review. The event JSON is the model source of truth for counting and classification; human annotation JSON is the review source of truth when available.
 
 ## Accuracy Risks Addressed
 
@@ -39,6 +40,34 @@ Event warnings are attached when the event has ball gaps, racket gaps, pose gaps
 
 `*_swing_report.html` combines the swing annotated video, event timeline, score summary, diagnosis tags, quality warnings, and a compact JSON summary in one standalone page.
 
+`*_swing_evaluation.json` is generated only when human annotations are available. It reports model-vs-human event counts, stroke-type accuracy, contact-frame error, manual review ids, model review ids, false positives, and unmatched event ids.
+
+## Manual Evaluation
+
+After downloading `swing_manual_annotations.json` from the report page, run:
+
+```bash
+python3 swing_evaluation.py \
+  --events data/players-video/results_20260517/03.15_closed_loop_swing_events.json \
+  --annotations /Users/krum5539/Downloads/swing_manual_annotations.json
+```
+
+The default output path is next to the event JSON, for example:
+
+```text
+data/players-video/results_20260517/03.15_closed_loop_swing_evaluation.json
+```
+
+Key fields:
+
+- `stroke_type_accuracy`: event type agreement for valid human-labeled swings.
+- `contact_accuracy`: ratio of contact frames within the configured tolerance.
+- `contact_mean_abs_error_frames`: average absolute contact-frame error.
+- `manual_review_event_ids`: events the human reviewer marked for review.
+- `model_review_event_ids`: events where quality flags already recommended review.
+- `unmatched_model_event_ids`: model events not present in the annotation file.
+- `unmatched_annotation_event_ids`: annotation events not present in model output.
+
 ## Regression Videos
 
 Primary regression clips:
@@ -52,10 +81,11 @@ Expected artifacts per clip:
 - `*_swing_events.json`
 - `*_coach_dataset.json`
 - `*_swing_report.html`
+- `*_swing_evaluation.json` when manual annotations are available
 
 ## Known Limits
 
-There is still no human-labeled truth file. Counts like "2 two-handed backhands and 1 forehand" must be treated as review targets until a label file exists.
+Human-labeled truth files are still sparse. Counts like "2 two-handed backhands and 1 forehand" must be treated as review targets until enough annotation files exist across different camera views and players.
 
 Single-camera geometry cannot reliably estimate spin, landing depth, racket face angle, or true 3D body rotation. Those fields remain nullable or confidence-tagged.
 

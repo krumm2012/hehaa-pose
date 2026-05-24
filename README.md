@@ -1,103 +1,200 @@
-# 🎾 Tennis Analyzer - AI 网球动作与轨迹全解析系统
+# Tennis Analyzer
 
-一个集成了尖端计算机视觉技术（基于深度学习）的专业网球视频分析系统。它不仅能追踪球的运动轨迹，还能精确识别球员姿态、挥拍动作，并针对 Apple Silicon 进行了极致的性能优化。
+`tennis_analyzer` 是一个面向网球训练视频的本地分析项目，重点能力是从单机位视频中提取人体姿态、网球、球拍、挥拍事件和面向 AI 网球教练的数据。当前主线分支是 `new`，已同步到远端 `origin-paused/new`。
 
----
+## 当前能力
 
-## 🌟 核心功能
+- `main_pipe.py`：多进程视频检测流水线，生成标注视频、逐帧 JSON 和诊断 JSON。
+- `yolo26n_unified_detector.py`：统一检测人、球、球拍，包含静止球抑制、镜中球过滤、轨迹连续性和球拍候选重排序。
+- `pose_estimator_yolo26.py`：YOLO26 pose 检测，支持 Core ML / ANE，并加入 pose 时序平滑以减少骨骼节点跳动。
+- `swing_event_analyzer.py`：把逐帧检测结果聚合成事件级挥拍，输出 `start/contact/peak/end/stroke_type/confidence/quality_flags`。
+- `swing_coach_data_collector.py`：生成面向 AI 网球教练的 `*_coach_dataset.json`，包含动作阶段、关键角度、球/拍质量、问题标签和解释证据。
+- `swing_event_video_renderer.py`：生成统一 OSD 的 swing annotated 视频。
+- `swing_report_builder.py`：生成本地 HTML 报告，展示视频、事件卡片、质量警告、JSON 摘要和人工标注控件。
+- `swing_evaluation.py`：对比模型事件和人工标注，输出挥拍类型准确率、contact frame 准确率、误检/漏检/复核事件。
 
-*   **🏃‍♂️ 高精度姿态检测 (Pose Estimation)**
-    *   支持 **YOLO26m-pose (CoreML)** 与 YOLOv8-pose 自动切换。
-    *   实时识别 17 个关键点，分析身体重心与动作一致性。
-*   **🎾 智能球检测与追踪 (Ball Tracking)**
-    *   **色彩编码系统**：自动区分红色（运动球）与蓝色（静止球）。
-    *   **轨迹补全**：基于历史帧的渐变动态轨迹线，清晰展示球路。
-*   **🎯 ROI 兴趣区域优化 (ROI Analytics)**
-    *   支持 4 点描线定义非矩形场地区域。
-    *   **计算量缩减 50%+**：仅在关键区域内进行高精度检测。
-*   **🏓 挥拍与击球分析 (Swing Detection)**
-    *   自动识别正手、反手挥拍类型。
-    *   精准捕捉击球瞬间，计算击球点位。
-*   **🎬 精彩瞬间捕捉 (Highlight Clips)**
-    *   自动生成包含击球瞬间前后视频片段、数据分析 JSON 及关键帧截图。
+## 推荐工作流
 
----
+### 1. 跑主检测流水线
 
-## 🚀 性能革命
+```bash
+python3 main_pipe.py \
+  --config configs/yolo26_tennis_config.yaml \
+  --input data/players-video/03.15.mp4 \
+  --output data/players-video/results_YYYYMMDD/03.15_closed_loop.mp4
+```
 
-针对 Mac (Apple Silicon) 进行了深度适配，实现了从“几乎不可用”到“生产就绪”的质变：
+主流程会生成：
 
-| 指标 | 基础模式 | 性能优化模式 (Apple Silicon + ROI) | 改进倍数 |
-| :--- | :--- | :--- | :--- |
-| **推理速度** | 0.99 FPS | **26.03 FPS** | **26.3x ⚡** |
-| **设备功耗** | 极高 (CPU 满载) | 低 (利用 Neural Engine) | **-50% 🔋** |
-| **静止球干扰** | 严重 | 95% 过滤成功率 | **有效提升** |
+- `*_closed_loop.mp4`
+- `*_closed_loop.json`
+- `*_closed_loop_diagnostics.json`
 
----
+### 2. 生成 swing 事件
 
-## 📂 项目结构
+```bash
+python3 swing_event_analyzer.py data/players-video/results_YYYYMMDD/03.15_closed_loop.json
+```
+
+输出：
+
+- `*_swing_events.json`
+- `*_swing_events.csv`
+- `*_swing_frames.csv`
+
+### 3. 生成 AI 教练数据
+
+```bash
+python3 swing_coach_data_collector.py data/players-video/results_YYYYMMDD/03.15_closed_loop.json
+```
+
+输出：
+
+- `*_coach_dataset.json`
+
+### 4. 生成 swing 标注视频
+
+```bash
+python3 swing_event_video_renderer.py data/players-video/results_YYYYMMDD/03.15_closed_loop.json
+```
+
+输出：
+
+- `*_swing_annotated.mp4`
+- `*_swing_overlay_records.csv`
+
+### 5. 生成可视化报告
+
+```bash
+python3 swing_report_builder.py data/players-video/results_YYYYMMDD/03.15_closed_loop.json
+```
+
+输出：
+
+- `*_swing_report.html`
+
+报告页可以直接在浏览器打开，支持人工修正事件类型、是否有效击球、是否需要复核，并下载 `swing_manual_annotations.json`。
+
+### 6. 人工标注后做准确率评估
+
+```bash
+python3 swing_evaluation.py \
+  --events data/players-video/results_YYYYMMDD/03.15_closed_loop_swing_events.json \
+  --annotations /path/to/swing_manual_annotations.json
+```
+
+输出：
+
+- `*_swing_evaluation.json`
+
+评估 JSON 会记录：
+
+- `stroke_type_accuracy`
+- `contact_accuracy`
+- `contact_mean_abs_error_frames`
+- `manual_review_event_ids`
+- `model_review_event_ids`
+- `false_positive_event_ids`
+- `unmatched_model_event_ids`
+- `unmatched_annotation_event_ids`
+
+如果同目录存在 `*_swing_evaluation.json`，`swing_report_builder.py` 会在报告页显示 `Evaluation Summary`。
+
+## 已验证样例
+
+当前回归样例位于：
 
 ```text
-tennis_analyzer/
-├── configs/            # 预设 YAML 配置文件
-├── models/             # 模型存放区 (.mlpackage 和 .pt)
-├── data/               # 默认输入输出及精彩瞬间目录
-├── pose_estimator.py   # 统一姿态估计接口（支持 YOLOv8/v26）
-├── ball_tracker.py     # 球追踪与运动状态判断核心
-├── roi_manager.py      # ROI 区域选择与坐标转换
-├── racket_detector.py  # 球拍检测与挥拍逻辑
-├── main.py             # 统一入口程序
-├── cleanup.sh          # 项目清理脚本 (用于移除缓存与临时文件)
-└── archives/           # 历史归档文件
+data/players-video/results_20260517/
 ```
 
----
+重点产物：
 
-## 📄 分析与优化报告
+- `03.15_closed_loop_swing_report.html`
+- `03.15_closed_loop_swing_evaluation.json`
+- `18.12_closed_loop_swing_report.html`
 
-项目包含多份详细的技术报告，涵盖性能优化、配置分析与算法演进：
-*   **[PERFORMANCE_OPTIMIZATION_SUMMARY.md](file:///Users/krum5539/Documents/tennis_analyzer/PERFORMANCE_OPTIMIZATION_SUMMARY.md)**: 性能优化成果总览。
-*   **[CONFIG_OPTIMIZATION_SUMMARY.md](file:///Users/krum5539/Documents/tennis_analyzer/CONFIG_OPTIMIZATION_SUMMARY.md)**: 运动球检测配置优化。
-*   **[DETECTION_ISSUE_ANALYSIS.md](file:///Users/krum5539/Documents/tennis_analyzer/DETECTION_ISSUE_ANALYSIS.md)**: 检测漏报与误报深度分析。
-*   **[PIPELINE_TEST_RESULTS.md](file:///Users/krum5539/Documents/tennis_analyzer/PIPELINE_TEST_RESULTS.md)**: 多线程/异步流水线测试对比。
+已知 `03.15` 的人工标注评估结果：
 
----
+- 模型事件数：2
+- 人工有效事件数：2
+- 计数差异：0
+- 挥拍类型准确率：50%
+- contact frame 准确率：100%
+- 模型建议复核事件：1、2
 
-## 🛠️ 快速开始
+这说明当前优先优化方向是 `stroke_type` 分类，而不是事件计数。
 
-### 1. 环境准备
+## Gemini / AI 教练评估
+
+给 Gemini 或其他大模型做专业教练评价时，建议同时提供：
+
+1. `*_swing_annotated.mp4`
+2. `*_swing_report.html`
+3. `*_swing_events.json`
+4. `*_coach_dataset.json`
+5. 可选：`swing_manual_annotations.json`
+6. 可选：`*_swing_evaluation.json`
+
+使用指南见：
+
+- [docs/GEMINI_COACH_REVIEW_GUIDE.md](docs/GEMINI_COACH_REVIEW_GUIDE.md)
+- [docs/SWING_ACCURACY_CLOSED_LOOP.md](docs/SWING_ACCURACY_CLOSED_LOOP.md)
+- [docs/SWING_GPT55_REVIEW.md](docs/SWING_GPT55_REVIEW.md)
+
+## 配置重点
+
+主要配置文件：
+
+```text
+configs/yolo26_tennis_config.yaml
+```
+
+当前关键策略：
+
+- 检测模型：`yolo26n` 统一检测。
+- pose 模型：`yolo26m-pose`。
+- 计算单元：优先 `ANE`。
+- pose 阈值：`pose_confidence_threshold: 0.4`。
+- 静止球：启用静止球时序抑制和 hard mask。
+- 轨迹：启用球连续性、速度预测和镜中球弱惩罚。
+
+## 测试
+
+推荐先跑 swing 闭环相关测试：
+
 ```bash
-# 进入目录
-cd tennis_analyzer
-# 激活环境 (推荐 Python 3.10+)
-source venv/bin/activate
-# 安装核心依赖
-pip install -r requirements.txt
+python3 -m unittest -v \
+  test_swing_motion_pipeline.py \
+  test_swing_presence_detector.py \
+  test_ball_candidate_selector.py \
+  test_static_ball_filter.py \
+  test_pose_temporal_smoothing.py \
+  test_swing_evaluation.py
 ```
 
-### 2. 标准化启动
-```bash
-python3 main.py --config configs/yolo26_tennis_config.yaml --input "你的视频路径.mp4"
-```
+当前最近一次验证：41 个相关测试通过。
 
-### 3. 项目清理
-定期运行清理脚本以保持工作区整洁：
-```bash
-# 预览清理内容
-./cleanup.sh --dry-run
-# 执行正式清理
-./cleanup.sh
-```
+## Git 状态说明
 
----
+- 当前工作分支：`new`
+- 当前远端：`origin-paused`
+- `new` 与 `origin-paused/new` 已同步。
+- `origin-paused/main` 有一个独立清理提交；它会删除/移动大量调试和历史文件，暂未直接合并到 `new`，避免破坏当前 swing 分析闭环。
 
-## 🤝 故障排除
+## 已知限制
 
-*   **视频打不开？** 请确保输入视频为 H.264/AVC 编码，或使用 `ffmpeg` 转换。
-*   **速度还是慢？** 检查 `configs` 中 `skip_frames` 是否开启，或尝试调整 `compute_units` 为 `all`。
-*   **模型找不到？** 确保 `models/` 目录下有相应的权重文件。
+- 缺少大规模人工真值标注集，准确率仍需要持续用人工标注闭环校准。
+- 单摄像头无法可靠估计 3D 旋转、真实拍面角度、球速、旋转和落点深度。
+- 镜像机位的左右手规则仍带有当前场景假设，跨场地泛化需要 camera profile。
+- 高速挥拍、遮挡、强反光、球拍/球漏检仍会影响 contact frame 和动作质量判断。
 
----
+## 下一步建议
 
-**最后更新**: 2026-02-03
-**维护者**: Tennis Analyzer Team / Krumm
+1. 给 `18.12.mp4` 也补人工标注，生成 `18.12_closed_loop_swing_evaluation.json`。
+2. 基于多条人工标注结果优化 `swing_event_classifier.py`。
+3. 增加 `camera_profile`，显式记录镜像/正视/侧视和左右手映射。
+4. 把报告页升级为教练工作台，支持导入 Gemini 反馈和训练建议归档。
+5. 单独清理 `.gitignore` 和历史缓存产物，减少后续 Git 噪声。
+
+最后更新：2026-05-24

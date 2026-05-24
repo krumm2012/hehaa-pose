@@ -15,6 +15,7 @@ For each reviewed video, provide Gemini with:
 3. `*_swing_events.json`
 4. `*_coach_dataset.json`
 5. Optional: `swing_manual_annotations.json` if human review has already corrected event labels.
+6. Optional: `*_swing_evaluation.json` if local model-vs-human evaluation has been generated.
 
 Current review artifacts:
 
@@ -46,6 +47,27 @@ The report contains:
 - Quality warnings: detection confidence problems that should affect trust.
 - Manual annotation controls: dropdown and checkboxes for human correction.
 - Manual annotation JSON: generated label data that can be downloaded.
+
+## Local Evaluation JSON
+
+When manual annotations are available, generate a local evaluation file before asking Gemini for final coaching feedback:
+
+```bash
+python3 swing_evaluation.py \
+  --events data/players-video/results_20260517/03.15_closed_loop_swing_events.json \
+  --annotations /Users/krum5539/Downloads/swing_manual_annotations.json
+```
+
+This writes `*_swing_evaluation.json` next to the event JSON by default.
+
+Use the evaluation JSON to tell Gemini which parts of the model output are already confirmed or disputed by a human reviewer:
+
+- `stroke_type_accuracy`: whether model stroke labels agree with human labels.
+- `contact_accuracy`: whether model contact frames are close to human contact frames.
+- `manual_review_event_ids`: events the human reviewer still wants checked.
+- `model_review_event_ids`: events the model already considers low confidence.
+- `false_positive_event_ids`: model events the human marked as not valid hits.
+- `unmatched_model_event_ids` / `unmatched_annotation_event_ids`: event alignment problems.
 
 ## Important Quality Flags
 
@@ -94,6 +116,7 @@ I will provide:
 3. A swing event JSON file, if available.
 4. A coach dataset JSON file, if available.
 5. Optional human annotation JSON, if available.
+6. Optional local evaluation JSON, if available.
 
 Please evaluate the player's technique event by event.
 
@@ -101,6 +124,7 @@ Rules:
 - The video is the primary visual evidence.
 - Treat the event JSON and coach dataset as structured evidence, but verify visually against the video.
 - If manual annotations are provided, prefer manual labels over model predictions.
+- If local evaluation JSON is provided, use it to identify disputed events and avoid treating model labels as final truth.
 - Use quality_flags as uncertainty signals. If ball/racket/pose tracking is weak, say the conclusion is low confidence.
 - Do not invent 3D measurements, spin, landing depth, or racket face angle if the JSON says the field is null, unavailable, or low confidence.
 - If the video and JSON disagree, explicitly list the disagreement and explain what should be reviewed manually.

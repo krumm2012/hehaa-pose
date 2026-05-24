@@ -31,6 +31,11 @@ def default_video_path(frame_json_path: str) -> str:
     return str(path.with_name(f"{path.stem}_swing_annotated.mp4"))
 
 
+def default_evaluation_json(frame_json_path: str) -> str:
+    path = Path(frame_json_path)
+    return str(path.with_name(f"{path.stem}_swing_evaluation.json"))
+
+
 def default_report_path(frame_json_path: str) -> str:
     path = Path(frame_json_path)
     return str(path.with_name(f"{path.stem}_swing_report.html"))
@@ -58,14 +63,21 @@ def build_report_payload(
     event_json_path: Optional[str] = None,
     coach_json_path: Optional[str] = None,
     video_path: Optional[str] = None,
+    evaluation_json_path: Optional[str] = None,
 ) -> Dict:
     event_json_path = event_json_path or default_event_json(frame_json_path)
     coach_json_path = coach_json_path or default_coach_json(frame_json_path)
     video_path = video_path or default_video_path(frame_json_path)
+    evaluation_json_path = evaluation_json_path or default_evaluation_json(frame_json_path)
 
     frame_data = load_json(frame_json_path)
     event_data = load_json(event_json_path)
     coach_data = load_json(coach_json_path) if coach_json_path and os.path.exists(coach_json_path) else {"events": []}
+    evaluation_data = (
+        load_json(evaluation_json_path)
+        if evaluation_json_path and os.path.exists(evaluation_json_path)
+        else None
+    )
     coach_lookup = _event_by_id(coach_data.get("events", []))
 
     merged_events = []
@@ -100,6 +112,7 @@ def build_report_payload(
             "event_json": event_json_path,
             "coach_json": coach_json_path,
             "video": video_path,
+            "evaluation_json": evaluation_json_path if evaluation_data else None,
         },
         "video_info": frame_data.get("video_info") or {},
         "summary": {
@@ -108,6 +121,7 @@ def build_report_payload(
             "coach": coach_data.get("summary") or {},
         },
         "events": merged_events,
+        "evaluation": evaluation_data,
     }
 
 
@@ -130,6 +144,15 @@ def _stroke_options(selected: Optional[str]) -> str:
 
 def _json_script(payload: Dict) -> str:
     return html.escape(json.dumps(payload, ensure_ascii=False), quote=False)
+
+
+def _percent_text(value) -> str:
+    if value is None:
+        return "-"
+    try:
+        return f"{float(value) * 100:.0f}%"
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def render_report_html(payload: Dict, output_path: str) -> str:
@@ -174,6 +197,16 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         )
 
     summary = payload.get("summary") or {}
+    evaluation = payload.get("evaluation") or {}
+    evaluation_summary = evaluation.get("summary") or {}
+    evaluation_block = ""
+    if evaluation_summary:
+        evaluation_block = f"""
+      <div class="evaluation-summary">
+        <h2>Evaluation Summary</h2>
+        <p>stroke accuracy {_percent_text(evaluation_summary.get('stroke_type_accuracy'))} · contact accuracy {_percent_text(evaluation_summary.get('contact_accuracy'))} · manual review {html.escape(str(evaluation_summary.get('manual_review_count', 0)))}</p>
+      </div>
+        """
     html_doc = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -215,6 +248,9 @@ def render_report_html(payload: Dict, output_path: str) -> str:
     .annotation-box select, .annotation-box textarea {{ width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 7px; background: #fffdf7; color: var(--ink); }}
     .annotation-tags {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }}
     .actions {{ display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; }}
+    .evaluation-summary {{ margin: 14px 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fffdf7; }}
+    .evaluation-summary h2 {{ margin: 0 0 6px; font-size: 18px; }}
+    .evaluation-summary p {{ margin: 0; }}
     button {{ border: 1px solid var(--accent); background: var(--accent); color: white; border-radius: 6px; padding: 9px 12px; cursor: pointer; }}
     .file-label {{ border: 1px solid var(--line); background: #fffdf7; color: var(--ink); border-radius: 6px; padding: 9px 12px; cursor: pointer; }}
     .file-label input {{ display: none; }}
@@ -244,6 +280,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         </label>
         <span id="import-status" class="import-status"></span>
       </div>
+      {evaluation_block}
       <h2>Raw Summary</h2>
       <pre id="raw-summary"></pre>
       <h2>Manual Annotations</h2>
@@ -376,6 +413,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--event-json", help="Swing event JSON. Defaults to <frame_json_stem>_swing_events.json")
     parser.add_argument("--coach-json", help="Coach dataset JSON. Defaults to <frame_json_stem>_coach_dataset.json")
     parser.add_argument("--video", help="Annotated swing video. Defaults to <frame_json_stem>_swing_annotated.mp4")
+    parser.add_argument("--evaluation-json", help="Optional model-vs-human evaluation JSON.")
     parser.add_argument("--output-html", help="Report path. Defaults to <frame_json_stem>_swing_report.html")
     return parser.parse_args()
 
@@ -383,7 +421,13 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     output_html = args.output_html or default_report_path(args.frame_json)
-    payload = build_report_payload(args.frame_json, args.event_json, args.coach_json, args.video)
+    payload = build_report_payload(
+        args.frame_json,
+        args.event_json,
+        args.coach_json,
+        args.video,
+        args.evaluation_json,
+    )
     write_report_html(payload, output_html)
     print(f"events={len(payload.get('events', []))}")
     print(f"html={output_html}")

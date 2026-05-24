@@ -415,6 +415,7 @@ class SwingReportBuilderTests(unittest.TestCase):
             frame_json = root / "sample.json"
             event_json = root / "sample_swing_events.json"
             coach_json = root / "sample_coach_dataset.json"
+            evaluation_json = root / "sample_swing_evaluation.json"
             video_path = root / "sample_swing_annotated.mp4"
             report_path = root / "sample_swing_report.html"
             video_path.write_bytes(b"fake mp4")
@@ -457,6 +458,18 @@ class SwingReportBuilderTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            evaluation_json.write_text(
+                json.dumps(
+                    {
+                        "summary": {
+                            "stroke_type_accuracy": 0.5,
+                            "contact_accuracy": 1.0,
+                            "manual_review_count": 1,
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
 
             payload = build_report_payload(str(frame_json), str(event_json), str(coach_json), str(video_path))
             write_report_html(payload, str(report_path))
@@ -472,6 +485,9 @@ class SwingReportBuilderTests(unittest.TestCase):
         self.assertIn("annotation-import-file", html)
         self.assertIn("applyImportedAnnotations", html)
         self.assertIn("importAnnotations", html)
+        self.assertIn("Evaluation Summary", html)
+        self.assertIn("stroke accuracy 50%", html)
+        self.assertIn("contact accuracy 100%", html)
 
 
 class SwingEventVideoRendererTests(unittest.TestCase):
