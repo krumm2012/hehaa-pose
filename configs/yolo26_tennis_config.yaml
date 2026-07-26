@@ -348,13 +348,27 @@ performance_monitoring:
 
 # ==================== 🚄 Pipeline性能开关 ====================
 pipeline_perf:
+  inference_workers: 8                    # 推理线程池大小；当前每帧最多并行检测和姿态两个任务
   limit_reader_fps: true                  # Reader按原视频FPS节流（false可提升离线吞吐）
+  live_limit_reader_fps: true             # 直播突发码流按源FPS整形，避免批量读帧导致过度丢帧
+  live_reader_max_lag_frames: 1.0         # 源阻塞超过一帧后重置时间线，不追赶式爆发
+  reader_buffer_slots: 12                 # 离线模式共享内存槽数量
+  live_reader_buffer_slots: 3             # 直播模式仅保留三阶段各自所需的槽
+  live_slot_wait_ms: 2                    # 直播无空槽时等待时长，随后直接跳过源帧
+  reader_open_timeout_ms: 5000            # 实时码流连接超时
+  reader_read_timeout_ms: 2000            # 实时码流单次读取超时
+  live_reconnect: true                    # 直播断流后自动重连
+  live_reconnect_delay: 0.5               # 重连间隔（秒）
+  video_encoder_backend: auto             # macOS优先VideoToolbox，不可用时回退OpenCV
+  video_encoder_bitrate: 12M              # 1440p H.264目标码率
   dual_view_enabled: true                 # 双窗口对比显示（关闭可明显提速）
   dual_view_scale: 0.5                    # 双窗口缩放比例
   analysis_stride: 1                      # 每N帧做一次完整挥拍指标分析
   draw_metrics_text: true                 # 绘制详细指标文字
   collect_frame_results: true             # 累积每帧结果并导出JSON
   json_dump_indent: 4                     # JSON缩进，设为null可减小文件体积
+  live_mode: false                        # 直播模式：关闭高开销显示/JSON并优先新帧
+  drop_stale_frames: false                # 处理滞后时丢弃旧帧以降低直播延迟
 
 # ==================== ⭐ 精彩瞬间设置 ====================
 highlights:

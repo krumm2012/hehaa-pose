@@ -14,18 +14,49 @@ import yaml
 import os
 import json
 import argparse
+import signal
+import uuid
 
-# 导入分析组件
-from yolo26n_unified_detector import YOLO26nUnifiedDetector
-from pose_estimator_yolo26 import PoseEstimatorYOLO26
-from frame_processor import FrameProcessor
-from main import put_chinese_text, create_output_directory
-from roi_manager import ROIManager
-from speed_analyzer import SpeedAnalyzer
-from hit_zone_analyzer import HitZoneAnalyzer
+from reader_runtime import DeadlinePacer, SourceFrameClock
+
+
+def create_output_directory(output_path):
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    return output_path
+
+
+def ignore_child_interrupts():
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
 
 class MultiprocessPipeline:
-    def __init__(self, config_path, input_path=None, output_path=None):
+    def __init__(
+        self,
+        config_path,
+        input_path=None,
+        output_path=None,
+        max_frames=None,
+        live_mode=False,
+        drop_stale_frames=False,
+        no_dual_view=False,
+        no_metrics_text=False,
+        no_frame_results=False,
+        no_save_video=False,
+        output_fps=None,
+        inference_workers=None,
+        analyze_swings=False,
+        swing_output_json=None,
+        swing_events_csv=None,
+        swing_frames_csv=None,
+        dominant_hand='right',
+        min_peak_energy=9.0,
+        active_energy=5.5,
+        min_event_frames=8,
+        max_internal_gap=3,
+        min_event_gap=18,
+    ):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
 
@@ -34,158 +65,345 @@ class MultiprocessPipeline:
             self.config['video_input_path'] = input_path
         if output_path:
             self.config['video_output_path'] = output_path
+        if no_save_video:
+            self.config['save_video'] = False
 
         self.video_path = self.config['video_input_path']
+        configured_max_frames = self.config.get('video_processing', {}).get('max_frames', 0)
+        self.max_frames = max(0, int(configured_max_frames if max_frames is None else max_frames))
+        perf_cfg = self.config.setdefault('pipeline_perf', {})
+        self.live_mode = bool(live_mode or perf_cfg.get('live_mode', False))
+        self.drop_stale_frames = bool(drop_stale_frames or perf_cfg.get('drop_stale_frames', False))
+        if self.live_mode:
+            self.drop_stale_frames = True
+            perf_cfg['dual_view_enabled'] = False
+            perf_cfg['draw_metrics_text'] = False
+            perf_cfg['collect_frame_results'] = False
+        if no_dual_view:
+            perf_cfg['dual_view_enabled'] = False
+        if no_metrics_text:
+            perf_cfg['draw_metrics_text'] = False
+        if no_frame_results:
+            perf_cfg['collect_frame_results'] = False
+        if inference_workers is not None:
+            perf_cfg['inference_workers'] = max(1, int(inference_workers))
+        self.analyze_swings = bool(analyze_swings)
+        self.swing_output_json = swing_output_json
+        self.swing_events_csv = swing_events_csv
+        self.swing_frames_csv = swing_frames_csv
+        self.swing_analysis_options = {
+            'dominant_hand': dominant_hand,
+            'min_peak_energy': float(min_peak_energy),
+            'active_energy': float(active_energy),
+            'min_event_frames': max(1, int(min_event_frames)),
+            'max_internal_gap': max(0, int(max_internal_gap)),
+            'min_event_gap': max(0, int(min_event_gap)),
+        }
+        if self.analyze_swings and not bool(perf_cfg.get('collect_frame_results', True)):
+            raise ValueError(
+                '--analyze-swings requires frame JSON output; remove --live-mode/--no-frame-results '
+                'or run swing_event_analyzer.py after recording.'
+            )
 
-        cap = cv2.VideoCapture(self.video_path)
+        self.is_stream_source = isinstance(self.video_path, str) and self.video_path.startswith(
+            ('http://', 'https://', 'rtsp://', 'rtmp://', 'tcp://', 'udp://')
+        )
+        self.capture_open_timeout_ms = max(0, int(perf_cfg.get('reader_open_timeout_ms', 5000)))
+        self.capture_read_timeout_ms = max(0, int(perf_cfg.get('reader_read_timeout_ms', 2000)))
+        self.live_reconnect = bool(perf_cfg.get('live_reconnect', True))
+        self.live_reconnect_delay = max(0.0, float(perf_cfg.get('live_reconnect_delay', 0.5)))
+        self.live_slot_wait = max(0.0, float(perf_cfg.get('live_slot_wait_ms', 2.0)) / 1000.0)
+
+        cap = self._open_capture()
+        if not cap.isOpened():
+            raise RuntimeError(f"无法打开视频输入: {self.video_path}")
         self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
         cap.release()
+        if self.width <= 0 or self.height <= 0:
+            raise RuntimeError(f"无法读取视频尺寸: {self.video_path}")
+        configured_output_fps = self.config.get('video_processing', {}).get('output_fps', self.fps)
+        self.output_fps = float(configured_output_fps if output_fps is None else output_fps)
+        if self.output_fps <= 0:
+            self.output_fps = self.fps
 
         # --- 共享内存池 ---
-        self.shm_num = 12
-        self.shm_names = [f"tennis_shm_v2_{i}" for i in range(self.shm_num)]
+        normal_slots = max(3, int(perf_cfg.get('reader_buffer_slots', 12)))
+        live_slots = max(3, int(perf_cfg.get('live_reader_buffer_slots', 3)))
+        self.shm_num = live_slots if self.live_mode else normal_slots
+        run_token = f"{os.getpid():x}{uuid.uuid4().hex[:4]}"
+        self.shm_names = [f"tns3_{run_token}_{i}" for i in range(self.shm_num)]
         self.frame_size = self.height * self.width * 3
 
         # 同步原语
         self.q_free = mp.Queue(maxsize=self.shm_num)
         for i in range(self.shm_num): self.q_free.put(i)
 
-        self.q_inference = mp.Queue(maxsize=self.shm_num)
+        inference_queue_size = 1 if self.drop_stale_frames else self.shm_num
+        self.q_inference = mp.Queue(maxsize=inference_queue_size)
         self.q_analyzer = mp.Queue(maxsize=self.shm_num)
 
         self.stop_event = mp.Event()
         self.inf_ready = mp.Event()
         self.rd_done = mp.Event()
+        self.inf_done = mp.Event()
+        self.dropped_stale_frames = mp.Value('i', 0)
+
+    def _open_capture(self):
+        if not self.is_stream_source:
+            return cv2.VideoCapture(self.video_path)
+
+        params = []
+        if hasattr(cv2, 'CAP_PROP_OPEN_TIMEOUT_MSEC') and self.capture_open_timeout_ms:
+            params.extend([cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, self.capture_open_timeout_ms])
+        if hasattr(cv2, 'CAP_PROP_READ_TIMEOUT_MSEC') and self.capture_read_timeout_ms:
+            params.extend([cv2.CAP_PROP_READ_TIMEOUT_MSEC, self.capture_read_timeout_ms])
+        try:
+            return cv2.VideoCapture(self.video_path, cv2.CAP_FFMPEG, params)
+        except (TypeError, cv2.error):
+            return cv2.VideoCapture(self.video_path)
 
     def reader_process(self):
         """进程 1: 稳定解码流"""
+        ignore_child_interrupts()
         print("🚀 [Reader] 等待 AI 载入...")
-        self.inf_ready.wait()
+        while not self.inf_ready.wait(timeout=0.5):
+            if self.stop_event.is_set():
+                self.rd_done.set()
+                return
+        if self.stop_event.is_set():
+            self.rd_done.set()
+            return
 
-        cap = cv2.VideoCapture(self.video_path)
+        cap = self._open_capture()
         shms = [shared_memory.SharedMemory(name=name) for name in self.shm_names]
-        shared_frames = [np.ndarray((self.height, self.width, 3), dtype=np.uint8, buffer=s.buf) for s in shms]
+        shared_frames = [
+            np.ndarray((self.height, self.width, 3), dtype=np.uint8, buffer=s.buf)
+            for s in shms
+        ]
 
-        # 计算理论等待时间以维持原片节奏（可关闭以追求最高吞吐）
         perf_cfg = self.config.get('pipeline_perf', {})
-        limit_reader_fps = bool(perf_cfg.get('limit_reader_fps', True))
-        frame_interval = 1.0 / self.fps if self.fps > 0 else 0.0
+        if self.live_mode:
+            limit_reader_fps = bool(perf_cfg.get('live_limit_reader_fps', True))
+        else:
+            limit_reader_fps = bool(perf_cfg.get('limit_reader_fps', True))
+        max_lag_intervals = (
+            float(perf_cfg.get('live_reader_max_lag_frames', 1.0))
+            if self.live_mode
+            else None
+        )
+        pacer = DeadlinePacer(
+            self.fps if limit_reader_fps else 0.0,
+            max_lag_intervals=max_lag_intervals,
+        )
+        frame_clock = SourceFrameClock()
+        if self.live_mode:
+            print(
+                f"⚡ [Reader] 直播缓冲槽: {self.shm_num} | "
+                f"推理邮箱: 1 | 时间线节流: {'开启' if limit_reader_fps else '关闭'}"
+            )
+        elif limit_reader_fps:
+            print(f"⏱️ [Reader] 绝对时间线节流: {self.fps:.2f} FPS")
 
-        frame_id = 0
-        while not self.stop_event.is_set():
-            t_start = time.time()
-            try:
-                slot = self.q_free.get(timeout=2.0)
-            except queue.Empty:
-                print("⚠️ [Reader] 延迟积压，等待消费...")
-                continue
-            except Exception as exc:
-                print(f"❌ [Reader] 获取空闲缓冲失败: {exc}")
-                self.stop_event.set()
-                break
+        try:
+            while not self.stop_event.is_set():
+                if self.max_frames and frame_clock.processed_count >= self.max_frames:
+                    print(f"✅ [Reader] 达到最大帧数 {self.max_frames}，结束实时输入")
+                    break
 
-            ret, frame = cap.read()
-            if not ret:
-                self.q_free.put(slot)
-                break
+                slot = None
+                if self.drop_stale_frames:
+                    try:
+                        stale_task = self.q_inference.get_nowait()
+                        slot = stale_task['slot']
+                        with self.dropped_stale_frames.get_lock():
+                            self.dropped_stale_frames.value += 1
+                    except queue.Empty:
+                        pass
 
-            shared_frames[slot][:] = frame[:]
-            self.q_inference.put({'idx': frame_id, 'slot': slot})
-            frame_id += 1
+                if slot is None:
+                    try:
+                        timeout = self.live_slot_wait if self.drop_stale_frames else 2.0
+                        slot = self.q_free.get(timeout=timeout)
+                    except queue.Empty:
+                        if self.drop_stale_frames:
+                            if cap.grab():
+                                frame_clock.dropped()
+                                with self.dropped_stale_frames.get_lock():
+                                    self.dropped_stale_frames.value += 1
+                            continue
+                        print("⚠️ [Reader] 延迟积压，等待消费...")
+                        continue
+                    except Exception as exc:
+                        print(f"❌ [Reader] 获取空闲缓冲失败: {exc}")
+                        self.stop_event.set()
+                        break
 
-            # 动态休眠以维持输出 FPS 稳定（吞吐模式下关闭）
-            if limit_reader_fps:
-                wait = frame_interval - (time.time() - t_start)
-                if wait > 0:
-                    time.sleep(wait)
+                ret, frame = cap.read()
+                captured_at = time.perf_counter()
+                if not ret:
+                    self.q_free.put(slot)
+                    if self.is_stream_source and self.live_reconnect and not self.stop_event.is_set():
+                        print("⚠️ [Reader] 码流中断，准备重连...")
+                        cap.release()
+                        if self.stop_event.wait(self.live_reconnect_delay):
+                            break
+                        cap = self._open_capture()
+                        if not cap.isOpened():
+                            print("⚠️ [Reader] 重连失败，继续重试")
+                        continue
+                    break
 
-        cap.release()
-        for s in shms: s.close()
-        self.rd_done.set()
-        print(f"✅ [Reader] 结束，共解析 {frame_id} 帧")
+                source_frame_id = frame_clock.accepted()
+                shared_frames[slot][:] = frame[:]
+                self.q_inference.put({
+                    'idx': source_frame_id,
+                    'slot': slot,
+                    'captured_at': captured_at,
+                })
+
+                delay = pacer.next_delay()
+                if delay > 0 and self.stop_event.wait(delay):
+                    break
+        finally:
+            cap.release()
+            for s in shms:
+                s.close()
+            self.rd_done.set()
+
+        print(
+            f"✅ [Reader] 结束，共解析 {frame_clock.processed_count} 帧"
+            f" | 源时间线 {frame_clock.source_count} 帧"
+        )
 
     def inference_process(self):
         """进程 2: AI 推理核心 (平行调度)"""
+        ignore_child_interrupts()
         print("🚀 [Inference] 加载 Core ML 并行架构...")
         from concurrent.futures import ThreadPoolExecutor
-        detector = YOLO26nUnifiedDetector(self.config['unified_detection']['model_path'], self.config['unified_detection'])
-        pose_estimator = PoseEstimatorYOLO26(self.config['yolo_pose_model_path'], self.config)
+        shms = []
+        executor = None
+        try:
+            from pose_estimator_yolo26 import PoseEstimatorYOLO26
+            from yolo26n_unified_detector import YOLO26nUnifiedDetector
 
-        shms = [shared_memory.SharedMemory(name=name) for name in self.shm_names]
-        shared_frames = [np.ndarray((self.height, self.width, 3), dtype=np.uint8, buffer=s.buf) for s in shms]
-        perf_cfg = self.config.get('pipeline_perf', {})
-        unified_workers = (
-            self.config.get('unified_detection', {}).get('max_workers')
-            or self.config.get('performance_optimization', {}).get('max_workers')
-            or 2
-        )
-        inference_workers = max(1, int(perf_cfg.get('inference_workers', unified_workers)))
-        executor = ThreadPoolExecutor(max_workers=inference_workers)
-        print(f"⚙️ [Inference] 线程池并发数: {inference_workers}")
-        self.inf_ready.set()
+            detector = YOLO26nUnifiedDetector(
+                self.config['unified_detection']['model_path'],
+                self.config['unified_detection'],
+            )
+            pose_estimator = PoseEstimatorYOLO26(
+                self.config['yolo_pose_model_path'],
+                self.config,
+            )
 
-        while not self.stop_event.is_set():
-            try:
-                task = self.q_inference.get(timeout=1.0)
-            except queue.Empty:
-                if self.rd_done.is_set(): break
-                continue
-            except Exception as exc:
-                print(f"❌ [Inference] 获取推理任务失败: {exc}")
-                self.stop_event.set()
-                break
+            shms = [shared_memory.SharedMemory(name=name) for name in self.shm_names]
+            shared_frames = [
+                np.ndarray((self.height, self.width, 3), dtype=np.uint8, buffer=s.buf)
+                for s in shms
+            ]
+            perf_cfg = self.config.get('pipeline_perf', {})
+            unified_workers = (
+                self.config.get('unified_detection', {}).get('max_workers')
+                or self.config.get('performance_optimization', {}).get('max_workers')
+                or 2
+            )
+            inference_workers = max(1, int(perf_cfg.get('inference_workers', unified_workers)))
+            executor = ThreadPoolExecutor(max_workers=inference_workers)
+            print(f"⚙️ [Inference] 线程池并发数: {inference_workers}")
+            print("⚙️ [Inference] 单帧并行任务数: 2（目标检测 + 姿态估计）")
+            if inference_workers > 2:
+                print(
+                    f"ℹ️ [Inference] 当前执行图每帧最多使用 2 个 worker；"
+                    f"其余 {inference_workers - 2} 个用于后续多帧并发扩展"
+                )
+            if self.drop_stale_frames:
+                print("⚡ [Inference] 直播新鲜度模式：Reader只保留最新待推理帧")
+            self.inf_ready.set()
 
-            slot = task['slot']
-            frame_ptr = shared_frames[slot]
+            while not self.stop_event.is_set():
+                try:
+                    task = self.q_inference.get(timeout=1.0)
+                except queue.Empty:
+                    if self.rd_done.is_set():
+                        break
+                    continue
+                except Exception as exc:
+                    print(f"❌ [Inference] 获取推理任务失败: {exc}")
+                    self.stop_event.set()
+                    break
 
-            # 使用 ThreadPool 同时驱动 ANE 和 GPU
-            f1 = executor.submit(detector.detect_unified, frame_ptr)
-            f2 = executor.submit(pose_estimator.get_keypoints, frame_ptr)
+                slot = task['slot']
+                frame_ptr = shared_frames[slot]
 
-            ball, racket, _ = f1.result()
-            ball_diagnostics = detector.get_last_ball_diagnostics()
-            pose = f2.result()
+                # 使用 ThreadPool 同时驱动检测和姿态模型。
+                f1 = executor.submit(detector.detect_unified, frame_ptr)
+                f2 = executor.submit(pose_estimator.get_keypoints, frame_ptr)
 
-            self.q_analyzer.put({
-                'id': task['idx'],
-                'slot': slot,
-                'ball': ball,
-                'racket': racket,
-                'pose': pose,
-                'ball_diagnostics': ball_diagnostics,
-            })
+                ball, racket, _ = f1.result()
+                ball_diagnostics = detector.get_last_ball_diagnostics()
+                pose = f2.result()
 
-        for s in shms: s.close()
-        executor.shutdown()
-        print("✅ [Inference] 退出")
+                self.q_analyzer.put({
+                    'id': task['idx'],
+                    'slot': slot,
+                    'ball': ball,
+                    'racket': racket,
+                    'pose': pose,
+                    'ball_diagnostics': ball_diagnostics,
+                    'captured_at': task.get('captured_at'),
+                })
+        except Exception as exc:
+            print(f"❌ [Inference] 初始化或推理失败: {exc}")
+            self.stop_event.set()
+            self.inf_ready.set()
+        finally:
+            if executor is not None:
+                executor.shutdown()
+            for s in shms:
+                s.close()
+            self.inf_done.set()
+            print("✅ [Inference] 退出")
 
     def analyzer_process(self):
         """进程 3: 业务核心 + 全视觉渲染"""
+        ignore_child_interrupts()
         print("🚀 [Analyzer] 初始化高清渲染引擎...")
+        from frame_processor import FrameProcessor
+        from performance_metrics import FpsTracker
+        from pose_renderer import draw_pose_keypoints
+        from video_writer_backend import create_video_writer
 
-        # 组件初始化
-        hit_cfg = self.config.get('hit_zone_analysis', {})
-        hit_analyzer = HitZoneAnalyzer(sweet_spot_ratio=hit_cfg.get('sweet_spot_ratio', 0.3))
+        perf_cfg = self.config.get('pipeline_perf', {})
         # 视频录制
         save_video = self.config.get('save_video', True)
         out_writer = None
         out_file = None
         if save_video:
             out_file = create_output_directory(self.config['video_output_path'])
-            out_writer = cv2.VideoWriter(out_file, cv2.VideoWriter_fourcc(*'avc1'), self.fps, (self.width, self.height))
-            print(f"🎬 [Recorder] 录制中: {out_file}")
+            out_writer = create_video_writer(
+                output_path=out_file,
+                width=self.width,
+                height=self.height,
+                fps=self.output_fps,
+                backend=perf_cfg.get('video_encoder_backend', 'auto'),
+                bitrate=perf_cfg.get('video_encoder_bitrate', '12M'),
+            )
+            print(
+                f"🎬 [Recorder] 录制中: {out_file}"
+                f" | 编码器: {out_writer.backend_name}"
+            )
+            if self.output_fps != self.fps:
+                print(f"🎬 [Recorder] 输出帧率: {self.output_fps:.2f} FPS")
 
         shms = [shared_memory.SharedMemory(name=name) for name in self.shm_names]
         shared_frames = [np.ndarray((self.height, self.width, 3), dtype=np.uint8, buffer=s.buf) for s in shms]
 
         last_ball_pos = None
         last_frame_id = -1
-        t_start = time.time()
         count = 0
+        fps_tracker = FpsTracker()
         # 性能开关（默认兼容原行为）
-        perf_cfg = self.config.get('pipeline_perf', {})
         dual_view_enabled = bool(perf_cfg.get('dual_view_enabled', True))
         dual_view_scale = float(perf_cfg.get('dual_view_scale', 0.5))
         analysis_stride = max(1, int(perf_cfg.get('analysis_stride', 1)))
@@ -220,7 +438,8 @@ class MultiprocessPipeline:
             try:
                 data = self.q_analyzer.get(timeout=2.0)
             except queue.Empty:
-                if self.rd_done.is_set(): break
+                if self.inf_done.is_set():
+                    break
                 continue
             except Exception as exc:
                 print(f"❌ [Analyzer] 获取分析任务失败: {exc}")
@@ -228,6 +447,8 @@ class MultiprocessPipeline:
                 break
 
             fid, slot = data['id'], data['slot']
+            if count == 0:
+                fps_tracker.start()
             # 严格对齐图像
             canvas = shared_frames[slot].copy()
 
@@ -293,7 +514,7 @@ class MultiprocessPipeline:
                             break
 
             # C. 绘制视觉元素 (骨架、球、球拍)
-            canvas = PoseEstimatorYOLO26.draw_keypoints_static(canvas, poses)
+            canvas = draw_pose_keypoints(canvas, poses)
             if norm_ball_pos:
                 cv2.circle(canvas, (int(norm_ball_pos[0]), int(norm_ball_pos[1])), 10, (0, 255, 255), -1)
                 cv2.circle(canvas, (int(norm_ball_pos[0]), int(norm_ball_pos[1])), 12, (255, 255, 255), 2)
@@ -335,10 +556,15 @@ class MultiprocessPipeline:
 
             self.q_free.put(slot) # 释放回池子
 
-            count += 1
+            snapshot = fps_tracker.tick()
+            count = snapshot.frame_count
             if count % 25 == 0:
-                fps = count / (time.time() - t_start)
-                print(f"📊 [Sync-Analyzer] Processing Frame {fid} | FPS: {fps:.2f}")
+                print(
+                    f"📊 [Sync-Analyzer] Processing Frame {fid}"
+                    f" | FPS: {snapshot.cumulative_fps:.2f}"
+                    f" | 25F: {snapshot.window_25_fps:.2f}"
+                    f" | 100F: {snapshot.window_100_fps:.2f}"
+                )
 
         if out_writer:
             out_writer.release()
@@ -349,6 +575,38 @@ class MultiprocessPipeline:
             frame_results_fp.write('}\n')
             frame_results_fp.close()
             print(f"📊 [Analyzer] 数据已保存至: {frame_results_path}")
+            if self.analyze_swings:
+                # Keep event segmentation outside the frame loop so pipeline throughput and
+                # live rendering remain independent from the offline event-analysis cost.
+                from swing_event_analyzer import (
+                    analyze_frame_records,
+                    default_output_paths,
+                    load_frame_records,
+                    write_analysis_outputs,
+                )
+
+                swing_paths = default_output_paths(frame_results_path)
+                swing_output_json = self.swing_output_json or swing_paths['json']
+                swing_events_csv = self.swing_events_csv or swing_paths['events_csv']
+                swing_frames_csv = self.swing_frames_csv or swing_paths['frames_csv']
+                print('🏌️ [Swing] 开始事件级挥拍分段分析...')
+                swing_analysis = analyze_frame_records(
+                    load_frame_records(frame_results_path),
+                    **self.swing_analysis_options,
+                )
+                write_analysis_outputs(
+                    swing_analysis,
+                    swing_output_json,
+                    swing_events_csv,
+                    swing_frames_csv,
+                )
+                swing_summary = swing_analysis['summary']
+                print(
+                    '🏌️ [Swing] 事件分析完成: '
+                    f"{swing_summary['swing_event_count']} events "
+                    f"{swing_summary['swing_event_type_counts']}"
+                )
+                print(f'🏌️ [Swing] 事件 JSON: {swing_output_json}')
             if diagnostics_path:
                 tuning_suggestions = []
                 total_diag_frames = len(diagnostics_records)
@@ -458,36 +716,104 @@ class MultiprocessPipeline:
 
         cv2.destroyAllWindows()
         for s in shms: s.close()
-        print("✅ [Analyzer] Exit and saved video")
+        if self.drop_stale_frames:
+            print(f"⚡ [Analyzer] 已丢弃旧帧: {self.dropped_stale_frames.value}")
+        if out_writer is not None:
+            print("✅ [Analyzer] Exit and saved video")
+        else:
+            print("✅ [Analyzer] Exit without video output")
         self.stop_event.set()
 
     def run(self):
         objs = []
-        for name in self.shm_names:
-            try: objs.append(shared_memory.SharedMemory(name=name, create=True, size=self.frame_size))
-            except: objs.append(shared_memory.SharedMemory(name=name))
+        try:
+            for name in self.shm_names:
+                objs.append(
+                    shared_memory.SharedMemory(
+                        name=name,
+                        create=True,
+                        size=self.frame_size,
+                    )
+                )
+        except Exception:
+            for shm in objs:
+                shm.close()
+                try:
+                    shm.unlink()
+                except FileNotFoundError:
+                    pass
+            raise
 
         ps = [mp.Process(target=self.reader_process), mp.Process(target=self.inference_process), mp.Process(target=self.analyzer_process)]
         for p in ps: p.start()
         try:
             for p in ps: p.join()
         except KeyboardInterrupt:
+            print("\n🛑 收到停止请求，正在安全关闭Pipeline...")
             self.stop_event.set()
-            for p in ps: p.terminate()
+            shutdown_deadline = time.monotonic() + 5.0
+            for p in ps:
+                remaining = max(0.0, shutdown_deadline - time.monotonic())
+                p.join(timeout=remaining)
+            for p in ps:
+                if p.is_alive():
+                    p.terminate()
+                    p.join(timeout=1.0)
         for s in objs:
             s.close()
             try: s.unlink()
             except: pass
         print("🏁 任务流执行完毕")
 
-if __name__ == "__main__":
+
+def build_argument_parser():
     parser = argparse.ArgumentParser(description='网球分析多进程流水线')
     parser.add_argument('--config', '-c', default='configs/yolo26_tennis_config.yaml',
                         help='配置文件路径')
     parser.add_argument('--input', '-i', default=None, help='输入视频路径，覆盖配置文件')
     parser.add_argument('--output', '-o', default=None, help='输出视频路径，覆盖配置文件')
+    parser.add_argument('--max-frames', type=int, default=None,
+                        help='最大处理帧数；直播流建议设置以便安全结束。默认使用 video_processing.max_frames')
+    parser.add_argument('--live-mode', action='store_true',
+                        help='直播优化：关闭双视图、详细指标文本和逐帧 JSON，并优先处理最新帧')
+    parser.add_argument('--drop-stale-frames', action='store_true',
+                        help='处理跟不上输入时丢弃排队旧帧，降低直播延迟')
+    parser.add_argument('--no-dual-view', action='store_true', help='关闭原始/处理结果双窗口显示')
+    parser.add_argument('--no-metrics-text', action='store_true', help='关闭逐帧详细指标文字绘制')
+    parser.add_argument('--no-frame-results', action='store_true', help='关闭逐帧 JSON 与诊断 JSON 写入')
+    parser.add_argument('--no-save-video', action='store_true', help='禁用处理后视频录制')
+    parser.add_argument('--output-fps', type=float, default=None, help='覆盖输出视频帧率')
+    parser.add_argument(
+        '--inference-workers',
+        type=int,
+        default=None,
+        help='推理线程池 worker 数；当前执行图每帧最多并行 2 个任务',
+    )
+    parser.add_argument('--analyze-swings', action='store_true',
+                        help='逐帧 JSON 写完后自动生成 Swing 事件 JSON/CSV；不可与 --live-mode 或 --no-frame-results 同用')
+    parser.add_argument('--swing-output-json',
+                        help='自动 Swing 分析的事件 JSON 输出路径；默认与逐帧 JSON 同目录')
+    parser.add_argument('--swing-events-csv',
+                        help='自动 Swing 分析的事件摘要 CSV 输出路径')
+    parser.add_argument('--swing-frames-csv',
+                        help='自动 Swing 分析的逐帧审计 CSV 输出路径')
+    parser.add_argument('--dominant-hand', choices=['right', 'left'], default='right',
+                        help='Swing 分析的持拍手，默认 right')
+    parser.add_argument('--min-peak-energy', type=float, default=9.0,
+                        help='事件峰值最小运动能量，默认 9.0')
+    parser.add_argument('--active-energy', type=float, default=5.5,
+                        help='进入挥拍事件的最小运动能量，默认 5.5')
+    parser.add_argument('--min-event-frames', type=int, default=8,
+                        help='有效挥拍事件的最小帧数，默认 8')
+    parser.add_argument('--max-internal-gap', type=int, default=3,
+                        help='同一挥拍内允许的最大非活跃间隔帧数，默认 3')
+    parser.add_argument('--min-event-gap', type=int, default=18,
+                        help='相邻挥拍事件的最小间隔帧数，默认 18')
+    return parser
 
-    args = parser.parse_args()
+
+def main_cli(argv=None):
+    args = build_argument_parser().parse_args(argv)
 
     # 如果没有指定输入且配置文件里也没有，给个默认值
     if not args.input:
@@ -497,4 +823,31 @@ if __name__ == "__main__":
             if 'video_input_path' not in tmp_cfg:
                 args.input = "data/16.10.mp4"
 
-    MultiprocessPipeline(args.config, input_path=args.input, output_path=args.output).run()
+    MultiprocessPipeline(
+        args.config,
+        input_path=args.input,
+        output_path=args.output,
+        max_frames=args.max_frames,
+        live_mode=args.live_mode,
+        drop_stale_frames=args.drop_stale_frames,
+        no_dual_view=args.no_dual_view,
+        no_metrics_text=args.no_metrics_text,
+        no_frame_results=args.no_frame_results,
+        no_save_video=args.no_save_video,
+        output_fps=args.output_fps,
+        inference_workers=args.inference_workers,
+        analyze_swings=args.analyze_swings,
+        swing_output_json=args.swing_output_json,
+        swing_events_csv=args.swing_events_csv,
+        swing_frames_csv=args.swing_frames_csv,
+        dominant_hand=args.dominant_hand,
+        min_peak_energy=args.min_peak_energy,
+        active_energy=args.active_energy,
+        min_event_frames=args.min_event_frames,
+        max_internal_gap=args.max_internal_gap,
+        min_event_gap=args.min_event_gap,
+    ).run()
+
+
+if __name__ == "__main__":
+    main_cli()
