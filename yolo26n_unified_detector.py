@@ -6,12 +6,17 @@ YOLO26n Core ML 统一检测器
 
 import cv2
 import numpy as np
-import coremltools as ct
 from PIL import Image
 import time
 from collections import deque
 
+try:
+    import coremltools as ct
+except ModuleNotFoundError:
+    ct = None
+
 from ball_candidate_selector import select_ball_candidate
+from ball_track_selector import BallTrackSelector
 from racket_candidate_selector import racket_center, select_racket_candidate
 from static_ball_filter import StaticBallFilter
 
@@ -28,6 +33,9 @@ class YOLO26nUnifiedDetector:
             config: 配置字典
             roi_manager: ROI 管理器（可选）
         """
+        if ct is None:
+            raise RuntimeError("coremltools is required to initialize YOLO26nUnifiedDetector")
+
         print(f"🚀 初始化 YOLO26n 统一检测器...")
         
         self.config = config
@@ -82,6 +90,7 @@ class YOLO26nUnifiedDetector:
         self.racket_history = deque(maxlen=10)
         self.static_threshold = config.get('static_ball_movement_threshold_px', 6)
         self.static_ball_filter = StaticBallFilter(config)
+        self.ball_track_selector = BallTrackSelector(config)
         
         # 性能统计
         self.detection_times = deque(maxlen=100)
@@ -291,6 +300,16 @@ class YOLO26nUnifiedDetector:
         return [x1, y1, x2, y2]
     
     def _filter_static_balls(self, ball_detections, racket_detections=None):
+        """Select the Active Ball through the dedicated track-selection module."""
+        selection = self.ball_track_selector.select(
+            ball_detections,
+            racket_detections=racket_detections,
+            frame_height=getattr(self, "original_height", None),
+        )
+        self.last_ball_diagnostics = selection.diagnostics
+        return [selection.active_ball] if selection.active_ball is not None else []
+
+    def _filter_static_balls_legacy(self, ball_detections, racket_detections=None):
         """Select the active ball and filter persistent static false positives."""
         diagnostics = {
             "raw_candidates": len(ball_detections or []),

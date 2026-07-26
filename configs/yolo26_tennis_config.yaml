@@ -26,6 +26,7 @@ unified_detection:
   ball_velocity_prediction_distance_px: 120    # 速度预测位置容忍窗口
   ball_max_motion_for_continuity_px: 140       # 前后帧位移超过该阈值时，禁用连续性追踪（防止跳到镜像/幻球）
   ball_min_selected_confidence: 0.05           # 最终主球最低置信度（无连续性/无球拍支撑时）
+  active_ball_reacquisition_frames: 8           # 主球遮挡/漏检后保留轨迹支持的最大帧数
   ball_play_area_min_y_ratio_hard: 0.35        # 主球硬下限区域（上半镜像区域剔除，需无支撑才生效）
   ball_racket_proximity_weight: 0.20           # 多球候选重排序：主球拍附近轻量奖励
   ball_racket_proximity_distance_px: 360       # 球拍距离奖励窗口
