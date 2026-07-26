@@ -56,6 +56,23 @@ class MultiprocessPipeline:
         min_event_frames=8,
         max_internal_gap=3,
         min_event_gap=18,
+        realtime_swing_events=False,
+        realtime_swing_json=None,
+        realtime_swing_html=None,
+        realtime_swing_clips_dir=None,
+        realtime_analysis_interval=None,
+        realtime_settle_frames=None,
+        realtime_window_frames=None,
+        realtime_clip_workers=None,
+        realtime_frame_output=False,
+        realtime_frame_jsonl=None,
+        realtime_frame_snapshot_json=None,
+        realtime_frame_snapshot_size=None,
+        realtime_frame_flush_interval=None,
+        realtime_coach=False,
+        realtime_coach_max_chars=None,
+        deepseek_coach_options=None,
+        realtime_open_report=False,
     ):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
@@ -99,6 +116,133 @@ class MultiprocessPipeline:
             'max_internal_gap': max(0, int(max_internal_gap)),
             'min_event_gap': max(0, int(min_event_gap)),
         }
+        realtime_cfg = self.config.setdefault('realtime_swing', {})
+        self.realtime_swing_events = bool(
+            realtime_swing_events or realtime_cfg.get('enabled', False)
+        )
+        self.realtime_swing_json = realtime_swing_json
+        self.realtime_swing_html = realtime_swing_html
+        self.realtime_swing_clips_dir = realtime_swing_clips_dir
+        self.realtime_analysis_interval = max(
+            1,
+            int(
+                realtime_analysis_interval
+                if realtime_analysis_interval is not None
+                else realtime_cfg.get('analysis_interval_frames', 5)
+            ),
+        )
+        configured_settle = (
+            realtime_settle_frames
+            if realtime_settle_frames is not None
+            else realtime_cfg.get('settle_frames')
+        )
+        configured_window = (
+            realtime_window_frames
+            if realtime_window_frames is not None
+            else realtime_cfg.get('window_frames')
+        )
+        self.realtime_settle_frames = (
+            None if configured_settle is None else max(0, int(configured_settle))
+        )
+        self.realtime_window_frames = (
+            None if configured_window is None else max(32, int(configured_window))
+        )
+        self.realtime_clip_workers = max(
+            1,
+            int(
+                realtime_clip_workers
+                if realtime_clip_workers is not None
+                else realtime_cfg.get('clip_workers', 1)
+            ),
+        )
+        self.realtime_frame_output = bool(
+            realtime_frame_output
+            or realtime_frame_jsonl
+            or realtime_frame_snapshot_json
+            or realtime_cfg.get('frame_output_enabled', False)
+        )
+        self.realtime_frame_jsonl = realtime_frame_jsonl
+        self.realtime_frame_snapshot_json = realtime_frame_snapshot_json
+        self.realtime_frame_snapshot_size = max(
+            1,
+            int(
+                realtime_frame_snapshot_size
+                if realtime_frame_snapshot_size is not None
+                else realtime_cfg.get('frame_snapshot_size', 200)
+            ),
+        )
+        self.realtime_frame_flush_interval = max(
+            1,
+            int(
+                realtime_frame_flush_interval
+                if realtime_frame_flush_interval is not None
+                else realtime_cfg.get('frame_flush_interval', 5)
+            ),
+        )
+        self.realtime_coach = bool(
+            realtime_coach or realtime_cfg.get('coach_enabled', False)
+        )
+        self.realtime_coach_max_chars = min(
+            15,
+            max(
+                1,
+                int(
+                    realtime_coach_max_chars
+                    if realtime_coach_max_chars is not None
+                    else realtime_cfg.get('coach_max_chars', 15)
+                ),
+            ),
+        )
+        deepseek_cfg = realtime_cfg.get('deepseek') or {}
+        deepseek_overrides = deepseek_coach_options or {}
+
+        def deepseek_option(name, default):
+            override = deepseek_overrides.get(name)
+            if override is not None:
+                return override
+            return deepseek_cfg.get(name, default)
+
+        self.deepseek_coach_options = {
+            'enabled': bool(
+                deepseek_overrides.get('enabled', False)
+                or deepseek_cfg.get('enabled', False)
+            ),
+            'model': str(deepseek_option('model', 'deepseek-v4-flash')),
+            'base_url': str(
+                deepseek_option('base_url', 'https://api.deepseek.com')
+            ),
+            'api_key_env': str(
+                deepseek_option('api_key_env', 'DEEPSEEK_API_KEY')
+            ),
+            'timeout_seconds': max(
+                0.2,
+                float(deepseek_option('timeout_seconds', 3.0)),
+            ),
+            'workers': max(1, int(deepseek_option('workers', 2))),
+            'max_chars': min(
+                15,
+                max(1, int(deepseek_option('max_chars', 15))),
+            ),
+        }
+        if self.deepseek_coach_options['enabled']:
+            self.realtime_coach = True
+        if self.realtime_coach:
+            self.realtime_swing_events = True
+        self.realtime_clip_padding_frames = max(
+            0,
+            int(realtime_cfg.get('clip_padding_frames', 8)),
+        )
+        self.realtime_clip_max_width = max(
+            160,
+            int(realtime_cfg.get('clip_max_width', 1280)),
+        )
+        self.realtime_clip_jpeg_quality = max(
+            40,
+            min(100, int(realtime_cfg.get('clip_jpeg_quality', 85))),
+        )
+        self.realtime_open_report = bool(
+            realtime_open_report or realtime_cfg.get('open_report', False)
+        )
         if self.analyze_swings and not bool(perf_cfg.get('collect_frame_results', True)):
             raise ValueError(
                 '--analyze-swings requires frame JSON output; remove --live-mode/--no-frame-results '
@@ -415,8 +559,10 @@ class MultiprocessPipeline:
         frame_results_fp = None
         diagnostics_records = []
         first_frame_record = True
+        output_base = out_file if out_file else create_output_directory(
+            self.config['video_output_path']
+        )
         if collect_frame_results:
-            output_base = out_file if out_file else create_output_directory(self.config['video_output_path'])
             frame_results_path = os.path.splitext(output_base)[0] + '.json'
             diagnostics_path = os.path.splitext(output_base)[0] + '_diagnostics.json'
             frame_results_fp = open(frame_results_path, 'w', encoding='utf-8')
@@ -433,6 +579,175 @@ class MultiprocessPipeline:
             fps=self.fps,
             analysis_stride=analysis_stride,
         )
+        output_stem = os.path.splitext(output_base)[0]
+        realtime_engine = None
+        realtime_output = None
+        frame_journal = None
+        realtime_coach = None
+        deepseek_sidecar = None
+        if self.realtime_frame_output:
+            from realtime_swing_pipeline import RealtimeFrameJournal
+
+            realtime_frame_jsonl = (
+                self.realtime_frame_jsonl or f'{output_stem}_frames.jsonl'
+            )
+            realtime_frame_snapshot_json = (
+                self.realtime_frame_snapshot_json
+                or f'{output_stem}_frames_latest.json'
+            )
+            frame_journal = RealtimeFrameJournal(
+                jsonl_path=realtime_frame_jsonl,
+                snapshot_path=realtime_frame_snapshot_json,
+                snapshot_size=self.realtime_frame_snapshot_size,
+                flush_interval=self.realtime_frame_flush_interval,
+            )
+            print(
+                f'📝 [Frame-Live] 实时逐帧输出已开启'
+                f' | JSONL: {realtime_frame_jsonl}'
+                f' | 快照: {realtime_frame_snapshot_json}'
+            )
+        if self.realtime_coach:
+            from local_realtime_coach import LocalRealtimeCoach
+
+            realtime_coach = LocalRealtimeCoach(
+                max_chars=self.realtime_coach_max_chars,
+            )
+        if self.deepseek_coach_options['enabled']:
+            from deepseek_realtime_coach import DeepSeekCoachSidecar
+
+            api_key_env = self.deepseek_coach_options['api_key_env']
+            deepseek_sidecar = DeepSeekCoachSidecar(
+                api_key=os.environ.get(api_key_env, ''),
+                model=self.deepseek_coach_options['model'],
+                base_url=self.deepseek_coach_options['base_url'],
+                timeout_seconds=self.deepseek_coach_options['timeout_seconds'],
+                workers=self.deepseek_coach_options['workers'],
+                max_chars=self.deepseek_coach_options['max_chars'],
+            )
+            key_status = '已配置' if os.environ.get(api_key_env) else '未配置'
+            print(
+                f'🧠 [DeepSeek] 旁路Coach已开启'
+                f' | 模型: {self.deepseek_coach_options["model"]}'
+                f' | 超时: {self.deepseek_coach_options["timeout_seconds"]:.1f}s'
+                f' | {api_key_env}: {key_status}'
+            )
+        if self.realtime_swing_events:
+            from realtime_swing_pipeline import (
+                RealtimeSwingEventEngine,
+                RealtimeSwingOutputManager,
+            )
+
+            realtime_json = self.realtime_swing_json or f'{output_stem}_swing_events.json'
+            realtime_html = self.realtime_swing_html or f'{output_stem}_swing_report.html'
+            realtime_clips_dir = self.realtime_swing_clips_dir or f'{output_stem}_swing_clips'
+            effective_window_frames = (
+                self.realtime_window_frames
+                if self.realtime_window_frames is not None
+                else max(32, int(round(self.fps * 8.0)))
+            )
+            effective_settle_frames = (
+                self.realtime_settle_frames
+                if self.realtime_settle_frames is not None
+                else max(0, int(round(self.fps * 0.6)))
+            )
+            realtime_engine = RealtimeSwingEventEngine(
+                fps=self.fps,
+                analysis_interval_frames=self.realtime_analysis_interval,
+                settle_frames=effective_settle_frames,
+                window_frames=effective_window_frames,
+                coach=realtime_coach,
+                **self.swing_analysis_options,
+            )
+            realtime_output = RealtimeSwingOutputManager(
+                output_json=realtime_json,
+                output_html=realtime_html,
+                clips_dir=realtime_clips_dir,
+                fps=self.output_fps,
+                frame_size=(self.width, self.height),
+                buffer_frames=(
+                    effective_window_frames
+                    + effective_settle_frames
+                    + self.realtime_clip_padding_frames * 2
+                ),
+                clip_workers=self.realtime_clip_workers,
+                video_backend=perf_cfg.get('video_encoder_backend', 'auto'),
+                video_bitrate=perf_cfg.get('video_encoder_bitrate', '12M'),
+                clip_padding_frames=self.realtime_clip_padding_frames,
+                clip_max_width=self.realtime_clip_max_width,
+                jpeg_quality=self.realtime_clip_jpeg_quality,
+            )
+            print(
+                f'⚡ [Swing-Live] 实时事件分析已开启'
+                f' | JSON: {realtime_json}'
+                f' | HTML: {realtime_html}'
+                f' | 异步片段线程: {self.realtime_clip_workers}'
+                f' | 本地Coach: {"开启" if realtime_coach is not None else "关闭"}'
+                f' | DeepSeek旁路: {"开启" if deepseek_sidecar is not None else "关闭"}'
+            )
+            if self.realtime_open_report:
+                from pathlib import Path
+                import webbrowser
+
+                webbrowser.open(Path(realtime_html).resolve().as_uri())
+
+        def publish_deepseek_result(event_id, result):
+            if realtime_output is None:
+                return
+            realtime_output.update_event(
+                event_id,
+                {'deepseek_advice': result},
+            )
+            if result.get('status') == 'ready':
+                print(
+                    f"🧠 [DeepSeek] Swing #{event_id}"
+                    f" | {result['message']}"
+                    f" | {int(result.get('latency_ms') or 0)}ms"
+                )
+            elif result.get('status') in {'failed', 'unavailable'}:
+                print(
+                    f"⚠️ [DeepSeek] Swing #{event_id}"
+                    f" | {result.get('status')}"
+                    f" | 本地建议继续生效"
+                )
+
+        def publish_realtime_events(events, final=False):
+            if realtime_engine is None or realtime_output is None:
+                return
+            if deepseek_sidecar is not None:
+                for event in events:
+                    event['deepseek_advice'] = {
+                        'status': 'pending',
+                        'model': self.deepseek_coach_options['model'],
+                        'source': 'deepseek_sidecar',
+                    }
+            if events or final:
+                realtime_output.publish_events(events, realtime_engine.snapshot())
+            for event in events:
+                prefix = 'Final Event' if final else 'Event'
+                print(
+                    f"🎾 [Swing-Live] {prefix} #{event['event_id']}"
+                    f" | {event['stroke_type']}"
+                    f" | frames {event['start_frame']}-{event['end_frame']}"
+                    f" | contact {event['contact_frame']}"
+                    f" | latency {event['latency_frames']}F"
+                )
+                advice = event.get('coach_advice') or {}
+                if advice.get('message'):
+                    print(
+                        f"🎯 [Coach] Swing #{event['event_id']}"
+                        f" | {advice['message']}"
+                    )
+                if deepseek_sidecar is not None:
+                    event_id = int(event['event_id'])
+                    event_frame_records = realtime_engine.frame_records_for_event(event)
+                    deepseek_sidecar.submit(
+                        event,
+                        lambda result, target_event_id=event_id: publish_deepseek_result(
+                            target_event_id,
+                            result,
+                        ),
+                        frame_records=event_frame_records,
+                    )
 
         while not self.stop_event.is_set():
             try:
@@ -468,7 +783,12 @@ class MultiprocessPipeline:
             norm_ball_pos = frame_analysis["ball_position"]
 
             # --- 保存每帧数据 ---
-            if collect_frame_results:
+            frame_record = None
+            if (
+                collect_frame_results
+                or realtime_engine is not None
+                or frame_journal is not None
+            ):
                 frame_record = frame_processor.build_frame_record(
                     frame_id=fid,
                     swing_type=swing_label,
@@ -478,6 +798,13 @@ class MultiprocessPipeline:
                     phase_metrics=detailed_data,
                 )
                 frame_record["detection_diagnostics"] = data.get("ball_diagnostics") or {}
+            if frame_journal is not None and frame_record is not None:
+                try:
+                    frame_journal.record(frame_record)
+                except Exception as exc:
+                    print(f"❌ [Frame-Live] 逐帧写入失败: {exc}")
+                    self.stop_event.set()
+            if collect_frame_results and frame_record is not None:
                 if frame_results_fp is not None:
                     if not first_frame_record:
                         frame_results_fp.write(',\n')
@@ -524,6 +851,10 @@ class MultiprocessPipeline:
                 cv2.rectangle(canvas, (x1, y1), (x2, y2), (255, 128, 0), 2)
 
             # --- 3. 提交并释放 ---
+            if realtime_output is not None and realtime_engine is not None:
+                realtime_output.record_frame(fid, canvas)
+                completed_events = realtime_engine.push_frame(frame_record)
+                publish_realtime_events(completed_events)
             if out_writer: out_writer.write(canvas)
 
             # --- 新增: 实时双窗口对比显示 ---
@@ -565,6 +896,28 @@ class MultiprocessPipeline:
                     f" | 25F: {snapshot.window_25_fps:.2f}"
                     f" | 100F: {snapshot.window_100_fps:.2f}"
                 )
+
+        if realtime_engine is not None and realtime_output is not None:
+            final_events = realtime_engine.flush()
+            publish_realtime_events(final_events, final=True)
+            if deepseek_sidecar is not None:
+                deepseek_sidecar.close()
+            try:
+                realtime_output.close()
+            except Exception as exc:
+                print(f"❌ [Swing-Live] 异步片段输出失败: {exc}")
+                self.stop_event.set()
+            print(
+                f"✅ [Swing-Live] 实时分析结束"
+                f" | events: {realtime_engine.snapshot()['summary']['swing_event_count']}"
+            )
+        if frame_journal is not None:
+            try:
+                frame_journal.close()
+                print("✅ [Frame-Live] 实时逐帧输出结束")
+            except Exception as exc:
+                print(f"❌ [Frame-Live] 实时逐帧输出失败: {exc}")
+                self.stop_event.set()
 
         if out_writer:
             out_writer.release()
@@ -809,6 +1162,52 @@ def build_argument_parser():
                         help='同一挥拍内允许的最大非活跃间隔帧数，默认 3')
     parser.add_argument('--min-event-gap', type=int, default=18,
                         help='相邻挥拍事件的最小间隔帧数，默认 18')
+    parser.add_argument('--realtime-swing-events', action='store_true',
+                        help='对直播码流或按时间线播放的视频滚动识别完整挥拍，并更新事件 JSON、HTML 与异步事件片段')
+    parser.add_argument('--realtime-swing-json',
+                        help='实时 Swing 事件 JSON；默认 <output_stem>_swing_events.json')
+    parser.add_argument('--realtime-swing-html',
+                        help='实时 Swing HTML 页面；默认 <output_stem>_swing_report.html')
+    parser.add_argument('--realtime-swing-clips-dir',
+                        help='实时 Swing 独立片段目录；默认 <output_stem>_swing_clips')
+    parser.add_argument('--realtime-analysis-interval', type=int, default=None,
+                        help='每隔多少个已处理帧运行一次滚动事件分析，默认 5')
+    parser.add_argument('--realtime-settle-frames', type=int, default=None,
+                        help='挥拍结束后等待多少源帧再发布，默认约 0.6 秒')
+    parser.add_argument('--realtime-window-frames', type=int, default=None,
+                        help='实时事件分析滚动窗口帧数，默认约 8 秒')
+    parser.add_argument('--realtime-clip-workers', type=int, default=None,
+                        help='异步 Swing 片段编码线程数，默认 1')
+    parser.add_argument('--realtime-frame-output', action='store_true',
+                        help='异步保存已完成推理的逐帧 JSONL 与最近帧 JSON 快照')
+    parser.add_argument('--realtime-frame-jsonl',
+                        help='实时逐帧 JSONL；默认 <output_stem>_frames.jsonl')
+    parser.add_argument('--realtime-frame-snapshot-json',
+                        help='最近帧原子快照 JSON；默认 <output_stem>_frames_latest.json')
+    parser.add_argument('--realtime-frame-snapshot-size', type=int, default=None,
+                        help='最近帧 JSON 保留的记录数，默认 200')
+    parser.add_argument('--realtime-frame-flush-interval', type=int, default=None,
+                        help='每多少个已处理帧刷新 JSONL 与最近帧快照，默认 5')
+    parser.add_argument('--realtime-coach', action='store_true',
+                        help='为每个确认挥拍生成一条不超过15字的本地实时指导')
+    parser.add_argument('--realtime-coach-max-chars', type=int, default=None,
+                        help='本地实时指导最大字数，范围 1-15，默认 15')
+    parser.add_argument('--deepseek-coach', action='store_true',
+                        help='异步调用 DeepSeek V4 Flash 生成旁路指导；本地建议不等待')
+    parser.add_argument('--deepseek-model',
+                        help='DeepSeek 模型名，默认 deepseek-v4-flash')
+    parser.add_argument('--deepseek-base-url',
+                        help='OpenAI兼容地址，默认 https://api.deepseek.com')
+    parser.add_argument('--deepseek-api-key-env',
+                        help='保存API密钥的环境变量名，默认 DEEPSEEK_API_KEY')
+    parser.add_argument('--deepseek-timeout-seconds', type=float, default=None,
+                        help='单次DeepSeek请求超时秒数，默认 3.0')
+    parser.add_argument('--deepseek-workers', type=int, default=None,
+                        help='DeepSeek旁路并发请求数，默认 2')
+    parser.add_argument('--deepseek-coach-max-chars', type=int, default=None,
+                        help='DeepSeek建议最大字数，范围 1-15，默认 15')
+    parser.add_argument('--realtime-open-report', action='store_true',
+                        help='启动实时 Swing 输出时在系统浏览器打开 HTML 页面')
     return parser
 
 
@@ -846,6 +1245,31 @@ def main_cli(argv=None):
         min_event_frames=args.min_event_frames,
         max_internal_gap=args.max_internal_gap,
         min_event_gap=args.min_event_gap,
+        realtime_swing_events=args.realtime_swing_events,
+        realtime_swing_json=args.realtime_swing_json,
+        realtime_swing_html=args.realtime_swing_html,
+        realtime_swing_clips_dir=args.realtime_swing_clips_dir,
+        realtime_analysis_interval=args.realtime_analysis_interval,
+        realtime_settle_frames=args.realtime_settle_frames,
+        realtime_window_frames=args.realtime_window_frames,
+        realtime_clip_workers=args.realtime_clip_workers,
+        realtime_frame_output=args.realtime_frame_output,
+        realtime_frame_jsonl=args.realtime_frame_jsonl,
+        realtime_frame_snapshot_json=args.realtime_frame_snapshot_json,
+        realtime_frame_snapshot_size=args.realtime_frame_snapshot_size,
+        realtime_frame_flush_interval=args.realtime_frame_flush_interval,
+        realtime_coach=args.realtime_coach,
+        realtime_coach_max_chars=args.realtime_coach_max_chars,
+        deepseek_coach_options={
+            'enabled': args.deepseek_coach,
+            'model': args.deepseek_model,
+            'base_url': args.deepseek_base_url,
+            'api_key_env': args.deepseek_api_key_env,
+            'timeout_seconds': args.deepseek_timeout_seconds,
+            'workers': args.deepseek_workers,
+            'max_chars': args.deepseek_coach_max_chars,
+        },
+        realtime_open_report=args.realtime_open_report,
     ).run()
 
 

@@ -15,6 +15,116 @@
 
 ## 推荐工作流
 
+### 实时码流：单一主入口
+
+实时挥拍闭环统一由 `main_pipe.py` 驱动。每个完整挥拍在安静窗口确认后，
+立即原子更新事件 JSON 和 HTML，并在后台编码独立挥拍片段；片段编码不会进入
+检测/姿态推理关键路径。
+
+`--realtime-swing-events` 同时支持直播地址与按时间线播放的本地视频。HTTP/RTSP
+等直播源建议配合 `--live-mode` 使用，以关闭逐帧落盘并优先处理最新帧。
+
+DeepSeek 旁路需要先在当前终端配置密钥，不要把密钥写进 YAML 或命令行：
+
+```bash
+export DEEPSEEK_API_KEY='你的DeepSeek API Key'
+```
+
+```bash
+venv_yolo26/bin/python main_pipe.py \
+  --config configs/yolo26_tennis_config.yaml \
+  --input http://127.0.0.1:1234/ \
+  --output data/analysis_results/live_session.mp4 \
+  --live-mode \
+  --drop-stale-frames \
+  --no-save-video \
+  --realtime-swing-events \
+  --realtime-swing-json data/analysis_results/live_session_swing_events.json \
+  --realtime-swing-html data/analysis_results/live_session_swing_report.html \
+  --realtime-swing-clips-dir data/analysis_results/live_session_swing_clips \
+  --realtime-frame-output \
+  --realtime-frame-jsonl data/analysis_results/live_session_frames.jsonl \
+  --realtime-frame-snapshot-json data/analysis_results/live_session_frames_latest.json \
+  --realtime-frame-snapshot-size 200 \
+  --realtime-frame-flush-interval 5 \
+  --realtime-coach \
+  --realtime-coach-max-chars 15 \
+  --deepseek-coach \
+  --deepseek-model deepseek-v4-flash \
+  --deepseek-api-key-env DEEPSEEK_API_KEY \
+  --deepseek-timeout-seconds 3 \
+  --deepseek-workers 2 \
+  --deepseek-coach-max-chars 15 \
+  --realtime-analysis-interval 5 \
+  --realtime-settle-frames 15 \
+  --realtime-window-frames 200 \
+  --realtime-clip-workers 1 \
+  --realtime-open-report \
+  --output-fps 25 \
+  --inference-workers 2
+```
+
+上例用 `--no-save-video` 省去整场录像编码，但仍会生成每次挥拍片段；如需同时
+保存完整标注视频，移除该参数即可。
+
+实时输出：
+
+- `live_session_swing_events.json`：已确认的事件快照。
+- `live_session_swing_report.html`：自动刷新事件页面，播放视频时暂停刷新。
+- `live_session_swing_clips/`：每个挥拍的独立 OSD MP4。
+- `live_session_frames.jsonl`：每个完成推理帧一行，适合实时追加和故障恢复。
+- `live_session_frames_latest.json`：最近 200 个处理帧的原子 JSON 快照。
+
+逐帧日志默认保证不静默丢弃已完成推理的记录；正常写盘完全在后台进行。若磁盘
+持续严重阻塞并耗尽内部队列，流水线会短暂反压以优先保证 JSONL 完整性。
+
+`--realtime-coach` 使用本地确定性规则，在挥拍确认后立即把一条中文指导写入
+事件 JSON、终端和 HTML；不调用网络模型，每条指导硬限制为最多 15 个字符。
+数据质量不足时优先提示机位、入镜或遮挡问题，质量合格后才给动作建议。
+高速球允许间歇漏检：全事件球检测覆盖率达到 20%，且触球帧前后 4 帧内至少
+检测到 2 帧球时，不触发“确保来球完整入镜”。只有全事件或触球关键窗口的
+球证据严重不足时，才把 `ball_track_gaps` 作为可行动警告。
+
+`--deepseek-coach` 使用 `deepseek-v4-flash` 做异步旁路增强。本地建议始终先返回；
+DeepSeek 状态以 `pending → ready/failed/unavailable` 更新到事件 JSON 和 HTML，
+超时或缺少密钥不会影响本地分析。模型使用非思考模式和 JSON 输出以降低延迟。
+每次请求会同时发送事件摘要，以及 `start_frame` 到 `end_frame` 区间内按帧号排序的
+紧凑逐帧证据；只上传结构化分析结果，不上传视频画面。完整原始帧 JSON 保留在
+`SwingEvidencePacket` 中，DeepSeek 视图会去掉候选列表等冗余诊断，但不会跳过事件帧。
+低质量事件通过本地证据门控只允许拍摄改善或复核建议，并禁止旋转、落点、拍面和
+绝对速度等缺少可靠证据的结论。提示词要求返回建议类别、证据帧和置信度，并把中文
+建议硬限制为最多15字。
+
+Coach 门控按证据域授权，不再把局部识别警告升级为整次挥拍不可评价。姿态数据可靠时，
+即使球拍存在间歇漏检或背景静态球被拒绝，仍可基于身体、准备、平衡、节奏和随挥数据
+给出技术建议；对应警告只会封锁拍面、精确拍路、旋转、落点和精确球路等相关主题。
+聚合数据缺少逐帧 phase trace 时，会回退使用事件 JSON 的 `phase_counts`，避免把准备
+和随挥时长误算为零。模型输入包含按证据生成的 `advice_candidates`，有可靠技术候选时
+不接受拍摄或泛化复核建议代替 Coach 评价。
+接口格式参考 [DeepSeek Chat Completion 官方文档](https://api-docs.deepseek.com/api/create-chat-completion)。
+
+`run_swing_report.py` 仅保留为已完成录制的离线兼容适配器；实时模式不调用它。
+离线与实时事件识别都复用 `swing_event_analyzer.analyze_frame_records()`，避免维护两套挥拍算法。
+
+### 聚合单次 Swing 证据 JSON
+
+`swing_evidence_builder.py` 按 `event_id` 合并逐帧 JSON、Swing 事件 JSON 和 Coach
+数据集，生成一个 `SwingEvidencePacket`。它会截取事件帧范围、去掉 Coach 数据中
+重复的 `frame_trace`，并报告缺帧、重复帧和三条时间序列是否对齐。
+
+```bash
+venv_yolo26/bin/python swing_evidence_builder.py \
+  data/analysis_results/16.10_active_ball.json \
+  --event-json data/analysis_results/16.10_active_ball_swing_events.json \
+  --coach-json data/analysis_results/16.10_active_ball_coach_dataset.json \
+  --event-id 1 \
+  --output-json data/analysis_results/16.10_active_ball_swing_1_evidence.json
+```
+
+省略三个可选路径时，默认使用同目录的 `<frame_stem>_swing_events.json`、
+`<frame_stem>_coach_dataset.json` 和 `<frame_stem>_swing_<event_id>_evidence.json`。
+还可用 `--player-context-json` 合并用户水平、持拍手和训练目标等本地配置。
+
 ### 1. 跑主检测流水线
 
 ```bash

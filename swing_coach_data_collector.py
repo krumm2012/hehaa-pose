@@ -500,6 +500,12 @@ def _timing_metrics(event: Dict, event_frames: Dict, event_traces: List[Dict], f
     end = event_frames["end"]
     peak = event_frames["peak"]
     phase_counts = _phase_durations(event_traces)
+    if not phase_counts:
+        phase_counts = {
+            str(phase): int(count)
+            for phase, count in (event.get("phase_counts") or {}).items()
+            if int(count) > 0
+        }
     recovery_frames = phase_counts.get("ready", 0)
     duration = int(event["duration_frames"])
     start_to_contact = contact - start

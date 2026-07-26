@@ -210,7 +210,7 @@ class SwingEventAnalyzerTests(unittest.TestCase):
         self.assertEqual(analysis["summary"]["swing_event_count"], 3)
         self.assertEqual(analysis["summary"]["swing_event_type_counts"], {"Forehand": 3})
 
-    def test_event_quality_flags_capture_missing_detection_and_diagnostics(self):
+    def test_event_quality_flags_tolerate_intermittent_ball_detection(self):
         frames = []
         for idx, x in enumerate([10, 25, 45, 70, 92, 112, 128, 138]):
             pose = {
@@ -250,10 +250,52 @@ class SwingEventAnalyzerTests(unittest.TestCase):
         flags = event["quality_flags"]
         self.assertLess(flags["ball_frame_ratio"], 1.0)
         self.assertLess(flags["pose_frame_ratio"], 1.0)
-        self.assertIn("ball_track_gaps", flags["warnings"])
+        self.assertNotIn("ball_track_gaps", flags["warnings"])
+        self.assertGreater(flags["ball_contact_window_ratio"], 0.0)
         self.assertIn("pose_gaps", flags["warnings"])
         self.assertEqual(flags["diagnostic_rejection_counts"]["static_hard_mask"], 2)
         self.assertEqual(flags["diagnostic_rejection_counts"]["upper_mirror_unsupported"], 1)
+
+    def test_event_quality_flags_warn_when_ball_evidence_is_absent(self):
+        frames = []
+        for idx, x in enumerate([10, 25, 45, 70, 92, 112, 128, 138]):
+            frames.append(
+                {
+                    "frame_id": idx,
+                    "timestamp": idx / 25.0,
+                    "swing_type": "Forehand",
+                    "ball": None,
+                    "rackets": [
+                        {
+                            "box": [x, 100, x + 10, 130],
+                            "confidence": 0.9,
+                        }
+                    ],
+                    "pose": {
+                        "right_wrist": [x, 110],
+                        "left_wrist": [x + 90, 110],
+                        "right_shoulder": [40, 80],
+                        "right_elbow": [x - 8, 98],
+                        "left_shoulder": [0, 80],
+                        "left_hip": [0, 150],
+                        "right_hip": [40, 150],
+                    },
+                }
+            )
+
+        analysis = analyze_frame_records(
+            frames,
+            min_peak_energy=8.0,
+            active_energy=6.0,
+            min_event_frames=3,
+            max_internal_gap=1,
+            min_event_gap=3,
+        )
+
+        flags = analysis["events"][0]["quality_flags"]
+        self.assertEqual(flags["ball_frame_ratio"], 0.0)
+        self.assertEqual(flags["ball_contact_window_ratio"], 0.0)
+        self.assertIn("ball_track_gaps", flags["warnings"])
 
 
 class SwingCoachDataCollectorTests(unittest.TestCase):
@@ -320,6 +362,22 @@ class SwingCoachDataCollectorTests(unittest.TestCase):
         self.assertIsNotNone(event["body"]["late_contact"])
         self.assertIsNotNone(event["timing"]["recovery_time_frames"])
         self.assertIsNotNone(event["timing"]["tempo_consistency"])
+
+        trace_less_analysis = dict(analysis)
+        trace_less_analysis["frame_trace"] = []
+        trace_less_dataset = build_coach_dataset(
+            {"video_info": {"fps": 25, "path": "sample.mp4"}, "frames": frames},
+            trace_less_analysis,
+        )
+        trace_less_event = trace_less_dataset["events"][0]
+        self.assertEqual(
+            trace_less_event["timing"]["phase_durations_frames"],
+            analysis["events"][0]["phase_counts"],
+        )
+        self.assertGreater(
+            trace_less_event["scores"]["preparation_score"],
+            0.0,
+        )
 
     def test_default_coach_output_path(self):
         self.assertEqual(default_coach_output_path("data/output_video.json"), "data/output_video_coach_dataset.json")

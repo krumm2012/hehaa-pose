@@ -7,6 +7,10 @@ from statistics import median
 from typing import Dict, List, Optional, Tuple
 
 from swing_event_classifier import classify_swing_event
+from swing_quality_policy import (
+    BALL_CONTACT_WINDOW_RADIUS,
+    ball_tracking_requires_capture,
+)
 
 
 def _smooth(values: List[float], window: int = 3) -> List[float]:
@@ -167,7 +171,26 @@ def _event_quality_flags(features: List[Dict], start_idx: int, end_idx: int, cla
     ball_ratio = ball_frames / total
     racket_ratio = racket_frames / total
     pose_ratio = pose_frames / total
-    if ball_ratio < 0.65:
+    contact_window = [
+        feature
+        for feature in event_features
+        if abs(int(feature["frame_id"]) - int(contact_frame))
+        <= BALL_CONTACT_WINDOW_RADIUS
+    ]
+    contact_window_ball_frames = sum(
+        1 for feature in contact_window if feature.get("ball") is not None
+    )
+    contact_window_ratio = contact_window_ball_frames / max(
+        1,
+        len(contact_window),
+    )
+    ball_quality = {
+        "ball_frame_ratio": ball_ratio,
+        "ball_contact_window_ratio": contact_window_ratio,
+        "ball_contact_window_frames": len(contact_window),
+        "ball_contact_window_detection_frames": contact_window_ball_frames,
+    }
+    if ball_tracking_requires_capture(ball_quality):
         warnings.append("ball_track_gaps")
     if racket_ratio < 0.65:
         warnings.append("racket_track_gaps")
@@ -187,6 +210,9 @@ def _event_quality_flags(features: List[Dict], start_idx: int, end_idx: int, cla
     return {
         "pose_frame_ratio": round(pose_ratio, 4),
         "ball_frame_ratio": round(ball_ratio, 4),
+        "ball_contact_window_ratio": round(contact_window_ratio, 4),
+        "ball_contact_window_frames": len(contact_window),
+        "ball_contact_window_detection_frames": contact_window_ball_frames,
         "racket_frame_ratio": round(racket_ratio, 4),
         "diagnostic_rejection_counts": dict(sorted(diagnostic_counts.items())),
         "continuity_disabled_frames": int(continuity_disabled),

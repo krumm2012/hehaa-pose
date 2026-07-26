@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Render a Swing OSD video and build/open its local HTML review report."""
+"""Offline compatibility adapter for rendering a completed Swing session.
+
+Live streams use ``main_pipe.py --realtime-swing-events`` as the single
+primary entrypoint. This adapter intentionally contains no Swing analysis.
+"""
 
 from __future__ import annotations
 
