@@ -121,6 +121,19 @@ def build_report_payload(
             "coach": coach_data.get("summary") or {},
         },
         "events": merged_events,
+        "timeline": {
+            "fps": (frame_data.get("video_info") or {}).get("fps") or 25.0,
+            "total_frames": len(frame_data.get("frames", [])),
+            "frame_trace": [
+                {
+                    "frame": trace.get("frame"),
+                    "event_id": trace.get("event_id"),
+                    "phase": trace.get("phase"),
+                    "motion_energy": trace.get("motion_energy"),
+                }
+                for trace in event_data.get("frame_trace", [])
+            ],
+        },
         "evaluation": evaluation_data,
     }
 
@@ -170,6 +183,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
                 <span>score {_score_text(event.get('overall_score'))}</span>
               </div>
               <div class="frames">start {event.get('start_frame')} · contact {event.get('contact_frame')} · peak {event.get('peak_frame')} · end {event.get('end_frame')}</div>
+              <button class="event-jump" type="button" data-event-id="{html.escape(str(event.get('event_id')))}">定位到事件</button>
               <div class="meter"><i style="width:{_score_text(event.get('overall_score'))}%"></i></div>
               <p>confidence {_score_text(event.get('confidence'))} · contact {_score_text(event.get('contact_score'))} · prep {_score_text(event.get('preparation_score'))} · follow {_score_text(event.get('follow_through_score'))}</p>
               <p class="tags">{html.escape(', '.join(tags + warnings) or 'no quality warnings')}</p>
@@ -238,8 +252,32 @@ def render_report_html(payload: Dict, output_path: str) -> str:
     video {{ width: 100%; background: #111; border: 1px solid var(--line); }}
     .panel, .event-card {{ background: rgba(255,250,240,.92); border: 1px solid var(--line); border-radius: 8px; }}
     .panel {{ padding: 16px; }}
+    .event-explorer {{ grid-column: 1 / -1; }}
+    .event-explorer-head {{ display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }}
+    .event-explorer h2 {{ margin: 0; font-size: 20px; }}
+    .event-timeline {{ display: grid; gap: 9px; margin: 18px 0 12px; }}
+    .timeline-ruler, .timeline-lane {{ display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 10px; align-items: center; }}
+    .timeline-label {{ color: var(--muted); font-size: 12px; text-align: right; }}
+    .timeline-track {{ position: relative; min-height: 33px; border-radius: 8px; background: repeating-linear-gradient(90deg, #e8dfd0 0 1px, transparent 1px 10%); border: 1px solid var(--line); overflow: visible; }}
+    .timeline-track--ruler {{ min-height: 22px; color: var(--muted); font-size: 11px; }}
+    .timeline-track--ruler span {{ position: absolute; top: 3px; transform: translateX(-50%); }}
+    .timeline-event {{ position: absolute; top: 5px; height: 21px; min-width: 8px; padding: 0 7px; border: 0; border-radius: 5px; background: var(--accent); color: white; overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; }}
+    .timeline-event.is-active {{ outline: 3px solid #142a25; outline-offset: 2px; }}
+    .timeline-marker {{ position: absolute; top: -4px; width: 10px; height: 40px; padding: 0; border: 0; border-radius: 999px; background: #17211f; color: transparent; }}
+    .timeline-marker--contact {{ background: #bd4e2c; }}
+    .timeline-marker--peak {{ background: #5346a3; }}
+    .timeline-playhead {{ position: absolute; z-index: 3; top: -8px; bottom: -8px; width: 2px; background: #17211f; pointer-events: none; }}
+    .timeline-playhead::before {{ content: ""; position: absolute; top: -2px; left: -4px; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid #17211f; }}
+    .timeline-controls {{ display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; }}
+    .timeline-controls input {{ width: 100%; accent-color: var(--accent); }}
+    .timeline-status {{ color: var(--muted); font-size: 13px; min-width: 145px; text-align: right; }}
+    .timeline-legend {{ display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }}
+    .timeline-legend i {{ display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; background: #17211f; }}
+    .timeline-legend .contact-dot {{ background: #bd4e2c; }}
+    .timeline-legend .peak-dot {{ background: #5346a3; }}
     .events {{ display: grid; gap: 12px; max-height: 70vh; overflow: auto; }}
     .event-card {{ padding: 14px; }}
+    .event-card.is-active {{ border-color: var(--accent); box-shadow: 0 0 0 2px rgba(15,123,108,.16); }}
     .event-head {{ display: flex; justify-content: space-between; gap: 10px; }}
     .frames, .tags, p {{ color: var(--muted); font-size: 13px; line-height: 1.45; }}
     .tags {{ color: var(--warn); }}
@@ -252,13 +290,14 @@ def render_report_html(payload: Dict, output_path: str) -> str:
     .evaluation-summary h2 {{ margin: 0 0 6px; font-size: 18px; }}
     .evaluation-summary p {{ margin: 0; }}
     button {{ border: 1px solid var(--accent); background: var(--accent); color: white; border-radius: 6px; padding: 9px 12px; cursor: pointer; }}
+    .event-jump {{ margin-top: 10px; padding: 6px 9px; font-size: 12px; background: transparent; color: var(--accent); }}
     .file-label {{ border: 1px solid var(--line); background: #fffdf7; color: var(--ink); border-radius: 6px; padding: 9px 12px; cursor: pointer; }}
     .file-label input {{ display: none; }}
     .import-status {{ color: var(--muted); font-size: 13px; align-self: center; }}
     .meter {{ height: 8px; background: #e4dccd; border-radius: 999px; overflow: hidden; margin: 10px 0; }}
     .meter i {{ display: block; height: 100%; background: var(--accent); }}
     pre {{ white-space: pre-wrap; word-break: break-word; background: #17211f; color: #eaf5ef; padding: 14px; border-radius: 8px; max-height: 360px; overflow: auto; }}
-    @media (max-width: 900px) {{ .layout {{ grid-template-columns: 1fr; }} header {{ display:block; }} }}
+    @media (max-width: 900px) {{ .layout {{ grid-template-columns: 1fr; }} header {{ display:block; }} .timeline-ruler, .timeline-lane {{ grid-template-columns: 54px minmax(0, 1fr); }} .timeline-label {{ font-size: 11px; }} }}
   </style>
 </head>
 <body>
@@ -270,8 +309,20 @@ def render_report_html(payload: Dict, output_path: str) -> str:
     <div class="summary">{html.escape(payload['paths'].get('frame_json') or '')}</div>
   </header>
   <main class="layout">
+    <section class="panel event-explorer" aria-label="挥拍事件时间轴">
+      <div class="event-explorer-head">
+        <h2>事件时间轴</h2>
+        <span id="timeline-status" class="timeline-status">Frame - · -</span>
+      </div>
+      <div id="event-timeline" class="event-timeline"></div>
+      <div class="timeline-controls">
+        <input id="frame-scrubber" type="range" min="0" value="0" aria-label="按帧定位视频">
+        <button id="play-event" type="button">播放当前事件</button>
+      </div>
+      <div class="timeline-legend"><span><i></i>当前播放帧</span><span><i class="contact-dot"></i>触球候选</span><span><i class="peak-dot"></i>动作峰值</span></div>
+    </section>
     <section class="panel">
-      <video controls src="{html.escape(video_src or '')}"></video>
+      <video id="swing-video" controls src="{html.escape(video_src or '')}"></video>
       <div class="actions">
         <button type="button" onclick="refreshAnnotations()">生成标注 JSON</button>
         <button type="button" onclick="downloadAnnotations()">下载标注 JSON</button>
@@ -293,6 +344,65 @@ def render_report_html(payload: Dict, output_path: str) -> str:
   <script type="application/json" id="report-data">{_json_script(payload)}</script>
   <script>
     const data = JSON.parse(document.getElementById('report-data').textContent);
+    const video = document.getElementById('swing-video');
+    const timeline = document.getElementById('event-timeline');
+    const scrubber = document.getElementById('frame-scrubber');
+    const timelineStatus = document.getElementById('timeline-status');
+    const fps = Number((data.timeline || {{}}).fps || (data.video_info || {{}}).fps || 25);
+    const maxEventFrame = Math.max(0, ...data.events.flatMap(event => [event.start_frame, event.contact_frame, event.peak_frame, event.end_frame].map(Number).filter(Number.isFinite)));
+    const totalFrames = Math.max(1, Number((data.timeline || {{}}).total_frames || 0), maxEventFrame + 1);
+    let activeEventId = data.events.length ? Number(data.events[0].event_id) : null;
+    scrubber.max = String(totalFrames - 1);
+
+    function percentForFrame(frame) {{
+      return Math.max(0, Math.min(100, (Number(frame) / Math.max(1, totalFrames - 1)) * 100));
+    }}
+    function seekFrame(frame, shouldPlay = false) {{
+      const safeFrame = Math.max(0, Math.min(totalFrames - 1, Math.round(Number(frame) || 0)));
+      video.currentTime = safeFrame / fps;
+      scrubber.value = String(safeFrame);
+      updatePlaybackState(safeFrame);
+      if (shouldPlay) video.play();
+    }}
+    function selectEvent(eventId, seek = true) {{
+      const event = data.events.find(item => Number(item.event_id) === Number(eventId));
+      if (!event) return;
+      activeEventId = Number(event.event_id);
+      document.querySelectorAll('[data-event-id]').forEach(node => node.classList.toggle('is-active', Number(node.dataset.eventId) === activeEventId));
+      if (seek) seekFrame(event.start_frame);
+    }}
+    function marker(label, frame, className, eventId) {{
+      if (!Number.isFinite(Number(frame))) return '';
+      const position = percentForFrame(frame);
+      return `<button type="button" class="timeline-marker ${{className}}" data-event-id="${{eventId}}" data-frame="${{frame}}" style="left:calc(${{position}}% - 5px)" aria-label="${{label}}：第 ${{frame}} 帧">${{label}}</button>`;
+    }}
+    function renderTimeline() {{
+      const ruler = [0, .25, .5, .75, 1].map(ratio => {{
+        const frame = Math.round((totalFrames - 1) * ratio);
+        return `<span style="left:${{ratio * 100}}%">${{frame}}</span>`;
+      }}).join('');
+      const lanes = data.events.map(event => {{
+        const start = Number(event.start_frame) || 0;
+        const end = Math.max(start + 1, Number(event.end_frame) || start + 1);
+        const left = percentForFrame(start);
+        const width = Math.max(1.5, percentForFrame(end) - left);
+        return `<div class="timeline-lane"><span class="timeline-label">事件 ${{event.event_id}}</span><div class="timeline-track"><button type="button" class="timeline-event" data-event-id="${{event.event_id}}" data-frame="${{start}}" style="left:${{left}}%;width:${{width}}%" title="${{event.stroke_type}} · ${{start}}-${{end}}">${{event.stroke_type}}</button>${{marker('触球候选', event.contact_frame, 'timeline-marker--contact', event.event_id)}}${{marker('动作峰值', event.peak_frame, 'timeline-marker--peak', event.event_id)}}<i class="timeline-playhead" aria-hidden="true"></i></div></div>`;
+      }}).join('');
+      timeline.innerHTML = `<div class="timeline-ruler"><span class="timeline-label">帧号</span><div class="timeline-track timeline-track--ruler">${{ruler}}</div></div>${{lanes || '<p>未检测到挥拍事件。</p>'}}`;
+      timeline.querySelectorAll('[data-frame]').forEach(button => button.addEventListener('click', () => {{
+        selectEvent(button.dataset.eventId, false);
+        seekFrame(button.dataset.frame, button.classList.contains('timeline-event'));
+      }}));
+    }}
+    function updatePlaybackState(frame) {{
+      const currentFrame = Math.max(0, Math.min(totalFrames - 1, Math.round(Number(frame) || 0)));
+      scrubber.value = String(currentFrame);
+      const currentEvent = data.events.find(event => currentFrame >= Number(event.start_frame) && currentFrame <= Number(event.end_frame));
+      if (currentEvent) selectEvent(currentEvent.event_id, false);
+      const phase = ((data.timeline || {{}}).frame_trace || []).find(trace => Number(trace.frame) === currentFrame)?.phase || 'ready';
+      timelineStatus.textContent = `Frame ${{currentFrame}} · ${{(currentFrame / fps).toFixed(2)}}s · ${{phase}}`;
+      timeline.querySelectorAll('.timeline-playhead').forEach(playhead => playhead.style.left = `${{percentForFrame(currentFrame)}}%`);
+    }}
     document.getElementById('raw-summary').textContent = JSON.stringify({{
       paths: data.paths,
       summary: data.summary,
@@ -391,8 +501,18 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       link.click();
       URL.revokeObjectURL(link.href);
     }}
+    document.querySelectorAll('.event-jump').forEach(button => button.addEventListener('click', () => selectEvent(button.dataset.eventId)));
+    scrubber.addEventListener('input', event => seekFrame(event.target.value));
+    document.getElementById('play-event').addEventListener('click', () => {{
+      const event = data.events.find(item => Number(item.event_id) === activeEventId);
+      if (event) seekFrame(event.start_frame, true);
+      else video.play();
+    }});
+    video.addEventListener('timeupdate', () => updatePlaybackState(Math.round(video.currentTime * fps)));
     document.querySelectorAll('input, select, textarea').forEach(el => el.addEventListener('change', refreshAnnotations));
     document.querySelectorAll('textarea').forEach(el => el.addEventListener('input', refreshAnnotations));
+    renderTimeline();
+    updatePlaybackState(0);
     refreshAnnotations();
   </script>
 </body>

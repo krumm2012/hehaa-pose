@@ -488,6 +488,10 @@ class SwingReportBuilderTests(unittest.TestCase):
         self.assertIn("Evaluation Summary", html)
         self.assertIn("stroke accuracy 50%", html)
         self.assertIn("contact accuracy 100%", html)
+        self.assertIn('id="event-timeline"', html)
+        self.assertIn('id="frame-scrubber"', html)
+        self.assertIn("renderTimeline", html)
+        self.assertIn("seekFrame", html)
 
 
 class SwingEventVideoRendererTests(unittest.TestCase):
