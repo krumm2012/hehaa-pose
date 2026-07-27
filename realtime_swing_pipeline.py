@@ -245,7 +245,12 @@ class RealtimeSwingEventEngine:
             event["emitted_at_frame"] = self._latest_frame_id
             event["latency_frames"] = max(0, self._latest_frame_id - end_frame)
             if self.coach is not None:
-                event["coach_advice"] = self.coach.advise(event)
+                if hasattr(self.coach, "advise_all"):
+                    coach_advices = self.coach.advise_all(event)
+                else:
+                    coach_advices = [self.coach.advise(event)]
+                event["coach_advices"] = coach_advices
+                event["coach_advice"] = coach_advices[0]
             self._events.append(event)
             self._emitted_peaks.append(int(event["peak_frame"]))
             self._append_event_trace(analysis.get("frame_trace", []), candidate, event)
@@ -287,6 +292,9 @@ class RealtimeSwingOutputManager:
         clip_padding_frames: int = 0,
         clip_max_width: int = 1280,
         jpeg_quality: int = 85,
+        preview_path: Optional[str] = None,
+        roi_metadata: Optional[Dict] = None,
+        preview_interval_frames: int = 25,
     ):
         self.output_json = Path(output_json)
         self.output_html = Path(output_html)
@@ -302,6 +310,10 @@ class RealtimeSwingOutputManager:
         self.video_backend = video_backend
         self.video_bitrate = video_bitrate
         self.clip_padding_frames = max(0, int(clip_padding_frames))
+        self.preview_path = Path(preview_path) if preview_path else None
+        self.roi_metadata = deepcopy(roi_metadata or {})
+        self.preview_interval_frames = max(1, int(preview_interval_frames))
+        self._last_preview_frame: Optional[int] = None
         self._frames: Deque[Tuple[int, object]] = deque(maxlen=max(1, int(buffer_frames)))
         self._events: List[Dict] = []
         self._buffer_condition = threading.Condition()
@@ -335,6 +347,8 @@ class RealtimeSwingOutputManager:
         self.output_json.parent.mkdir(parents=True, exist_ok=True)
         self.output_html.parent.mkdir(parents=True, exist_ok=True)
         self.clips_dir.mkdir(parents=True, exist_ok=True)
+        if self.preview_path is not None:
+            self.preview_path.parent.mkdir(parents=True, exist_ok=True)
         self._document = {
             "summary": {
                 "total_frames": 0,
@@ -342,6 +356,7 @@ class RealtimeSwingOutputManager:
                 "swing_event_count": 0,
                 "swing_event_type_counts": {},
                 "realtime": True,
+                "roi": deepcopy(self.roi_metadata),
             },
             "events": [],
             "frame_trace": [],
@@ -424,6 +439,7 @@ class RealtimeSwingOutputManager:
             summary = self._document.setdefault("summary", {})
             summary["swing_event_count"] = len(self._events)
             summary["realtime"] = True
+            summary["roi"] = deepcopy(self.roi_metadata)
             summary["clip_buffer_dropped_frames"] = self._dropped_compression_frames
             self._queue_live_outputs(self._document)
 
@@ -481,6 +497,35 @@ class RealtimeSwingOutputManager:
                     if item is self._frame_sentinel:
                         return
                     frame_id, frame = item
+                    if (
+                        self.preview_path is not None
+                        and (
+                            self._last_preview_frame is None
+                            or frame_id - self._last_preview_frame
+                            >= self.preview_interval_frames
+                        )
+                    ):
+                        preview_frame = self._draw_roi_preview(frame, frame_id)
+                        if (
+                            preview_frame.shape[1] != self.width
+                            or preview_frame.shape[0] != self.height
+                        ):
+                            preview_frame = cv2.resize(
+                                preview_frame,
+                                (self.width, self.height),
+                                interpolation=cv2.INTER_AREA,
+                            )
+                        preview_ok, preview_encoded = cv2.imencode(
+                            ".jpg",
+                            preview_frame,
+                            [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality],
+                        )
+                        if preview_ok:
+                            self._atomic_write_bytes(
+                                self.preview_path,
+                                preview_encoded.tobytes(),
+                            )
+                            self._last_preview_frame = frame_id
                     if frame.shape[1] != self.width or frame.shape[0] != self.height:
                         frame = cv2.resize(
                             frame,
@@ -658,8 +703,95 @@ class RealtimeSwingOutputManager:
         temporary.write_text(content, encoding="utf-8")
         os.replace(temporary, path)
 
+    @staticmethod
+    def _atomic_write_bytes(path: Path, content: bytes) -> None:
+        temporary = path.with_name(f".{path.name}.tmp")
+        temporary.write_bytes(content)
+        os.replace(temporary, path)
+
+    def _draw_roi_preview(self, frame, frame_id: int):
+        preview = frame.copy()
+        points = self.roi_metadata.get("points") or []
+        configured_size = self.roi_metadata.get("frame_size") or [
+            frame.shape[1],
+            frame.shape[0],
+        ]
+        if len(points) == 4 and len(configured_size) >= 2:
+            scale_x = frame.shape[1] / max(1, int(configured_size[0]))
+            scale_y = frame.shape[0] / max(1, int(configured_size[1]))
+            polygon = np.array(
+                [
+                    [
+                        int(round(float(point[0]) * scale_x)),
+                        int(round(float(point[1]) * scale_y)),
+                    ]
+                    for point in points
+                ],
+                dtype=np.int32,
+            )
+            overlay = preview.copy()
+            cv2.fillPoly(overlay, [polygon], (0, 255, 255))
+            cv2.addWeighted(overlay, 0.10, preview, 0.90, 0, preview)
+            cv2.polylines(preview, [polygon], True, (0, 255, 255), 4, cv2.LINE_AA)
+            for index, point in enumerate(polygon):
+                location = (int(point[0]), int(point[1]))
+                cv2.circle(preview, location, 8, (0, 255, 0), -1, cv2.LINE_AA)
+                cv2.putText(
+                    preview,
+                    f"P{index + 1}",
+                    (location[0] + 10, location[1] - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (0, 255, 0),
+                    2,
+                    cv2.LINE_AA,
+                )
+
+        label = str(self.roi_metadata.get("label") or "Camera")
+        source = str(self.roi_metadata.get("source") or "")
+        cv2.rectangle(preview, (0, 0), (preview.shape[1], 92), (0, 0, 0), -1)
+        cv2.putText(
+            preview,
+            f"ROI ACTIVE | {label} | Frame {frame_id}",
+            (24, 36),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.78,
+            (0, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            preview,
+            source,
+            (24, 72),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.58,
+            (235, 235, 235),
+            1,
+            cv2.LINE_AA,
+        )
+        return preview
+
     def _render_live_html(self, document: Dict) -> str:
         summary = document.get("summary") or {}
+        roi = summary.get("roi") or self.roi_metadata
+        stream_content = ""
+        if self.preview_path is not None and roi.get("enabled"):
+            preview_href = os.path.relpath(
+                self.preview_path,
+                self.output_html.parent,
+            ).replace(os.sep, "/")
+            stream_content = f"""
+            <section class="stream-card">
+              <div class="stream-heading">
+                <div><h2>{html.escape(str(roi.get("label") or "Live camera"))}</h2>
+                <p>{html.escape(str(roi.get("source") or ""))}</p></div>
+                <strong>ROI ACTIVE</strong>
+              </div>
+              <img id="roi-preview" src="{html.escape(preview_href)}" alt="Live stream ROI preview">
+              <p class="stream-note">实时截图 · 黄色区域为推理 ROI · P1–P4 为配置点</p>
+            </section>
+            """
         cards = []
         for event in reversed(document.get("events") or []):
             clip_status = str(event.get("clip_status") or "pending")
@@ -684,13 +816,61 @@ class RealtimeSwingOutputManager:
                 clip_content = (
                     '<p class="clip-state">Encoding this Swing clip in the background…</p>'
                 )
-            coach_advice = event.get("coach_advice") or {}
+            coach_advices = event.get("coach_advices") or []
+            if not coach_advices and event.get("coach_advice"):
+                coach_advices = [event["coach_advice"]]
             coach_content = ""
-            if coach_advice.get("message"):
-                coach_content = (
-                    '<div class="coach-advice"><span>实时指导</span>'
-                    f'<strong>{html.escape(str(coach_advice["message"]))}</strong></div>'
+            if coach_advices:
+                advice_rows = []
+                for index, advice in enumerate(coach_advices[:3], start=1):
+                    if not advice.get("message"):
+                        continue
+                    confidence = max(
+                        0.0,
+                        min(1.0, float(advice.get("confidence") or 0.0)),
+                    )
+                    advice_rows.append(
+                        '<li>'
+                        f'<span>{index}</span>'
+                        f'<strong>{html.escape(str(advice["message"]))}</strong>'
+                        f'<small>{confidence:.0%}</small>'
+                        '</li>'
+                    )
+                if advice_rows:
+                    coach_content = (
+                        '<div class="coach-advice"><div class="coach-title">'
+                        '<span>实时动作纠错</span><small>单摄像头2D估计</small></div>'
+                        f'<ol>{"".join(advice_rows)}</ol></div>'
+                    )
+            metric_labels = {
+                "hip_shoulder_separation": "肩髋分离",
+                "shoulder_turn": "肩部转动",
+                "arm_extension": "手臂伸展",
+                "contact_lateral_distance": "击球点距离",
+                "weight_transfer": "重心转移",
+                "balance_drift": "平衡漂移",
+            }
+            metric_rows = []
+            for key, label in metric_labels.items():
+                metric = (
+                    ((event.get("biomechanics") or {}).get("metrics") or {}).get(key)
+                    or {}
                 )
+                if metric.get("value") is None:
+                    continue
+                unit = "°" if metric.get("unit") == "deg" else "×身宽"
+                metric_rows.append(
+                    '<div class="bio-metric">'
+                    f'<span>{html.escape(label)}</span>'
+                    f'<strong>{float(metric["value"]):.2f}{unit}</strong>'
+                    f'<small>{float(metric.get("confidence") or 0.0):.0%}</small>'
+                    '</div>'
+                )
+            biomechanics_content = (
+                f'<div class="biomechanics">{"".join(metric_rows)}</div>'
+                if metric_rows
+                else ""
+            )
             deepseek_advice = event.get("deepseek_advice") or {}
             deepseek_status = str(deepseek_advice.get("status") or "")
             deepseek_content = ""
@@ -720,6 +900,7 @@ class RealtimeSwingOutputManager:
                   </div>
                   {clip_content}
                   {coach_content}
+                  {biomechanics_content}
                   {deepseek_content}
                   <dl>
                     <div><dt>Frames</dt><dd>{int(event['start_frame'])}–{int(event['end_frame'])}</dd></div>
@@ -746,6 +927,12 @@ class RealtimeSwingOutputManager:
     h1,h2,p {{ margin:0; }}
     .summary {{ color:#aab8cc; }}
     main {{ display:grid; gap:18px; padding-bottom:40px; }}
+    .stream-card {{ border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }}
+    .stream-heading {{ display:flex; justify-content:space-between; gap:20px; align-items:center; margin-bottom:12px; }}
+    .stream-heading p,.stream-note {{ color:#93a4bb; overflow-wrap:anywhere; }}
+    .stream-heading strong {{ color:#0a0f1a; background:var(--accent); border-radius:999px; padding:5px 10px; white-space:nowrap; }}
+    #roi-preview {{ display:block; width:100%; max-height:680px; object-fit:contain; background:#000; border-radius:9px; }}
+    .stream-note {{ margin-top:10px; }}
     .event-card {{ border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }}
     .event-heading {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }}
     .event-heading span {{ color:var(--accent); font-weight:700; }}
@@ -753,8 +940,17 @@ class RealtimeSwingOutputManager:
     .clip-state {{ padding:48px 20px; text-align:center; color:#93a4bb; border:1px dashed var(--line); border-radius:9px; }}
     .clip-failed {{ color:#ff9d9d; }}
     .clip-partial {{ margin-top:8px; padding:10px; color:#ffd28a; }}
-    .coach-advice {{ display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:14px; padding:14px 16px; border-radius:9px; background:#202b1d; border:1px solid #46643c; }}
-    .coach-advice span {{ color:#a9c99e; }} .coach-advice strong {{ color:#e8ffd8; font-size:20px; }}
+    .coach-advice {{ margin-top:14px; padding:14px 16px; border-radius:9px; background:#202b1d; border:1px solid #46643c; }}
+    .coach-title {{ display:flex; justify-content:space-between; color:#a9c99e; }}
+    .coach-title small {{ color:#78906f; }}
+    .coach-advice ol {{ list-style:none; display:grid; gap:8px; margin:10px 0 0; padding:0; }}
+    .coach-advice li {{ display:grid; grid-template-columns:28px 1fr auto; align-items:center; gap:10px; }}
+    .coach-advice li span {{ display:grid; place-items:center; width:24px; height:24px; border-radius:50%; background:#46643c; color:#fff; }}
+    .coach-advice li strong {{ color:#e8ffd8; font-size:18px; }}
+    .coach-advice li small {{ color:#b9dcae; font-variant-numeric:tabular-nums; }}
+    .biomechanics {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:10px; }}
+    .bio-metric {{ display:grid; grid-template-columns:1fr auto; gap:2px 8px; padding:9px 11px; border:1px solid var(--line); border-radius:8px; }}
+    .bio-metric span {{ color:#93a4bb; font-size:12px; }} .bio-metric strong {{ grid-column:1; }} .bio-metric small {{ grid-column:2; grid-row:1/3; align-self:center; color:#7890ad; }}
     .deepseek-advice {{ display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:10px; padding:12px 16px; border-radius:9px; background:#17253a; border:1px solid #365d8c; }}
     .deepseek-advice span,.deepseek-advice small {{ color:#9bbce2; }} .deepseek-advice strong {{ color:#e3f1ff; font-size:18px; }}
     .deepseek-advice.pending,.deepseek-advice.unavailable {{ opacity:.72; }}
@@ -762,7 +958,7 @@ class RealtimeSwingOutputManager:
     dl div {{ border:1px solid var(--line); border-radius:8px; padding:9px 11px; }}
     dt {{ color:#93a4bb; font-size:12px; text-transform:uppercase; }} dd {{ margin:2px 0 0; }}
     .waiting {{ padding:50px; text-align:center; border:1px dashed var(--line); border-radius:14px; color:#93a4bb; }}
-    @media(max-width:720px) {{ header {{ align-items:start; flex-direction:column; }} dl {{ grid-template-columns:1fr 1fr; }} }}
+    @media(max-width:720px) {{ header {{ align-items:start; flex-direction:column; }} dl,.biomechanics {{ grid-template-columns:1fr 1fr; }} }}
   </style>
 </head>
 <body>
@@ -770,8 +966,15 @@ class RealtimeSwingOutputManager:
     <div><h1>Live Swing Events</h1><p class="summary">Auto-refresh pauses while a clip is playing.</p></div>
     <strong>{int(summary.get('swing_event_count') or 0)} events · frame {int(summary.get('latest_frame') or -1)}</strong>
   </header>
-  <main>{content}</main>
+  <main>{stream_content}{content}</main>
   <script>
+    const preview = document.getElementById('roi-preview');
+    if (preview) {{
+      const previewSource = preview.getAttribute('src').split('?')[0];
+      setInterval(() => {{
+        preview.src = previewSource + '?t=' + Date.now();
+      }}, 1000);
+    }}
     setInterval(() => {{
       const playing = [...document.querySelectorAll('video')].some(video => !video.paused && !video.ended);
       if (!playing) location.reload();

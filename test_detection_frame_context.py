@@ -1,4 +1,6 @@
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 
 import numpy as np
 
@@ -29,6 +31,20 @@ class _FakeROIManager:
 
 
 class DetectionFrameContextTests(unittest.TestCase):
+    def test_frame_context_logging_is_silent_by_default(self):
+        frame = np.zeros((100, 200, 3), dtype=np.uint8)
+        output = StringIO()
+
+        with redirect_stdout(output):
+            DetectionFrameContext.build(
+                frame_num=30,
+                frame=frame,
+                roi_manager=_FakeROIManager(),
+                config={"roi_settings": {"crop_margin": 5}},
+            )
+
+        self.assertEqual(output.getvalue(), "")
+
     def test_build_and_adjust(self):
         frame = np.zeros((100, 200, 3), dtype=np.uint8)
         roi_manager = _FakeROIManager()

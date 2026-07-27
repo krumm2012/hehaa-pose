@@ -102,7 +102,12 @@ class YOLO26nUnifiedDetector:
         """Return lightweight diagnostics for the last ball-selection step."""
         return dict(self.last_ball_diagnostics) if isinstance(self.last_ball_diagnostics, dict) else {}
     
-    def detect_unified(self, frame):
+    def detect_unified(
+        self,
+        frame,
+        coordinate_offset=(0, 0),
+        full_frame_size=None,
+    ):
         """
         统一检测球和球拍
         
@@ -114,6 +119,11 @@ class YOLO26nUnifiedDetector:
         """
         # 保存原始尺寸
         self.original_height, self.original_width = frame.shape[:2]
+        self.tracking_frame_height = (
+            int(full_frame_size[1])
+            if full_frame_size is not None
+            else self.original_height
+        )
         
         # 预处理
         input_image = self._preprocess(frame)
@@ -133,12 +143,50 @@ class YOLO26nUnifiedDetector:
         
         # 解析结果
         ball_detections, racket_detections = self._parse_predictions(predictions)
+
+        # ROI 推理时在候选筛选前恢复原图坐标，确保静态区和轨迹连续性
+        # 继续使用全帧坐标系。
+        if coordinate_offset != (0, 0):
+            ball_detections = self._offset_detections(
+                ball_detections,
+                coordinate_offset,
+            )
+            racket_detections = self._offset_detections(
+                racket_detections,
+                coordinate_offset,
+            )
         
         # 在已有候选中选择真实运动球/主拍；不增加模型推理，只做轻量距离打分。
         ball_detections = self._filter_static_balls(ball_detections, racket_detections)
         racket_detections = self._select_primary_racket(racket_detections, ball_detections)
         
         return ball_detections, racket_detections, inference_time
+
+    @staticmethod
+    def _offset_detections(detections, coordinate_offset):
+        x_offset, y_offset = coordinate_offset
+        adjusted = []
+        for detection in detections or []:
+            if not isinstance(detection, dict):
+                adjusted.append(detection)
+                continue
+            item = dict(detection)
+            position = item.get("position")
+            if isinstance(position, (list, tuple)) and len(position) >= 2:
+                item["position"] = [
+                    position[0] + x_offset,
+                    position[1] + y_offset,
+                ]
+            box = item.get("box")
+            if isinstance(box, (list, tuple)) and len(box) >= 4:
+                item["box"] = [
+                    box[0] + x_offset,
+                    box[1] + y_offset,
+                    box[2] + x_offset,
+                    box[3] + y_offset,
+                ]
+            adjusted.append(item)
+        return adjusted
     
     def _preprocess(self, frame):
         """预处理图像"""
@@ -304,7 +352,11 @@ class YOLO26nUnifiedDetector:
         selection = self.ball_track_selector.select(
             ball_detections,
             racket_detections=racket_detections,
-            frame_height=getattr(self, "original_height", None),
+            frame_height=getattr(
+                self,
+                "tracking_frame_height",
+                getattr(self, "original_height", None),
+            ),
         )
         self.last_ball_diagnostics = selection.diagnostics
         return [selection.active_ball] if selection.active_ball is not None else []
@@ -454,7 +506,11 @@ class YOLO26nUnifiedDetector:
         diagnostics["kept_candidates"] = len(adjusted_candidates)
         selector_config = {
             **self.config,
-            "frame_height": getattr(self, "original_height", None),
+            "frame_height": getattr(
+                self,
+                "tracking_frame_height",
+                getattr(self, "original_height", None),
+            ),
         }
         best_ball = select_ball_candidate(
             adjusted_candidates,
@@ -579,7 +635,11 @@ class YOLO26nUnifiedDetector:
         previous_center = self.racket_history[-1] if self.racket_history else None
         selector_config = {
             **self.config,
-            "frame_height": getattr(self, "original_height", None),
+            "frame_height": getattr(
+                self,
+                "tracking_frame_height",
+                getattr(self, "original_height", None),
+            ),
         }
         best_racket = select_racket_candidate(
             racket_detections,

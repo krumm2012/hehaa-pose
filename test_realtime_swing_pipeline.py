@@ -126,6 +126,14 @@ class RealtimeSwingEventEngineTests(unittest.TestCase):
 
         self.assertEqual(len(emitted), 1)
         self.assertIn("coach_advice", emitted[0])
+        self.assertIn("coach_advices", emitted[0])
+        self.assertIn("biomechanics", emitted[0])
+        self.assertGreaterEqual(len(emitted[0]["coach_advices"]), 1)
+        self.assertLessEqual(len(emitted[0]["coach_advices"]), 3)
+        self.assertEqual(
+            emitted[0]["coach_advice"],
+            emitted[0]["coach_advices"][0],
+        )
         self.assertLessEqual(len(emitted[0]["coach_advice"]["message"]), 15)
         self.assertEqual(
             engine.snapshot()["events"][0]["coach_advice"],
@@ -216,6 +224,49 @@ class RealtimeFrameJournalTests(unittest.TestCase):
 
 
 class RealtimeSwingOutputManagerTests(unittest.TestCase):
+    def test_frontend_preview_draws_camera_bound_roi_without_credentials(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            preview_path = root / "live_roi_preview.jpg"
+            manager = RealtimeSwingOutputManager(
+                output_json=str(root / "events.json"),
+                output_html=str(root / "report.html"),
+                clips_dir=str(root / "clips"),
+                fps=25.0,
+                frame_size=(320, 180),
+                buffer_frames=8,
+                clip_workers=1,
+                video_backend="opencv",
+                preview_path=str(preview_path),
+                roi_metadata={
+                    "enabled": True,
+                    "matched": True,
+                    "stream_id": "court01-main",
+                    "label": "Court 01",
+                    "source": "rtsp://192.168.1.191:554/camera/main",
+                    "points": [[20, 30], [300, 30], [300, 160], [20, 160]],
+                    "frame_size": [320, 180],
+                },
+                preview_interval_frames=1,
+            )
+            manager.record_frame(
+                1,
+                np.zeros((180, 320, 3), dtype=np.uint8),
+            )
+            manager.close()
+
+            html = (root / "report.html").read_text(encoding="utf-8")
+            payload = json.loads((root / "events.json").read_text(encoding="utf-8"))
+            preview = cv2.imread(str(preview_path))
+
+        self.assertIsNotNone(preview)
+        self.assertIn("Court 01", html)
+        self.assertIn("rtsp://192.168.1.191:554/camera/main", html)
+        self.assertNotIn("admin:", html)
+        self.assertIn("roi-preview", html)
+        self.assertEqual(payload["summary"]["roi"]["stream_id"], "court01-main")
+        self.assertGreater(int(preview[100, 20, 1]), 100)
+
     def test_publishes_json_html_and_async_event_clip(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -252,6 +303,25 @@ class RealtimeSwingOutputManagerTests(unittest.TestCase):
                     "source": "local_rules_v1",
                     "evidence": {"follow_through_frames": 2},
                 },
+                "coach_advices": [
+                    {
+                        "code": "short_follow_through",
+                        "message": "击球后完成随挥",
+                        "category": "technique",
+                        "confidence": 0.88,
+                        "source": "local_rules_v1",
+                        "evidence": {"follow_through_frames": 2},
+                    },
+                    {
+                        "code": "limited_separation",
+                        "message": "加大肩髋分离",
+                        "category": "technique",
+                        "confidence": 0.76,
+                        "source": "local_biomechanics_v2",
+                        "focus": "hip_shoulder_separation",
+                        "evidence": {"value": 8.0, "unit": "deg"},
+                    },
+                ],
             }
             snapshot = {
                 "summary": {
@@ -296,6 +366,9 @@ class RealtimeSwingOutputManagerTests(unittest.TestCase):
         )
         self.assertIn("Forehand", html)
         self.assertIn("击球后完成随挥", html)
+        self.assertIn("加大肩髋分离", html)
+        self.assertIn("88%", html)
+        self.assertIn("76%", html)
         self.assertIn("提前转肩充分引拍", html)
         self.assertIn("<video", html)
         self.assertTrue(clip_exists)

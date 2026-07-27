@@ -4,6 +4,134 @@ from local_realtime_coach import LocalRealtimeCoach
 
 
 class LocalRealtimeCoachTests(unittest.TestCase):
+    def test_returns_up_to_three_ranked_biomechanical_corrections_with_confidence(self):
+        coach = LocalRealtimeCoach(
+            max_chars=15,
+            max_suggestions=3,
+            min_confidence=0.45,
+        )
+        event = {
+            "event_id": 20,
+            "confidence": 0.9,
+            "quality_flags": {"warnings": [], "pose_frame_ratio": 0.94},
+            "phase_counts": {"backswing": 8, "follow_through": 8},
+            "biomechanics": {
+                "schema_version": "single_view_2d_v1",
+                "metrics": {
+                    "contact_lateral_distance": {
+                        "value": 0.31,
+                        "unit": "body_width",
+                        "confidence": 0.86,
+                    },
+                    "arm_extension": {
+                        "value": 121.0,
+                        "unit": "deg",
+                        "confidence": 0.91,
+                    },
+                    "hip_shoulder_separation": {
+                        "value": 7.0,
+                        "unit": "deg",
+                        "confidence": 0.88,
+                    },
+                    "balance_drift": {
+                        "value": 0.9,
+                        "unit": "body_width",
+                        "confidence": 0.8,
+                    },
+                },
+            },
+        }
+
+        advices = coach.advise_all(event)
+
+        self.assertEqual(len(advices), 3)
+        self.assertEqual(
+            {item["focus"] for item in advices},
+            {"contact_position", "arm_extension", "hip_shoulder_separation"},
+        )
+        self.assertTrue(all(item["category"] == "technique" for item in advices))
+        self.assertTrue(all(0.0 <= item["confidence"] <= 1.0 for item in advices))
+        self.assertTrue(all(len(item["message"]) <= 15 for item in advices))
+        self.assertTrue(all("metric_confidence" in item["evidence"] for item in advices))
+        self.assertEqual(coach.advise(event), advices[0])
+
+    def test_low_confidence_metric_is_not_used_for_technique_claim(self):
+        coach = LocalRealtimeCoach(max_suggestions=3, min_confidence=0.6)
+        event = {
+            "event_id": 21,
+            "confidence": 0.9,
+            "quality_flags": {"warnings": []},
+            "phase_counts": {"backswing": 8, "follow_through": 8},
+            "biomechanics": {
+                "metrics": {
+                    "arm_extension": {
+                        "value": 95.0,
+                        "unit": "deg",
+                        "confidence": 0.3,
+                    }
+                }
+            },
+        }
+
+        advices = coach.advise_all(event)
+
+        self.assertEqual(len(advices), 1)
+        self.assertEqual(advices[0]["code"], "maintain_form")
+
+    def test_moderate_pose_gap_does_not_block_reliable_biomechanics(self):
+        coach = LocalRealtimeCoach(max_suggestions=3, min_confidence=0.45)
+        event = {
+            "event_id": 23,
+            "confidence": 0.62,
+            "quality_flags": {
+                "warnings": ["pose_gaps"],
+                "pose_frame_ratio": 0.8,
+            },
+            "phase_counts": {"backswing": 8, "follow_through": 8},
+            "biomechanics": {
+                "metrics": {
+                    "arm_extension": {
+                        "value": 120.0,
+                        "unit": "deg",
+                        "confidence": 0.75,
+                    }
+                }
+            },
+        }
+
+        advices = coach.advise_all(event)
+
+        self.assertEqual(advices[0]["code"], "limited_arm_extension")
+        self.assertEqual(advices[0]["category"], "technique")
+
+    def test_gravity_candidates_are_deduplicated_to_one_focus(self):
+        coach = LocalRealtimeCoach(max_suggestions=3)
+        event = {
+            "event_id": 22,
+            "confidence": 0.92,
+            "quality_flags": {"warnings": []},
+            "phase_counts": {"backswing": 8, "follow_through": 8},
+            "biomechanics": {
+                "metrics": {
+                    "weight_transfer": {
+                        "value": 0.02,
+                        "unit": "body_width",
+                        "confidence": 0.9,
+                    },
+                    "balance_drift": {
+                        "value": 1.0,
+                        "unit": "body_width",
+                        "confidence": 0.9,
+                    },
+                }
+            },
+        }
+
+        advices = coach.advise_all(event)
+
+        self.assertEqual(len(advices), 1)
+        self.assertEqual(advices[0]["focus"], "balance")
+
     def test_pose_gap_gets_short_capture_guidance_before_technique_advice(self):
         coach = LocalRealtimeCoach(max_chars=15)
         event = {

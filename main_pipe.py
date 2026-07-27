@@ -18,6 +18,7 @@ import signal
 import uuid
 
 from reader_runtime import DeadlinePacer, SourceFrameClock
+from roi_stream_config import resolve_roi_stream_profile, sanitize_stream_source
 
 
 def create_output_directory(output_path):
@@ -41,6 +42,8 @@ class MultiprocessPipeline:
         live_mode=False,
         drop_stale_frames=False,
         no_dual_view=False,
+        hdmi_output=False,
+        display_origin=None,
         no_metrics_text=False,
         no_frame_results=False,
         no_save_video=False,
@@ -71,6 +74,8 @@ class MultiprocessPipeline:
         realtime_frame_flush_interval=None,
         realtime_coach=False,
         realtime_coach_max_chars=None,
+        realtime_coach_max_suggestions=None,
+        realtime_coach_min_confidence=None,
         deepseek_coach_options=None,
         realtime_open_report=False,
     ):
@@ -98,6 +103,14 @@ class MultiprocessPipeline:
             perf_cfg['collect_frame_results'] = False
         if no_dual_view:
             perf_cfg['dual_view_enabled'] = False
+        if hdmi_output:
+            perf_cfg['hdmi_output_enabled'] = True
+            perf_cfg['dual_view_enabled'] = False
+        if display_origin is not None:
+            perf_cfg['display_origin'] = [
+                int(display_origin[0]),
+                int(display_origin[1]),
+            ]
         if no_metrics_text:
             perf_cfg['draw_metrics_text'] = False
         if no_frame_results:
@@ -193,6 +206,31 @@ class MultiprocessPipeline:
                 ),
             ),
         )
+        self.realtime_coach_max_suggestions = min(
+            3,
+            max(
+                1,
+                int(
+                    realtime_coach_max_suggestions
+                    if realtime_coach_max_suggestions is not None
+                    else realtime_cfg.get('coach_max_suggestions', 3)
+                ),
+            ),
+        )
+        self.realtime_coach_min_confidence = max(
+            0.0,
+            min(
+                1.0,
+                float(
+                    realtime_coach_min_confidence
+                    if realtime_coach_min_confidence is not None
+                    else realtime_cfg.get('coach_min_confidence', 0.45)
+                ),
+            ),
+        )
+        self.realtime_coach_biomechanics = dict(
+            realtime_cfg.get('coach_biomechanics') or {}
+        )
         deepseek_cfg = realtime_cfg.get('deepseek') or {}
         deepseek_overrides = deepseek_coach_options or {}
 
@@ -260,13 +298,35 @@ class MultiprocessPipeline:
 
         cap = self._open_capture()
         if not cap.isOpened():
-            raise RuntimeError(f"无法打开视频输入: {self.video_path}")
+            raise RuntimeError(
+                f"无法打开视频输入: {sanitize_stream_source(self.video_path)}"
+            )
         self.width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
         cap.release()
         if self.width <= 0 or self.height <= 0:
-            raise RuntimeError(f"无法读取视频尺寸: {self.video_path}")
+            raise RuntimeError(
+                f"无法读取视频尺寸: {sanitize_stream_source(self.video_path)}"
+            )
+
+        self.roi_profile = resolve_roi_stream_profile(
+            self.config,
+            self.video_path,
+            (self.width, self.height),
+        )
+        if self.roi_profile.enabled:
+            print(
+                f"🎯 [ROI] 已匹配 {self.roi_profile.label}"
+                f" | {self.roi_profile.source}"
+                f" | {list(self.roi_profile.points)}"
+            )
+        elif self.config.get("roi_settings", {}).get("enabled", False):
+            print(
+                f"⚠️ [ROI] 未启用裁剪: {self.roi_profile.reason}"
+                f" | {self.roi_profile.source}"
+            )
+
         configured_output_fps = self.config.get('video_processing', {}).get('output_fps', self.fps)
         self.output_fps = float(configured_output_fps if output_fps is None else output_fps)
         if self.output_fps <= 0:
@@ -429,16 +489,26 @@ class MultiprocessPipeline:
         shms = []
         executor = None
         try:
+            from detection_frame_context import DetectionFrameContext
             from pose_estimator_yolo26 import PoseEstimatorYOLO26
+            from roi_manager import ROIManager
             from yolo26n_unified_detector import YOLO26nUnifiedDetector
+
+            roi_manager = None
+            if self.roi_profile.enabled:
+                candidate = ROIManager(self.config)
+                if candidate.set_roi_points(self.roi_profile.points):
+                    roi_manager = candidate
 
             detector = YOLO26nUnifiedDetector(
                 self.config['unified_detection']['model_path'],
                 self.config['unified_detection'],
+                roi_manager=roi_manager,
             )
             pose_estimator = PoseEstimatorYOLO26(
                 self.config['yolo_pose_model_path'],
                 self.config,
+                roi_manager=roi_manager,
             )
 
             shms = [shared_memory.SharedMemory(name=name) for name in self.shm_names]
@@ -479,14 +549,38 @@ class MultiprocessPipeline:
 
                 slot = task['slot']
                 frame_ptr = shared_frames[slot]
+                frame_context = None
+                detection_frame = frame_ptr
+                pose_detection_frame = frame_ptr
+                if roi_manager is not None:
+                    frame_context = DetectionFrameContext.build(
+                        task['idx'],
+                        frame_ptr,
+                        roi_manager,
+                        self.config,
+                    )
+                    detection_frame = frame_context.detection_frame
+                    pose_detection_frame = frame_context.pose_detection_frame
 
                 # 使用 ThreadPool 同时驱动检测和姿态模型。
-                f1 = executor.submit(detector.detect_unified, frame_ptr)
-                f2 = executor.submit(pose_estimator.get_keypoints, frame_ptr)
+                f1 = executor.submit(
+                    detector.detect_unified,
+                    detection_frame,
+                    frame_context.roi_offset if frame_context is not None else (0, 0),
+                    (self.width, self.height),
+                )
+                f2 = executor.submit(pose_estimator.get_keypoints, pose_detection_frame)
 
                 ball, racket, _ = f1.result()
                 ball_diagnostics = detector.get_last_ball_diagnostics()
                 pose = f2.result()
+                if frame_context is not None:
+                    pose, ball, racket = frame_context.adjust_detections(
+                        pose,
+                        ball,
+                        racket,
+                        object_coordinates_are_full_frame=True,
+                    )
 
                 self.q_analyzer.put({
                     'id': task['idx'],
@@ -550,6 +644,22 @@ class MultiprocessPipeline:
         # 性能开关（默认兼容原行为）
         dual_view_enabled = bool(perf_cfg.get('dual_view_enabled', True))
         dual_view_scale = float(perf_cfg.get('dual_view_scale', 0.5))
+        hdmi_output_enabled = bool(perf_cfg.get('hdmi_output_enabled', False))
+        display_origin = perf_cfg.get('display_origin') or [0, 0]
+        processed_display = None
+        if hdmi_output_enabled:
+            from processed_video_display import ProcessedVideoDisplay
+
+            processed_display = ProcessedVideoDisplay(
+                cv2_module=cv2,
+                origin=(int(display_origin[0]), int(display_origin[1])),
+                fullscreen=True,
+            )
+            print(
+                '📺 [HDMI] 处理后画面全屏输出已开启'
+                f' | origin: ({int(display_origin[0])}, {int(display_origin[1])})'
+                ' | ESC/q 退出'
+            )
         analysis_stride = max(1, int(perf_cfg.get('analysis_stride', 1)))
         draw_metrics_text = bool(perf_cfg.get('draw_metrics_text', True))
         collect_frame_results = bool(perf_cfg.get('collect_frame_results', True))
@@ -611,6 +721,9 @@ class MultiprocessPipeline:
 
             realtime_coach = LocalRealtimeCoach(
                 max_chars=self.realtime_coach_max_chars,
+                max_suggestions=self.realtime_coach_max_suggestions,
+                min_confidence=self.realtime_coach_min_confidence,
+                thresholds=self.realtime_coach_biomechanics,
             )
         if self.deepseek_coach_options['enabled']:
             from deepseek_realtime_coach import DeepSeekCoachSidecar
@@ -675,6 +788,21 @@ class MultiprocessPipeline:
                 clip_padding_frames=self.realtime_clip_padding_frames,
                 clip_max_width=self.realtime_clip_max_width,
                 jpeg_quality=self.realtime_clip_jpeg_quality,
+                preview_path=(
+                    f"{os.path.splitext(realtime_html)[0]}_roi_preview.jpg"
+                    if self.roi_profile.enabled
+                    else None
+                ),
+                roi_metadata=self.roi_profile.as_metadata(),
+                preview_interval_frames=max(
+                    1,
+                    int(
+                        self.config.get("roi_settings", {}).get(
+                            "preview_interval_frames",
+                            round(self.output_fps),
+                        )
+                    ),
+                ),
             )
             print(
                 f'⚡ [Swing-Live] 实时事件分析已开启'
@@ -731,11 +859,17 @@ class MultiprocessPipeline:
                     f" | contact {event['contact_frame']}"
                     f" | latency {event['latency_frames']}F"
                 )
-                advice = event.get('coach_advice') or {}
-                if advice.get('message'):
+                advices = event.get('coach_advices') or []
+                if not advices and event.get('coach_advice'):
+                    advices = [event['coach_advice']]
+                for index, advice in enumerate(advices[:3], start=1):
+                    if not advice.get('message'):
+                        continue
                     print(
                         f"🎯 [Coach] Swing #{event['event_id']}"
+                        f" | {index}/{len(advices[:3])}"
                         f" | {advice['message']}"
+                        f" | {float(advice.get('confidence') or 0.0):.0%}"
                     )
                 if deepseek_sidecar is not None:
                     event_id = int(event['event_id'])
@@ -857,8 +991,11 @@ class MultiprocessPipeline:
                 publish_realtime_events(completed_events)
             if out_writer: out_writer.write(canvas)
 
-            # --- 新增: 实时双窗口对比显示 ---
-            if dual_view_enabled:
+            # HDMI 单路输出与双窗口对比显示互斥。
+            if processed_display is not None:
+                if processed_display.show(canvas):
+                    self.stop_event.set()
+            elif dual_view_enabled:
                 h, w = canvas.shape[:2]
                 # 缩放原始图和处理图
                 scaled_size = (int(w * dual_view_scale), int(h * dual_view_scale))
@@ -921,6 +1058,8 @@ class MultiprocessPipeline:
 
         if out_writer:
             out_writer.release()
+        if processed_display is not None:
+            processed_display.close()
 
         if collect_frame_results and frame_results_fp is not None:
             frame_results_fp.write('\n  ],\n')
@@ -1132,6 +1271,19 @@ def build_argument_parser():
     parser.add_argument('--drop-stale-frames', action='store_true',
                         help='处理跟不上输入时丢弃排队旧帧，降低直播延迟')
     parser.add_argument('--no-dual-view', action='store_true', help='关闭原始/处理结果双窗口显示')
+    parser.add_argument(
+        '--hdmi-output',
+        action='store_true',
+        help='将处理后单路画面无边框全屏输出；自动关闭 dual-view',
+    )
+    parser.add_argument(
+        '--display-origin',
+        type=int,
+        nargs=2,
+        metavar=('X', 'Y'),
+        default=None,
+        help='扩展桌面模式下目标显示器左上角坐标；镜像模式使用默认 0 0',
+    )
     parser.add_argument('--no-metrics-text', action='store_true', help='关闭逐帧详细指标文字绘制')
     parser.add_argument('--no-frame-results', action='store_true', help='关闭逐帧 JSON 与诊断 JSON 写入')
     parser.add_argument('--no-save-video', action='store_true', help='禁用处理后视频录制')
@@ -1189,9 +1341,13 @@ def build_argument_parser():
     parser.add_argument('--realtime-frame-flush-interval', type=int, default=None,
                         help='每多少个已处理帧刷新 JSONL 与最近帧快照，默认 5')
     parser.add_argument('--realtime-coach', action='store_true',
-                        help='为每个确认挥拍生成一条不超过15字的本地实时指导')
+                        help='为每个确认挥拍生成1-3条不超过15字的本地实时动作纠错')
     parser.add_argument('--realtime-coach-max-chars', type=int, default=None,
                         help='本地实时指导最大字数，范围 1-15，默认 15')
+    parser.add_argument('--realtime-coach-max-suggestions', type=int, choices=[1, 2, 3], default=None,
+                        help='每次挥拍输出建议数上限，范围 1-3，默认 3')
+    parser.add_argument('--realtime-coach-min-confidence', type=float, default=None,
+                        help='采用生物力学指标的最低置信度，范围 0-1，默认 0.45')
     parser.add_argument('--deepseek-coach', action='store_true',
                         help='异步调用 DeepSeek V4 Flash 生成旁路指导；本地建议不等待')
     parser.add_argument('--deepseek-model',
@@ -1230,6 +1386,8 @@ def main_cli(argv=None):
         live_mode=args.live_mode,
         drop_stale_frames=args.drop_stale_frames,
         no_dual_view=args.no_dual_view,
+        hdmi_output=args.hdmi_output,
+        display_origin=args.display_origin,
         no_metrics_text=args.no_metrics_text,
         no_frame_results=args.no_frame_results,
         no_save_video=args.no_save_video,
@@ -1260,6 +1418,8 @@ def main_cli(argv=None):
         realtime_frame_flush_interval=args.realtime_frame_flush_interval,
         realtime_coach=args.realtime_coach,
         realtime_coach_max_chars=args.realtime_coach_max_chars,
+        realtime_coach_max_suggestions=args.realtime_coach_max_suggestions,
+        realtime_coach_min_confidence=args.realtime_coach_min_confidence,
         deepseek_coach_options={
             'enabled': args.deepseek_coach,
             'model': args.deepseek_model,

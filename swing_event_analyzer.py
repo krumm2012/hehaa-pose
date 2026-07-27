@@ -10,6 +10,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
+from swing_biomechanics import enrich_events_with_biomechanics
 from swing_event_segmenter import segment_swing_events
 from swing_motion_features import extract_motion_features
 
@@ -161,7 +162,11 @@ def analyze_frame_records(
         max_internal_gap=max_internal_gap,
         min_event_gap=min_event_gap,
     )
-    events = segmentation["events"]
+    events = enrich_events_with_biomechanics(
+        segmentation["events"],
+        frames,
+        features,
+    )
     type_counts = Counter(event["stroke_type"] for event in events)
 
     thresholds = {

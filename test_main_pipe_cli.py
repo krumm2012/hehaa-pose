@@ -12,6 +12,19 @@ class MainPipeCliTests(unittest.TestCase):
 
         self.assertTrue(args.no_save_video)
 
+    def test_hdmi_output_options_are_supported(self):
+        parser = build_argument_parser()
+
+        args = parser.parse_args([
+            "--hdmi-output",
+            "--display-origin",
+            "1512",
+            "0",
+        ])
+
+        self.assertTrue(args.hdmi_output)
+        self.assertEqual(args.display_origin, [1512, 0])
+
     def test_swing_analysis_options_are_supported(self):
         parser = build_argument_parser()
 
@@ -53,6 +66,8 @@ class MainPipeCliTests(unittest.TestCase):
             '--realtime-frame-flush-interval', '4',
             '--realtime-coach',
             '--realtime-coach-max-chars', '12',
+            '--realtime-coach-max-suggestions', '2',
+            '--realtime-coach-min-confidence', '0.6',
             '--deepseek-coach',
             '--deepseek-model', 'deepseek-v4-flash',
             '--deepseek-base-url', 'http://127.0.0.1:9000/v1',
@@ -79,6 +94,8 @@ class MainPipeCliTests(unittest.TestCase):
         self.assertEqual(args.realtime_frame_flush_interval, 4)
         self.assertTrue(args.realtime_coach)
         self.assertEqual(args.realtime_coach_max_chars, 12)
+        self.assertEqual(args.realtime_coach_max_suggestions, 2)
+        self.assertEqual(args.realtime_coach_min_confidence, 0.6)
         self.assertTrue(args.deepseek_coach)
         self.assertEqual(args.deepseek_model, 'deepseek-v4-flash')
         self.assertEqual(args.deepseek_base_url, 'http://127.0.0.1:9000/v1')
@@ -97,6 +114,8 @@ class MainPipeCliTests(unittest.TestCase):
             '--realtime-frame-output',
             '--realtime-coach',
             '--deepseek-coach',
+            '--hdmi-output',
+            '--display-origin', '1512', '0',
             '--dominant-hand', 'left',
             '--min-peak-energy', '11.0',
         ])
@@ -108,6 +127,8 @@ class MainPipeCliTests(unittest.TestCase):
         self.assertTrue(kwargs['realtime_frame_output'])
         self.assertTrue(kwargs['realtime_coach'])
         self.assertTrue(kwargs['deepseek_coach_options']['enabled'])
+        self.assertTrue(kwargs['hdmi_output'])
+        self.assertEqual(kwargs['display_origin'], [1512, 0])
         self.assertIsNone(kwargs['deepseek_coach_options']['model'])
         self.assertEqual(kwargs['dominant_hand'], 'left')
         self.assertEqual(kwargs['min_peak_energy'], 11.0)

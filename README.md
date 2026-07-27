@@ -49,6 +49,8 @@ venv_yolo26/bin/python main_pipe.py \
   --realtime-frame-flush-interval 5 \
   --realtime-coach \
   --realtime-coach-max-chars 15 \
+  --realtime-coach-max-suggestions 3 \
+  --realtime-coach-min-confidence 0.45 \
   --deepseek-coach \
   --deepseek-model deepseek-v4-flash \
   --deepseek-api-key-env DEEPSEEK_API_KEY \
@@ -70,7 +72,8 @@ venv_yolo26/bin/python main_pipe.py \
 实时输出：
 
 - `live_session_swing_events.json`：已确认的事件快照。
-- `live_session_swing_report.html`：自动刷新事件页面，播放视频时暂停刷新。
+- `live_session_swing_report.html`：自动刷新事件页面，顶部显示带 ROI 标识的实时码流截图，播放视频时暂停刷新。
+- `live_session_swing_report_roi_preview.jpg`：每秒更新的脱敏码流截图，标注 ROI 边界与 P1–P4。
 - `live_session_swing_clips/`：每个挥拍的独立 OSD MP4。
 - `live_session_frames.jsonl`：每个完成推理帧一行，适合实时追加和故障恢复。
 - `live_session_frames_latest.json`：最近 200 个处理帧的原子 JSON 快照。
@@ -78,8 +81,19 @@ venv_yolo26/bin/python main_pipe.py \
 逐帧日志默认保证不静默丢弃已完成推理的记录；正常写盘完全在后台进行。若磁盘
 持续严重阻塞并耗尽内部队列，流水线会短暂反压以优先保证 JSONL 完整性。
 
-`--realtime-coach` 使用本地确定性规则，在挥拍确认后立即把一条中文指导写入
-事件 JSON、终端和 HTML；不调用网络模型，每条指导硬限制为最多 15 个字符。
+`--realtime-coach` 使用本地确定性规则，在挥拍确认后立即把 1–3 条中文动作纠错写入
+事件 JSON、终端和 HTML；不调用网络模型，每条指导硬限制为最多 15 个字符，并带
+独立的 `confidence`。`coach_advices` 保存完整建议列表，原有 `coach_advice` 继续
+保存第一条，保持已有消费者兼容。
+
+实时事件会聚合肩髋分离、肩部转动、触球时手臂伸展、击球点相对身体横向距离、
+准备到触球的重心转移，以及触球后平衡漂移。空间距离按事件内可见肩宽/髋宽归一化，
+HTML 同时展示指标值与指标置信度。它们属于单摄像头图像平面 2D 估计，不等同于
+多机位或传感器得到的 3D 关节动力学。可用
+`--realtime-coach-max-suggestions 1|2|3` 控制建议数上限，
+`--realtime-coach-min-confidence 0.45` 过滤不可靠指标；具体阈值位于
+`configs/yolo26_tennis_config.yaml` 的 `realtime_swing.coach_biomechanics`。
+
 数据质量不足时优先提示机位、入镜或遮挡问题，质量合格后才给动作建议。
 高速球允许间歇漏检：全事件球检测覆盖率达到 20%，且触球帧前后 4 帧内至少
 检测到 2 帧球时，不触发“确保来球完整入镜”。只有全事件或触球关键窗口的
@@ -105,6 +119,73 @@ Coach 门控按证据域授权，不再把局部识别警告升级为整次挥�
 
 `run_swing_report.py` 仅保留为已完成录制的离线兼容适配器；实时模式不调用它。
 离线与实时事件识别都复用 `swing_event_analyzer.analyze_frame_records()`，避免维护两套挥拍算法。
+
+### RTSP 与 ROI 绑定
+
+主配置通过 `roi_settings` 开启 ROI。球和球拍模型只处理 ROI 外接矩形（含
+`crop_margin`），姿态模型仍处理全帧；检测结果在候选筛选前恢复为原图坐标，因此
+静态球屏蔽区、轨迹连续性、逐帧 JSON 和 Swing 事件继续使用 2560×1440 坐标系。
+
+```yaml
+roi_settings:
+  enabled: true
+  interactive_selection: false
+  auto_load_config: true
+  roi_config_path: "configs/roi_config.yaml"
+  crop_margin: 12
+  preview_interval_frames: 25
+```
+
+`configs/roi_config.yaml` 用脱敏地址绑定三路摄像机，不保存 RTSP 用户名或密码。
+`main_pipe.py` 会根据当前输入地址自动选择对应场地：
+
+```yaml
+streams:
+  - stream_id: "court01-main"
+    stream_source: "rtsp://192.168.1.191:554/h264/ch1/main/av_stream"
+    roi_enabled: true
+    frame_size: [2560, 1440]
+    roi_points: [[850, 130], [1700, 140], [1950, 1320], [580, 1320]]
+  - stream_id: "court02-main"
+    stream_source: "rtsp://192.168.1.192:554/h264/ch1/main/av_stream"
+    roi_enabled: true
+    frame_size: [2560, 1440]
+    roi_points: [[1112, 116], [1875, 119], [2326, 1360], [850, 1351]]
+  - stream_id: "court03-main"
+    stream_source: "rtsp://192.168.1.193:554/h264/ch1/main/av_stream"
+    roi_enabled: true
+    frame_size: [2560, 1440]
+    roi_points: [[847, 67], [1943, 69], [2181, 1273], [677, 1249]]
+```
+
+运行时输入可以包含认证信息，匹配、日志、实时 JSON 和 HTML 只使用脱敏后的地址。
+前端 ROI 截图随 `--realtime-swing-events` 自动生成，不需要新增命令行参数。
+
+鼠标重新校准 Court 01 时，先停止正在运行的 `main_pipe.py`，然后执行：
+
+```bash
+export TENNIS_RTSP_URL='rtsp://用户名:密码@192.168.1.191:554/h264/ch1/main/av_stream'
+
+venv_yolo26/bin/python calibrate_roi.py \
+  --config configs/yolo26_tennis_config.yaml \
+  --input "$TENNIS_RTSP_URL" \
+  --roi-config configs/roi_config.yaml \
+  --stream-id court01-main \
+  --stream-label "Court 01 Main Camera"
+```
+
+用鼠标点击 ROI 的四个角点，点击顺序不限；脚本会自动归一化为
+`P1 左上 → P2 右上 → P3 右下 → P4 左下`。选点窗口按一次 `c` 即保存，
+`r` 重选，`q/ESC` 取消。如需保存前再弹出第二个确认窗口，可增加
+`--confirm-preview`，此时预览窗口按 `s/c/Enter` 保存、`r` 返回重选。
+脚本自动把缩放窗口坐标还原为源视频坐标，写入后重新读取复核，保存前备份原 YAML，并生成
+`configs/roi_config_calibrated_preview.jpg`。保存后需重启 `main_pipe.py`。
+
+### HDMI 全屏输出
+
+`--hdmi-output` 将 `main_pipe.py` 标注后的单路画面全屏显示，并自动关闭 dual-view。
+在 macOS 镜像显示模式下无需额外参数；按 `ESC` 或 `q` 可安全停止。扩展桌面模式可用
+`--display-origin X Y` 把窗口移动到外接显示器左上角后再进入全屏。
 
 ### 聚合单次 Swing 证据 JSON
 

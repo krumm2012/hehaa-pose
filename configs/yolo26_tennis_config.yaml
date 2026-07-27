@@ -202,6 +202,7 @@ roi_settings:
   auto_load_config: true
   roi_config_path: "configs/roi_config.yaml"
   crop_margin: 12
+  preview_interval_frames: 25
   
   visualization:
     show_roi_boundary: false
@@ -212,6 +213,7 @@ roi_settings:
   
   logging:
     log_coordinate_adjustment: false
+    log_frame_context: false
     
   colors:
     boundary: [0, 255, 255]
@@ -383,8 +385,17 @@ realtime_swing:
   frame_output_enabled: false             # 异步输出逐帧JSONL和最近帧JSON
   frame_snapshot_size: 200                # 最近帧JSON保留数量
   frame_flush_interval: 5                 # 每5个处理帧刷新逐帧文件
-  coach_enabled: false                    # 为每个确认挥拍生成一条本地建议
+  coach_enabled: false                    # 为每个确认挥拍生成1-3条本地动作纠错
   coach_max_chars: 15                     # 建议硬上限15字
+  coach_max_suggestions: 3                # 每次挥拍最多输出3条，coach_advice仍保留第一条
+  coach_min_confidence: 0.45               # 低于该置信度的生物力学指标不用于技术结论
+  coach_biomechanics:
+    min_hip_shoulder_separation_deg: 15.0  # 肩髋分离低于此值时提示加强转动
+    min_shoulder_turn_deg: 75.0            # 肩部转动不足阈值
+    min_arm_extension_deg: 145.0           # 触球窗口手臂伸展不足阈值
+    min_contact_lateral_body_widths: 0.55  # 击球点横向距离，小于0.55倍身宽视为太近
+    min_weight_transfer_body_widths: 0.08  # 准备到触球身体中心位移下限
+    max_balance_drift_body_widths: 0.65    # 触球到结束身体中心漂移上限
   deepseek:
     enabled: false                        # 旁路增强；本地Coach始终先返回
     model: deepseek-v4-flash              # DeepSeek官方低延迟模型
