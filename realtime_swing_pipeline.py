@@ -8,6 +8,7 @@ import os
 import queue
 import re
 import threading
+import time
 from collections import Counter, deque
 from concurrent.futures import Future, ThreadPoolExecutor
 from copy import deepcopy
@@ -17,6 +18,12 @@ from typing import Deque, Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
+from analysis_data_contracts import (
+    EVENT_LOG_SCHEMA_VERSION,
+    document_contract,
+    stamp_swing_event,
+    utc_iso_from_ns,
+)
 from swing_event_analyzer import analyze_frame_records
 from video_writer_backend import create_video_writer
 
@@ -31,6 +38,7 @@ class RealtimeFrameJournal:
         snapshot_size: int = 200,
         flush_interval: int = 5,
         queue_size: int = 1024,
+        session_metadata: Optional[Dict] = None,
     ):
         self.jsonl_path = Path(jsonl_path)
         self.snapshot_path = Path(snapshot_path)
@@ -43,6 +51,7 @@ class RealtimeFrameJournal:
         self._frame_count = 0
         self._dropped_records = 0
         self._worker_error: Optional[BaseException] = None
+        self.session_metadata = deepcopy(session_metadata or {})
         self.jsonl_path.parent.mkdir(parents=True, exist_ok=True)
         self.snapshot_path.parent.mkdir(parents=True, exist_ok=True)
         self._thread = threading.Thread(
@@ -119,6 +128,7 @@ class RealtimeFrameJournal:
             else -1
         )
         document = {
+            **document_contract("frames", self.session_metadata),
             "summary": {
                 "frame_count": self._frame_count,
                 "latest_frame": latest_frame,
@@ -134,6 +144,98 @@ class RealtimeFrameJournal:
             encoding="utf-8",
         )
         os.replace(temporary, self.snapshot_path)
+
+
+class RealtimeEventJournal:
+    """Append every event creation and asynchronous patch to a durable JSONL log."""
+
+    def __init__(
+        self,
+        path: str,
+        session_metadata: Optional[Dict] = None,
+        queue_size: int = 1024,
+    ):
+        self.path = Path(path)
+        self.session_metadata = deepcopy(session_metadata or {})
+        self._queue: queue.Queue = queue.Queue(maxsize=max(1, int(queue_size)))
+        self._sentinel = object()
+        self._closed = False
+        self._worker_error: Optional[BaseException] = None
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._thread = threading.Thread(
+            target=self._write_loop,
+            name="realtime-event-journal",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def append(self, operation: str, event_id: int, payload: Dict) -> None:
+        if self._closed:
+            raise RuntimeError("Cannot append after the realtime event journal is closed")
+        if self._worker_error is not None:
+            raise RuntimeError("Realtime event journal writer failed") from self._worker_error
+        self._queue.put(
+            {
+                "operation": str(operation),
+                "event_id": int(event_id),
+                "payload": deepcopy(payload),
+            }
+        )
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._queue.join()
+        self._queue.put(self._sentinel)
+        self._queue.join()
+        self._thread.join()
+        if self._worker_error is not None:
+            raise RuntimeError("Realtime event journal writer failed") from self._worker_error
+
+    def _write_loop(self) -> None:
+        stream = None
+        sequence = 0
+        try:
+            try:
+                stream = self.path.open("w", encoding="utf-8")
+            except Exception as exc:
+                self._worker_error = exc
+            while True:
+                item = self._queue.get()
+                try:
+                    if item is self._sentinel:
+                        if stream is not None:
+                            stream.flush()
+                        return
+                    if self._worker_error is not None or stream is None:
+                        continue
+                    sequence += 1
+                    recorded_ns = time.time_ns()
+                    row = {
+                        "schema_version": EVENT_LOG_SCHEMA_VERSION,
+                        "sequence": sequence,
+                        "recorded_at": utc_iso_from_ns(recorded_ns),
+                        "recorded_at_unix_ns": recorded_ns,
+                        "session_id": str(
+                            self.session_metadata.get("session_id") or ""
+                        ),
+                        **item,
+                    }
+                    stream.write(
+                        json.dumps(row, ensure_ascii=False, separators=(",", ":"))
+                    )
+                    stream.write("\n")
+                    stream.flush()
+                except Exception as exc:
+                    self._worker_error = exc
+                    if item is self._sentinel:
+                        return
+                finally:
+                    self._queue.task_done()
+        finally:
+            if stream is not None:
+                stream.close()
 
 
 class RealtimeSwingEventEngine:
@@ -157,6 +259,7 @@ class RealtimeSwingEventEngine:
         max_internal_gap: int = 3,
         min_event_gap: int = 18,
         coach=None,
+        session_metadata: Optional[Dict] = None,
     ):
         self.fps = max(1.0, float(fps or 25.0))
         self.analysis_interval_frames = max(1, int(analysis_interval_frames))
@@ -177,6 +280,7 @@ class RealtimeSwingEventEngine:
             "min_event_gap": max(0, int(min_event_gap)),
         }
         self.coach = coach
+        self.session_metadata = deepcopy(session_metadata or {})
         self._frames: Deque[Dict] = deque(maxlen=self.window_frames)
         self._events: List[Dict] = []
         self._frame_trace: List[Dict] = []
@@ -202,6 +306,7 @@ class RealtimeSwingEventEngine:
         """Return the complete live event document written to JSON/frontends."""
         type_counts = Counter(event["stroke_type"] for event in self._events)
         return {
+            **document_contract("swing_events", self.session_metadata),
             "summary": {
                 "total_frames": self._total_frames,
                 "latest_frame": self._latest_frame_id,
@@ -231,7 +336,11 @@ class RealtimeSwingEventEngine:
         if len(self._frames) < self.options["min_event_frames"]:
             return []
 
-        analysis = analyze_frame_records(list(self._frames), **self.options)
+        analysis = analyze_frame_records(
+            list(self._frames),
+            session_metadata=self.session_metadata,
+            **self.options,
+        )
         emitted = []
         for candidate in analysis.get("events", []):
             end_frame = int(candidate["end_frame"])
@@ -244,6 +353,21 @@ class RealtimeSwingEventEngine:
             event["event_id"] = len(self._events) + 1
             event["emitted_at_frame"] = self._latest_frame_id
             event["latency_frames"] = max(0, self._latest_frame_id - end_frame)
+            contact_frame = int(event["contact_frame"])
+            contact_record = next(
+                (
+                    record
+                    for record in self._frames
+                    if int(record.get("frame_id", -1)) == contact_frame
+                ),
+                None,
+            )
+            stamp_swing_event(
+                event,
+                session=self.session_metadata,
+                emitted_at_unix_ns=time.time_ns(),
+                contact_frame_record=contact_record,
+            )
             if self.coach is not None:
                 if hasattr(self.coach, "advise_all"):
                     coach_advices = self.coach.advise_all(event)
@@ -295,6 +419,8 @@ class RealtimeSwingOutputManager:
         preview_path: Optional[str] = None,
         roi_metadata: Optional[Dict] = None,
         preview_interval_frames: int = 25,
+        event_log_path: Optional[str] = None,
+        session_metadata: Optional[Dict] = None,
     ):
         self.output_json = Path(output_json)
         self.output_html = Path(output_html)
@@ -313,6 +439,8 @@ class RealtimeSwingOutputManager:
         self.preview_path = Path(preview_path) if preview_path else None
         self.roi_metadata = deepcopy(roi_metadata or {})
         self.preview_interval_frames = max(1, int(preview_interval_frames))
+        self.session_metadata = deepcopy(session_metadata or {})
+        self.event_log_path = Path(event_log_path) if event_log_path else self.output_json.with_suffix(".jsonl")
         self._last_preview_frame: Optional[int] = None
         self._frames: Deque[Tuple[int, object]] = deque(maxlen=max(1, int(buffer_frames)))
         self._events: List[Dict] = []
@@ -349,7 +477,12 @@ class RealtimeSwingOutputManager:
         self.clips_dir.mkdir(parents=True, exist_ok=True)
         if self.preview_path is not None:
             self.preview_path.parent.mkdir(parents=True, exist_ok=True)
+        self._event_journal = RealtimeEventJournal(
+            str(self.event_log_path),
+            session_metadata=self.session_metadata,
+        )
         self._document = {
+            **document_contract("swing_events", self.session_metadata),
             "summary": {
                 "total_frames": 0,
                 "latest_frame": -1,
@@ -410,6 +543,16 @@ class RealtimeSwingOutputManager:
         with self._output_lock:
             for event in new_events:
                 published = deepcopy(event)
+                stamp_swing_event(
+                    published,
+                    session=self.session_metadata,
+                    emitted_at_unix_ns=(
+                        ((published.get("timing") or {}).get(
+                            "event_emitted_at_unix_ns"
+                        ))
+                        or time.time_ns()
+                    ),
+                )
                 clip_path = self.clips_dir / self._clip_filename(published)
                 published["clip_path"] = os.path.relpath(
                     clip_path,
@@ -420,6 +563,11 @@ class RealtimeSwingOutputManager:
                 published["clip_missing_frame_count"] = 0
                 published["clip_missing_frames"] = []
                 self._events.append(published)
+                self._event_journal.append(
+                    "event_created",
+                    int(published["event_id"]),
+                    {"event": published},
+                )
                 with self._buffer_condition:
                     target_frame = min(
                         int(published["end_frame"]) + self.clip_padding_frames,
@@ -468,6 +616,11 @@ class RealtimeSwingOutputManager:
                 if int(event["event_id"]) != int(event_id):
                     continue
                 event.update(deepcopy(patch))
+                self._event_journal.append(
+                    "event_updated",
+                    int(event_id),
+                    {"patch": patch},
+                )
                 self._document["events"] = deepcopy(self._events)
                 self._queue_live_outputs(self._document)
                 return True
@@ -483,6 +636,7 @@ class RealtimeSwingOutputManager:
         self._frame_queue.join()
         self._compressor.join()
         self._executor.shutdown(wait=True)
+        self._event_journal.close()
         self._output_queue.put(self._output_sentinel)
         self._output_queue.join()
         self._output_thread.join()
@@ -647,6 +801,11 @@ class RealtimeSwingOutputManager:
                 if int(event["event_id"]) == event_id:
                     event.update(updates)
                     break
+            self._event_journal.append(
+                "event_updated",
+                int(event_id),
+                {"patch": updates},
+            )
             self._document["events"] = deepcopy(self._events)
             self._document.setdefault("summary", {})[
                 "clip_buffer_dropped_frames"

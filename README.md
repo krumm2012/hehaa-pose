@@ -117,6 +117,32 @@ Coach 门控按证据域授权，不再把局部识别警告升级为整次挥�
 不接受拍摄或泛化复核建议代替 Coach 评价。
 接口格式参考 [DeepSeek Chat Completion 官方文档](https://api-docs.deepseek.com/api/create-chat-completion)。
 
+## 本地 ROI / Pipeline 控制台
+
+本地控制台可选择 Court 01–03、预览当前 ROI、调整实时分析参数，并安全启动或停止
+`main_pipe.py`。服务只监听本机回环地址，RTSP 密码不会返回前端，也不会出现在
+Pipeline 命令行中。
+
+推荐先通过环境变量提供摄像头凭据：
+
+```bash
+export TENNIS_RTSP_USERNAME='admin'
+export TENNIS_RTSP_PASSWORD='你的摄像头密码'
+
+venv_yolo26/bin/python local_control_panel.py --open
+```
+
+然后访问 `http://127.0.0.1:8765/`。也可以不设置环境变量，直接在页面的用户名和
+密码框中临时输入；页面不会把凭据写入浏览器本地预设。
+
+页面提供：
+
+- Court 码流选择、ROI 点位及实时截图预览；
+- ROI 裁剪边距、边界/填充/P1–P4 显示开关；
+- FPS、推理线程池、低延迟直播、完整视频和 HDMI 输出参数；
+- Swing 事件间隔、结束等待、本地 Coach、建议条数与最低置信度；
+- DeepSeek 旁路、逐帧 JSONL、启动/停止、状态、日志及 Swing 报告入口。
+
 `run_swing_report.py` 仅保留为已完成录制的离线兼容适配器；实时模式不调用它。
 离线与实时事件识别都复用 `swing_event_analyzer.analyze_frame_records()`，避免维护两套挥拍算法。
 

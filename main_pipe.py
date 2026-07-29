@@ -15,8 +15,16 @@ import os
 import json
 import argparse
 import signal
+import traceback
 import uuid
+from pathlib import Path
 
+from analysis_data_contracts import (
+    build_session_metadata,
+    document_contract,
+    normalize_session_id,
+    stamp_frame_record,
+)
 from reader_runtime import DeadlinePacer, SourceFrameClock
 from roi_stream_config import resolve_roi_stream_profile, sanitize_stream_source
 
@@ -30,6 +38,10 @@ def create_output_directory(output_path):
 
 def ignore_child_interrupts():
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
+class PipelineProcessError(RuntimeError):
+    """Raised when any pipeline child exits unexpectedly."""
 
 
 class MultiprocessPipeline:
@@ -63,6 +75,7 @@ class MultiprocessPipeline:
         realtime_swing_json=None,
         realtime_swing_html=None,
         realtime_swing_clips_dir=None,
+        realtime_swing_event_log=None,
         realtime_analysis_interval=None,
         realtime_settle_frames=None,
         realtime_window_frames=None,
@@ -78,15 +91,33 @@ class MultiprocessPipeline:
         realtime_coach_min_confidence=None,
         deepseek_coach_options=None,
         realtime_open_report=False,
+        session_id=None,
+        session_output_root=None,
     ):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
+
+        self.session_started_at_unix_ns = time.time_ns()
+        self.session_id = normalize_session_id(session_id, prefix="tennis")
+        self.session_output_dir = None
+        if session_output_root:
+            self.session_output_dir = (
+                Path(session_output_root).expanduser() / self.session_id
+            ).resolve()
+            self.session_output_dir.mkdir(parents=True, exist_ok=True)
 
         # 命令行参数覆盖配置
         if input_path:
             self.config['video_input_path'] = input_path
         if output_path:
             self.config['video_output_path'] = output_path
+        elif self.session_output_dir is not None:
+            configured_output = Path(
+                self.config.get("video_output_path") or "output_video.mp4"
+            )
+            self.config["video_output_path"] = str(
+                self.session_output_dir / configured_output.name
+            )
         if no_save_video:
             self.config['save_video'] = False
 
@@ -136,6 +167,7 @@ class MultiprocessPipeline:
         self.realtime_swing_json = realtime_swing_json
         self.realtime_swing_html = realtime_swing_html
         self.realtime_swing_clips_dir = realtime_swing_clips_dir
+        self.realtime_swing_event_log = realtime_swing_event_log
         self.realtime_analysis_interval = max(
             1,
             int(
@@ -326,6 +358,29 @@ class MultiprocessPipeline:
                 f"⚠️ [ROI] 未启用裁剪: {self.roi_profile.reason}"
                 f" | {self.roi_profile.source}"
             )
+        self.session_metadata = build_session_metadata(
+            session_id=self.session_id,
+            source=self.video_path,
+            stream_id=self.roi_profile.stream_id,
+            stream_label=self.roi_profile.label,
+            started_at_unix_ns=self.session_started_at_unix_ns,
+            config=self.config,
+            models={
+                "detector": str(
+                    (self.config.get("unified_detection") or {}).get("model_path")
+                    or ""
+                ),
+                "pose": str(self.config.get("yolo_pose_model_path") or ""),
+            },
+        )
+        print(
+            f"🗂️ [Session] {self.session_id}"
+            + (
+                f" | {self.session_output_dir}"
+                if self.session_output_dir is not None
+                else ""
+            )
+        )
 
         configured_output_fps = self.config.get('video_processing', {}).get('output_fps', self.fps)
         self.output_fps = float(configured_output_fps if output_fps is None else output_fps)
@@ -347,6 +402,7 @@ class MultiprocessPipeline:
         inference_queue_size = 1 if self.drop_stale_frames else self.shm_num
         self.q_inference = mp.Queue(maxsize=inference_queue_size)
         self.q_analyzer = mp.Queue(maxsize=self.shm_num)
+        self.q_failures = mp.Queue()
 
         self.stop_event = mp.Event()
         self.inf_ready = mp.Event()
@@ -446,6 +502,7 @@ class MultiprocessPipeline:
 
                 ret, frame = cap.read()
                 captured_at = time.perf_counter()
+                captured_at_unix_ns = time.time_ns()
                 if not ret:
                     self.q_free.put(slot)
                     if self.is_stream_source and self.live_reconnect and not self.stop_event.is_set():
@@ -465,6 +522,7 @@ class MultiprocessPipeline:
                     'idx': source_frame_id,
                     'slot': slot,
                     'captured_at': captured_at,
+                    'captured_at_unix_ns': captured_at_unix_ns,
                 })
 
                 delay = pacer.next_delay()
@@ -549,6 +607,7 @@ class MultiprocessPipeline:
 
                 slot = task['slot']
                 frame_ptr = shared_frames[slot]
+                inference_started_at_unix_ns = time.time_ns()
                 frame_context = None
                 detection_frame = frame_ptr
                 pose_detection_frame = frame_ptr
@@ -581,6 +640,7 @@ class MultiprocessPipeline:
                         racket,
                         object_coordinates_are_full_frame=True,
                     )
+                inference_completed_at_unix_ns = time.time_ns()
 
                 self.q_analyzer.put({
                     'id': task['idx'],
@@ -590,6 +650,9 @@ class MultiprocessPipeline:
                     'pose': pose,
                     'ball_diagnostics': ball_diagnostics,
                     'captured_at': task.get('captured_at'),
+                    'captured_at_unix_ns': task.get('captured_at_unix_ns'),
+                    'inference_started_at_unix_ns': inference_started_at_unix_ns,
+                    'inference_completed_at_unix_ns': inference_completed_at_unix_ns,
                 })
         except Exception as exc:
             print(f"❌ [Inference] 初始化或推理失败: {exc}")
@@ -677,6 +740,16 @@ class MultiprocessPipeline:
             diagnostics_path = os.path.splitext(output_base)[0] + '_diagnostics.json'
             frame_results_fp = open(frame_results_path, 'w', encoding='utf-8')
             frame_results_fp.write('{\n')
+            frame_contract = document_contract("frames", self.session_metadata)
+            frame_results_fp.write(
+                f'  "schema_version": {json.dumps(frame_contract["schema_version"])},\n'
+            )
+            frame_results_fp.write(
+                f'  "document_type": {json.dumps(frame_contract["document_type"])},\n'
+            )
+            frame_results_fp.write(
+                f'  "session": {json.dumps(self.session_metadata, ensure_ascii=False)},\n'
+            )
             frame_results_fp.write('  "video_info": {\n')
             frame_results_fp.write(f'    "path": {json.dumps(self.video_path, ensure_ascii=False)},\n')
             frame_results_fp.write(f'    "fps": {json.dumps(self.fps)},\n')
@@ -695,6 +768,7 @@ class MultiprocessPipeline:
         frame_journal = None
         realtime_coach = None
         deepseek_sidecar = None
+        realtime_runtime = None
         if self.realtime_frame_output:
             from realtime_swing_pipeline import RealtimeFrameJournal
 
@@ -710,6 +784,7 @@ class MultiprocessPipeline:
                 snapshot_path=realtime_frame_snapshot_json,
                 snapshot_size=self.realtime_frame_snapshot_size,
                 flush_interval=self.realtime_frame_flush_interval,
+                session_metadata=self.session_metadata,
             )
             print(
                 f'📝 [Frame-Live] 实时逐帧输出已开启'
@@ -769,6 +844,7 @@ class MultiprocessPipeline:
                 settle_frames=effective_settle_frames,
                 window_frames=effective_window_frames,
                 coach=realtime_coach,
+                session_metadata=self.session_metadata,
                 **self.swing_analysis_options,
             )
             realtime_output = RealtimeSwingOutputManager(
@@ -803,6 +879,8 @@ class MultiprocessPipeline:
                         )
                     ),
                 ),
+                event_log_path=self.realtime_swing_event_log,
+                session_metadata=self.session_metadata,
             )
             print(
                 f'⚡ [Swing-Live] 实时事件分析已开启'
@@ -818,70 +896,17 @@ class MultiprocessPipeline:
 
                 webbrowser.open(Path(realtime_html).resolve().as_uri())
 
-        def publish_deepseek_result(event_id, result):
-            if realtime_output is None:
-                return
-            realtime_output.update_event(
-                event_id,
-                {'deepseek_advice': result},
-            )
-            if result.get('status') == 'ready':
-                print(
-                    f"🧠 [DeepSeek] Swing #{event_id}"
-                    f" | {result['message']}"
-                    f" | {int(result.get('latency_ms') or 0)}ms"
-                )
-            elif result.get('status') in {'failed', 'unavailable'}:
-                print(
-                    f"⚠️ [DeepSeek] Swing #{event_id}"
-                    f" | {result.get('status')}"
-                    f" | 本地建议继续生效"
-                )
+        if realtime_engine is not None or frame_journal is not None:
+            from realtime_swing_runtime import RealtimeSwingRuntime
 
-        def publish_realtime_events(events, final=False):
-            if realtime_engine is None or realtime_output is None:
-                return
-            if deepseek_sidecar is not None:
-                for event in events:
-                    event['deepseek_advice'] = {
-                        'status': 'pending',
-                        'model': self.deepseek_coach_options['model'],
-                        'source': 'deepseek_sidecar',
-                    }
-            if events or final:
-                realtime_output.publish_events(events, realtime_engine.snapshot())
-            for event in events:
-                prefix = 'Final Event' if final else 'Event'
-                print(
-                    f"🎾 [Swing-Live] {prefix} #{event['event_id']}"
-                    f" | {event['stroke_type']}"
-                    f" | frames {event['start_frame']}-{event['end_frame']}"
-                    f" | contact {event['contact_frame']}"
-                    f" | latency {event['latency_frames']}F"
-                )
-                advices = event.get('coach_advices') or []
-                if not advices and event.get('coach_advice'):
-                    advices = [event['coach_advice']]
-                for index, advice in enumerate(advices[:3], start=1):
-                    if not advice.get('message'):
-                        continue
-                    print(
-                        f"🎯 [Coach] Swing #{event['event_id']}"
-                        f" | {index}/{len(advices[:3])}"
-                        f" | {advice['message']}"
-                        f" | {float(advice.get('confidence') or 0.0):.0%}"
-                    )
-                if deepseek_sidecar is not None:
-                    event_id = int(event['event_id'])
-                    event_frame_records = realtime_engine.frame_records_for_event(event)
-                    deepseek_sidecar.submit(
-                        event,
-                        lambda result, target_event_id=event_id: publish_deepseek_result(
-                            target_event_id,
-                            result,
-                        ),
-                        frame_records=event_frame_records,
-                    )
+            realtime_runtime = RealtimeSwingRuntime(
+                engine=realtime_engine,
+                output=realtime_output,
+                frame_journal=frame_journal,
+                deepseek_sidecar=deepseek_sidecar,
+                stop_event=self.stop_event,
+                queue_size=max(64, int(round(self.fps * 12))),
+            )
 
         while not self.stop_event.is_set():
             try:
@@ -906,6 +931,7 @@ class MultiprocessPipeline:
             poses = data['pose']
 
             # --- 1. 深度分析计算 ---
+            analysis_started_at_unix_ns = time.time_ns()
             frame_analysis = frame_processor.process(
                 frame_id=fid,
                 poses=poses,
@@ -932,12 +958,25 @@ class MultiprocessPipeline:
                     phase_metrics=detailed_data,
                 )
                 frame_record["detection_diagnostics"] = data.get("ball_diagnostics") or {}
-            if frame_journal is not None and frame_record is not None:
-                try:
-                    frame_journal.record(frame_record)
-                except Exception as exc:
-                    print(f"❌ [Frame-Live] 逐帧写入失败: {exc}")
-                    self.stop_event.set()
+                analysis_completed_at_unix_ns = time.time_ns()
+                stamp_frame_record(
+                    frame_record,
+                    session=self.session_metadata,
+                    captured_at_unix_ns=(
+                        data.get("captured_at_unix_ns")
+                        or analysis_started_at_unix_ns
+                    ),
+                    inference_started_at_unix_ns=(
+                        data.get("inference_started_at_unix_ns")
+                        or analysis_started_at_unix_ns
+                    ),
+                    inference_completed_at_unix_ns=(
+                        data.get("inference_completed_at_unix_ns")
+                        or analysis_started_at_unix_ns
+                    ),
+                    analysis_started_at_unix_ns=analysis_started_at_unix_ns,
+                    analysis_completed_at_unix_ns=analysis_completed_at_unix_ns,
+                )
             if collect_frame_results and frame_record is not None:
                 if frame_results_fp is not None:
                     if not first_frame_record:
@@ -985,10 +1024,9 @@ class MultiprocessPipeline:
                 cv2.rectangle(canvas, (x1, y1), (x2, y2), (255, 128, 0), 2)
 
             # --- 3. 提交并释放 ---
-            if realtime_output is not None and realtime_engine is not None:
-                realtime_output.record_frame(fid, canvas)
-                completed_events = realtime_engine.push_frame(frame_record)
-                publish_realtime_events(completed_events)
+            if realtime_runtime is not None and frame_record is not None:
+                realtime_runtime.record_rendered_frame(fid, canvas)
+                realtime_runtime.submit_frame(frame_record)
             if out_writer: out_writer.write(canvas)
 
             # HDMI 单路输出与双窗口对比显示互斥。
@@ -1034,27 +1072,20 @@ class MultiprocessPipeline:
                     f" | 100F: {snapshot.window_100_fps:.2f}"
                 )
 
-        if realtime_engine is not None and realtime_output is not None:
-            final_events = realtime_engine.flush()
-            publish_realtime_events(final_events, final=True)
-            if deepseek_sidecar is not None:
-                deepseek_sidecar.close()
+        if realtime_runtime is not None:
             try:
-                realtime_output.close()
+                realtime_runtime.close()
             except Exception as exc:
-                print(f"❌ [Swing-Live] 异步片段输出失败: {exc}")
+                print(f"❌ [Swing-Live] 实时数据运行时关闭失败: {exc}")
                 self.stop_event.set()
-            print(
-                f"✅ [Swing-Live] 实时分析结束"
-                f" | events: {realtime_engine.snapshot()['summary']['swing_event_count']}"
-            )
-        if frame_journal is not None:
-            try:
-                frame_journal.close()
+                raise
+            if realtime_engine is not None:
+                print(
+                    f"✅ [Swing-Live] 实时分析结束"
+                    f" | events: {realtime_runtime.snapshot()['summary']['swing_event_count']}"
+                )
+            if frame_journal is not None:
                 print("✅ [Frame-Live] 实时逐帧输出结束")
-            except Exception as exc:
-                print(f"❌ [Frame-Live] 实时逐帧输出失败: {exc}")
-                self.stop_event.set()
 
         if out_writer:
             out_writer.release()
@@ -1063,7 +1094,9 @@ class MultiprocessPipeline:
 
         if collect_frame_results and frame_results_fp is not None:
             frame_results_fp.write('\n  ],\n')
-            frame_results_fp.write(f'  "summary": {json.dumps({"total_frames": count}, ensure_ascii=False, indent=json_dump_indent)}\n')
+            frame_results_fp.write(
+                f'  "summary": {json.dumps({"total_frames": count, "session_id": self.session_id}, ensure_ascii=False, indent=json_dump_indent)}\n'
+            )
             frame_results_fp.write('}\n')
             frame_results_fp.close()
             print(f"📊 [Analyzer] 数据已保存至: {frame_results_path}")
@@ -1084,6 +1117,7 @@ class MultiprocessPipeline:
                 print('🏌️ [Swing] 开始事件级挥拍分段分析...')
                 swing_analysis = analyze_frame_records(
                     load_frame_records(frame_results_path),
+                    session_metadata=self.session_metadata,
                     **self.swing_analysis_options,
                 )
                 write_analysis_outputs(
@@ -1179,6 +1213,7 @@ class MultiprocessPipeline:
                     })
 
                 diagnostics_payload = {
+                    **document_contract("frames", self.session_metadata),
                     "video_info": {
                         "path": self.video_path,
                         "fps": self.fps,
@@ -1216,6 +1251,42 @@ class MultiprocessPipeline:
             print("✅ [Analyzer] Exit without video output")
         self.stop_event.set()
 
+    def _process_entry(self, role):
+        ignore_child_interrupts()
+        target = {
+            "Reader": self.reader_process,
+            "Inference": self.inference_process,
+            "Analyzer": self.analyzer_process,
+        }[role]
+        try:
+            target()
+        except BaseException as exc:
+            report = {
+                "role": role,
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+                "traceback": traceback.format_exc(),
+            }
+            try:
+                self.q_failures.put(report)
+            finally:
+                self.stop_event.set()
+            print(
+                f"❌ [{role}] 子进程异常退出"
+                f" | {report['error_type']}: {report['message']}"
+            )
+            raise
+
+    @staticmethod
+    def _join_or_terminate(processes, timeout=5.0):
+        deadline = time.monotonic() + max(0.0, float(timeout))
+        for process in processes.values():
+            process.join(timeout=max(0.0, deadline - time.monotonic()))
+        for process in processes.values():
+            if process.is_alive():
+                process.terminate()
+                process.join(timeout=1.0)
+
     def run(self):
         objs = []
         try:
@@ -1236,25 +1307,69 @@ class MultiprocessPipeline:
                     pass
             raise
 
-        ps = [mp.Process(target=self.reader_process), mp.Process(target=self.inference_process), mp.Process(target=self.analyzer_process)]
-        for p in ps: p.start()
+        processes = {
+            role: mp.Process(
+                target=self._process_entry,
+                args=(role,),
+                name=f"tennis-{role.lower()}",
+            )
+            for role in ("Reader", "Inference", "Analyzer")
+        }
+        for process in processes.values():
+            process.start()
+        failure = None
+        interrupted = False
         try:
-            for p in ps: p.join()
+            while any(process.is_alive() for process in processes.values()):
+                try:
+                    failure = self.q_failures.get(timeout=0.1)
+                except queue.Empty:
+                    failure = None
+                if failure is not None:
+                    self.stop_event.set()
+                    break
+                for role, process in processes.items():
+                    if process.exitcode not in (None, 0):
+                        failure = {
+                            "role": role,
+                            "error_type": "ProcessExit",
+                            "message": f"exit code {process.exitcode}",
+                            "traceback": "",
+                        }
+                        self.stop_event.set()
+                        break
+                if failure is not None:
+                    break
         except KeyboardInterrupt:
+            interrupted = True
             print("\n🛑 收到停止请求，正在安全关闭Pipeline...")
             self.stop_event.set()
-            shutdown_deadline = time.monotonic() + 5.0
-            for p in ps:
-                remaining = max(0.0, shutdown_deadline - time.monotonic())
-                p.join(timeout=remaining)
-            for p in ps:
-                if p.is_alive():
-                    p.terminate()
-                    p.join(timeout=1.0)
-        for s in objs:
-            s.close()
-            try: s.unlink()
-            except: pass
+        finally:
+            self._join_or_terminate(processes)
+            if failure is None and not interrupted:
+                for role, process in processes.items():
+                    if process.exitcode not in (0, None):
+                        failure = {
+                            "role": role,
+                            "error_type": "ProcessExit",
+                            "message": f"exit code {process.exitcode}",
+                            "traceback": "",
+                        }
+                        break
+            for shm in objs:
+                shm.close()
+                try:
+                    shm.unlink()
+                except FileNotFoundError:
+                    pass
+
+        if failure is not None:
+            detail = failure.get("traceback") or failure.get("message") or ""
+            raise PipelineProcessError(
+                f"{failure.get('role', 'Pipeline')} failed: "
+                f"{failure.get('error_type', 'Error')}: "
+                f"{failure.get('message', '')}\n{detail}"
+            )
         print("🏁 任务流执行完毕")
 
 
@@ -1264,6 +1379,16 @@ def build_argument_parser():
                         help='配置文件路径')
     parser.add_argument('--input', '-i', default=None, help='输入视频路径，覆盖配置文件')
     parser.add_argument('--output', '-o', default=None, help='输出视频路径，覆盖配置文件')
+    parser.add_argument(
+        '--session-id',
+        default=None,
+        help='本次分析会话ID；默认自动生成并写入所有JSON/事件记录',
+    )
+    parser.add_argument(
+        '--session-output-root',
+        default=None,
+        help='会话输出根目录；指定后默认产物写入 <root>/<session-id>/，显式输出路径仍保持不变',
+    )
     parser.add_argument('--max-frames', type=int, default=None,
                         help='最大处理帧数；直播流建议设置以便安全结束。默认使用 video_processing.max_frames')
     parser.add_argument('--live-mode', action='store_true',
@@ -1322,6 +1447,10 @@ def build_argument_parser():
                         help='实时 Swing HTML 页面；默认 <output_stem>_swing_report.html')
     parser.add_argument('--realtime-swing-clips-dir',
                         help='实时 Swing 独立片段目录；默认 <output_stem>_swing_clips')
+    parser.add_argument(
+        '--realtime-swing-event-log',
+        help='追加式实时事件JSONL；默认与实时事件JSON同名并使用 .jsonl 后缀',
+    )
     parser.add_argument('--realtime-analysis-interval', type=int, default=None,
                         help='每隔多少个已处理帧运行一次滚动事件分析，默认 5')
     parser.add_argument('--realtime-settle-frames', type=int, default=None,
@@ -1407,6 +1536,7 @@ def main_cli(argv=None):
         realtime_swing_json=args.realtime_swing_json,
         realtime_swing_html=args.realtime_swing_html,
         realtime_swing_clips_dir=args.realtime_swing_clips_dir,
+        realtime_swing_event_log=args.realtime_swing_event_log,
         realtime_analysis_interval=args.realtime_analysis_interval,
         realtime_settle_frames=args.realtime_settle_frames,
         realtime_window_frames=args.realtime_window_frames,
@@ -1430,6 +1560,8 @@ def main_cli(argv=None):
             'max_chars': args.deepseek_coach_max_chars,
         },
         realtime_open_report=args.realtime_open_report,
+        session_id=args.session_id,
+        session_output_root=args.session_output_root,
     ).run()
 
 

@@ -7,6 +7,11 @@ from tempfile import TemporaryDirectory
 import cv2
 import numpy as np
 
+from analysis_data_contracts import (
+    EVENT_LOG_SCHEMA_VERSION,
+    FRAME_DOCUMENT_SCHEMA_VERSION,
+    SWING_EVENT_SCHEMA_VERSION,
+)
 from local_realtime_coach import LocalRealtimeCoach
 from realtime_swing_pipeline import (
     RealtimeFrameJournal,
@@ -59,6 +64,14 @@ class RealtimeSwingEventEngineTests(unittest.TestCase):
         self.assertEqual(len(emitted), 1)
         self.assertEqual(emitted[0]["event_id"], 1)
         self.assertEqual(emitted[0]["stroke_type"], "Forehand")
+        self.assertEqual(
+            emitted[0]["schema_version"],
+            SWING_EVENT_SCHEMA_VERSION,
+        )
+        self.assertIn(
+            "event_emitted_at_unix_ns",
+            emitted[0]["timing"],
+        )
         self.assertLess(emitted[0]["start_frame"], emitted[0]["end_frame"])
 
         for frame_id in range(len(positions), len(positions) + 8):
@@ -171,6 +184,7 @@ class RealtimeFrameJournalTests(unittest.TestCase):
         )
         self.assertEqual(snapshot["summary"]["frame_count"], 7)
         self.assertEqual(snapshot["summary"]["dropped_records"], 0)
+        self.assertEqual(snapshot["schema_version"], FRAME_DOCUMENT_SCHEMA_VERSION)
 
     def test_small_queue_still_preserves_every_processed_frame(self):
         with TemporaryDirectory() as directory:
@@ -349,6 +363,12 @@ class RealtimeSwingOutputManagerTests(unittest.TestCase):
             manager.close()
 
             payload = json.loads((root / "live_swing_events.json").read_text(encoding="utf-8"))
+            event_log = [
+                json.loads(line)
+                for line in (root / "live_swing_events.jsonl").read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            ]
             html = (root / "live_swing_report.html").read_text(encoding="utf-8")
             clip_path = root / payload["events"][0]["clip_path"]
             capture = cv2.VideoCapture(str(clip_path))
@@ -357,6 +377,17 @@ class RealtimeSwingOutputManagerTests(unittest.TestCase):
             clip_exists = clip_path.exists()
 
         self.assertEqual(payload["summary"]["swing_event_count"], 1)
+        self.assertEqual(
+            payload["events"][0]["schema_version"],
+            SWING_EVENT_SCHEMA_VERSION,
+        )
+        self.assertEqual(
+            [row["operation"] for row in event_log],
+            ["event_created", "event_updated", "event_updated"],
+        )
+        self.assertTrue(
+            all(row["schema_version"] == EVENT_LOG_SCHEMA_VERSION for row in event_log)
+        )
         self.assertEqual(payload["events"][0]["clip_status"], "ready")
         self.assertEqual(payload["events"][0]["clip_frame_count"], 5)
         self.assertTrue(updated)

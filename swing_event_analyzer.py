@@ -6,10 +6,16 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
+from analysis_data_contracts import (
+    document_contract,
+    inferred_session,
+    stamp_swing_event,
+)
 from swing_biomechanics import enrich_events_with_biomechanics
 from swing_event_segmenter import segment_swing_events
 from swing_motion_features import extract_motion_features
@@ -151,6 +157,7 @@ def analyze_frame_records(
     min_event_frames: int = 8,
     max_internal_gap: int = 3,
     min_event_gap: int = 18,
+    session_metadata: Optional[Dict] = None,
 ) -> Dict:
     """Build event-level analysis and auditable frame features."""
     features = extract_motion_features(frames, dominant_hand=dominant_hand)
@@ -167,6 +174,20 @@ def analyze_frame_records(
         frames,
         features,
     )
+    effective_session = dict(session_metadata or inferred_session(frames))
+    frames_by_id = {
+        int(frame["frame_id"]): frame
+        for frame in frames
+        if isinstance(frame, dict) and frame.get("frame_id") is not None
+    }
+    emitted_at_unix_ns = time.time_ns()
+    for event in events:
+        stamp_swing_event(
+            event,
+            session=effective_session,
+            emitted_at_unix_ns=emitted_at_unix_ns,
+            contact_frame_record=frames_by_id.get(int(event["contact_frame"])),
+        )
     type_counts = Counter(event["stroke_type"] for event in events)
 
     thresholds = {
@@ -178,6 +199,7 @@ def analyze_frame_records(
         "min_event_gap": min_event_gap,
     }
     return {
+        **document_contract("swing_events", effective_session),
         "summary": {
             "total_frames": len(frames),
             "swing_event_count": len(events),

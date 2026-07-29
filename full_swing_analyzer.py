@@ -189,5 +189,6 @@ class FullSwingAnalyzer:
         dot_product = np.dot(v1, v2)
         norm_product = np.linalg.norm(v1) * np.linalg.norm(v2)
         if norm_product == 0: return 0.0
-        angle = np.arccos(dot_product / norm_product)
+        cosine = np.clip(dot_product / norm_product, -1.0, 1.0)
+        angle = np.arccos(cosine)
         return np.degrees(angle)

@@ -132,6 +132,7 @@ def extract_motion_features(
         if ball_racket_distance is not None:
             contact_score = max(0.0, 1.0 - min(ball_racket_distance, 180.0) / 180.0)
 
+        arm_extension = _angle(shoulder, elbow, wrist)
         feature = {
             "frame_id": frame_id,
             "timestamp": timestamp,
@@ -153,7 +154,11 @@ def extract_motion_features(
             "contact_score": round(contact_score, 4),
             "two_hand_distance": round(_distance(wrist, off_wrist), 4) if wrist and off_wrist else None,
             "active_wrist_x_offset": round(wrist[0] - body_center_x, 4) if wrist and body_center_x is not None else None,
-            "arm_extension_deg": round(_angle(shoulder, elbow, wrist), 4) if shoulder and elbow and wrist else _metric(metrics, "swing_motion", "arm_ext"),
+            "arm_extension_deg": (
+                round(arm_extension, 4)
+                if arm_extension is not None
+                else _metric(metrics, "swing_motion", "arm_ext")
+            ),
             "shoulder_turn_deg": _metric(metrics, "preparation", "shoulder_turn"),
             "hip_shoulder_sep_deg": round(hip_shoulder_sep, 4) if hip_shoulder_sep is not None else _metric(metrics, "power_indicators", "hip_shoulder_sep"),
         }

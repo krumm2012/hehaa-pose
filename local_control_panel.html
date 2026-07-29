@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Tennis AI · 本地控制台</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080b10;
+      --panel: #111721;
+      --panel-2: #161e2b;
+      --line: #263347;
+      --muted: #8d9caf;
+      --text: #eef4fb;
+      --yellow: #f5d04c;
+      --green: #40d68b;
+      --red: #ff6e73;
+      --blue: #67a8ff;
+      --shadow: 0 18px 55px rgba(0, 0, 0, .28);
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        radial-gradient(circle at 5% -10%, rgba(78, 118, 178, .18), transparent 34rem),
+        radial-gradient(circle at 100% 10%, rgba(245, 208, 76, .09), transparent 28rem),
+        var(--bg);
+      color: var(--text);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+
+    .shell {
+      width: min(1480px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 20px 0 36px;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      border: 1px solid rgba(53, 70, 94, .8);
+      border-radius: 14px;
+      background: rgba(12, 17, 25, .9);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 11px;
+      color: #111;
+      background: var(--yellow);
+      font-weight: 900;
+      letter-spacing: -.04em;
+    }
+    h1 { margin: 0; font-size: 17px; letter-spacing: .01em; }
+    .brand p { margin: 1px 0 0; color: var(--muted); font-size: 12px; }
+    .header-actions { display: flex; align-items: center; gap: 10px; }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 92px;
+      padding: 8px 11px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: #0b1018;
+      font-weight: 700;
+    }
+    .status-pill::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #637084;
+    }
+    .status-pill.running::before { background: var(--green); box-shadow: 0 0 0 5px rgba(64, 214, 139, .12); }
+    .status-pill.stopping::before { background: var(--yellow); }
+    .status-pill.failed::before { background: var(--red); }
+
+    .button {
+      min-height: 38px;
+      padding: 0 14px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      color: var(--text);
+      background: var(--panel-2);
+      font-weight: 700;
+      transition: transform .15s ease, border-color .15s ease, background .15s ease;
+    }
+    .button:hover:not(:disabled) { transform: translateY(-1px); border-color: #4a5f7b; }
+    .button.primary { border-color: #e8c13b; color: #16130a; background: var(--yellow); }
+    .button.danger { border-color: #7b333b; color: #ffdfe1; background: #3b1d23; }
+    .button.ghost { background: transparent; }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.65fr) minmax(360px, .85fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(20, 28, 40, .97), rgba(13, 19, 29, .97));
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .card-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .card-heading h2 { margin: 0; font-size: 14px; letter-spacing: .03em; }
+    .card-heading p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+
+    .preview-stage {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-height: 480px;
+      background:
+        linear-gradient(45deg, #0b1017 25%, transparent 25%) 0 0 / 22px 22px,
+        linear-gradient(-45deg, #0b1017 25%, transparent 25%) 0 11px / 22px 22px,
+        #090d13;
+    }
+    .preview-stage img {
+      display: block;
+      width: 100%;
+      max-height: 74vh;
+      object-fit: contain;
+    }
+    .preview-empty {
+      width: min(420px, calc(100% - 36px));
+      text-align: center;
+      color: var(--muted);
+    }
+    .preview-empty strong { display: block; margin-bottom: 6px; color: #c9d4e1; font-size: 16px; }
+    .preview-loading {
+      position: absolute;
+      inset: 0;
+      display: none;
+      place-items: center;
+      background: rgba(5, 8, 12, .72);
+      color: var(--yellow);
+      font-weight: 800;
+      backdrop-filter: blur(4px);
+    }
+    .preview-loading.visible { display: grid; }
+
+    .preview-footer {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      padding: 13px 16px;
+      border-top: 1px solid var(--line);
+    }
+    .stream-meta { min-width: 0; }
+    .stream-meta strong { display: block; }
+    .stream-meta span {
+      display: block;
+      overflow: hidden;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .point-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .point-list span {
+      padding: 4px 7px;
+      border: 1px solid #2d513f;
+      border-radius: 6px;
+      color: #8ee2b5;
+      background: #10261d;
+      font: 11px ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .side { display: grid; gap: 14px; }
+    .section { padding: 15px 16px 16px; }
+    .section + .section { border-top: 1px solid var(--line); }
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .section-title h3 { margin: 0; font-size: 13px; }
+    .section-title span { color: var(--muted); font-size: 11px; }
+
+    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .field { min-width: 0; }
+    .field.wide { grid-column: 1 / -1; }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      color: #aebbd0;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+    input, select {
+      width: 100%;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      outline: none;
+      color: var(--text);
+      background: #0a1018;
+      padding: 0 10px;
+    }
+    input:focus, select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(103, 168, 255, .1); }
+
+    .switches { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
+    .switch {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-height: 36px;
+      margin: 0;
+      padding: 7px 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: #c4d0df;
+      background: #0c121b;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+    .switch input { width: 15px; height: 15px; accent-color: var(--yellow); }
+
+    .run-summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding: 14px 16px;
+    }
+    .stat {
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #0b111a;
+    }
+    .stat span { display: block; color: var(--muted); font-size: 10px; text-transform: uppercase; }
+    .stat strong { display: block; overflow: hidden; margin-top: 3px; text-overflow: ellipsis; white-space: nowrap; }
+
+    .log {
+      height: 240px;
+      overflow: auto;
+      margin: 0;
+      padding: 14px 16px;
+      border-top: 1px solid var(--line);
+      color: #b8c7d8;
+      background: #06090e;
+      font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 50;
+      max-width: min(420px, calc(100% - 44px));
+      padding: 12px 15px;
+      border: 1px solid #375274;
+      border-radius: 10px;
+      color: #eaf3ff;
+      background: #16263a;
+      box-shadow: var(--shadow);
+      opacity: 0;
+      transform: translateY(14px);
+      pointer-events: none;
+      transition: .2s ease;
+    }
+    .toast.visible { opacity: 1; transform: translateY(0); }
+    .toast.error { border-color: #783943; background: #3a1c22; }
+
+    @media (max-width: 1040px) {
+      .layout { grid-template-columns: 1fr; }
+      .preview-stage { min-height: 360px; }
+    }
+    @media (max-width: 640px) {
+      .shell { width: min(100% - 18px, 1480px); padding-top: 9px; }
+      header { position: static; align-items: flex-start; flex-direction: column; }
+      .header-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr 1fr; }
+      .status-pill { justify-content: center; min-width: 0; }
+      .fields, .switches { grid-template-columns: 1fr; }
+      .preview-stage { min-height: 260px; }
+      .preview-footer { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand">
+        <div class="brand-mark">TA</div>
+        <div>
+          <h1>Tennis AI 本地控制台</h1>
+          <p>ROI 预览 · 实时挥拍分析 · 本机进程控制</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <span id="status-pill" class="status-pill">已停止</span>
+        <button id="start-button" class="button primary">启动分析</button>
+        <button id="stop-button" class="button danger" disabled>停止</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <main class="card">
+        <div class="card-heading">
+          <div>
+            <h2>ROI 画面预览</h2>
+            <p>黄色区域参与目标检测，P1–P4 来自当前球场配置</p>
+          </div>
+          <button id="preview-button" class="button">刷新预览</button>
+        </div>
+        <div class="preview-stage">
+          <div id="preview-empty" class="preview-empty">
+            <strong>选择球场后刷新预览</strong>
+            摄像头凭据仅用于本机 RTSP 连接，不会写入页面状态。
+          </div>
+          <img id="preview-image" alt="ROI preview" hidden>
+          <div id="preview-loading" class="preview-loading">正在连接码流并提取画面…</div>
+        </div>
+        <div class="preview-footer">
+          <div id="stream-meta" class="stream-meta">
+            <strong>尚未加载球场</strong>
+            <span>—</span>
+          </div>
+          <div id="point-list" class="point-list"></div>
+        </div>
+      </main>
+
+      <aside class="side">
+        <form id="settings-form" class="card" autocomplete="off">
+          <div class="section">
+            <div class="section-title"><h3>摄像头</h3><span>凭据不会保存</span></div>
+            <div class="fields">
+              <div class="field wide">
+                <label for="stream_id">球场码流</label>
+                <select id="stream_id" name="stream_id"></select>
+              </div>
+              <div class="field">
+                <label for="username">用户名</label>
+                <input id="username" name="username" placeholder="环境变量或手动输入">
+              </div>
+              <div class="field">
+                <label for="password">密码</label>
+                <input id="password" name="password" type="password" placeholder="不在浏览器中保存">
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><h3>ROI 参数</h3><span>本次运行</span></div>
+            <div class="fields">
+              <div class="field">
+                <label for="crop_margin">裁剪边距 px</label>
+                <input id="crop_margin" name="crop_margin" type="number" min="0" max="256">
+              </div>
+              <div class="field">
+                <label for="output_fps">目标 FPS</label>
+                <input id="output_fps" name="output_fps" type="number" min="1" max="60" step="1">
+              </div>
+            </div>
+            <div class="switches">
+              <label class="switch"><input id="roi_enabled" type="checkbox">启用 ROI 推理</label>
+              <label class="switch"><input id="show_roi_boundary" type="checkbox">显示 ROI 边界</label>
+              <label class="switch"><input id="show_roi_fill" type="checkbox">显示 ROI 填充</label>
+              <label class="switch"><input id="show_roi_points" type="checkbox">显示 P1–P4</label>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><h3>Swing 与 Coach</h3><span>事件级实时输出</span></div>
+            <div class="fields">
+              <div class="field">
+                <label for="analysis_interval">分析间隔/帧</label>
+                <input id="analysis_interval" type="number" min="1" max="60">
+              </div>
+              <div class="field">
+                <label for="settle_frames">事件等待/帧</label>
+                <input id="settle_frames" type="number" min="0" max="300">
+              </div>
+              <div class="field">
+                <label for="max_suggestions">建议条数</label>
+                <select id="max_suggestions">
+                  <option value="1">1 条</option>
+                  <option value="2">最多 2 条</option>
+                  <option value="3">最多 3 条</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="min_confidence">最低置信度</label>
+                <input id="min_confidence" type="number" min="0" max="1" step="0.05">
+              </div>
+            </div>
+            <div class="switches">
+              <label class="switch"><input id="realtime_swing_events" type="checkbox">实时 Swing 事件</label>
+              <label class="switch"><input id="realtime_coach" type="checkbox">本地动作纠错</label>
+              <label class="switch"><input id="deepseek_coach" type="checkbox">DeepSeek 旁路</label>
+              <label class="switch"><input id="realtime_frame_output" type="checkbox">保存逐帧 JSONL</label>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><h3>性能与显示</h3><span>RTSP 推荐直播模式</span></div>
+            <div class="fields">
+              <div class="field">
+                <label for="inference_workers">推理线程池</label>
+                <input id="inference_workers" type="number" min="1" max="32">
+              </div>
+              <div class="field">
+                <label for="display_origin_x">扩展屏 X</label>
+                <input id="display_origin_x" type="number" min="-10000" max="10000">
+              </div>
+              <div class="field">
+                <label for="display_origin_y">扩展屏 Y</label>
+                <input id="display_origin_y" type="number" min="-10000" max="10000">
+              </div>
+            </div>
+            <div class="switches">
+              <label class="switch"><input id="live_mode" type="checkbox">低延迟直播模式</label>
+              <label class="switch"><input id="save_video" type="checkbox">保存完整视频</label>
+              <label class="switch"><input id="hdmi_output" type="checkbox">HDMI 全屏输出</label>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><h3>输出</h3><span>限制在项目目录内</span></div>
+            <div class="fields">
+              <div class="field wide">
+                <label for="output_dir">输出目录</label>
+                <input id="output_dir">
+              </div>
+              <div class="field wide">
+                <label for="session_name">会话名称</label>
+                <input id="session_name" maxlength="64">
+              </div>
+            </div>
+          </div>
+        </form>
+
+        <section class="card">
+          <div class="card-heading">
+            <div>
+              <h2>运行状态</h2>
+              <p id="process-description">等待启动</p>
+            </div>
+            <a id="report-link" class="button ghost" target="_blank" hidden>打开 Swing 页面</a>
+          </div>
+          <div class="run-summary">
+            <div class="stat"><span>PID</span><strong id="pid-value">—</strong></div>
+            <div class="stat"><span>运行时间</span><strong id="elapsed-value">0s</strong></div>
+            <div class="stat"><span>返回码</span><strong id="return-value">—</strong></div>
+          </div>
+          <pre id="log-output" class="log">控制台日志将在这里显示。</pre>
+        </section>
+      </aside>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const ids = [
+      "stream_id", "username", "password", "crop_margin", "output_fps",
+      "roi_enabled", "show_roi_boundary", "show_roi_fill", "show_roi_points",
+      "analysis_interval", "settle_frames", "max_suggestions", "min_confidence",
+      "realtime_swing_events", "realtime_coach", "deepseek_coach",
+      "realtime_frame_output", "inference_workers", "display_origin_x",
+      "display_origin_y", "live_mode", "save_video", "hdmi_output",
+      "output_dir", "session_name"
+    ];
+    const checkboxIds = new Set([
+      "roi_enabled", "show_roi_boundary", "show_roi_fill", "show_roi_points",
+      "realtime_swing_events", "realtime_coach", "deepseek_coach",
+      "realtime_frame_output", "live_mode", "save_video", "hdmi_output"
+    ]);
+    const state = { token: "", streams: [], status: "stopped", previewUrl: null };
+    const $ = id => document.getElementById(id);
+
+    function showToast(message, error = false) {
+      const toast = $("toast");
+      toast.textContent = message;
+      toast.className = "toast visible" + (error ? " error" : "");
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toast.className = "toast", 3600);
+    }
+
+    async function api(path, options = {}) {
+      const headers = { ...(options.headers || {}) };
+      if (options.method === "POST") {
+        headers["Content-Type"] = "application/json";
+        headers["X-Control-Token"] = state.token;
+      }
+      const response = await fetch(path, { ...options, headers, cache: "no-store" });
+      if (!response.ok) {
+        let message = `${response.status} ${response.statusText}`;
+        try {
+          const payload = await response.json();
+          message = payload.error || message;
+        } catch (_) {}
+        throw new Error(message);
+      }
+      return response;
+    }
+
+    function formPayload() {
+      const payload = {};
+      for (const id of ids) {
+        const element = $(id);
+        payload[id] = checkboxIds.has(id) ? element.checked : element.value;
+      }
+      return payload;
+    }
+
+    function savePreset() {
+      const payload = formPayload();
+      delete payload.password;
+      delete payload.username;
+      localStorage.setItem("tennis-control-preset-v1", JSON.stringify(payload));
+    }
+
+    function applyValues(values) {
+      for (const [id, value] of Object.entries(values || {})) {
+        const element = $(id);
+        if (!element || value === undefined || value === null) continue;
+        if (checkboxIds.has(id)) element.checked = Boolean(value);
+        else element.value = value;
+      }
+    }
+
+    function selectedStream() {
+      return state.streams.find(item => item.stream_id === $("stream_id").value);
+    }
+
+    function updateStreamMeta() {
+      const stream = selectedStream();
+      if (!stream) return;
+      $("stream-meta").innerHTML = `<strong>${escapeHtml(stream.label)}</strong><span>${escapeHtml(stream.source)}</span>`;
+      $("point-list").innerHTML = (stream.points || []).map(
+        (point, index) => `<span>P${index + 1} ${point[0]},${point[1]}</span>`
+      ).join("");
+      savePreset();
+    }
+
+    function escapeHtml(value) {
+      const div = document.createElement("div");
+      div.textContent = String(value ?? "");
+      return div.innerHTML;
+    }
+
+    function applyPreviewBlob(blob) {
+      if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
+      state.previewUrl = URL.createObjectURL(blob);
+      const image = $("preview-image");
+      image.src = state.previewUrl;
+      image.hidden = false;
+      $("preview-empty").hidden = true;
+    }
+
+    async function refreshPreview(manual = true) {
+      const payload = formPayload();
+      $("preview-loading").classList.add("visible");
+      $("preview-button").disabled = true;
+      try {
+        const response = await api("/api/preview", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        const blob = await response.blob();
+        applyPreviewBlob(blob);
+        if (manual) showToast("ROI 预览已更新");
+      } catch (error) {
+        showToast(`预览失败：${error.message}`, true);
+      } finally {
+        $("preview-loading").classList.remove("visible");
+        $("preview-button").disabled = false;
+      }
+    }
+
+    async function refreshLivePreview() {
+      if (refreshLivePreview.pending) return;
+      refreshLivePreview.pending = true;
+      try {
+        const response = await fetch(
+          `/api/live-preview?t=${Date.now()}`,
+          { cache: "no-store" }
+        );
+        if (response.ok) applyPreviewBlob(await response.blob());
+      } finally {
+        refreshLivePreview.pending = false;
+      }
+    }
+
+    async function startAnalysis() {
+      savePreset();
+      $("start-button").disabled = true;
+      try {
+        const response = await api("/api/start", {
+          method: "POST",
+          body: JSON.stringify(formPayload())
+        });
+        updateStatus(await response.json());
+        showToast("分析进程已启动");
+      } catch (error) {
+        showToast(`启动失败：${error.message}`, true);
+      } finally {
+        await pollStatus();
+      }
+    }
+
+    async function stopAnalysis() {
+      $("stop-button").disabled = true;
+      try {
+        const response = await api("/api/stop", {
+          method: "POST",
+          body: "{}"
+        });
+        updateStatus(await response.json());
+        showToast("已发送安全停止信号");
+      } catch (error) {
+        showToast(`停止失败：${error.message}`, true);
+      }
+    }
+
+    function stateLabel(value) {
+      return {
+        stopped: "已停止",
+        running: "运行中",
+        stopping: "正在停止",
+        failed: "运行失败"
+      }[value] || value;
+    }
+
+    function updateStatus(status) {
+      state.status = status.state;
+      const pill = $("status-pill");
+      pill.textContent = stateLabel(status.state);
+      pill.className = `status-pill ${status.state}`;
+      const running = status.state === "running";
+      const stopping = status.state === "stopping";
+      $("start-button").disabled = running || stopping;
+      $("stop-button").disabled = !running;
+      $("pid-value").textContent = status.pid ?? "—";
+      $("elapsed-value").textContent = `${Math.round(status.elapsed_seconds || 0)}s`;
+      $("return-value").textContent = status.returncode ?? "—";
+      $("process-description").textContent = running
+        ? "实时处理与事件分析正在运行"
+        : stopping ? "等待 Pipeline 安全释放资源" : "等待启动";
+      const logs = (status.logs || []).join("\n") || "控制台日志将在这里显示。";
+      const log = $("log-output");
+      const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 42;
+      log.textContent = logs;
+      if (nearBottom) log.scrollTop = log.scrollHeight;
+      const report = $("report-link");
+      if (status.artifacts?.report_url) {
+        report.href = status.artifacts.report_url;
+        report.hidden = false;
+      } else {
+        report.hidden = true;
+      }
+      if (running) {
+        refreshLivePreview();
+      }
+    }
+
+    async function pollStatus() {
+      try {
+        const response = await api("/api/status");
+        updateStatus(await response.json());
+      } catch (error) {
+        showToast(`状态连接失败：${error.message}`, true);
+      }
+    }
+
+    async function initialize() {
+      try {
+        const response = await api("/api/config");
+        const config = await response.json();
+        state.token = config.token;
+        state.streams = config.streams || [];
+        $("stream_id").innerHTML = state.streams.map(
+          stream => `<option value="${escapeHtml(stream.stream_id)}">${escapeHtml(stream.label)}</option>`
+        ).join("");
+        applyValues(config.defaults);
+        try {
+          const saved = JSON.parse(localStorage.getItem("tennis-control-preset-v1") || "null");
+          if (saved) applyValues(saved);
+        } catch (_) {}
+        updateStreamMeta();
+        if (config.credentials_configured) {
+          $("username").placeholder = "已由服务端环境变量配置";
+          $("password").placeholder = "已由服务端环境变量配置";
+        }
+        await pollStatus();
+      } catch (error) {
+        showToast(`页面初始化失败：${error.message}`, true);
+      }
+    }
+
+    $("preview-button").addEventListener("click", () => refreshPreview(true));
+    $("start-button").addEventListener("click", startAnalysis);
+    $("stop-button").addEventListener("click", stopAnalysis);
+    $("stream_id").addEventListener("change", updateStreamMeta);
+    $("settings-form").addEventListener("change", savePreset);
+    $("settings-form").addEventListener("submit", event => event.preventDefault());
+    setInterval(pollStatus, 1000);
+    initialize();
+  </script>
+</body>
+</html>
