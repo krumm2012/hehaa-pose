@@ -17,8 +17,10 @@ from analysis_data_contracts import (
     stamp_swing_event,
 )
 from swing_biomechanics import enrich_events_with_biomechanics
+from swing_coach_calibration import calibrate_coaching_event
 from swing_event_segmenter import segment_swing_events
 from swing_motion_features import extract_motion_features
+from swing_session_quality import build_session_quality_dashboard
 
 
 FRAME_FIELDS = [
@@ -36,7 +38,11 @@ FRAME_FIELDS = [
     "ball_racket_distance",
     "contact_score",
     "two_hand_distance",
+    "two_hand_distance_body_width",
     "active_wrist_x_offset",
+    "active_wrist_x_offset_body_width",
+    "camera_facing_score",
+    "shoulder_width_px",
     "arm_extension_deg",
     "shoulder_turn_deg",
     "hip_shoulder_sep_deg",
@@ -59,6 +65,16 @@ EVENT_FIELDS = [
     "label_two_hand_ratio",
     "backhand_side_frames",
     "forehand_side_frames",
+    "player_dominant_hand",
+    "camera_view",
+    "camera_confidence",
+    "swing_side",
+    "swing_side_confidence",
+    "classification_rule",
+    "classification_context",
+    "start_boundary_mode",
+    "start_boundary_confidence",
+    "start_boundary_evidence",
     "phase_counts",
 ]
 
@@ -95,6 +111,11 @@ def _event_csv_rows(events: List[Dict]) -> List[Dict]:
     rows = []
     for event in events:
         evidence = event.get("evidence") or {}
+        start_boundary = evidence.get("start_boundary") or {}
+        classification_context = evidence.get("classification_context") or {}
+        player_context = classification_context.get("player") or {}
+        camera_context = classification_context.get("camera") or {}
+        swing_context = classification_context.get("swing") or {}
         rows.append(
             {
                 "event_id": event.get("event_id"),
@@ -112,6 +133,16 @@ def _event_csv_rows(events: List[Dict]) -> List[Dict]:
                 "label_two_hand_ratio": evidence.get("label_two_hand_ratio"),
                 "backhand_side_frames": evidence.get("backhand_side_frames"),
                 "forehand_side_frames": evidence.get("forehand_side_frames"),
+                "player_dominant_hand": player_context.get("dominant_hand"),
+                "camera_view": camera_context.get("view"),
+                "camera_confidence": camera_context.get("confidence"),
+                "swing_side": swing_context.get("side"),
+                "swing_side_confidence": swing_context.get("confidence"),
+                "classification_rule": classification_context.get("decision_rule"),
+                "classification_context": _json_text(classification_context),
+                "start_boundary_mode": start_boundary.get("mode"),
+                "start_boundary_confidence": start_boundary.get("confidence"),
+                "start_boundary_evidence": _json_text(start_boundary),
                 "phase_counts": _json_text(event.get("phase_counts") or {}),
             }
         )
@@ -140,7 +171,11 @@ def _frame_csv_rows(features: List[Dict], frame_trace: List[Dict]) -> List[Dict]
                 "ball_racket_distance": feature.get("ball_racket_distance"),
                 "contact_score": feature.get("contact_score"),
                 "two_hand_distance": feature.get("two_hand_distance"),
+                "two_hand_distance_body_width": feature.get("two_hand_distance_body_width"),
                 "active_wrist_x_offset": feature.get("active_wrist_x_offset"),
+                "active_wrist_x_offset_body_width": feature.get("active_wrist_x_offset_body_width"),
+                "camera_facing_score": feature.get("camera_facing_score"),
+                "shoulder_width_px": feature.get("shoulder_width_px"),
                 "arm_extension_deg": feature.get("arm_extension_deg"),
                 "shoulder_turn_deg": feature.get("shoulder_turn_deg"),
                 "hip_shoulder_sep_deg": feature.get("hip_shoulder_sep_deg"),
@@ -174,6 +209,8 @@ def analyze_frame_records(
         frames,
         features,
     )
+    for event in events:
+        event["coach_calibration"] = calibrate_coaching_event(event)
     effective_session = dict(session_metadata or inferred_session(frames))
     frames_by_id = {
         int(frame["frame_id"]): frame
@@ -205,6 +242,7 @@ def analyze_frame_records(
             "swing_event_count": len(events),
             "swing_event_type_counts": dict(sorted(type_counts.items())),
             "thresholds": thresholds,
+            "session_quality": build_session_quality_dashboard(events),
         },
         "events": events,
         "frame_trace": segmentation["frame_trace"],

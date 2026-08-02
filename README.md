@@ -6,6 +6,7 @@
 
 - `main_pipe.py`：多进程视频检测流水线，生成标注视频、逐帧 JSON 和诊断 JSON。
 - `yolo26n_unified_detector.py`：统一检测人、球、球拍，包含静止球抑制、镜中球过滤、轨迹连续性和球拍候选重排序。
+- `overlay_marker_recovery.py`：二次分析视频中恢复本程序绘制的空心球圈和球拍框，保留 `overlay_*` 来源并继续经过原有轨迹筛选。
 - `pose_estimator_yolo26.py`：YOLO26 pose 检测，支持 Core ML / ANE，并加入 pose 时序平滑以减少骨骼节点跳动。
 - `swing_event_analyzer.py`：把逐帧检测结果聚合成事件级挥拍，输出 `start/contact/peak/end/stroke_type/confidence/quality_flags`。
 - `swing_coach_data_collector.py`：生成面向 AI 网球教练的 `*_coach_dataset.json`，包含动作阶段、关键角度、球/拍质量、问题标签和解释证据。
@@ -77,6 +78,24 @@ venv_yolo26/bin/python main_pipe.py \
 - `live_session_swing_clips/`：每个挥拍的独立 OSD MP4。
 - `live_session_frames.jsonl`：每个完成推理帧一行，适合实时追加和故障恢复。
 - `live_session_frames_latest.json`：最近 200 个处理帧的原子 JSON 快照。
+- `live_session_evidence_manifest.json`：会话级可重放证据清单，记录重放参数、
+  必需产物、文件大小和 SHA-256。
+
+事件 JSON 的 `summary.session_quality` 和离线/实时 HTML 顶部提供“会话质量与漂移”
+看板。看板分开显示可见动作分与证据质量，汇总姿态、网球、球拍、触球覆盖、重复警告、
+本地 Coach 延迟和 DeepSeek 状态。至少累计 6 次挥拍后才比较会话前段与最近窗口；
+人物画面尺度变化超过 15% 或相邻事件范围重叠时，会暂停技术漂移结论并优先提示机位或
+事件切分问题。
+
+实时事件只分析上一个已发布事件结束后的未提交时间线，峰值去重间隔与离线分段器统一为
+至少 1.6 秒，因此滚动窗口中的次峰不会再次发布成范围重叠的 Swing。
+
+对于本程序生成后再次输入的标注视频，`unified_detection.overlay_marker_recovery_enabled`
+可恢复黄色空心球圈和蓝橙球拍框；旧版绿色球拍框由
+`overlay_legacy_green_racket_enabled` 兼容。恢复结果保留来源字段，静止真球、长 ROI 线和
+开放式姿态骨架不会被直接提升为覆盖层候选。逐帧 JSON 的
+`detection_diagnostics.model_candidates` 与 `racket_detection_diagnostics` 同时保存模型原始
+最高置信度、阈值前后候选数和覆盖层恢复数，便于区分“模型无候选”与“后处理拒绝”。
 
 逐帧日志默认保证不静默丢弃已完成推理的记录；正常写盘完全在后台进行。若磁盘
 持续严重阻塞并耗尽内部队列，流水线会短暂反压以优先保证 JSONL 完整性。
@@ -86,10 +105,10 @@ venv_yolo26/bin/python main_pipe.py \
 独立的 `confidence`。`coach_advices` 保存完整建议列表，原有 `coach_advice` 继续
 保存第一条，保持已有消费者兼容。
 
-实时事件会聚合肩髋分离、肩部转动、触球时手臂伸展、击球点相对身体横向距离、
-准备到触球的重心转移，以及触球后平衡漂移。空间距离按事件内可见肩宽/髋宽归一化，
-HTML 同时展示指标值与指标置信度。它们属于单摄像头图像平面 2D 估计，不等同于
-多机位或传感器得到的 3D 关节动力学。可用
+实时事件会聚合准备阶段转肩变化和屈膝幅度、挥拍手臂舒展，以及有可靠球拍—球证据时
+的击球点横向距离；HTML 同时展示 0–9 分可见动作校准、误差范围和指标置信度。
+肩髋投影、身体中心位移等分析代理仍保留用于审计，但会标记为不可用于 Coach，不能被
+解释为真实三维肩髋分离、重心转移或平衡稳定性。可用
 `--realtime-coach-max-suggestions 1|2|3` 控制建议数上限，
 `--realtime-coach-min-confidence 0.45` 过滤不可靠指标；具体阈值位于
 `configs/yolo26_tennis_config.yaml` 的 `realtime_swing.coach_biomechanics`。
@@ -110,7 +129,7 @@ DeepSeek 状态以 `pending → ready/failed/unavailable` 更新到事件 JSON �
 建议硬限制为最多15字。
 
 Coach 门控按证据域授权，不再把局部识别警告升级为整次挥拍不可评价。姿态数据可靠时，
-即使球拍存在间歇漏检或背景静态球被拒绝，仍可基于身体、准备、平衡、节奏和随挥数据
+即使球拍存在间歇漏检或背景静态球被拒绝，仍可基于可见身体动作、准备、节奏和随挥数据
 给出技术建议；对应警告只会封锁拍面、精确拍路、旋转、落点和精确球路等相关主题。
 聚合数据缺少逐帧 phase trace 时，会回退使用事件 JSON 的 `phase_counts`，避免把准备
 和随挥时长误算为零。模型输入包含按证据生成的 `advice_candidates`，有可靠技术候选时
@@ -142,9 +161,46 @@ venv_yolo26/bin/python local_control_panel.py --open
 - FPS、推理线程池、低延迟直播、完整视频和 HDMI 输出参数；
 - Swing 事件间隔、结束等待、本地 Coach、建议条数与最低置信度；
 - DeepSeek 旁路、逐帧 JSONL、启动/停止、状态、日志及 Swing 报告入口。
+- 默认开启的“可重放证据包”；开启时会自动保留逐帧日志和事件快照。
 
 `run_swing_report.py` 仅保留为已完成录制的离线兼容适配器；实时模式不调用它。
 离线与实时事件识别都复用 `swing_event_analyzer.analyze_frame_records()`，避免维护两套挥拍算法。
+
+### 校验与重放会话证据
+
+控制面板会在每个会话目录生成 `*_evidence_manifest.json`。命令行模式可用
+`--evidence-manifest` 显式开启；该参数会自动开启逐帧 FrameRecord 日志和
+Swing 事件快照，使证据包保持可重放。
+
+```bash
+venv_yolo26/bin/python main_pipe.py \
+  --input data/16.10.mp4 \
+  --output data/analysis_results/replay_check.mp4 \
+  --no-save-video \
+  --realtime-coach \
+  --realtime-analysis-interval 5 \
+  --realtime-settle-frames 15 \
+  --evidence-manifest data/analysis_results/replay_check_evidence_manifest.json
+```
+
+先只检查文件完整性和 SHA-256：
+
+```bash
+venv_yolo26/bin/python replay_evidence_bundle.py \
+  data/analysis_results/replay_check_evidence_manifest.json \
+  --verify-only
+```
+
+再离线重放 FrameRecord，并对比原会话与重放结果的事件起止帧、触球帧、
+动作类型和 Coach 建议代码：
+
+```bash
+venv_yolo26/bin/python replay_evidence_bundle.py \
+  data/analysis_results/replay_check_evidence_manifest.json
+```
+
+退出码 `0` 表示必需证据哈希有效且事件语义一致，`2` 表示证据缺失或被篡改，
+`3` 表示能重放但事件语义不一致。清单不保存 RTSP 凭据或 DeepSeek API Key。
 
 ### RTSP 与 ROI 绑定
 
@@ -290,14 +346,14 @@ python3 swing_report_builder.py data/players-video/results_YYYYMMDD/03.15_closed
 
 - `*_swing_report.html`
 
-报告页可以直接在浏览器打开，支持人工修正事件类型、是否有效击球、是否需要复核，并下载 `swing_manual_annotations.json`。
+报告页可以直接在浏览器打开。除人工修正类型、有效击球和复核状态外，还可以修改开始/触球/结束帧，并用“新增漏检挥拍”补充系统未识别的事件。完整检查视频后勾选时间轴确认项，再下载 `swing_manual_annotations_v2.json`。
 
 ### 6. 人工标注后做准确率评估
 
 ```bash
 python3 swing_evaluation.py \
   --events data/players-video/results_YYYYMMDD/03.15_closed_loop_swing_events.json \
-  --annotations /path/to/swing_manual_annotations.json
+  --annotations /path/to/swing_manual_annotations_v2.json
 ```
 
 输出：
@@ -307,15 +363,44 @@ python3 swing_evaluation.py \
 评估 JSON 会记录：
 
 - `stroke_type_accuracy`
+- `precision`
+- `recall`
+- `f1`
 - `contact_accuracy`
 - `contact_mean_abs_error_frames`
-- `manual_review_event_ids`
+- `start_mean_abs_error_frames`
+- `end_mean_abs_error_frames`
+- `event_mean_iou`
+- `manual_review_annotation_ids`
 - `model_review_event_ids`
 - `false_positive_event_ids`
+- `false_negative_annotation_ids`
 - `unmatched_model_event_ids`
-- `unmatched_annotation_event_ids`
+- `unmatched_annotation_ids`
+
+V2 使用事件时间范围和触球帧做一对一时间匹配，不依赖模型 `event_id`。未勾选“已完整检查整段视频”或仍有“需要复核”标注时，Precision / Recall / F1 会保持为 provisional，避免漏标或未确认默认值导致指标虚高。旧版 V1 标注文件仍可评估。
 
 如果同目录存在 `*_swing_evaluation.json`，`swing_report_builder.py` 会在报告页显示 `Evaluation Summary`。
+
+### 7. 在实时报告中完成人工校准闭环
+
+实时会话已经生成 `final_events.json`、`final_frames.jsonl` 和
+`final_report.html` 后，启动本地 workflow 服务：
+
+```bash
+python3 manual_review_workflow.py \
+  --session-dir /tmp/tennis_rtsp_calibration \
+  --open
+```
+
+不要继续用 `file://` 地址完成持久化评估；请使用命令输出的
+`http://127.0.0.1:8765/final_report.html`。在“人工校准闭环”区域导入
+`swing_manual_annotations_v2.json`，页面会依次完成来源与边界校验、评估、
+人工边界证据重算和 Coach 对比。
+
+还有“需要复核”的事件时，页面只生成 provisional 评估，正式人工 Coach 不会提前覆盖；
+全部确认后才生成 `final_manual_events.json`，并并列显示“实时 Coach（原始）”与
+“人工校准 Coach”。原始 `final_events.json` 保持不变。
 
 ## 已验证样例
 
@@ -350,7 +435,7 @@ data/players-video/results_20260517/
 2. `*_swing_report.html`
 3. `*_swing_events.json`
 4. `*_coach_dataset.json`
-5. 可选：`swing_manual_annotations.json`
+5. 可选：`swing_manual_annotations_v2.json`
 6. 可选：`*_swing_evaluation.json`
 
 使用指南见：

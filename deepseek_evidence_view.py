@@ -11,7 +11,7 @@ from swing_quality_policy import (
 )
 
 
-SCHEMA_VERSION = "deepseek_swing_evidence_v1"
+SCHEMA_VERSION = "deepseek_swing_evidence_v2"
 POSE_KEYS = (
     "left_shoulder",
     "right_shoulder",
@@ -37,8 +37,6 @@ MOTION_KEYS = (
     "two_hand_distance",
     "active_wrist_x_offset",
     "arm_extension_deg",
-    "shoulder_turn_deg",
-    "hip_shoulder_sep_deg",
 )
 def build_deepseek_evidence_view(packet: Dict) -> Dict:
     """Return a smaller, claim-gated view while preserving every event frame."""
@@ -175,6 +173,16 @@ def _sanitize_model_evidence(
 ) -> None:
     """Remove stale conclusions that contradict the effective policy."""
     event.pop("deepseek_advice", None)
+    biomechanics = event.get("biomechanics") or {}
+    for metric in (biomechanics.get("metrics") or {}).values():
+        if not isinstance(metric, dict) or metric.get("coach_eligible") is not False:
+            continue
+        # DeepSeek only needs to know that the metric was excluded and why.
+        # Hiding the projected value prevents it from turning a documented
+        # single-view limitation back into a confident coaching claim.
+        metric.pop("value", None)
+        metric.pop("confidence", None)
+        metric["status"] = "excluded_from_coaching"
     effective_warnings = list(decision_policy.get("effective_warnings") or [])
     quality_views = [
         event.get("quality_flags"),

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from swing_event_analyzer import analyze_frame_records
+from swing_coach_calibration import calibrate_coaching_event
 
 
 Point = Tuple[float, float]
@@ -264,21 +265,33 @@ def _score_from_ratio(value: Optional[float], low: float, high: float) -> Option
 
 def _quality_scores(event: Dict, body: Dict, racket: Dict, ball: Dict, timing: Dict) -> Dict:
     contact_score = ball.get("contact_confidence")
-    racket_speed = racket.get("racket_speed_at_contact") or racket.get("max_racket_speed")
+    racket_speed = None
+    if float(racket.get("racket_continuity_ratio") or 0.0) >= 0.35:
+        racket_speed = (
+            racket.get("racket_speed_at_contact")
+            or racket.get("max_racket_speed")
+        )
     follow_frames = timing.get("phase_durations_frames", {}).get("follow_through", 0)
     preparation_frames = timing.get("phase_durations_frames", {}).get("backswing", 0)
-    sep = body.get("hip_shoulder_separation_at_contact")
+    calibration = event.get("coach_calibration") or calibrate_coaching_event(event)
 
     scores = {
-        "contact_score": round(float(contact_score), 4) if contact_score is not None else None,
+        "contact_score": (
+            round(float(contact_score), 4)
+            if contact_score is not None and float(contact_score) > 0.0
+            else None
+        ),
         "racket_speed_score": _score_from_ratio(racket_speed, 5.0, 80.0),
         "preparation_score": _score_from_ratio(preparation_frames, 2.0, 12.0),
         "follow_through_score": _score_from_ratio(follow_frames, 4.0, 18.0),
-        "power_transfer_score": _score_from_ratio(sep, 5.0, 35.0),
+        "power_transfer_score": None,
     }
-    valid = [v for v in scores.values() if v is not None]
-    scores["overall_score"] = round(sum(valid) / len(valid), 4) if valid else None
-    scores["confidence"] = event.get("confidence")
+    scores["overall_score"] = calibration.get("visible_technique_score")
+    scores["overall_score_9"] = calibration.get("visible_technique_score_9")
+    scores["uncertainty_9"] = calibration.get("uncertainty_9")
+    scores["confidence"] = calibration.get("confidence")
+    scores["status"] = calibration.get("status")
+    scores["policy_version"] = calibration.get("policy_version")
     return scores
 
 
@@ -286,7 +299,10 @@ def _diagnosis_tags(scores: Dict, body: Dict, racket: Dict, ball: Dict, timing: 
     tags = []
     if (ball.get("contact_confidence") or 0.0) < 0.2:
         tags.append("low_contact_confidence")
-    if (racket.get("max_racket_speed") or 0.0) < 10.0:
+    if (
+        float(racket.get("racket_continuity_ratio") or 0.0) >= 0.35
+        and (racket.get("max_racket_speed") or 0.0) < 10.0
+    ):
         tags.append("low_racket_speed")
     if (timing.get("phase_durations_frames", {}).get("follow_through", 0)) < 4:
         tags.append("short_follow_through")
@@ -300,9 +316,9 @@ def _diagnosis_tags(scores: Dict, body: Dict, racket: Dict, ball: Dict, timing: 
 def _unit_turn_quality(shoulder_turn: Optional[float]) -> str:
     if shoulder_turn is None:
         return "unknown"
-    if shoulder_turn >= 95:
+    if shoulder_turn >= 30:
         return "strong"
-    if shoulder_turn >= 75:
+    if shoulder_turn >= 12:
         return "adequate"
     return "limited"
 
@@ -338,24 +354,6 @@ def _weight_transfer(start_to_contact_delta: Optional[Dict]) -> str:
     if abs(dx) >= abs(dy):
         return "lateral_left" if dx < 0 else "lateral_right"
     return "forward_screen_down" if dy > 0 else "backward_screen_up"
-
-
-def _contact_too_close_to_body(relative_contact: Optional[Dict], two_hand_distance: Optional[float]) -> bool:
-    if relative_contact is None:
-        return False
-    x_abs = abs(float(relative_contact.get("x") or 0.0))
-    reference = float(two_hand_distance or 120.0)
-    return x_abs < max(45.0, reference * 0.45)
-
-
-def _late_contact(active_wrist_x_offset: Optional[float], stroke_type: Optional[str]) -> bool:
-    if active_wrist_x_offset is None:
-        return False
-    # For the current camera convention, true right-hand forehand appears on
-    # screen-left. A positive contact offset is usually late/crossed body.
-    if stroke_type == "Forehand":
-        return float(active_wrist_x_offset) > 20.0
-    return False
 
 
 def _event_frames(event: Dict, event_features: List[Dict], event_traces: List[Dict]) -> Dict:
@@ -451,7 +449,15 @@ def _center_delta(frames_by_id: Dict[int, Dict], start_frame: int, end_frame: in
     return _relative_point(end_center, start_center)
 
 
-def _body_metrics(frames_by_id: Dict[int, Dict], features_by_frame: Dict[int, Dict], start_frame: int, contact_frame: int, peak_frame: int, end_frame: int, stroke_type: Optional[str]) -> Dict:
+def _body_metrics(
+    frames_by_id: Dict[int, Dict],
+    features_by_frame: Dict[int, Dict],
+    start_frame: int,
+    contact_frame: int,
+    peak_frame: int,
+    end_frame: int,
+    biomechanics: Optional[Dict] = None,
+) -> Dict:
     contact_feature = _nearest_feature(features_by_frame, contact_frame)
     peak_feature = _nearest_feature(features_by_frame, peak_frame)
     contact_pose = _pose_at(frames_by_id, contact_frame)
@@ -464,6 +470,15 @@ def _body_metrics(frames_by_id: Dict[int, Dict], features_by_frame: Dict[int, Di
     center_contact_to_end = _center_delta(frames_by_id, contact_frame, end_frame)
     stance = _stance_metrics(contact_pose)
     relative_contact = _relative_point(contact_ball, body_center)
+    biomechanical_metrics = (biomechanics or {}).get("metrics") or {}
+    contact_metric = biomechanical_metrics.get("contact_lateral_distance") or {}
+    contact_too_close = (
+        float(contact_metric["value"]) < 0.55
+        if contact_metric.get("value") is not None
+        and contact_metric.get("coach_eligible") is True
+        else None
+    )
+    turn_change = (biomechanical_metrics.get("shoulder_turn_change") or {}).get("value")
     return {
         "body_center_at_contact": body_center,
         "contact_point_relative_to_body": relative_contact,
@@ -479,12 +494,15 @@ def _body_metrics(frames_by_id: Dict[int, Dict], features_by_frame: Dict[int, Di
         "pose_angles_at_peak": _pose_angles(peak_pose),
         "center_movement_start_to_contact": center_start_to_contact,
         "center_movement_contact_to_end": center_contact_to_end,
-        "weight_transfer": _weight_transfer(center_start_to_contact),
-        "balance_state": _balance_state(center_contact_to_end),
+        "weight_transfer": "unavailable_single_view",
+        "balance_state": "unavailable_from_translation_only",
+        "screen_body_center_motion_start_to_contact": _weight_transfer(center_start_to_contact),
+        "screen_body_center_motion_contact_to_end": _balance_state(center_contact_to_end),
         "stance_type": _stance_type(stance.get("stance_width_to_hip_ratio")),
-        "unit_turn_quality": _unit_turn_quality(contact_feature.get("shoulder_turn_deg")),
-        "contact_too_close_to_body": _contact_too_close_to_body(relative_contact, contact_feature.get("two_hand_distance")),
-        "late_contact": _late_contact(contact_feature.get("active_wrist_x_offset"), stroke_type),
+        "unit_turn_quality": _unit_turn_quality(turn_change),
+        "contact_too_close_to_body": contact_too_close,
+        "late_contact": None,
+        "late_contact_reason": "front_back_depth_not_observable_single_view",
         **stance,
     }
 
@@ -612,7 +630,7 @@ def build_coach_dataset(frame_data: Dict, event_analysis: Dict) -> Dict:
             contact_frame,
             peak_frame,
             int(event["end_frame"]),
-            event.get("stroke_type"),
+            event.get("biomechanics") or {},
         )
         timing = _timing_metrics(event, frame_markers, event_traces, fps)
         scores = _quality_scores(event, body, racket, ball, timing)
@@ -633,6 +651,7 @@ def build_coach_dataset(frame_data: Dict, event_analysis: Dict) -> Dict:
                 "body": body,
                 "timing": timing,
                 "scores": scores,
+                "coach_calibration": event.get("coach_calibration") or calibrate_coaching_event(event),
                 "diagnosis_tags": sorted(
                     set(_diagnosis_tags(scores, body, racket, ball, timing) + list(event_quality_flags.get("warnings") or []))
                 ),
@@ -644,7 +663,7 @@ def build_coach_dataset(frame_data: Dict, event_analysis: Dict) -> Dict:
 
     return {
         "metadata": {
-            "schema_version": "coach_dataset_v1.1",
+            "schema_version": "coach_dataset_v1.2",
             "video_path": video_info.get("path"),
             "fps": fps,
             "resolution": video_info.get("resolution"),

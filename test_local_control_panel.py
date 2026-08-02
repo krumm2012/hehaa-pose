@@ -12,6 +12,7 @@ from local_control_panel import (
     ControlSettings,
     LocalPipelineController,
     inject_rtsp_credentials,
+    load_local_environment_variable,
 )
 from roi_stream_config import sanitize_stream_source
 
@@ -73,6 +74,52 @@ streams:
             "rtsp://192.168.1.191:554/camera/main",
         )
 
+    def test_loads_only_requested_secret_from_local_env_file(self):
+        with TemporaryDirectory() as directory:
+            env_path = Path(directory) / ".env.local"
+            env_path.write_text(
+                "# Local secrets\n"
+                "BROKEN_UNRELATED='\n"
+                "export DEEPSEEK_API_KEY='local test key' # comment\n"
+                "UNRELATED_SECRET=do-not-load\n",
+                encoding="utf-8",
+            )
+            with patch.dict(os.environ, {}, clear=True):
+                loaded = load_local_environment_variable(
+                    env_path,
+                    "DEEPSEEK_API_KEY",
+                )
+
+                self.assertTrue(loaded)
+                self.assertEqual(
+                    os.environ["DEEPSEEK_API_KEY"],
+                    "local test key",
+                )
+                self.assertNotIn("UNRELATED_SECRET", os.environ)
+
+    def test_local_env_never_overrides_existing_secret(self):
+        with TemporaryDirectory() as directory:
+            env_path = Path(directory) / ".env.local"
+            env_path.write_text(
+                "DEEPSEEK_API_KEY=file-key\n",
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {"DEEPSEEK_API_KEY": "process-key"},
+                clear=True,
+            ):
+                loaded = load_local_environment_variable(
+                    env_path,
+                    "DEEPSEEK_API_KEY",
+                )
+
+                self.assertFalse(loaded)
+                self.assertEqual(
+                    os.environ["DEEPSEEK_API_KEY"],
+                    "process-key",
+                )
+
     def test_settings_enforce_limits_and_coach_event_dependency(self):
         settings = ControlSettings.from_payload(
             {
@@ -87,6 +134,7 @@ streams:
 
         self.assertEqual(settings.session_name, "Court_01_live")
         self.assertTrue(settings.realtime_swing_events)
+        self.assertTrue(settings.evidence_bundle)
         self.assertEqual(settings.max_suggestions, 2)
         self.assertEqual(settings.min_confidence, 0.55)
         with self.assertRaisesRegex(ValueError, "1–3"):
@@ -155,9 +203,18 @@ streams:
         self.assertIn("--session-id", command)
         self.assertIn("--session-output-root", command)
         self.assertIn("--realtime-swing-event-log", command)
+        self.assertIn("--realtime-frame-output", command)
+        self.assertIn("--evidence-manifest", command)
         self.assertEqual(artifacts["session_id"], Path(artifacts["session_dir"]).name)
         self.assertIn(artifacts["session_id"], artifacts["event_json"])
         self.assertTrue(artifacts["event_log"].endswith(".jsonl"))
+        self.assertTrue(artifacts["frame_jsonl"].endswith("_frames.jsonl"))
+        self.assertTrue(
+            artifacts["evidence_manifest"].endswith(
+                "_evidence_manifest.json"
+            )
+        )
+        self.assertIn("/artifacts/", artifacts["evidence_manifest_url"])
         self.assertTrue(
             artifacts["preview_path"].endswith(
                 "court01_swing_report_roi_preview.jpg"
@@ -190,6 +247,53 @@ streams:
         called_source = capture.call_args.args[0]
         self.assertIn("admin:private@", called_source)
         self.assertGreater(int(decoded[320, 40, 1]), 80)
+
+    def test_custom_stream_is_ephemeral_and_reuses_matching_roi(self):
+        with TemporaryDirectory() as directory:
+            controller = self.make_controller(Path(directory))
+
+            stream = controller._stream_from_payload(
+                {
+                    "stream_id": "custom",
+                    "custom_stream_source": (
+                        "rtsp://192.168.1.191:554/camera/main?transport=tcp"
+                    ),
+                }
+            )
+            authenticated = controller._authenticated_source(
+                stream,
+                {"username": "operator", "password": "private"},
+            )
+
+        self.assertEqual(stream["label"], "自定义码流")
+        self.assertEqual(
+            stream["source"],
+            "rtsp://192.168.1.191:554/camera/main?transport=tcp",
+        )
+        self.assertEqual(stream["points"], [[20, 20], [300, 20], [300, 160], [20, 160]])
+        self.assertIn("operator:private@", authenticated)
+        self.assertIn("transport=tcp", authenticated)
+
+    def test_custom_stream_requires_supported_credential_free_url(self):
+        with TemporaryDirectory() as directory:
+            controller = self.make_controller(Path(directory))
+
+            for source in ("", "file:///tmp/video.mp4", "ftp://camera/live"):
+                with self.subTest(source=source):
+                    with self.assertRaisesRegex(ValueError, "自定义码流"):
+                        controller._stream_from_payload(
+                            {
+                                "stream_id": "custom",
+                                "custom_stream_source": source,
+                            }
+                        )
+            with self.assertRaisesRegex(ValueError, "用户名和密码输入框"):
+                controller._stream_from_payload(
+                    {
+                        "stream_id": "custom",
+                        "custom_stream_source": "rtsp://admin:secret@camera/live",
+                    }
+                )
 
     def test_output_directory_cannot_escape_workspace(self):
         with TemporaryDirectory() as directory:

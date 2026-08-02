@@ -40,16 +40,16 @@ Event warnings are attached when the event has ball gaps, racket gaps, pose gaps
 
 `*_swing_report.html` combines the swing annotated video, event timeline, score summary, diagnosis tags, quality warnings, and a compact JSON summary in one standalone page.
 
-`*_swing_evaluation.json` is generated only when human annotations are available. It reports model-vs-human event counts, stroke-type accuracy, contact-frame error, manual review ids, model review ids, false positives, and unmatched event ids.
+`*_swing_evaluation.json` is generated only when human annotations are available. V2 uses ordered temporal alignment instead of event ids and reports Precision, Recall, F1, stroke-type accuracy, contact/boundary error, interval IoU, and unmatched events.
 
 ## Manual Evaluation
 
-After downloading `swing_manual_annotations.json` from the report page, run:
+After reviewing the full timeline, adding any missed swings, and downloading `swing_manual_annotations_v2.json` from the report page, run:
 
 ```bash
 python3 swing_evaluation.py \
   --events data/players-video/results_20260517/03.15_closed_loop_swing_events.json \
-  --annotations /Users/krum5539/Downloads/swing_manual_annotations.json
+  --annotations /Users/krum5539/Downloads/swing_manual_annotations_v2.json
 ```
 
 The default output path is next to the event JSON, for example:
@@ -60,13 +60,18 @@ data/players-video/results_20260517/03.15_closed_loop_swing_evaluation.json
 
 Key fields:
 
+- `precision`, `recall`, `f1`: detection quality, available only after `timeline_review_complete` is checked and no annotations remain marked `needs_review`.
 - `stroke_type_accuracy`: event type agreement for valid human-labeled swings.
 - `contact_accuracy`: ratio of contact frames within the configured tolerance.
 - `contact_mean_abs_error_frames`: average absolute contact-frame error.
-- `manual_review_event_ids`: events the human reviewer marked for review.
+- `start_mean_abs_error_frames`, `end_mean_abs_error_frames`: boundary errors.
+- `event_mean_iou`: temporal overlap between matched model and manual events.
+- `manual_review_annotation_ids`: annotations the human reviewer marked for review.
 - `model_review_event_ids`: events where quality flags already recommended review.
 - `unmatched_model_event_ids`: model events not present in the annotation file.
-- `unmatched_annotation_event_ids`: annotation events not present in model output.
+- `unmatched_annotation_ids`: annotation events not present in model output.
+
+V1 annotation files remain supported for compatibility, but they cannot measure true recall because they are tied to existing model event cards.
 
 ## Regression Videos
 

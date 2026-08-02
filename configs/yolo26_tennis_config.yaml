@@ -53,6 +53,8 @@ unified_detection:
   racket_continuity_distance_px: 260           # 主拍连续性奖励距离窗口
   racket_mirror_min_y_ratio: 0.18              # 顶部镜像拍惩罚阈值（画面高度比例）
   racket_top_mirror_penalty: 0.30              # 顶部镜像拍轻惩罚
+  overlay_marker_recovery_enabled: true        # 二次分析视频：恢复本程序绘制的空心球圈/球拍框
+  overlay_legacy_green_racket_enabled: true    # 兼容旧版绿色球拍框；仅接受闭合矩形
   # CPU: 仅使用 CPU
   # GPU: 使用 CPU + GPU (Metal)
   # ANE: 使用 CPU + Apple Neural Engine

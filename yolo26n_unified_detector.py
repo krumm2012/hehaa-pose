@@ -17,6 +17,7 @@ except ModuleNotFoundError:
 
 from ball_candidate_selector import select_ball_candidate
 from ball_track_selector import BallTrackSelector
+from overlay_marker_recovery import recover_overlay_detections
 from racket_candidate_selector import racket_center, select_racket_candidate
 from static_ball_filter import StaticBallFilter
 
@@ -95,12 +96,18 @@ class YOLO26nUnifiedDetector:
         # 性能统计
         self.detection_times = deque(maxlen=100)
         self.last_ball_diagnostics = {}
+        self.last_racket_diagnostics = {}
+        self.last_parse_diagnostics = {}
         
         print("✅ YOLO26n 统一检测器初始化完成")
 
     def get_last_ball_diagnostics(self):
         """Return lightweight diagnostics for the last ball-selection step."""
         return dict(self.last_ball_diagnostics) if isinstance(self.last_ball_diagnostics, dict) else {}
+
+    def get_last_racket_diagnostics(self):
+        """Return raw-threshold and selection evidence for the last racket step."""
+        return dict(self.last_racket_diagnostics) if isinstance(self.last_racket_diagnostics, dict) else {}
     
     def detect_unified(
         self,
@@ -143,6 +150,18 @@ class YOLO26nUnifiedDetector:
         
         # 解析结果
         ball_detections, racket_detections = self._parse_predictions(predictions)
+        overlay_recovery = recover_overlay_detections(frame, self.config)
+        ball_detections.extend(overlay_recovery["balls"])
+        racket_detections.extend(overlay_recovery["rackets"])
+        if isinstance(getattr(self, "last_parse_diagnostics", None), dict):
+            overlay_diagnostics = dict(overlay_recovery["diagnostics"])
+            self.last_parse_diagnostics["overlay_recovery"] = overlay_diagnostics
+            self.last_parse_diagnostics.setdefault("ball", {})[
+                "overlay_recovered_candidates"
+            ] = len(overlay_recovery["balls"])
+            self.last_parse_diagnostics.setdefault("racket", {})[
+                "overlay_recovered_candidates"
+            ] = len(overlay_recovery["rackets"])
 
         # ROI 推理时在候选筛选前恢复原图坐标，确保静态区和轨迹连续性
         # 继续使用全帧坐标系。
@@ -158,6 +177,10 @@ class YOLO26nUnifiedDetector:
         
         # 在已有候选中选择真实运动球/主拍；不增加模型推理，只做轻量距离打分。
         ball_detections = self._filter_static_balls(ball_detections, racket_detections)
+        if isinstance(self.last_ball_diagnostics, dict):
+            self.last_ball_diagnostics["model_candidates"] = dict(
+                (getattr(self, "last_parse_diagnostics", {}) or {}).get("ball") or {}
+            )
         racket_detections = self._select_primary_racket(racket_detections, ball_detections)
         
         return ball_detections, racket_detections, inference_time
@@ -205,10 +228,27 @@ class YOLO26nUnifiedDetector:
         """解析模型输出"""
         ball_detections = []
         racket_detections = []
+        diagnostics = {
+            "output_format": "unsupported",
+            "ball": {
+                "class_candidates": 0,
+                "max_confidence": 0.0,
+                "above_threshold_candidates": 0,
+                "threshold": float(self.ball_conf_threshold),
+            },
+            "racket": {
+                "class_candidates": 0,
+                "max_confidence": 0.0,
+                "above_threshold_candidates": 0,
+                "geometry_rejections": 0,
+                "threshold": float(self.racket_conf_threshold),
+            },
+        }
 
         # YOLO26n Core ML 输出格式: var_1441 [1, 300, 6]
         # 格式: [x_center, y_center, width, height, confidence, class_id]
         if 'var_1441' in predictions:
+            diagnostics["output_format"] = "var_1441"
             output = predictions['var_1441']
             
             # 移除 batch 维度
@@ -220,6 +260,17 @@ class YOLO26nUnifiedDetector:
             for detection in detections:
                 x1, y1, x2, y2, conf, cls = detection
                 cls_id = int(cls)
+                confidence = float(conf)
+                if cls_id == self.ball_class_id:
+                    diagnostics["ball"]["class_candidates"] += 1
+                    diagnostics["ball"]["max_confidence"] = max(
+                        diagnostics["ball"]["max_confidence"], confidence
+                    )
+                elif cls_id == self.racket_class_id:
+                    diagnostics["racket"]["class_candidates"] += 1
+                    diagnostics["racket"]["max_confidence"] = max(
+                        diagnostics["racket"]["max_confidence"], confidence
+                    )
                 
                 # 计算原始尺寸下的坐标
                 # 注意：Core ML 输出通常是针对 640x640 的像素坐标
@@ -235,6 +286,7 @@ class YOLO26nUnifiedDetector:
                 
                 # 球检测
                 if cls_id == self.ball_class_id and conf >= self.ball_conf_threshold:
+                    diagnostics["ball"]["above_threshold_candidates"] += 1
                     ball_detections.append({
                         'position': [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2],  # 中心点
                         'box': box,
@@ -244,6 +296,7 @@ class YOLO26nUnifiedDetector:
                 
                 # 球拍检测
                 elif cls_id == self.racket_class_id and conf >= self.racket_conf_threshold:
+                    diagnostics["racket"]["above_threshold_candidates"] += 1
                     # 计算边界框面积
                     box_width = box[2] - box[0]
                     box_height = box[3] - box[1]
@@ -268,8 +321,11 @@ class YOLO26nUnifiedDetector:
                             'area': int(box_area),
                             'aspect_ratio': round(aspect_ratio, 2)
                         })
+                    else:
+                        diagnostics["racket"]["geometry_rejections"] += 1
         # 兼容带 NMS 的 CoreML 检测输出（坐标 + 80类置信）
         elif 'coordinates' in predictions and 'confidence' in predictions:
+            diagnostics["output_format"] = "coordinates_confidence"
             coordinates = np.asarray(predictions['coordinates'])
             confidence = np.asarray(predictions['confidence'])
             if coordinates.ndim == 1:
@@ -297,7 +353,13 @@ class YOLO26nUnifiedDetector:
                 box = [x1, y1, x2, y2]
 
                 ball_conf = float(cls_conf[self.ball_class_id])
+                if ball_conf > 0.0:
+                    diagnostics["ball"]["class_candidates"] += 1
+                    diagnostics["ball"]["max_confidence"] = max(
+                        diagnostics["ball"]["max_confidence"], ball_conf
+                    )
                 if ball_conf >= self.ball_conf_threshold:
+                    diagnostics["ball"]["above_threshold_candidates"] += 1
                     ball_detections.append({
                         'position': [(box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0],
                         'box': box,
@@ -306,7 +368,13 @@ class YOLO26nUnifiedDetector:
                     })
 
                 racket_conf = float(cls_conf[self.racket_class_id])
+                if racket_conf > 0.0:
+                    diagnostics["racket"]["class_candidates"] += 1
+                    diagnostics["racket"]["max_confidence"] = max(
+                        diagnostics["racket"]["max_confidence"], racket_conf
+                    )
                 if racket_conf >= self.racket_conf_threshold:
+                    diagnostics["racket"]["above_threshold_candidates"] += 1
                     box_width = box[2] - box[0]
                     box_height = box[3] - box[1]
                     box_area = box_width * box_height
@@ -324,7 +392,14 @@ class YOLO26nUnifiedDetector:
                             'area': int(box_area),
                             'aspect_ratio': round(aspect_ratio, 2),
                         })
+                    else:
+                        diagnostics["racket"]["geometry_rejections"] += 1
 
+        for key in ("ball", "racket"):
+            diagnostics[key]["max_confidence"] = round(
+                float(diagnostics[key]["max_confidence"]), 6
+            )
+        self.last_parse_diagnostics = diagnostics
         return ball_detections, racket_detections
     
     def _scale_box(self, x_center, y_center, width, height):
@@ -626,7 +701,17 @@ class YOLO26nUnifiedDetector:
 
     def _select_primary_racket(self, racket_detections, ball_detections=None):
         """Keep only the active racket, suppressing mirror/reflection candidates."""
+        diagnostics = {
+            **dict(
+                (getattr(self, "last_parse_diagnostics", {}) or {}).get("racket")
+                or {}
+            ),
+            "selection_candidates": len(racket_detections or []),
+            "selected": None,
+            "final_decision": "no_candidates_above_threshold",
+        }
         if not racket_detections:
+            self.last_racket_diagnostics = diagnostics
             return []
 
         ball_position = None
@@ -648,11 +733,19 @@ class YOLO26nUnifiedDetector:
             config=selector_config,
         )
         if best_racket is None:
+            diagnostics["final_decision"] = "no_candidate_after_ranking"
+            self.last_racket_diagnostics = diagnostics
             return []
 
         center = racket_center(best_racket)
         if center is not None:
             self.racket_history.append(center)
+        diagnostics["selected"] = {
+            "box": list(best_racket.get("box") or []),
+            "confidence": round(float(best_racket.get("confidence") or 0.0), 6),
+        }
+        diagnostics["final_decision"] = "selected"
+        self.last_racket_diagnostics = diagnostics
         return [best_racket]
     
     def get_average_detection_time(self):

@@ -372,6 +372,18 @@
                 <label for="stream_id">球场码流</label>
                 <select id="stream_id" name="stream_id"></select>
               </div>
+              <div id="custom-stream-field" class="field wide" hidden>
+                <label for="custom_stream_source">自定义码流地址</label>
+                <input
+                  id="custom_stream_source"
+                  name="custom_stream_source"
+                  type="url"
+                  inputmode="url"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="例如 rtsp://192.168.1.100:554/live"
+                >
+              </div>
               <div class="field">
                 <label for="username">用户名</label>
                 <input id="username" name="username" placeholder="环境变量或手动输入">
@@ -432,6 +444,7 @@
               <label class="switch"><input id="realtime_coach" type="checkbox">本地动作纠错</label>
               <label class="switch"><input id="deepseek_coach" type="checkbox">DeepSeek 旁路</label>
               <label class="switch"><input id="realtime_frame_output" type="checkbox">保存逐帧 JSONL</label>
+              <label class="switch"><input id="evidence_bundle" type="checkbox">可重放证据包</label>
             </div>
           </div>
 
@@ -479,7 +492,10 @@
               <h2>运行状态</h2>
               <p id="process-description">等待启动</p>
             </div>
-            <a id="report-link" class="button ghost" target="_blank" hidden>打开 Swing 页面</a>
+            <div class="actions">
+              <a id="evidence-link" class="button ghost" target="_blank" hidden>打开证据清单</a>
+              <a id="report-link" class="button ghost" target="_blank" hidden>打开 Swing 页面</a>
+            </div>
           </div>
           <div class="run-summary">
             <div class="stat"><span>PID</span><strong id="pid-value">—</strong></div>
@@ -496,19 +512,20 @@
 
   <script>
     const ids = [
-      "stream_id", "username", "password", "crop_margin", "output_fps",
+      "stream_id", "custom_stream_source", "username", "password", "crop_margin", "output_fps",
       "roi_enabled", "show_roi_boundary", "show_roi_fill", "show_roi_points",
       "analysis_interval", "settle_frames", "max_suggestions", "min_confidence",
       "realtime_swing_events", "realtime_coach", "deepseek_coach",
-      "realtime_frame_output", "inference_workers", "display_origin_x",
+      "realtime_frame_output", "evidence_bundle", "inference_workers", "display_origin_x",
       "display_origin_y", "live_mode", "save_video", "hdmi_output",
       "output_dir", "session_name"
     ];
     const checkboxIds = new Set([
       "roi_enabled", "show_roi_boundary", "show_roi_fill", "show_roi_points",
       "realtime_swing_events", "realtime_coach", "deepseek_coach",
-      "realtime_frame_output", "live_mode", "save_video", "hdmi_output"
+      "realtime_frame_output", "evidence_bundle", "live_mode", "save_video", "hdmi_output"
     ]);
+    const CUSTOM_STREAM_ID = "custom";
     const state = { token: "", streams: [], status: "stopped", previewUrl: null };
     const $ = id => document.getElementById(id);
 
@@ -551,6 +568,8 @@
       const payload = formPayload();
       delete payload.password;
       delete payload.username;
+      delete payload.custom_stream_source;
+      if (payload.stream_id === CUSTOM_STREAM_ID) delete payload.stream_id;
       localStorage.setItem("tennis-control-preset-v1", JSON.stringify(payload));
     }
 
@@ -567,7 +586,31 @@
       return state.streams.find(item => item.stream_id === $("stream_id").value);
     }
 
+    function customPublicSource() {
+      const value = $("custom_stream_source").value.trim();
+      if (!value) return "输入地址后可刷新预览或启动分析";
+      try {
+        const parsed = new URL(value);
+        parsed.username = "";
+        parsed.password = "";
+        parsed.search = "";
+        parsed.hash = "";
+        return parsed.toString();
+      } catch (_) {
+        return value.split(/[?#]/, 1)[0];
+      }
+    }
+
     function updateStreamMeta() {
+      const custom = $("stream_id").value === CUSTOM_STREAM_ID;
+      $("custom-stream-field").hidden = !custom;
+      $("custom_stream_source").required = custom;
+      if (custom) {
+        $("stream-meta").innerHTML = `<strong>自定义码流</strong><span>${escapeHtml(customPublicSource())}</span>`;
+        $("point-list").innerHTML = "<span>ROI 将按码流地址自动匹配</span>";
+        savePreset();
+        return;
+      }
       const stream = selectedStream();
       if (!stream) return;
       $("stream-meta").innerHTML = `<strong>${escapeHtml(stream.label)}</strong><span>${escapeHtml(stream.source)}</span>`;
@@ -593,6 +636,7 @@
     }
 
     async function refreshPreview(manual = true) {
+      if (!$("settings-form").reportValidity()) return;
       const payload = formPayload();
       $("preview-loading").classList.add("visible");
       $("preview-button").disabled = true;
@@ -627,6 +671,7 @@
     }
 
     async function startAnalysis() {
+      if (!$("settings-form").reportValidity()) return;
       savePreset();
       $("start-button").disabled = true;
       try {
@@ -693,6 +738,13 @@
       } else {
         report.hidden = true;
       }
+      const evidence = $("evidence-link");
+      if (status.artifacts?.evidence_manifest_url) {
+        evidence.href = status.artifacts.evidence_manifest_url;
+        evidence.hidden = false;
+      } else {
+        evidence.hidden = true;
+      }
       if (running) {
         refreshLivePreview();
       }
@@ -715,11 +767,14 @@
         state.streams = config.streams || [];
         $("stream_id").innerHTML = state.streams.map(
           stream => `<option value="${escapeHtml(stream.stream_id)}">${escapeHtml(stream.label)}</option>`
-        ).join("");
+        ).join("") + `<option value="${CUSTOM_STREAM_ID}">自定义码流</option>`;
         applyValues(config.defaults);
         try {
           const saved = JSON.parse(localStorage.getItem("tennis-control-preset-v1") || "null");
-          if (saved) applyValues(saved);
+          if (saved) {
+            if (saved.stream_id === CUSTOM_STREAM_ID) delete saved.stream_id;
+            applyValues(saved);
+          }
         } catch (_) {}
         updateStreamMeta();
         if (config.credentials_configured) {
@@ -736,6 +791,7 @@
     $("start-button").addEventListener("click", startAnalysis);
     $("stop-button").addEventListener("click", stopAnalysis);
     $("stream_id").addEventListener("change", updateStreamMeta);
+    $("custom_stream_source").addEventListener("input", updateStreamMeta);
     $("settings-form").addEventListener("change", savePreset);
     $("settings-form").addEventListener("submit", event => event.preventDefault());
     setInterval(pollStatus, 1000);

@@ -1,5 +1,46 @@
 # Swing Event Recognition Change Log
 
+## 2026-08-02 — Realtime overlap suppression and overlay re-recognition
+
+- Aligned realtime peak duplicate suppression with the segmenter's 1.6-second minimum peak distance.
+- Limited rolling analysis to frames after the latest immutable published event and defensively rejected intersecting event ranges.
+- Added regression coverage for the observed `33–98` / `62–131` overlap while preserving a later non-overlapping Swing.
+- Added opt-in recovery of analyzer-owned hollow ball markers and current/legacy racket rectangles for videos that are analyzed again.
+- Kept overlay provenance in frame diagnostics and passed recovered candidates through existing ball/racket temporal selection.
+- Added raw per-class model confidence and threshold diagnostics for both ball and racket calibration.
+- Rejected small filled yellow balls, long ROI lines, and open pose strokes from overlay recovery.
+- Verified 250 RTSP frames at approximately 25 FPS with four non-overlapping Swing ranges.
+
+## 2026-08-02 — Session quality and drift dashboard
+
+- Added the pure `build_session_quality_dashboard(events)` interface shared by offline analysis,
+  realtime JSON, and both HTML reports.
+- Separated visible-technique trend from capture/evidence quality so detection degradation is not
+  presented as player regression.
+- Added per-Swing trend series, recurring warning/advice counts, contact support, Coach latency,
+  DeepSeek availability, and first-window versus recent-window indicators.
+- Requires at least six Swing events before making a drift conclusion.
+- Treats a 15% camera-scale change as a confounder and overlapping event ranges as an integrity
+  blocker for technique drift.
+- Verified the dashboard against 07.20, 16.10, and the local RTSP input at
+  `rtsp://127.0.0.1:8554/input-video`.
+
+## 2026-08-01 — Single-view biomechanics and Coach calibration
+
+- Added one shared `single_view_visible_coach_v1` calibration policy for offline analysis,
+  realtime local Coach, reports, overlays, and the DeepSeek sidecar.
+- Added directly reviewable 2D metrics for shoulder-turn change and preparation knee flexion.
+- Marked projected hip–shoulder separation, screen-space body translation, and translation-only
+  balance as non-coaching proxies with explicit exclusion reasons.
+- Stopped treating absent contact/racket evidence as a zero technique score.
+- Split the 0–9 visible-technique score from event classification and capture quality, and added
+  score uncertainty plus metric-level provenance.
+- Gated preparation/follow-through advice on their own boundary/contact evidence confidence.
+- Removed excluded numeric biomechanics and projected shoulder/hip angles from DeepSeek model
+  evidence; the sidecar now receives only exclusion reasons and permitted advice candidates.
+- Verified 07.20 as three Forehands with visible scores `6.69 / 3.80 / 5.72` (mean `5.40/9`),
+  and preserved the three-Forehand result on 16.10.
+
 Date: 2026-05-01
 
 ## Summary
@@ -50,7 +91,10 @@ Key fields:
 - `ball_racket_distance`
 - `contact_score`
 - `two_hand_distance`
+- `two_hand_distance_body_width`
 - `active_wrist_x_offset`
+- `active_wrist_x_offset_body_width`
+- `camera_facing_score`
 - `arm_extension_deg`
 - `shoulder_turn_deg`
 - `hip_shoulder_sep_deg`
@@ -66,6 +110,9 @@ Current behavior:
 - Uses smoothed motion energy to find candidate swing peaks.
 - Uses robust peak selection for long videos.
 - Builds full event windows around peak frames.
+- Refines `start_frame` from a stable quiet basin plus sustained motion/shoulder-turn onset instead of a fixed pre-peak offset.
+- Emits `recovery_ready_transition` when recovery and preparation overlap without a trustworthy static ready frame.
+- Makes phase labels contact-relative so `follow_through` cannot precede contact and `backswing` cannot follow it.
 - Keeps fallback energy-island segmentation for short or synthetic inputs.
 - Adds `peak_frame`, `phase_counts`, and per-frame `phase` traces.
 
@@ -78,10 +125,13 @@ Classifies an entire event instead of directly counting frame labels.
 Current behavior:
 
 - Treats frame labels as evidence, not ground truth.
-- Uses a core window near the peak for primary classification.
-- Uses post-impact two-hand evidence cautiously.
-- Requires backhand support before accepting `Two-Handed Backhand` from two-hand proximity.
-- Applies the current-camera handedness rule: image-left true-right evidence can override false two-handed backhand classification.
+- Uses a contact-centred window that excludes ready/recovery hand proximity.
+- Records the configured player dominant hand instead of trying to infer identity from one swing.
+- Infers whether the player faces the camera or faces away from anatomical shoulder projection.
+- Maps the dominant-side wrist to forehand/backhand only after normalizing for that camera orientation.
+- Normalizes wrist separation by shoulder width so two-hand evidence is stable across player distance and resolution.
+- Requires both backhand-side and two-hand support before accepting `Two-Handed Backhand`.
+- Emits auditable `evidence.classification_context` with player, camera, swing-side, and decision-rule evidence.
 
 4. Offline analysis and video rendering
 

@@ -118,6 +118,7 @@ def extract_motion_features(
         racket_accel = racket_speed - float(prev.get("racket_speed", 0.0))
 
         body_center_x = None
+        shoulder_width = _distance(left_shoulder, right_shoulder)
         if left_shoulder is not None and right_shoulder is not None:
             body_center_x = (left_shoulder[0] + right_shoulder[0]) / 2.0
 
@@ -136,6 +137,7 @@ def extract_motion_features(
         feature = {
             "frame_id": frame_id,
             "timestamp": timestamp,
+            "dominant_hand": dominant_hand,
             "raw_swing_type": frame.get("swing_type", "No Pose"),
             "has_pose": bool(pose),
             "has_ball": ball is not None,
@@ -153,7 +155,26 @@ def extract_motion_features(
             "ball_racket_distance": round(ball_racket_distance, 4) if ball_racket_distance is not None else None,
             "contact_score": round(contact_score, 4),
             "two_hand_distance": round(_distance(wrist, off_wrist), 4) if wrist and off_wrist else None,
+            "two_hand_distance_body_width": (
+                round(float(_distance(wrist, off_wrist)) / shoulder_width, 4)
+                if wrist and off_wrist and shoulder_width
+                else None
+            ),
             "active_wrist_x_offset": round(wrist[0] - body_center_x, 4) if wrist and body_center_x is not None else None,
+            "active_wrist_x_offset_body_width": (
+                round(float(wrist[0] - body_center_x) / shoulder_width, 4)
+                if wrist and body_center_x is not None and shoulder_width
+                else None
+            ),
+            # COCO keypoints are anatomical.  When the player's right
+            # shoulder projects left of the left shoulder, the player faces
+            # the camera; the opposite ordering means the camera is behind.
+            "camera_facing_score": (
+                round(float(right_shoulder[0] - left_shoulder[0]) / shoulder_width, 4)
+                if left_shoulder and right_shoulder and shoulder_width
+                else None
+            ),
+            "shoulder_width_px": round(shoulder_width, 4) if shoulder_width else None,
             "arm_extension_deg": (
                 round(arm_extension, 4)
                 if arm_extension is not None

@@ -18,6 +18,7 @@ import signal
 import traceback
 import uuid
 from pathlib import Path
+from typing import Optional
 
 from analysis_data_contracts import (
     build_session_metadata,
@@ -27,6 +28,7 @@ from analysis_data_contracts import (
 )
 from reader_runtime import DeadlinePacer, SourceFrameClock
 from roi_stream_config import resolve_roi_stream_profile, sanitize_stream_source
+from video_overlay_primitives import draw_ball_outline
 
 
 def create_output_directory(output_path):
@@ -93,6 +95,7 @@ class MultiprocessPipeline:
         realtime_open_report=False,
         session_id=None,
         session_output_root=None,
+        evidence_manifest=None,
     ):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
@@ -105,6 +108,7 @@ class MultiprocessPipeline:
                 Path(session_output_root).expanduser() / self.session_id
             ).resolve()
             self.session_output_dir.mkdir(parents=True, exist_ok=True)
+        self.evidence_manifest = evidence_manifest
 
         # 命令行参数覆盖配置
         if input_path:
@@ -206,6 +210,11 @@ class MultiprocessPipeline:
             or realtime_frame_snapshot_json
             or realtime_cfg.get('frame_output_enabled', False)
         )
+        if self.evidence_manifest:
+            # A replayable bundle must retain both the inference journal and
+            # the event snapshot, regardless of live-mode output defaults.
+            self.realtime_frame_output = True
+            self.realtime_swing_events = True
         self.realtime_frame_jsonl = realtime_frame_jsonl
         self.realtime_frame_snapshot_json = realtime_frame_snapshot_json
         self.realtime_frame_snapshot_size = max(
@@ -498,7 +507,7 @@ class MultiprocessPipeline:
                     except Exception as exc:
                         print(f"❌ [Reader] 获取空闲缓冲失败: {exc}")
                         self.stop_event.set()
-                        break
+                        raise RuntimeError("Reader buffer acquisition failed") from exc
 
                 ret, frame = cap.read()
                 captured_at = time.perf_counter()
@@ -603,7 +612,7 @@ class MultiprocessPipeline:
                 except Exception as exc:
                     print(f"❌ [Inference] 获取推理任务失败: {exc}")
                     self.stop_event.set()
-                    break
+                    raise RuntimeError("Inference queue read failed") from exc
 
                 slot = task['slot']
                 frame_ptr = shared_frames[slot]
@@ -632,6 +641,7 @@ class MultiprocessPipeline:
 
                 ball, racket, _ = f1.result()
                 ball_diagnostics = detector.get_last_ball_diagnostics()
+                racket_diagnostics = detector.get_last_racket_diagnostics()
                 pose = f2.result()
                 if frame_context is not None:
                     pose, ball, racket = frame_context.adjust_detections(
@@ -649,6 +659,7 @@ class MultiprocessPipeline:
                     'racket': racket,
                     'pose': pose,
                     'ball_diagnostics': ball_diagnostics,
+                    'racket_diagnostics': racket_diagnostics,
                     'captured_at': task.get('captured_at'),
                     'captured_at_unix_ns': task.get('captured_at_unix_ns'),
                     'inference_started_at_unix_ns': inference_started_at_unix_ns,
@@ -658,6 +669,7 @@ class MultiprocessPipeline:
             print(f"❌ [Inference] 初始化或推理失败: {exc}")
             self.stop_event.set()
             self.inf_ready.set()
+            raise
         finally:
             if executor is not None:
                 executor.shutdown()
@@ -918,7 +930,7 @@ class MultiprocessPipeline:
             except Exception as exc:
                 print(f"❌ [Analyzer] 获取分析任务失败: {exc}")
                 self.stop_event.set()
-                break
+                raise RuntimeError("Analyzer queue read failed") from exc
 
             fid, slot = data['id'], data['slot']
             if count == 0:
@@ -958,6 +970,9 @@ class MultiprocessPipeline:
                     phase_metrics=detailed_data,
                 )
                 frame_record["detection_diagnostics"] = data.get("ball_diagnostics") or {}
+                frame_record["racket_detection_diagnostics"] = (
+                    data.get("racket_diagnostics") or {}
+                )
                 analysis_completed_at_unix_ns = time.time_ns()
                 stamp_frame_record(
                     frame_record,
@@ -1016,8 +1031,7 @@ class MultiprocessPipeline:
             # C. 绘制视觉元素 (骨架、球、球拍)
             canvas = draw_pose_keypoints(canvas, poses)
             if norm_ball_pos:
-                cv2.circle(canvas, (int(norm_ball_pos[0]), int(norm_ball_pos[1])), 10, (0, 255, 255), -1)
-                cv2.circle(canvas, (int(norm_ball_pos[0]), int(norm_ball_pos[1])), 12, (255, 255, 255), 2)
+                draw_ball_outline(canvas, norm_ball_pos)
 
             for ra in racket_list:
                 x1, y1, x2, y2 = ra['box']
@@ -1025,8 +1039,10 @@ class MultiprocessPipeline:
 
             # --- 3. 提交并释放 ---
             if realtime_runtime is not None and frame_record is not None:
-                realtime_runtime.record_rendered_frame(fid, canvas)
                 realtime_runtime.submit_frame(frame_record)
+                # Swing/Coach data is latency-sensitive; enqueue it before the
+                # 1440p rendered-frame copy used only for previews and clips.
+                realtime_runtime.record_rendered_frame(fid, canvas)
             if out_writer: out_writer.write(canvas)
 
             # HDMI 单路输出与双窗口对比显示互斥。
@@ -1287,6 +1303,97 @@ class MultiprocessPipeline:
                 process.terminate()
                 process.join(timeout=1.0)
 
+    def _write_evidence_manifest(self, status: str) -> Optional[str]:
+        if not self.evidence_manifest:
+            return None
+        from session_evidence_bundle import write_session_evidence_manifest
+
+        output_base = str(self.config.get('video_output_path') or 'output_video.mp4')
+        output_stem = os.path.splitext(output_base)[0]
+        frame_jsonl = self.realtime_frame_jsonl or f'{output_stem}_frames.jsonl'
+        frame_snapshot = (
+            self.realtime_frame_snapshot_json
+            or f'{output_stem}_frames_latest.json'
+        )
+        event_json = self.realtime_swing_json or f'{output_stem}_swing_events.json'
+        event_log = self.realtime_swing_event_log or str(
+            Path(event_json).with_suffix('.jsonl')
+        )
+        event_html = self.realtime_swing_html or f'{output_stem}_swing_report.html'
+        clips_dir = Path(
+            self.realtime_swing_clips_dir or f'{output_stem}_swing_clips'
+        )
+        artifacts = [
+            {
+                'role': 'frame_journal',
+                'path': frame_jsonl,
+                'required_for_replay': True,
+            },
+            {
+                'role': 'event_snapshot',
+                'path': event_json,
+                'required_for_replay': True,
+            },
+            {'role': 'frame_snapshot', 'path': frame_snapshot},
+            {'role': 'event_log', 'path': event_log},
+            {'role': 'report', 'path': event_html},
+        ]
+        if bool(self.config.get('save_video', True)):
+            artifacts.append({'role': 'annotated_video', 'path': output_base})
+        if not self.is_stream_source and Path(self.video_path).expanduser().is_file():
+            artifacts.append({'role': 'source_video', 'path': self.video_path})
+        if clips_dir.is_dir():
+            artifacts.extend(
+                {'role': 'swing_clip', 'path': str(path)}
+                for path in sorted(clips_dir.glob('*.mp4'))
+            )
+        effective_settle = (
+            self.realtime_settle_frames
+            if self.realtime_settle_frames is not None
+            else max(0, int(round(self.fps * 0.6)))
+        )
+        effective_window = (
+            self.realtime_window_frames
+            if self.realtime_window_frames is not None
+            else max(32, int(round(self.fps * 8.0)))
+        )
+        replay = {
+            'engine': 'RealtimeSwingEventEngine',
+            'fps': self.fps,
+            'analysis_interval_frames': self.realtime_analysis_interval,
+            'settle_frames': effective_settle,
+            'window_frames': effective_window,
+            'swing_options': dict(self.swing_analysis_options),
+            'coach': {
+                'enabled': self.realtime_coach,
+                'max_chars': self.realtime_coach_max_chars,
+                'max_suggestions': self.realtime_coach_max_suggestions,
+                'min_confidence': self.realtime_coach_min_confidence,
+                'thresholds': dict(self.realtime_coach_biomechanics),
+            },
+        }
+        capture = {
+            'source_kind': 'stream' if self.is_stream_source else 'video_file',
+            'source': self.session_metadata.get('source'),
+            'fps': self.fps,
+            'output_fps': self.output_fps,
+            'resolution': [self.width, self.height],
+            'drop_stale_frames': self.drop_stale_frames,
+            'dropped_stale_frames': int(self.dropped_stale_frames.value),
+            'max_frames': self.max_frames,
+            'roi': self.roi_profile.as_metadata(),
+        }
+        path = write_session_evidence_manifest(
+            self.evidence_manifest,
+            session=self.session_metadata,
+            status=status,
+            capture=capture,
+            replay=replay,
+            artifacts=artifacts,
+        )
+        print(f'📦 [Evidence] 可重放证据清单: {path}')
+        return path
+
     def run(self):
         objs = []
         try:
@@ -1363,6 +1470,15 @@ class MultiprocessPipeline:
                 except FileNotFoundError:
                     pass
 
+        evidence_error = None
+        try:
+            self._write_evidence_manifest(
+                'failed' if failure is not None else ('stopped' if interrupted else 'completed')
+            )
+        except Exception as exc:
+            evidence_error = exc
+            print(f'❌ [Evidence] 证据清单生成失败: {exc}')
+
         if failure is not None:
             detail = failure.get("traceback") or failure.get("message") or ""
             raise PipelineProcessError(
@@ -1370,6 +1486,8 @@ class MultiprocessPipeline:
                 f"{failure.get('error_type', 'Error')}: "
                 f"{failure.get('message', '')}\n{detail}"
             )
+        if evidence_error is not None:
+            raise RuntimeError("Evidence manifest generation failed") from evidence_error
         print("🏁 任务流执行完毕")
 
 
@@ -1388,6 +1506,11 @@ def build_argument_parser():
         '--session-output-root',
         default=None,
         help='会话输出根目录；指定后默认产物写入 <root>/<session-id>/，显式输出路径仍保持不变',
+    )
+    parser.add_argument(
+        '--evidence-manifest',
+        default=None,
+        help='可重放证据包清单；写入FrameRecord/Event哈希与重放参数',
     )
     parser.add_argument('--max-frames', type=int, default=None,
                         help='最大处理帧数；直播流建议设置以便安全结束。默认使用 video_processing.max_frames')
@@ -1562,6 +1685,7 @@ def main_cli(argv=None):
         realtime_open_report=args.realtime_open_report,
         session_id=args.session_id,
         session_output_root=args.session_output_root,
+        evidence_manifest=args.evidence_manifest,
     ).run()
 
 

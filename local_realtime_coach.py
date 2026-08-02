@@ -15,6 +15,8 @@ class LocalRealtimeCoach:
     DEFAULT_THRESHOLDS = {
         "min_hip_shoulder_separation_deg": 15.0,
         "min_shoulder_turn_deg": 75.0,
+        "min_shoulder_turn_change_deg": 12.0,
+        "min_preparation_knee_flexion_deg": 12.0,
         "min_arm_extension_deg": 145.0,
         "min_contact_lateral_body_widths": 0.55,
         "min_weight_transfer_body_widths": 0.08,
@@ -47,22 +49,23 @@ class LocalRealtimeCoach:
         """Return one to three recommendations, each with its own confidence."""
         quality = event.get("quality_flags") or {}
         warnings = effective_quality_warnings(quality)
+        event_confidence = float(event.get("confidence") or 0.0)
         blocker = self._blocking_advice(event, quality, warnings)
         if blocker is not None:
             return [blocker]
 
         candidates = self._biomechanical_candidates(event)
         phases = event.get("phase_counts") or {}
-        event_confidence = float(event.get("confidence") or 0.0)
         backswing_frames = int(phases.get("backswing") or 0)
-        if backswing_frames < 2:
+        backswing_confidence = self._phase_evidence_confidence(event, "backswing")
+        if backswing_frames < 2 and backswing_confidence >= self.min_confidence:
             candidates.append(
                 self._ranked_advice(
                     priority=84,
                     code="short_backswing",
                     message="提前准备充分引拍",
                     category="technique",
-                    confidence=event_confidence,
+                    confidence=backswing_confidence,
                     focus="preparation",
                     group="preparation",
                     evidence={"backswing_frames": backswing_frames},
@@ -70,14 +73,15 @@ class LocalRealtimeCoach:
                 )
             )
         follow_through_frames = int(phases.get("follow_through") or 0)
-        if follow_through_frames < 4:
+        follow_confidence = self._phase_evidence_confidence(event, "follow_through")
+        if follow_through_frames < 4 and follow_confidence >= self.min_confidence:
             candidates.append(
                 self._ranked_advice(
                     priority=98,
                     code="short_follow_through",
                     message="击球后完成随挥",
                     category="technique",
-                    confidence=event_confidence,
+                    confidence=follow_confidence,
                     focus="follow_through",
                     group="follow_through",
                     evidence={"follow_through_frames": follow_through_frames},
@@ -205,6 +209,7 @@ class LocalRealtimeCoach:
                 value is None
                 or metric_confidence is None
                 or metric_confidence < self.min_confidence
+                or metric.get("coach_eligible") is False
                 or value >= threshold
             ):
                 return
@@ -238,6 +243,7 @@ class LocalRealtimeCoach:
                 value is None
                 or metric_confidence is None
                 or metric_confidence < self.min_confidence
+                or metric.get("coach_eligible") is False
                 or value <= threshold
             ):
                 return
@@ -268,9 +274,18 @@ class LocalRealtimeCoach:
             "min_arm_extension_deg",
             94,
             "limited_arm_extension",
-            "击球时手臂再伸展",
+            "挥拍时手臂再舒展",
             "arm_extension",
             "arm_extension",
+        )
+        add_low(
+            "preparation_knee_flexion",
+            "min_preparation_knee_flexion_deg",
+            93,
+            "limited_knee_flexion",
+            "准备时适当降低重心",
+            "knee_flexion",
+            "lower_body",
         )
         add_low(
             "hip_shoulder_separation",
@@ -300,8 +315,8 @@ class LocalRealtimeCoach:
             "gravity",
         )
         add_low(
-            "shoulder_turn",
-            "min_shoulder_turn_deg",
+            "shoulder_turn_change",
+            "min_shoulder_turn_change_deg",
             82,
             "limited_shoulder_turn",
             "提前转肩充分引拍",
@@ -321,9 +336,9 @@ class LocalRealtimeCoach:
         group: str,
         threshold: float,
     ) -> Dict:
-        event_confidence = float(event.get("confidence") or 0.0)
         metric_confidence = float(metric.get("confidence") or 0.0)
-        confidence = event_confidence * 0.45 + metric_confidence * 0.55
+        confidence = metric_confidence
+        calibration = event.get("coach_calibration") or {}
         return self._ranked_advice(
             priority=priority,
             code=code,
@@ -338,6 +353,9 @@ class LocalRealtimeCoach:
                 "threshold": threshold,
                 "metric_confidence": metric_confidence,
                 "source_frames": metric.get("source_frames") or [],
+                "observability": metric.get("observability"),
+                "calibration_policy": calibration.get("policy_version"),
+                "visible_technique_score_9": calibration.get("visible_technique_score_9"),
             },
             source="local_biomechanics_v2",
         )
@@ -384,6 +402,23 @@ class LocalRealtimeCoach:
             "source": source,
             "evidence": evidence,
         }
+
+    def _phase_evidence_confidence(self, event: Dict, phase: str) -> float:
+        evidence = event.get("evidence") or {}
+        if phase == "backswing":
+            boundary = evidence.get("start_boundary") or {}
+            if not boundary:
+                return float(event.get("confidence") or 0.0)
+            return {
+                "low": 0.25,
+                "medium": 0.65,
+                "high": 0.85,
+            }.get(str(boundary.get("confidence") or "").lower(), 0.35)
+        biomechanics = event.get("biomechanics") or {}
+        quality = biomechanics.get("quality") or {}
+        if "contact_evidence_confidence" not in quality:
+            return float(event.get("confidence") or 0.0)
+        return float(quality.get("contact_evidence_confidence") or 0.0)
 
     @staticmethod
     def _float(value) -> Optional[float]:

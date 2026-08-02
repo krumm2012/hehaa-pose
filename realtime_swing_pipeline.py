@@ -25,6 +25,7 @@ from analysis_data_contracts import (
     utc_iso_from_ns,
 )
 from swing_event_analyzer import analyze_frame_records
+from swing_session_quality import build_session_quality_dashboard
 from video_writer_backend import create_video_writer
 
 
@@ -198,7 +199,12 @@ class RealtimeEventJournal:
         sequence = 0
         try:
             try:
-                stream = self.path.open("w", encoding="utf-8")
+                sequence = self._existing_sequence()
+                needs_separator = self._needs_separator()
+                stream = self.path.open("a", encoding="utf-8")
+                if needs_separator:
+                    stream.write("\n")
+                    stream.flush()
             except Exception as exc:
                 self._worker_error = exc
             while True:
@@ -236,6 +242,33 @@ class RealtimeEventJournal:
         finally:
             if stream is not None:
                 stream.close()
+
+    def _existing_sequence(self) -> int:
+        """Resume after the greatest valid sequence already persisted."""
+        if not self.path.exists():
+            return 0
+        greatest = 0
+        with self.path.open("r", encoding="utf-8") as stream:
+            for line in stream:
+                try:
+                    row = json.loads(line)
+                except (TypeError, ValueError):
+                    continue
+                value = row.get("sequence") if isinstance(row, dict) else None
+                if isinstance(value, int) and value > greatest:
+                    greatest = value
+        return greatest
+
+    def _needs_separator(self) -> bool:
+        """Keep a crash-truncated final row separate from the next JSON record."""
+        try:
+            if self.path.stat().st_size == 0:
+                return False
+            with self.path.open("rb") as stream:
+                stream.seek(-1, os.SEEK_END)
+                return stream.read(1) != b"\n"
+        except (FileNotFoundError, OSError):
+            return False
 
 
 class RealtimeSwingEventEngine:
@@ -279,6 +312,13 @@ class RealtimeSwingEventEngine:
             "max_internal_gap": max(0, int(max_internal_gap)),
             "min_event_gap": max(0, int(min_event_gap)),
         }
+        # Keep realtime duplicate suppression aligned with the segmenter's
+        # quality-ordered peak NMS.  The segmenter enforces at least 1.6s
+        # between event peaks even when min_event_gap is configured lower.
+        self.peak_dedup_frames = max(
+            self.options["min_event_gap"],
+            int(round(self.fps * 1.6)),
+        )
         self.coach = coach
         self.session_metadata = deepcopy(session_metadata or {})
         self._frames: Deque[Dict] = deque(maxlen=self.window_frames)
@@ -317,6 +357,8 @@ class RealtimeSwingEventEngine:
                 "settle_frames": self.settle_frames,
                 "analysis_interval_frames": self.analysis_interval_frames,
                 "window_frames": self.window_frames,
+                "peak_dedup_frames": self.peak_dedup_frames,
+                "session_quality": build_session_quality_dashboard(self._events),
             },
             "events": deepcopy(self._events),
             "frame_trace": deepcopy(self._frame_trace),
@@ -333,11 +375,24 @@ class RealtimeSwingEventEngine:
         ]
 
     def _analyze(self, force: bool) -> List[Dict]:
-        if len(self._frames) < self.options["min_event_frames"]:
+        analysis_frames = list(self._frames)
+        if self._events:
+            # Published event ranges are immutable.  Re-analyzing their tail
+            # lets a weaker secondary peak become dominant after the original
+            # peak leaves the rolling window, which previously emitted
+            # overlapping duplicate events.  Only analyze the uncommitted
+            # timeline after the latest published event.
+            committed_through = max(int(event["end_frame"]) for event in self._events)
+            analysis_frames = [
+                record
+                for record in analysis_frames
+                if int(record.get("frame_id", -1)) > committed_through
+            ]
+        if len(analysis_frames) < self.options["min_event_frames"]:
             return []
 
         analysis = analyze_frame_records(
-            list(self._frames),
+            analysis_frames,
             session_metadata=self.session_metadata,
             **self.options,
         )
@@ -375,6 +430,27 @@ class RealtimeSwingEventEngine:
                     coach_advices = [self.coach.advise(event)]
                 event["coach_advices"] = coach_advices
                 event["coach_advice"] = coach_advices[0]
+                coach_generated_ns = time.time_ns()
+                timing = dict(event.get("timing") or {})
+                timing["coach_generated_at"] = utc_iso_from_ns(coach_generated_ns)
+                timing["coach_generated_at_unix_ns"] = coach_generated_ns
+                emitted_ns = timing.get("event_emitted_at_unix_ns")
+                if isinstance(emitted_ns, int) and emitted_ns > 0:
+                    timing["event_to_coach_ms"] = round(
+                        max(0, coach_generated_ns - emitted_ns) / 1_000_000,
+                        3,
+                    )
+                contact_capture_ns = (
+                    ((contact_record or {}).get("timing") or {}).get(
+                        "captured_at_unix_ns"
+                    )
+                )
+                if isinstance(contact_capture_ns, int) and contact_capture_ns > 0:
+                    timing["contact_capture_to_coach_ms"] = round(
+                        max(0, coach_generated_ns - contact_capture_ns) / 1_000_000,
+                        3,
+                    )
+                event["timing"] = timing
             self._events.append(event)
             self._emitted_peaks.append(int(event["peak_frame"]))
             self._append_event_trace(analysis.get("frame_trace", []), candidate, event)
@@ -383,8 +459,24 @@ class RealtimeSwingEventEngine:
 
     def _is_duplicate(self, candidate: Dict) -> bool:
         peak_frame = int(candidate["peak_frame"])
-        tolerance = max(1, int(self.options["min_event_gap"]))
-        return any(abs(peak_frame - emitted_peak) <= tolerance for emitted_peak in self._emitted_peaks)
+        tolerance = max(1, int(self.peak_dedup_frames))
+        if any(
+            abs(peak_frame - emitted_peak) <= tolerance
+            for emitted_peak in self._emitted_peaks
+        ):
+            return True
+
+        # A rolling window can later promote a weaker secondary peak after the
+        # original dominant peak leaves the window edge. If that new peak lies
+        # inside an already-published Swing range, it is the same action rather
+        # than a newly completed Swing.
+        candidate_start = int(candidate["start_frame"])
+        candidate_end = int(candidate["end_frame"])
+        return any(
+            max(candidate_start, int(event["start_frame"]))
+            <= min(candidate_end, int(event["end_frame"]))
+            for event in self._events
+        )
 
     def _append_event_trace(self, traces: List[Dict], candidate: Dict, event: Dict) -> None:
         start_frame = int(candidate["start_frame"])
@@ -553,6 +645,17 @@ class RealtimeSwingOutputManager:
                         or time.time_ns()
                     ),
                 )
+                output_queued_ns = time.time_ns()
+                timing = dict(published.get("timing") or {})
+                timing["output_queued_at"] = utc_iso_from_ns(output_queued_ns)
+                timing["output_queued_at_unix_ns"] = output_queued_ns
+                coach_generated_ns = timing.get("coach_generated_at_unix_ns")
+                if isinstance(coach_generated_ns, int) and coach_generated_ns > 0:
+                    timing["coach_to_output_queue_ms"] = round(
+                        max(0, output_queued_ns - coach_generated_ns) / 1_000_000,
+                        3,
+                    )
+                published["timing"] = timing
                 clip_path = self.clips_dir / self._clip_filename(published)
                 published["clip_path"] = os.path.relpath(
                     clip_path,
@@ -831,6 +934,10 @@ class RealtimeSwingOutputManager:
         )
 
     def _write_live_outputs(self, document: Dict) -> None:
+        document = deepcopy(document)
+        document.setdefault("summary", {})[
+            "session_quality"
+        ] = build_session_quality_dashboard(document.get("events") or [])
         self._atomic_write(
             self.output_json,
             json.dumps(document, ensure_ascii=False, indent=2),
@@ -931,8 +1038,101 @@ class RealtimeSwingOutputManager:
         )
         return preview
 
+    @staticmethod
+    def _render_live_session_dashboard(document: Dict) -> str:
+        dashboard = (document.get("summary") or {}).get("session_quality") or {}
+        quality = dashboard.get("quality") or {}
+        drift = dashboard.get("drift") or {}
+
+        def number(value, digits=0, suffix=""):
+            if value is None:
+                return "-"
+            return f"{float(value):.{digits}f}{suffix}"
+
+        kpis = [
+            (
+                "证据质量",
+                number(quality.get("evidence_quality_score_100"), 0, "/100"),
+            ),
+            (
+                "可见动作",
+                number(quality.get("visible_technique_mean_9"), 1, "/9"),
+            ),
+            (
+                "校准覆盖",
+                number((quality.get("calibrated_event_ratio") or 0.0) * 100, 0, "%"),
+            ),
+            (
+                "触球证据",
+                number((quality.get("contact_supported_ratio") or 0.0) * 100, 0, "%"),
+            ),
+            (
+                "复核比例",
+                number((quality.get("review_recommended_ratio") or 0.0) * 100, 0, "%"),
+            ),
+        ]
+        kpi_html = "".join(
+            f'<div><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong></div>'
+            for label, value in kpis
+        )
+        trend_rows = []
+        for point in dashboard.get("series") or []:
+            score = point.get("visible_score_9")
+            evidence = point.get("evidence_quality_100")
+            score_width = max(0.0, min(100.0, float(score or 0.0) / 9.0 * 100.0))
+            evidence_width = max(0.0, min(100.0, float(evidence or 0.0)))
+            trend_rows.append(
+                '<div class="live-trend-row">'
+                f'<b>#{int(point.get("event_id") or 0)}</b>'
+                '<div class="live-trend-bars">'
+                f'<i class="technique" style="width:{score_width:.1f}%"></i>'
+                f'<i class="evidence" style="width:{evidence_width:.1f}%"></i>'
+                '</div>'
+                f'<span>{number(score, 1, "/9")}</span>'
+                '</div>'
+            )
+        alerts = dashboard.get("alerts") or []
+        alert_html = (
+            '<ul>'
+            + "".join(
+                f'<li>{html.escape(str(alert.get("message") or alert.get("code")))}</li>'
+                for alert in alerts
+            )
+            + '</ul>'
+            if alerts
+            else '<p>当前没有会话级报警。</p>'
+        )
+        state_labels = {
+            "warming_up": "预热中",
+            "stable": "稳定",
+            "improving": "改善",
+            "attention": "需关注",
+            "integrity_blocked": "事件重叠",
+        }
+        state = str(drift.get("status") or "warming_up")
+        if state == "integrity_blocked":
+            note = "相邻事件范围重叠，暂停漂移结论"
+        elif drift.get("ready"):
+            note = (
+                f'前 {int(drift.get("window_size") or 1)} 次与最近 '
+                f'{int(drift.get("window_size") or 1)} 次对比'
+            )
+        else:
+            note = (
+                f'至少 {int(drift.get("minimum_event_count") or 6)} 次挥拍后判断漂移'
+            )
+        return f"""
+        <section class="session-monitor">
+          <div class="session-monitor-head"><div><h2>会话质量与漂移</h2><p>{html.escape(note)}</p></div><strong data-state="{html.escape(state)}">{html.escape(state_labels.get(state, state))}</strong></div>
+          <div class="session-monitor-kpis">{kpi_html}</div>
+          <div class="live-trends">{''.join(trend_rows) or '<p>等待挥拍事件…</p>'}</div>
+          <div class="session-monitor-alerts">{alert_html}</div>
+        </section>
+        """
+
     def _render_live_html(self, document: Dict) -> str:
         summary = document.get("summary") or {}
+        session_dashboard = self._render_live_session_dashboard(document)
         roi = summary.get("roi") or self.roi_metadata
         stream_content = ""
         if self.preview_path is not None and roi.get("enabled"):
@@ -1002,12 +1202,10 @@ class RealtimeSwingOutputManager:
                         f'<ol>{"".join(advice_rows)}</ol></div>'
                     )
             metric_labels = {
-                "hip_shoulder_separation": "肩髋分离",
-                "shoulder_turn": "肩部转动",
-                "arm_extension": "手臂伸展",
+                "shoulder_turn_change": "转肩变化",
+                "preparation_knee_flexion": "准备屈膝",
+                "arm_extension": "挥拍舒展",
                 "contact_lateral_distance": "击球点距离",
-                "weight_transfer": "重心转移",
-                "balance_drift": "平衡漂移",
             }
             metric_rows = []
             for key, label in metric_labels.items():
@@ -1015,9 +1213,18 @@ class RealtimeSwingOutputManager:
                     ((event.get("biomechanics") or {}).get("metrics") or {}).get(key)
                     or {}
                 )
-                if metric.get("value") is None:
+                if (
+                    metric.get("value") is None
+                    or metric.get("coach_eligible") is False
+                ):
                     continue
-                unit = "°" if metric.get("unit") == "deg" else "×身宽"
+                raw_unit = str(metric.get("unit") or "")
+                if "deg" in raw_unit:
+                    unit = "°"
+                elif raw_unit == "body_width":
+                    unit = "×身宽"
+                else:
+                    unit = raw_unit
                 metric_rows.append(
                     '<div class="bio-metric">'
                     f'<span>{html.escape(label)}</span>'
@@ -1050,9 +1257,51 @@ class RealtimeSwingOutputManager:
                     '<strong>本地建议已生效</strong></div>'
                 )
             warnings = ", ".join((event.get("quality_flags") or {}).get("warnings") or []) or "none"
+            start_boundary = (event.get("evidence") or {}).get("start_boundary") or {}
+            classification_context = (event.get("evidence") or {}).get("classification_context") or {}
+            player_context = classification_context.get("player") or {}
+            camera_context = classification_context.get("camera") or {}
+            swing_context = classification_context.get("swing") or {}
+            hand_text = {"right": "右手", "left": "左手"}.get(
+                player_context.get("dominant_hand"),
+                "未知",
+            )
+            camera_text = {
+                "facing_player": "球员面向相机",
+                "behind_player": "相机位于球员后方",
+                "side_or_uncertain": "侧向/不确定",
+                "unknown": "未知",
+            }.get(camera_context.get("view"), "未知")
+            swing_side_text = {
+                "forehand": "正手侧",
+                "backhand": "反手侧",
+                "uncertain": "不确定",
+                "unknown": "未知",
+            }.get(swing_context.get("side"), "未知")
+            coach_calibration = event.get("coach_calibration") or {}
+            visible_score = coach_calibration.get("visible_technique_score_9")
+            visible_uncertainty = coach_calibration.get("uncertainty_9")
+            calibration_text = (
+                f"{float(visible_score):.1f}/9"
+                + (
+                    f" ±{float(visible_uncertainty):.1f}"
+                    if visible_uncertainty is not None
+                    else ""
+                )
+                if visible_score is not None
+                else "证据不足"
+            )
+            boundary_text = " · ".join(
+                str(value)
+                for value in (
+                    start_boundary.get("mode"),
+                    start_boundary.get("confidence"),
+                )
+                if value
+            ) or "legacy"
             cards.append(
                 f"""
-                <article class="event-card">
+                <article class="event-card" data-annotation-card data-annotation-id="model-{int(event['event_id'])}" data-source-event-id="{int(event['event_id'])}" data-predicted-stroke-type="{html.escape(str(event.get('stroke_type') or 'Unknown'))}" data-peak-frame="{html.escape(str('' if event.get('peak_frame') is None else event.get('peak_frame')))}">
                   <div class="event-heading">
                     <h2>Swing #{int(event['event_id'])} · {html.escape(str(event.get('stroke_type') or 'Unknown'))}</h2>
                     <span>{float(event.get('confidence') or 0.0):.1%}</span>
@@ -1065,12 +1314,45 @@ class RealtimeSwingOutputManager:
                     <div><dt>Frames</dt><dd>{int(event['start_frame'])}–{int(event['end_frame'])}</dd></div>
                     <div><dt>Contact</dt><dd>{html.escape(str(event.get('contact_frame', '-')))}</dd></div>
                     <div><dt>Peak</dt><dd>{html.escape(str(event.get('peak_frame', '-')))}</dd></div>
+                    <div><dt>Start boundary</dt><dd>{html.escape(boundary_text)}</dd></div>
+                    <div><dt>球员 / 机位 / 挥拍侧</dt><dd>{html.escape(hand_text)} · {html.escape(camera_text)} · {html.escape(swing_side_text)}</dd></div>
+                    <div><dt>可见动作校准</dt><dd>{html.escape(calibration_text)}</dd></div>
                     <div><dt>Warnings</dt><dd>{html.escape(warnings)}</dd></div>
                   </dl>
+                  <div class="annotation-box">
+                    <div class="annotation-frames">
+                      <label>人工开始帧<input type="number" min="0" step="1" data-field="start_frame" value="{int(event['start_frame'])}"></label>
+                      <label>人工触球帧<input type="number" min="0" step="1" data-field="contact_frame" value="{html.escape(str('' if event.get('contact_frame') is None else event.get('contact_frame')))}"></label>
+                      <label>人工结束帧<input type="number" min="0" step="1" data-field="end_frame" value="{int(event['end_frame'])}"></label>
+                    </div>
+                    <label>人工类型
+                      <select data-field="actual_stroke_type">
+                        <option value="Forehand"{' selected' if event.get('stroke_type') == 'Forehand' else ''}>Forehand</option>
+                        <option value="Backhand"{' selected' if event.get('stroke_type') == 'Backhand' else ''}>Backhand</option>
+                        <option value="Two-Handed Backhand"{' selected' if event.get('stroke_type') == 'Two-Handed Backhand' else ''}>Two-Handed Backhand</option>
+                        <option value="Serve"{' selected' if event.get('stroke_type') == 'Serve' else ''}>Serve</option>
+                        <option value="Volley"{' selected' if event.get('stroke_type') == 'Volley' else ''}>Volley</option>
+                        <option value="Unclear"{' selected' if event.get('stroke_type') not in {'Forehand', 'Backhand', 'Two-Handed Backhand', 'Serve', 'Volley'} else ''}>Unclear</option>
+                      </select>
+                    </label>
+                    <div class="annotation-checks">
+                      <label><input type="checkbox" data-field="valid_hit" checked> 有效击球</label>
+                      <label><input type="checkbox" data-field="count_correct" checked> 计数正确</label>
+                      <label><input type="checkbox" data-field="needs_review" checked> 待人工确认（确认后取消）</label>
+                      <label><input type="checkbox" data-tag="wrong_type"> 类型错误</label>
+                      <label><input type="checkbox" data-tag="contact_timing"> 触球帧偏差</label>
+                      <label><input type="checkbox" data-tag="event_boundary"> 边界偏差</label>
+                    </div>
+                    <label>备注<textarea rows="2" data-field="note"></textarea></label>
+                  </div>
                 </article>
                 """
             )
         content = "\n".join(cards) or '<p class="waiting">Waiting for the first completed Swing event…</p>'
+        event_json_href = os.path.relpath(
+            self.output_json,
+            self.output_html.parent,
+        ).replace(os.sep, "/")
         return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -1086,12 +1368,35 @@ class RealtimeSwingOutputManager:
     h1,h2,p {{ margin:0; }}
     .summary {{ color:#aab8cc; }}
     main {{ display:grid; gap:18px; padding-bottom:40px; }}
+    .session-monitor {{ border:1px solid #365d8c; border-radius:14px; background:#111d2d; padding:16px; }}
+    .session-monitor-head {{ display:flex; justify-content:space-between; gap:16px; align-items:start; }}
+    .session-monitor-head p {{ margin-top:4px; color:#93a4bb; }}
+    .session-monitor-head > strong {{ border-radius:999px; background:#27364c; color:#b8c8dc; padding:5px 10px; }}
+    .session-monitor-head > strong[data-state="stable"],.session-monitor-head > strong[data-state="improving"] {{ background:#23432f; color:#baf1c8; }}
+    .session-monitor-head > strong[data-state="attention"],.session-monitor-head > strong[data-state="integrity_blocked"] {{ background:#512c2c; color:#ffb3b3; }}
+    .session-monitor-kpis {{ display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin-top:14px; }}
+    .session-monitor-kpis div {{ display:grid; gap:2px; border:1px solid var(--line); border-radius:8px; padding:9px 11px; }}
+    .session-monitor-kpis span {{ color:#93a4bb; font-size:12px; }}
+    .session-monitor-kpis strong {{ font-size:20px; }}
+    .live-trends {{ display:grid; gap:6px; margin-top:14px; }}
+    .live-trend-row {{ display:grid; grid-template-columns:32px minmax(100px,1fr) 58px; gap:8px; align-items:center; font-size:12px; }}
+    .live-trend-bars {{ position:relative; height:17px; border-radius:5px; background:#243247; overflow:hidden; }}
+    .live-trend-bars i {{ position:absolute; left:0; height:8px; }}
+    .live-trend-bars .technique {{ top:0; background:#9b86ff; }}
+    .live-trend-bars .evidence {{ bottom:0; background:#44c4a1; }}
+    .session-monitor-alerts {{ margin-top:12px; color:#ffbf91; }}
+    .session-monitor-alerts ul {{ margin:0; padding-left:20px; }}
     .stream-card {{ border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }}
     .stream-heading {{ display:flex; justify-content:space-between; gap:20px; align-items:center; margin-bottom:12px; }}
     .stream-heading p,.stream-note {{ color:#93a4bb; overflow-wrap:anywhere; }}
     .stream-heading strong {{ color:#0a0f1a; background:var(--accent); border-radius:999px; padding:5px 10px; white-space:nowrap; }}
     #roi-preview {{ display:block; width:100%; max-height:680px; object-fit:contain; background:#000; border-radius:9px; }}
     .stream-note {{ margin-top:10px; }}
+    .live-coach-feed {{ border:1px solid #46643c; border-radius:14px; background:#182317; padding:16px; }}
+    .live-coach-feed h2 {{ color:#dff7d4; }}
+    .live-coach-feed p {{ margin-top:6px; color:#a9c99e; }}
+    .live-coach-feed ol {{ margin:12px 0 0; padding-left:22px; display:grid; gap:6px; }}
+    .live-coach-feed strong {{ color:#e8ffd8; font-size:18px; }}
     .event-card {{ border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }}
     .event-heading {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }}
     .event-heading span {{ color:var(--accent); font-weight:700; }}
@@ -1113,20 +1418,514 @@ class RealtimeSwingOutputManager:
     .deepseek-advice {{ display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:10px; padding:12px 16px; border-radius:9px; background:#17253a; border:1px solid #365d8c; }}
     .deepseek-advice span,.deepseek-advice small {{ color:#9bbce2; }} .deepseek-advice strong {{ color:#e3f1ff; font-size:18px; }}
     .deepseek-advice.pending,.deepseek-advice.unavailable {{ opacity:.72; }}
+    .annotation-workspace {{ border:1px solid #725f2d; border-radius:14px; background:#1e1b13; padding:16px; }}
+    .annotation-workspace h2 {{ color:#ffe39a; }}
+    .annotation-actions {{ display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:12px; }}
+    .annotation-actions button {{ border:1px solid var(--accent); border-radius:8px; background:var(--accent); color:#17130a; padding:8px 12px; font-weight:700; cursor:pointer; }}
+    .timeline-review {{ display:block; margin-top:10px; color:#d8c99f; }}
+    .annotation-readiness {{ margin-top:8px; color:#ffb68c; }}
+    .annotation-readiness[data-state="ready"] {{ color:#a9e99a; }}
+    .annotation-box {{ display:grid; gap:9px; margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }}
+    .annotation-box label {{ color:#c6d2e2; font-size:13px; }}
+    .annotation-box input[type="number"],.annotation-box select,.annotation-box textarea {{ width:100%; margin-top:4px; border:1px solid var(--line); border-radius:7px; background:#0e1521; color:#edf3fb; padding:8px; }}
+    .annotation-frames {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }}
+    .annotation-checks {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }}
+    .manual-events {{ display:grid; gap:10px; margin-top:12px; }}
+    .manual-event-card {{ border:1px solid #927438; border-radius:10px; background:#272115; padding:12px; }}
+    .manual-event-heading {{ display:flex; justify-content:space-between; align-items:center; gap:10px; }}
+    .manual-event-heading button {{ border:1px solid #d98c8c; border-radius:7px; background:transparent; color:#ffb1b1; padding:5px 8px; cursor:pointer; }}
+    .review-workflow {{ border:1px solid #8a6d2f; border-radius:14px; background:#17170f; padding:16px; }}
+    .review-workflow-head {{ display:flex; justify-content:space-between; align-items:start; gap:18px; }}
+    .review-workflow-head h2 {{ color:#f4d995; }}
+    .review-workflow-head p {{ margin-top:5px; color:#b9ad8d; }}
+    .review-workflow-state {{ border:1px solid #5d5134; border-radius:999px; padding:5px 10px; color:#d8c99f; white-space:nowrap; }}
+    .review-workflow-state[data-state="finalized"] {{ border-color:#507a49; color:#bce7b2; background:#1b2a18; }}
+    .review-workflow-state[data-state="error"],.review-workflow-state[data-state="needs_review"] {{ border-color:#9a5b43; color:#ffc0a8; background:#2b1913; }}
+    .workflow-track {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; margin-top:14px; counter-reset:stage; }}
+    .workflow-track span {{ counter-increment:stage; border-top:3px solid #4a4534; padding:7px 2px 0; color:#887f68; font-size:12px; }}
+    .workflow-track span::before {{ content:counter(stage) '. '; }}
+    .workflow-track span[data-active="true"] {{ border-color:#f4c76b; color:#f4d995; }}
+    .review-actions {{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:15px; }}
+    .review-file {{ position:relative; overflow:hidden; display:inline-flex; border:1px solid #8a6d2f; border-radius:8px; padding:8px 12px; color:#f4d995; cursor:pointer; }}
+    .review-file input {{ position:absolute; inset:0; opacity:0; cursor:pointer; }}
+    .review-actions button {{ border:1px solid #f4c76b; border-radius:8px; background:#f4c76b; color:#17130a; padding:8px 12px; font-weight:700; cursor:pointer; }}
+    .review-actions button.secondary {{ background:transparent; color:#f4d995; }}
+    .review-actions button:disabled {{ opacity:.45; cursor:not-allowed; }}
+    .review-message {{ margin-top:10px; color:#d5c9a9; }}
+    .review-message[data-state="error"] {{ color:#f6a487; }}
+    .review-metrics {{ display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin-top:14px; }}
+    .review-metrics div {{ border:1px solid #4a4534; border-radius:8px; padding:9px 11px; }}
+    .review-metrics span {{ display:block; color:#9e957d; font-size:12px; }}
+    .review-metrics strong {{ font-size:20px; }}
+    .coach-comparisons {{ display:grid; gap:10px; margin-top:14px; }}
+    .coach-comparison {{ border:1px solid #4a4534; border-radius:10px; padding:12px; }}
+    .coach-comparison-head {{ display:flex; justify-content:space-between; gap:12px; color:#d8c99f; }}
+    .coach-columns {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }}
+    .coach-column {{ border:1px solid #3c4d3a; border-radius:8px; background:#172017; padding:10px; }}
+    .coach-column.manual {{ border-color:#8a6d2f; background:#241f12; }}
+    .coach-column h3 {{ margin:0; color:#a8d5a2; font-size:13px; }}
+    .coach-column.manual h3 {{ color:#f4c76b; }}
+    .coach-column ol {{ margin:7px 0 0; padding-left:20px; }}
+    .coach-column small {{ color:#9e957d; }}
     dl {{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:14px 0 0; }}
     dl div {{ border:1px solid var(--line); border-radius:8px; padding:9px 11px; }}
     dt {{ color:#93a4bb; font-size:12px; text-transform:uppercase; }} dd {{ margin:2px 0 0; }}
     .waiting {{ padding:50px; text-align:center; border:1px dashed var(--line); border-radius:14px; color:#93a4bb; }}
-    @media(max-width:720px) {{ header {{ align-items:start; flex-direction:column; }} dl,.biomechanics {{ grid-template-columns:1fr 1fr; }} }}
+    @media(max-width:720px) {{ header {{ align-items:start; flex-direction:column; }} .session-monitor-kpis,.review-metrics {{ grid-template-columns:1fr 1fr; }} dl,.biomechanics,.annotation-frames,.annotation-checks,.coach-columns {{ grid-template-columns:1fr; }} .workflow-track {{ grid-template-columns:1fr 1fr; }} }}
   </style>
 </head>
 <body>
   <header>
-    <div><h1>Live Swing Events</h1><p class="summary">Auto-refresh pauses while a clip is playing.</p></div>
-    <strong>{int(summary.get('swing_event_count') or 0)} events · frame {int(summary.get('latest_frame') or -1)}</strong>
+    <div><h1>Live Swing Events</h1><p class="summary">Coach 建议每 200 ms 增量更新。</p></div>
+    <strong id="report-summary">{int(summary.get('swing_event_count') or 0)} events · frame {int(summary.get('latest_frame') or -1)}</strong>
   </header>
-  <main>{stream_content}{content}</main>
+  <main>
+    {session_dashboard}
+    <section id="live-coach-feed" class="live-coach-feed" aria-live="polite"><h2>实时 Coach</h2><p>等待第一条建议…</p></section>
+    <section id="annotation-workspace" class="annotation-workspace">
+      <h2>人工真值标注 V2</h2>
+      <p class="summary">可修正事件边界；系统漏检的挥拍请单独补录。标注会保存在当前浏览器，页面刷新后仍保留。</p>
+      <label class="timeline-review"><input id="timeline-review-complete" type="checkbox"> 已完整检查整段视频（完成后才计算 Precision / Recall / F1）</label>
+      <p id="annotation-readiness" class="annotation-readiness"></p>
+      <div class="annotation-actions">
+        <button id="add-missed-event" type="button">新增漏检挥拍</button>
+        <button id="download-annotations" type="button">下载标注 JSON</button>
+        <span id="annotation-status" class="summary"></span>
+      </div>
+      <div id="manual-events" class="manual-events"></div>
+    </section>
+    <section id="manual-review-workflow" class="review-workflow">
+      <div class="review-workflow-head">
+        <div><h2>人工校准闭环</h2><p>导入人工标注，生成评估，并对比实时 Coach 与人工边界重算结果。</p></div>
+        <strong id="review-workflow-state" class="review-workflow-state" data-state="waiting">等待标注</strong>
+      </div>
+      <div class="workflow-track" aria-label="人工校准流程">
+        <span id="review-stage-import" data-active="true">导入标注</span>
+        <span id="review-stage-validate">完整性校验</span>
+        <span id="review-stage-evaluate">生成评估</span>
+        <span id="review-stage-coach">重算 Coach</span>
+      </div>
+      <div class="review-actions">
+        <label class="review-file">选择人工标注 JSON<input id="manual-review-file" type="file" accept="application/json,.json"></label>
+        <button id="evaluate-imported-review" type="button" disabled>评估导入标注</button>
+        <button id="evaluate-current-review" class="secondary" type="button">评估页面当前标注</button>
+      </div>
+      <p id="manual-review-message" class="review-message">使用本地 workflow 服务打开本页后，可生成持久化评估与人工 Coach。</p>
+      <div id="manual-review-metrics" class="review-metrics" hidden></div>
+      <div id="coach-comparisons" class="coach-comparisons"></div>
+    </section>
+    {stream_content}{content}
+  </main>
   <script>
+    const eventJsonUrl = {json.dumps(event_json_href)};
+    const coachFeed = document.getElementById('live-coach-feed');
+    const reportSummary = document.getElementById('report-summary');
+    const annotationWorkspace = document.getElementById('annotation-workspace');
+    const manualEvents = document.getElementById('manual-events');
+    const timelineReviewComplete = document.getElementById('timeline-review-complete');
+    const annotationStatus = document.getElementById('annotation-status');
+    const annotationReadiness = document.getElementById('annotation-readiness');
+    const manualReviewWorkspace = document.getElementById('manual-review-workflow');
+    const manualReviewFile = document.getElementById('manual-review-file');
+    const manualReviewMessage = document.getElementById('manual-review-message');
+    const manualReviewState = document.getElementById('review-workflow-state');
+    const manualReviewMetrics = document.getElementById('manual-review-metrics');
+    const coachComparisons = document.getElementById('coach-comparisons');
+    const evaluateImportedReview = document.getElementById('evaluate-imported-review');
+    const evaluateCurrentReview = document.getElementById('evaluate-current-review');
+    const annotationStorageKey = `tennis.swing.annotations.v2:${{location.pathname}}:${{eventJsonUrl}}`;
+    let coachFeedPending = false;
+    let manualCounter = 0;
+    let lastAnnotationInteraction = 0;
+    let importedReviewPayload = null;
+
+    function integerField(card, field) {{
+      const input = card.querySelector(`[data-field="${{field}}"]`);
+      if (!input || input.value.trim() === '') return null;
+      const value = Number(input.value);
+      return Number.isFinite(value) ? Math.round(value) : null;
+    }}
+
+    function annotationFromCard(card) {{
+      const sourceText = card.dataset.sourceEventId || '';
+      const sourceNumber = Number(sourceText);
+      const sourceEventId = sourceText === '' ? null : (Number.isFinite(sourceNumber) ? sourceNumber : sourceText);
+      const peakNumber = Number(card.dataset.peakFrame);
+      return {{
+        annotation_id: card.dataset.annotationId,
+        source_event_id: sourceEventId,
+        predicted_stroke_type: card.dataset.predictedStrokeType || null,
+        actual_stroke_type: card.querySelector('[data-field="actual_stroke_type"]').value,
+        count_correct: card.querySelector('[data-field="count_correct"]').checked,
+        valid_hit: card.querySelector('[data-field="valid_hit"]').checked,
+        needs_review: card.querySelector('[data-field="needs_review"]').checked,
+        issue_tags: [...card.querySelectorAll('[data-tag]:checked')].map(input => input.dataset.tag),
+        note: card.querySelector('[data-field="note"]').value.trim(),
+        frames: {{
+          start: integerField(card, 'start_frame'),
+          contact: integerField(card, 'contact_frame'),
+          peak: Number.isFinite(peakNumber) ? peakNumber : null,
+          end: integerField(card, 'end_frame')
+        }}
+      }};
+    }}
+
+    function collectAnnotations() {{
+      return {{
+        schema_version: 'swing_manual_annotations_v2',
+        timeline_review_complete: timelineReviewComplete.checked,
+        source: {{ event_json: eventJsonUrl }},
+        events: [...document.querySelectorAll('[data-annotation-card]')].map(annotationFromCard)
+      }};
+    }}
+
+    function updateAnnotationReadiness(payload) {{
+      const pending = payload.events.filter(event => event.needs_review).length;
+      if (pending > 0) {{
+        annotationReadiness.dataset.state = 'blocked';
+        annotationReadiness.textContent = `还有 ${{pending}} 条“需要复核”，评估指标将保持 provisional。`;
+      }} else if (!payload.timeline_review_complete) {{
+        annotationReadiness.dataset.state = 'blocked';
+        annotationReadiness.textContent = '请完整检查整段视频后勾选确认项。';
+      }} else {{
+        annotationReadiness.dataset.state = 'ready';
+        annotationReadiness.textContent = '已满足正式评估条件，可以下载标注 JSON。';
+      }}
+    }}
+
+    function saveAnnotations() {{
+      lastAnnotationInteraction = Date.now();
+      const payload = collectAnnotations();
+      localStorage.setItem(annotationStorageKey, JSON.stringify(payload));
+      updateAnnotationReadiness(payload);
+      annotationStatus.textContent = `已在浏览器保存 ${{payload.events.length}} 条`;
+      return payload;
+    }}
+
+    function setAnnotationField(card, field, value) {{
+      const input = card.querySelector(`[data-field="${{field}}"]`);
+      if (!input || value === undefined || value === null) return;
+      if (input.type === 'checkbox') input.checked = Boolean(value);
+      else input.value = String(value);
+    }}
+
+    function applyAnnotation(card, imported) {{
+      setAnnotationField(card, 'actual_stroke_type', imported.actual_stroke_type);
+      setAnnotationField(card, 'count_correct', imported.count_correct);
+      setAnnotationField(card, 'valid_hit', imported.valid_hit);
+      setAnnotationField(card, 'needs_review', imported.needs_review);
+      setAnnotationField(card, 'note', imported.note || '');
+      const frames = imported.frames || {{}};
+      setAnnotationField(card, 'start_frame', frames.start ?? imported.start_frame);
+      setAnnotationField(card, 'contact_frame', frames.contact ?? imported.contact_frame);
+      setAnnotationField(card, 'end_frame', frames.end ?? imported.end_frame);
+      const tags = new Set(imported.issue_tags || []);
+      card.querySelectorAll('[data-tag]').forEach(input => input.checked = tags.has(input.dataset.tag));
+    }}
+
+    function addMissedEvent(imported = null, persist = true) {{
+      manualCounter += 1;
+      const card = document.createElement('article');
+      card.className = 'manual-event-card';
+      card.dataset.annotationCard = '';
+      card.dataset.annotationId = String(imported?.annotation_id ?? imported?.event_id ?? `manual-${{manualCounter}}`);
+      card.dataset.sourceEventId = imported?.source_event_id == null ? '' : String(imported.source_event_id);
+      card.dataset.predictedStrokeType = '';
+      card.dataset.peakFrame = String(imported?.frames?.peak ?? '');
+      card.innerHTML = `
+        <div class="manual-event-heading"><h2>人工补充挥拍</h2><button type="button">删除</button></div>
+        <div class="annotation-box">
+          <div class="annotation-frames">
+            <label>人工开始帧<input type="number" min="0" step="1" data-field="start_frame"></label>
+            <label>人工触球帧<input type="number" min="0" step="1" data-field="contact_frame"></label>
+            <label>人工结束帧<input type="number" min="0" step="1" data-field="end_frame"></label>
+          </div>
+          <label>人工类型<select data-field="actual_stroke_type"><option>Forehand</option><option>Backhand</option><option>Two-Handed Backhand</option><option>Serve</option><option>Volley</option><option selected>Unclear</option></select></label>
+          <div class="annotation-checks">
+            <label><input type="checkbox" data-field="valid_hit" checked> 有效击球</label>
+            <label><input type="checkbox" data-field="count_correct"> 计数正确</label>
+            <label><input type="checkbox" data-field="needs_review"> 需要复核</label>
+            <label><input type="checkbox" data-tag="missed_event" checked> 漏检事件</label>
+            <label><input type="checkbox" data-tag="contact_timing"> 触球帧偏差</label>
+            <label><input type="checkbox" data-tag="event_boundary"> 边界偏差</label>
+          </div>
+          <label>备注<textarea rows="2" data-field="note"></textarea></label>
+        </div>`;
+      card.querySelector('button').addEventListener('click', () => {{ card.remove(); saveAnnotations(); }});
+      if (imported) applyAnnotation(card, imported);
+      manualEvents.append(card);
+      if (persist) saveAnnotations();
+      return card;
+    }}
+
+    function restoreAnnotations() {{
+      let payload;
+      try {{ payload = JSON.parse(localStorage.getItem(annotationStorageKey) || 'null'); }}
+      catch (_error) {{ payload = null; }}
+      if (!payload || !Array.isArray(payload.events)) return;
+      timelineReviewComplete.checked = Boolean(payload.timeline_review_complete);
+      for (const imported of payload.events) {{
+        const sourceId = imported.source_event_id ?? imported.event_id ?? null;
+        const card = sourceId == null ? null : document.querySelector(`[data-annotation-card][data-source-event-id="${{String(sourceId)}}"]`);
+        if (card) applyAnnotation(card, imported);
+        else addMissedEvent(imported, false);
+      }}
+      annotationStatus.textContent = `已恢复 ${{payload.events.length}} 条浏览器标注`;
+    }}
+
+    function downloadAnnotations() {{
+      const payload = saveAnnotations();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {{ type: 'application/json' }});
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'swing_manual_annotations_v2.json';
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }}
+
+    annotationWorkspace.addEventListener('input', saveAnnotations);
+    annotationWorkspace.addEventListener('change', saveAnnotations);
+    document.getElementById('add-missed-event').addEventListener('click', () => addMissedEvent());
+    document.getElementById('download-annotations').addEventListener('click', downloadAnnotations);
+    restoreAnnotations();
+    updateAnnotationReadiness(collectAnnotations());
+
+    function reviewPercent(value) {{
+      return value == null ? '待确认' : `${{(Number(value) * 100).toFixed(1)}}%`;
+    }}
+
+    function setReviewStage(stage) {{
+      const order = ['import', 'validate', 'evaluate', 'coach'];
+      const activeIndex = Math.max(0, order.indexOf(stage));
+      order.forEach((name, index) => {{
+        document.getElementById(`review-stage-${{name}}`).dataset.active = String(index <= activeIndex);
+      }});
+    }}
+
+    function setReviewStatus(label, state, message) {{
+      manualReviewState.textContent = label;
+      manualReviewState.dataset.state = state;
+      manualReviewMessage.textContent = message || '';
+      manualReviewMessage.dataset.state = state === 'error' ? 'error' : '';
+    }}
+
+    function coachColumn(title, advices, manual = false) {{
+      const column = document.createElement('div');
+      column.className = `coach-column${{manual ? ' manual' : ''}}`;
+      const heading = document.createElement('h3');
+      heading.textContent = title;
+      column.append(heading);
+      const list = document.createElement('ol');
+      for (const advice of advices || []) {{
+        const row = document.createElement('li');
+        const message = document.createElement('span');
+        message.textContent = advice.message || advice.code || '无建议';
+        const confidence = document.createElement('small');
+        confidence.textContent = ` ${{reviewPercent(advice.confidence)}}`;
+        row.append(message, confidence);
+        list.append(row);
+      }}
+      if (!list.children.length) {{
+        const row = document.createElement('li');
+        row.textContent = '等待正式人工复核';
+        list.append(row);
+      }}
+      column.append(list);
+      return column;
+    }}
+
+    function renderReviewState(state) {{
+      const status = state?.status || 'waiting_for_annotations';
+      const validation = state?.validation || null;
+      const summary = state?.evaluation?.summary || null;
+      if (status === 'finalized') {{
+        setReviewStatus('已完成人工校准', 'finalized', '评估已定稿，人工 Coach 已按确认边界重新计算。');
+        setReviewStage('coach');
+      }} else if (status === 'needs_review') {{
+        const pending = validation?.pending_count ?? 0;
+        setReviewStatus('仍需人工复核', 'needs_review', `已生成 provisional 评估；还有 ${{pending}} 条需要复核，暂不生成正式人工 Coach。`);
+        setReviewStage('evaluate');
+      }} else {{
+        setReviewStatus('等待标注', 'waiting', '请选择下载的 swing_manual_annotations_v2.json，或直接评估页面当前标注。');
+        setReviewStage('import');
+      }}
+
+      manualReviewMetrics.replaceChildren();
+      if (summary) {{
+        const metrics = [
+          ['Precision', reviewPercent(summary.precision)],
+          ['Recall', reviewPercent(summary.recall)],
+          ['F1', reviewPercent(summary.f1)],
+          ['类型准确率', reviewPercent(summary.stroke_type_accuracy)],
+          ['触球准确率', reviewPercent(summary.contact_accuracy)],
+        ];
+        for (const [label, value] of metrics) {{
+          const item = document.createElement('div');
+          const caption = document.createElement('span');
+          caption.textContent = label;
+          const number = document.createElement('strong');
+          number.textContent = value;
+          item.append(caption, number);
+          manualReviewMetrics.append(item);
+        }}
+        manualReviewMetrics.hidden = false;
+      }} else {{
+        manualReviewMetrics.hidden = true;
+      }}
+
+      coachComparisons.replaceChildren();
+      for (const comparison of state?.comparisons || []) {{
+        const card = document.createElement('article');
+        card.className = 'coach-comparison';
+        const head = document.createElement('div');
+        head.className = 'coach-comparison-head';
+        const title = document.createElement('strong');
+        title.textContent = `Swing #${{comparison.source_event_id ?? comparison.event_id}} · ${{comparison.stroke_type || 'Unknown'}}`;
+        const changes = document.createElement('span');
+        changes.textContent = comparison.changed_fields?.length
+          ? `变化：${{comparison.changed_fields.join('、')}}`
+          : '人工边界与 Coach 未变化';
+        head.append(title, changes);
+        const columns = document.createElement('div');
+        columns.className = 'coach-columns';
+        columns.append(
+          coachColumn('实时 Coach（原始）', comparison.original_coach, false),
+          coachColumn('人工校准 Coach', comparison.manual_coach, true),
+        );
+        card.append(head, columns);
+        coachComparisons.append(card);
+      }}
+    }}
+
+    function applyImportedReviewToEditor(payload) {{
+      if (!payload || !Array.isArray(payload.events)) return;
+      timelineReviewComplete.checked = Boolean(payload.timeline_review_complete);
+      for (const imported of payload.events) {{
+        const sourceId = imported.source_event_id ?? imported.event_id ?? null;
+        const card = sourceId == null ? null : document.querySelector(`[data-annotation-card][data-source-event-id="${{String(sourceId)}}"]`);
+        if (card) applyAnnotation(card, imported);
+        else addMissedEvent(imported, false);
+      }}
+      saveAnnotations();
+    }}
+
+    async function submitManualReview(payload) {{
+      if (location.protocol === 'file:') {{
+        setReviewStatus('需要本地服务', 'error', '请运行 manual_review_workflow.py 后从 http://127.0.0.1 打开本页。');
+        return;
+      }}
+      setReviewStatus('处理中', 'waiting', '正在校验标注并重新聚合逐帧证据…');
+      setReviewStage('validate');
+      evaluateImportedReview.disabled = true;
+      evaluateCurrentReview.disabled = true;
+      try {{
+        const response = await fetch('/api/manual-review/evaluate', {{
+          method: 'POST',
+          headers: {{ 'Content-Type': 'application/json' }},
+          body: JSON.stringify(payload),
+        }});
+        const state = await response.json();
+        if (!response.ok) throw new Error(state.message || state.error || '人工校准失败');
+        renderReviewState(state);
+      }} catch (error) {{
+        setReviewStatus('校准失败', 'error', error.message || String(error));
+        setReviewStage('validate');
+      }} finally {{
+        evaluateImportedReview.disabled = !importedReviewPayload;
+        evaluateCurrentReview.disabled = false;
+      }}
+    }}
+
+    manualReviewFile.addEventListener('change', async event => {{
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      try {{
+        const payload = JSON.parse(await file.text());
+        if (payload.schema_version !== 'swing_manual_annotations_v2' || !Array.isArray(payload.events)) {{
+          throw new Error('请选择 swing_manual_annotations_v2 JSON');
+        }}
+        importedReviewPayload = payload;
+        applyImportedReviewToEditor(payload);
+        const pending = payload.events.filter(item => item.needs_review).length;
+        evaluateImportedReview.disabled = false;
+        setReviewStatus(
+          pending ? '导入完成，仍需复核' : '导入完成',
+          pending ? 'needs_review' : 'waiting',
+          `已读取 ${{payload.events.length}} 条标注；${{pending ? `其中 ${{pending}} 条仍需复核。` : '可以生成正式评估。'}}`,
+        );
+        setReviewStage('import');
+      }} catch (error) {{
+        importedReviewPayload = null;
+        evaluateImportedReview.disabled = true;
+        setReviewStatus('导入失败', 'error', error.message || String(error));
+      }}
+    }});
+    evaluateImportedReview.addEventListener('click', () => submitManualReview(importedReviewPayload));
+    evaluateCurrentReview.addEventListener('click', () => submitManualReview(collectAnnotations()));
+
+    async function loadManualReviewState() {{
+      if (location.protocol === 'file:') {{
+        renderReviewState({{ status: 'waiting_for_annotations' }});
+        manualReviewMessage.textContent = '当前是 file:// 页面；运行 manual_review_workflow.py 后可生成评估和人工 Coach。';
+        return;
+      }}
+      try {{
+        const response = await fetch('/api/manual-review/state', {{ cache: 'no-store' }});
+        if (response.ok) renderReviewState(await response.json());
+      }} catch (error) {{
+        setReviewStatus('服务不可用', 'error', error.message || String(error));
+      }}
+    }}
+    loadManualReviewState();
+
+    function renderCoachFeed(documentPayload) {{
+      const events = Array.isArray(documentPayload.events) ? documentPayload.events : [];
+      const summary = documentPayload.summary || {{}};
+      reportSummary.textContent = `${{events.length}} events · frame ${{summary.latest_frame ?? -1}}`;
+      coachFeed.replaceChildren();
+      const title = document.createElement('h2');
+      title.textContent = '实时 Coach';
+      coachFeed.append(title);
+      if (!events.length) {{
+        const waiting = document.createElement('p');
+        waiting.textContent = '等待第一条建议…';
+        coachFeed.append(waiting);
+        return;
+      }}
+      const latest = events[events.length - 1];
+      const meta = document.createElement('p');
+      meta.textContent = `Swing #${{latest.event_id}} · ${{latest.stroke_type || 'Unknown'}}`;
+      coachFeed.append(meta);
+      const advices = Array.isArray(latest.coach_advices) && latest.coach_advices.length
+        ? latest.coach_advices
+        : (latest.coach_advice ? [latest.coach_advice] : []);
+      const list = document.createElement('ol');
+      for (const advice of advices.slice(0, 3)) {{
+        if (!advice || !advice.message) continue;
+        const row = document.createElement('li');
+        const message = document.createElement('strong');
+        message.textContent = advice.message;
+        row.append(message);
+        list.append(row);
+      }}
+      if (list.children.length) coachFeed.append(list);
+    }}
+
+    async function refreshCoachFeed() {{
+      if (coachFeedPending) return;
+      coachFeedPending = true;
+      try {{
+        const response = await fetch(`${{eventJsonUrl}}?t=${{Date.now()}}`, {{ cache: 'no-store' }});
+        if (response.ok) renderCoachFeed(await response.json());
+      }} catch (_error) {{
+        // file:// reports cannot fetch siblings; the slower HTML refresh below remains available.
+      }} finally {{
+        coachFeedPending = false;
+      }}
+    }}
+    refreshCoachFeed();
+    setInterval(refreshCoachFeed, 200);
+
     const preview = document.getElementById('roi-preview');
     if (preview) {{
       const previewSource = preview.getAttribute('src').split('?')[0];
@@ -1136,7 +1935,10 @@ class RealtimeSwingOutputManager:
     }}
     setInterval(() => {{
       const playing = [...document.querySelectorAll('video')].some(video => !video.paused && !video.ended);
-      if (!playing) location.reload();
+      const editingAnnotations = Date.now() - lastAnnotationInteraction < 15000;
+      const annotationFocused = annotationWorkspace.contains(document.activeElement);
+      const workflowFocused = manualReviewWorkspace.contains(document.activeElement);
+      if (!playing && !editingAnnotations && !annotationFocused && !workflowFocused) location.reload();
     }}, 3000);
   </script>
 </body>

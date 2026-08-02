@@ -132,6 +132,80 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         self.assertEqual(len(advices), 1)
         self.assertEqual(advices[0]["focus"], "balance")
 
+    def test_unobservable_single_view_proxies_never_create_technique_claims(self):
+        coach = LocalRealtimeCoach(max_suggestions=3)
+        event = {
+            "event_id": 24,
+            "confidence": 0.95,
+            "quality_flags": {"warnings": []},
+            "phase_counts": {"backswing": 8, "follow_through": 8},
+            "biomechanics": {
+                "quality": {"contact_evidence_confidence": 0.0},
+                "metrics": {
+                    "hip_shoulder_separation": {
+                        "value": 2.0,
+                        "confidence": 0.9,
+                        "coach_eligible": False,
+                    },
+                    "balance_drift": {
+                        "value": 3.0,
+                        "confidence": 0.9,
+                        "coach_eligible": False,
+                    },
+                },
+            },
+        }
+
+        advices = coach.advise_all(event)
+
+        self.assertEqual(advices[0]["code"], "maintain_form")
+        self.assertNotIn("limited_separation", {item["code"] for item in advices})
+        self.assertNotIn("unstable_balance", {item["code"] for item in advices})
+
+    def test_visible_knee_flexion_can_drive_lower_body_cue(self):
+        coach = LocalRealtimeCoach(max_suggestions=3)
+        event = {
+            "event_id": 25,
+            "confidence": 0.95,
+            "quality_flags": {"warnings": []},
+            "phase_counts": {"backswing": 8, "follow_through": 8},
+            "biomechanics": {
+                "quality": {"contact_evidence_confidence": 0.0},
+                "metrics": {
+                    "preparation_knee_flexion": {
+                        "value": 5.0,
+                        "unit": "deg_2d",
+                        "confidence": 0.8,
+                        "coach_eligible": True,
+                        "observability": "image_plane_joint_angle",
+                    }
+                },
+            },
+        }
+
+        advice = coach.advise(event)
+
+        self.assertEqual(advice["code"], "limited_knee_flexion")
+        self.assertEqual(advice["message"], "准备时适当降低重心")
+
+    def test_low_boundary_and_contact_evidence_suppress_phase_claims(self):
+        coach = LocalRealtimeCoach(max_suggestions=3)
+        event = {
+            "event_id": 26,
+            "confidence": 0.95,
+            "evidence": {"start_boundary": {"confidence": "low"}},
+            "quality_flags": {"warnings": []},
+            "phase_counts": {"backswing": 0, "follow_through": 0},
+            "biomechanics": {
+                "quality": {"contact_evidence_confidence": 0.0},
+                "metrics": {},
+            },
+        }
+
+        advice = coach.advise(event)
+
+        self.assertEqual(advice["code"], "maintain_form")
+
     def test_pose_gap_gets_short_capture_guidance_before_technique_advice(self):
         coach = LocalRealtimeCoach(max_chars=15)
         event = {

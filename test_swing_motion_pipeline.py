@@ -5,7 +5,7 @@ import tempfile
 
 from swing_event_classifier import classify_swing_event
 from swing_event_analyzer import analyze_frame_records
-from swing_event_segmenter import segment_swing_events
+from swing_event_segmenter import _select_peak_indices, segment_swing_events
 from swing_event_video_renderer import (
     build_coach_lookup,
     build_event_lookup,
@@ -108,6 +108,179 @@ class SwingEventSegmentationTests(unittest.TestCase):
 
         self.assertEqual(len(result["events"]), 2)
 
+    def test_peak_suppression_does_not_chain_distinct_swings_through_noise(self):
+        candidates = [
+            (10, 100.0),
+            (35, 60.0),
+            (60, 90.0),
+        ]
+
+        selected = _select_peak_indices(candidates, peak_min_distance=40)
+
+        self.assertEqual(selected, [10, 60])
+
+    def test_peak_segmentation_refines_start_to_preparation_onset(self):
+        features = []
+        for frame in range(100):
+            if frame < 20:
+                speed = 2.0
+                shoulder_turn = 90.0
+            elif frame < 46:
+                speed = 11.0 + (frame - 20) * 0.25
+                shoulder_turn = 95.0 + (frame - 20) * 1.2
+            elif frame <= 60:
+                speed = 20.0 + (frame - 46) * 2.5
+                shoulder_turn = 125.0
+            else:
+                speed = max(2.0, 34.0 - (frame - 60) * 1.5)
+                shoulder_turn = 95.0
+            feature = self._feature(frame, speed)
+            feature.update(
+                {
+                    "timestamp": frame / 25.0,
+                    "shoulder_turn_deg": shoulder_turn,
+                    "contact_score": 0.8 if frame == 60 else 0.0,
+                }
+            )
+            features.append(feature)
+
+        result = segment_swing_events(
+            features,
+            min_peak_energy=20.0,
+            active_energy=5.5,
+            min_event_frames=8,
+            min_event_gap=18,
+        )
+
+        self.assertEqual(len(result["events"]), 1)
+        event = result["events"][0]
+        self.assertLessEqual(abs(event["start_frame"] - 19), 2)
+        self.assertNotEqual(event["start_frame"], event["peak_frame"] - 21)
+        self.assertEqual(event["evidence"]["start_boundary"]["mode"], "quiet_onset")
+
+        event_trace = [
+            row for row in result["frame_trace"] if row["event_id"] == event["event_id"]
+        ]
+        self.assertNotIn(
+            "follow_through",
+            [row["phase"] for row in event_trace if row["frame"] < event["contact_frame"]],
+        )
+        self.assertNotIn(
+            "backswing",
+            [row["phase"] for row in event_trace if row["frame"] > event["contact_frame"]],
+        )
+
+    def test_continuous_swings_expose_recovery_ready_transition(self):
+        features = []
+        for frame in range(130):
+            if frame < 12:
+                speed = 2.0
+            elif frame <= 30:
+                speed = 12.0 + (30 - abs(30 - frame)) * 1.5
+            elif frame < 66:
+                speed = max(12.0, 28.0 - (frame - 30) * 0.45)
+            elif frame <= 90:
+                speed = 12.0 + (frame - 66) * 1.8
+            else:
+                speed = max(2.0, 38.0 - (frame - 90) * 1.2)
+            feature = self._feature(frame, speed)
+            feature.update(
+                {
+                    "timestamp": frame / 25.0,
+                    "shoulder_turn_deg": None,
+                    "contact_score": 0.8 if frame in {30, 90} else 0.0,
+                }
+            )
+            features.append(feature)
+
+        result = segment_swing_events(
+            features,
+            min_peak_energy=20.0,
+            active_energy=5.5,
+            min_event_frames=8,
+            min_event_gap=18,
+        )
+
+        self.assertEqual(len(result["events"]), 2)
+        second = result["events"][1]
+        self.assertEqual(
+            second["evidence"]["start_boundary"]["mode"],
+            "recovery_ready_transition",
+        )
+        start_trace = next(
+            row for row in result["frame_trace"] if row["frame"] == second["start_frame"]
+        )
+        self.assertEqual(start_trace["phase"], "recovery_ready_transition")
+
+    def test_fast_onset_inside_last_three_tenths_before_peak_is_not_backdated(self):
+        features = []
+        for frame in range(80):
+            if frame <= 22:
+                speed = 2.0
+            elif frame <= 30:
+                speed = 10.0 + (frame - 23) * 6.0
+            else:
+                speed = max(2.0, 36.0 - (frame - 30) * 2.0)
+            feature = self._feature(frame, speed)
+            feature.update(
+                {
+                    "timestamp": frame / 25.0,
+                    "shoulder_turn_deg": None,
+                    "contact_score": 0.8 if frame == 30 else 0.0,
+                }
+            )
+            features.append(feature)
+
+        result = segment_swing_events(
+            features,
+            min_peak_energy=20.0,
+            active_energy=5.5,
+            min_event_frames=8,
+            min_event_gap=18,
+        )
+
+        self.assertEqual(len(result["events"]), 1)
+        event = result["events"][0]
+        self.assertLessEqual(abs(event["start_frame"] - 22), 2)
+        self.assertEqual(event["evidence"]["start_boundary"]["mode"], "quiet_onset")
+        self.assertEqual(event["evidence"]["start_boundary"]["onset_signal"], "energy")
+
+    def test_timestamp_spacing_preserves_distinct_peaks_across_dropped_frames(self):
+        features = []
+        for frame in range(201):
+            if 40 <= frame <= 79:
+                continue
+            speed = 2.0
+            if 15 <= frame <= 30:
+                speed = 10.0 + (frame - 15) * 2.0
+            elif 30 < frame < 40:
+                speed = max(12.0, 40.0 - (frame - 30) * 2.0)
+            elif 80 <= frame <= 90:
+                speed = 12.0 + (frame - 80) * 3.0
+            elif 90 < frame <= 110:
+                speed = max(2.0, 42.0 - (frame - 90) * 2.0)
+            feature = self._feature(frame, speed)
+            feature.update(
+                {
+                    "timestamp": frame / 25.0,
+                    "shoulder_turn_deg": None,
+                    "contact_score": 0.8 if frame in {30, 90} else 0.0,
+                }
+            )
+            features.append(feature)
+
+        result = segment_swing_events(
+            features,
+            min_peak_energy=20.0,
+            active_energy=5.5,
+            min_event_frames=8,
+            min_event_gap=18,
+        )
+
+        self.assertEqual(len(result["events"]), 2)
+        self.assertEqual(result["events"][0]["peak_frame"], 30)
+        self.assertLessEqual(abs(result["events"][1]["peak_frame"] - 90), 1)
+
     def test_screen_left_true_right_forehand_blocks_follow_through_two_hand_override(self):
         features = []
         for frame in range(90):
@@ -161,6 +334,67 @@ class SwingEventClassifierTests(unittest.TestCase):
 
         self.assertEqual(result["stroke_type"], "Two-Handed Backhand")
 
+    def test_camera_normalization_overrides_noisy_follow_through_labels(self):
+        event_features = []
+        for frame in range(12):
+            event_features.append(
+                {
+                    "dominant_hand": "right",
+                    "raw_swing_type": "Two-Handed Backhand" if frame >= 7 else "Forehand",
+                    "camera_facing_score": -0.98,
+                    "active_wrist_x_offset_body_width": -1.1,
+                    "two_hand_distance_body_width": 0.55 if frame >= 7 else 1.2,
+                }
+            )
+
+        result = classify_swing_event(event_features)
+
+        self.assertEqual(result["stroke_type"], "Forehand")
+        context = result["evidence"]["classification_context"]
+        self.assertEqual(context["player"]["dominant_hand"], "right")
+        self.assertEqual(context["camera"]["view"], "facing_player")
+        self.assertEqual(context["swing"]["side"], "forehand")
+        self.assertEqual(context["decision_rule"], "camera_normalized_forehand_side")
+
+    def test_same_forehand_maps_to_screen_right_from_behind_player(self):
+        event_features = [
+            {
+                "dominant_hand": "right",
+                "raw_swing_type": "Backhand",
+                "camera_facing_score": 0.96,
+                "active_wrist_x_offset_body_width": 0.9,
+                "two_hand_distance_body_width": 1.1,
+            }
+            for _ in range(8)
+        ]
+
+        result = classify_swing_event(event_features)
+
+        self.assertEqual(result["stroke_type"], "Forehand")
+        context = result["evidence"]["classification_context"]
+        self.assertEqual(context["camera"]["view"], "behind_player")
+        self.assertEqual(context["camera"]["right_side_projects_to"], "screen_right")
+
+    def test_camera_normalized_backhand_requires_two_hand_support(self):
+        event_features = [
+            {
+                "dominant_hand": "right",
+                "raw_swing_type": "Backhand",
+                "camera_facing_score": -0.97,
+                "active_wrist_x_offset_body_width": 0.75,
+                "two_hand_distance_body_width": 0.55,
+            }
+            for _ in range(8)
+        ]
+
+        result = classify_swing_event(event_features)
+
+        self.assertEqual(result["stroke_type"], "Two-Handed Backhand")
+        self.assertEqual(
+            result["evidence"]["classification_context"]["swing"]["side"],
+            "backhand",
+        )
+
 
 class SwingEventAnalyzerTests(unittest.TestCase):
     def test_analyzes_frames_with_auditable_outputs(self):
@@ -198,14 +432,55 @@ class SwingEventAnalyzerTests(unittest.TestCase):
         self.assertGreaterEqual(analysis["summary"]["swing_event_count"], 1)
         self.assertEqual(len(analysis["features"]), 8)
         self.assertEqual(len(analysis["frame_trace"]), 8)
+        self.assertEqual(
+            analysis["summary"]["session_quality"]["event_count"],
+            analysis["summary"]["swing_event_count"],
+        )
 
-    def test_current_fixture_uses_screen_left_as_true_right_forehand(self):
-        fixture = Path("data/output_video.json")
-        if not fixture.exists():
-            self.skipTest("current video analysis fixture is not available")
-        frames = json.loads(fixture.read_text(encoding="utf-8"))["frames"]
+    def test_stable_fixture_uses_screen_left_as_true_right_forehand(self):
+        frames = []
+        frame_id = 0
 
-        analysis = analyze_frame_records(frames)
+        def append_frame(x, label, contact_evidence):
+            nonlocal frame_id
+            ball_x = x + 5 if contact_evidence else x + 500
+            frames.append(
+                {
+                    "frame_id": frame_id,
+                    "timestamp": frame_id / 25.0,
+                    "swing_type": label,
+                    "ball": [ball_x, 100],
+                    "rackets": [
+                        {"box": [x, 90, x + 10, 110], "confidence": 0.9}
+                    ],
+                    "pose": {
+                        "right_wrist": [x, 100],
+                        "left_wrist": [x - 80, 100],
+                        "right_shoulder": [20, 80],
+                        "right_elbow": [x - 10, 92],
+                        "left_shoulder": [0, 80],
+                        "left_hip": [0, 140],
+                        "right_hip": [20, 140],
+                    },
+                }
+            )
+            frame_id += 1
+
+        for _ in range(3):
+            for x in [10, 20, 35, 50, 65, 80, 88, 92]:
+                append_frame(x, "Forehand", True)
+            append_frame(10, "Ready", False)
+            for _ in range(49):
+                append_frame(10, "Ready", False)
+
+        analysis = analyze_frame_records(
+            frames,
+            min_peak_energy=8.0,
+            active_energy=6.0,
+            min_event_frames=3,
+            max_internal_gap=1,
+            min_event_gap=3,
+        )
 
         self.assertEqual(analysis["summary"]["swing_event_count"], 3)
         self.assertEqual(analysis["summary"]["swing_event_type_counts"], {"Forehand": 3})
@@ -358,8 +633,13 @@ class SwingCoachDataCollectorTests(unittest.TestCase):
         self.assertIsNotNone(event["body"]["balance_state"])
         self.assertIsNotNone(event["body"]["stance_type"])
         self.assertIsNotNone(event["body"]["unit_turn_quality"])
-        self.assertIsNotNone(event["body"]["contact_too_close_to_body"])
-        self.assertIsNotNone(event["body"]["late_contact"])
+        self.assertIsNone(event["body"]["late_contact"])
+        self.assertEqual(
+            event["body"]["late_contact_reason"],
+            "front_back_depth_not_observable_single_view",
+        )
+        self.assertIn("coach_calibration", event)
+        self.assertIn(event["scores"]["status"], {"calibrated", "insufficient_evidence"})
         self.assertIsNotNone(event["timing"]["recovery_time_frames"])
         self.assertIsNotNone(event["timing"]["tempo_consistency"])
 
@@ -493,6 +773,13 @@ class SwingReportBuilderTests(unittest.TestCase):
                                 "peak_frame": 3,
                                 "stroke_type": "Forehand",
                                 "confidence": 0.8,
+                                "evidence": {
+                                    "classification_context": {
+                                        "player": {"dominant_hand": "right"},
+                                        "camera": {"view": "facing_player"},
+                                        "swing": {"side": "forehand"},
+                                    }
+                                },
                                 "quality_flags": {"warnings": ["ball_track_gaps"], "review_recommended": True},
                             }
                         ],
@@ -536,9 +823,20 @@ class SwingReportBuilderTests(unittest.TestCase):
         self.assertIn("<video", html)
         self.assertIn("sample_swing_annotated.mp4", html)
         self.assertIn("ball_track_gaps", html)
+        self.assertIn("球员 右手 · 机位 球员面向相机 · 分类证据 正手侧", html)
         self.assertIn("low_contact_confidence", html)
         self.assertIn("annotation-stroke", html)
         self.assertIn("annotation-valid-hit", html)
+        self.assertIn('data-field="needs_review" checked', html)
+        self.assertIn("swing_manual_annotations_v2", html)
+        self.assertIn('data-field="start_frame"', html)
+        self.assertIn('data-field="contact_frame"', html)
+        self.assertIn('data-field="end_frame"', html)
+        self.assertIn('id="timeline-review-complete"', html)
+        self.assertIn('id="annotation-readiness"', html)
+        self.assertIn("updateAnnotationReadiness", html)
+        self.assertIn('id="add-missed-event"', html)
+        self.assertIn("addMissedEvent", html)
         self.assertIn("downloadAnnotations", html)
         self.assertIn("annotation-import-file", html)
         self.assertIn("applyImportedAnnotations", html)
@@ -550,6 +848,9 @@ class SwingReportBuilderTests(unittest.TestCase):
         self.assertIn('id="frame-scrubber"', html)
         self.assertIn("renderTimeline", html)
         self.assertIn("seekFrame", html)
+        self.assertIn("会话质量与漂移", html)
+        self.assertIn("session-dashboard", html)
+        self.assertEqual(payload["session_quality"]["event_count"], 1)
 
 
 class SwingEventVideoRendererTests(unittest.TestCase):

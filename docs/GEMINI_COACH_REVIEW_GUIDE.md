@@ -14,7 +14,7 @@ For each reviewed video, provide Gemini with:
 2. `*_swing_report.html`
 3. `*_swing_events.json`
 4. `*_coach_dataset.json`
-5. Optional: `swing_manual_annotations.json` if human review has already corrected event labels.
+5. Optional: `swing_manual_annotations_v2.json` if human review has already corrected the full event timeline.
 6. Optional: `*_swing_evaluation.json` if local model-vs-human evaluation has been generated.
 
 Current review artifacts:
@@ -45,7 +45,7 @@ The report contains:
 - Scores: overall score, contact score, preparation score, follow-through score.
 - Diagnosis tags: automatic issue labels.
 - Quality warnings: detection confidence problems that should affect trust.
-- Manual annotation controls: dropdown and checkboxes for human correction.
+- Manual annotation controls: editable event boundaries, labels, checkboxes, and missed-event creation.
 - Manual annotation JSON: generated label data that can be downloaded.
 
 ## Local Evaluation JSON
@@ -55,19 +55,20 @@ When manual annotations are available, generate a local evaluation file before a
 ```bash
 python3 swing_evaluation.py \
   --events data/players-video/results_20260517/03.15_closed_loop_swing_events.json \
-  --annotations /Users/krum5539/Downloads/swing_manual_annotations.json
+  --annotations /Users/krum5539/Downloads/swing_manual_annotations_v2.json
 ```
 
 This writes `*_swing_evaluation.json` next to the event JSON by default.
 
 Use the evaluation JSON to tell Gemini which parts of the model output are already confirmed or disputed by a human reviewer:
 
+- `precision`, `recall`, `f1`: detection quality after full-timeline review.
 - `stroke_type_accuracy`: whether model stroke labels agree with human labels.
 - `contact_accuracy`: whether model contact frames are close to human contact frames.
-- `manual_review_event_ids`: events the human reviewer still wants checked.
+- `manual_review_annotation_ids`: annotations the human reviewer still wants checked.
 - `model_review_event_ids`: events the model already considers low confidence.
 - `false_positive_event_ids`: model events the human marked as not valid hits.
-- `unmatched_model_event_ids` / `unmatched_annotation_event_ids`: event alignment problems.
+- `unmatched_model_event_ids` / `unmatched_annotation_ids`: event alignment problems.
 
 ## Important Quality Flags
 
@@ -210,7 +211,7 @@ Ask Gemini to respond in this structure:
 4. Select issue tags when needed.
 5. Add short notes only when checkboxes are not enough.
 6. Click `下载标注 JSON`.
-7. Give Gemini the downloaded `swing_manual_annotations.json` together with the video and JSON files.
+7. Give Gemini the downloaded `swing_manual_annotations_v2.json` together with the video and JSON files.
 
 ## Current Known Limitations
 

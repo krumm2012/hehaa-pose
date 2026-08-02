@@ -14,6 +14,7 @@ from analysis_data_contracts import (
 )
 from local_realtime_coach import LocalRealtimeCoach
 from realtime_swing_pipeline import (
+    RealtimeEventJournal,
     RealtimeFrameJournal,
     RealtimeSwingEventEngine,
     RealtimeSwingOutputManager,
@@ -90,6 +91,79 @@ class RealtimeSwingEventEngineTests(unittest.TestCase):
         self.assertEqual(len(emitted), 1)
         self.assertEqual(emitted[0]["event_id"], 1)
 
+    def test_suppresses_late_secondary_peak_inside_an_emitted_event(self):
+        engine = self.make_engine()
+        engine._events.append(
+            {
+                "event_id": 1,
+                "start_frame": 20,
+                "end_frame": 72,
+                "peak_frame": 41,
+            }
+        )
+        engine._emitted_peaks.append(41)
+
+        self.assertTrue(
+            engine._is_duplicate(
+                {
+                    "start_frame": 48,
+                    "end_frame": 95,
+                    "peak_frame": 69,
+                }
+            )
+        )
+
+    def test_suppresses_rolling_secondary_peak_from_overlapping_published_event(self):
+        """Regression for RTSP event #1 33-98 followed by #2 62-131."""
+        engine = RealtimeSwingEventEngine(
+            fps=25.0,
+            min_event_gap=18,
+        )
+        engine._events.append(
+            {
+                "event_id": 1,
+                "start_frame": 33,
+                "end_frame": 98,
+                "peak_frame": 67,
+            }
+        )
+        engine._emitted_peaks.append(67)
+
+        self.assertTrue(
+            engine._is_duplicate(
+                {
+                    "start_frame": 62,
+                    "end_frame": 131,
+                    "peak_frame": 100,
+                }
+            )
+        )
+
+    def test_keeps_non_overlapping_event_beyond_effective_peak_gap(self):
+        engine = RealtimeSwingEventEngine(
+            fps=25.0,
+            min_event_gap=18,
+        )
+        engine._events.append(
+            {
+                "event_id": 1,
+                "start_frame": 33,
+                "end_frame": 98,
+                "peak_frame": 67,
+            }
+        )
+        engine._emitted_peaks.append(67)
+
+        self.assertFalse(
+            engine._is_duplicate(
+                {
+                    "start_frame": 105,
+                    "end_frame": 155,
+                    "peak_frame": 115,
+                }
+            )
+        )
+
     def test_returns_original_frame_records_for_emitted_event_range(self):
         engine = self.make_engine()
         positions = [0, 0, 0, 10, 25, 45, 65, 80, 90, 95, 95, 95, 95, 95, 95, 95]
@@ -148,6 +222,18 @@ class RealtimeSwingEventEngineTests(unittest.TestCase):
             emitted[0]["coach_advices"][0],
         )
         self.assertLessEqual(len(emitted[0]["coach_advice"]["message"]), 15)
+        self.assertIn(
+            "coach_generated_at_unix_ns",
+            emitted[0]["timing"],
+        )
+        self.assertGreaterEqual(
+            emitted[0]["timing"]["coach_generated_at_unix_ns"],
+            emitted[0]["timing"]["event_emitted_at_unix_ns"],
+        )
+        self.assertGreaterEqual(
+            emitted[0]["timing"]["event_to_coach_ms"],
+            0.0,
+        )
         self.assertEqual(
             engine.snapshot()["events"][0]["coach_advice"],
             emitted[0]["coach_advice"],
@@ -235,6 +321,34 @@ class RealtimeFrameJournalTests(unittest.TestCase):
         self.assertFalse(closer.is_alive())
         self.assertEqual(len(errors), 1)
         self.assertIsInstance(errors[0], RuntimeError)
+
+
+class RealtimeEventJournalTests(unittest.TestCase):
+    def test_reopening_log_appends_and_continues_sequence(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "events.jsonl"
+            for session_id in ("session-one", "session-two"):
+                journal = RealtimeEventJournal(
+                    str(path),
+                    session_metadata={"session_id": session_id},
+                )
+                journal.append(
+                    "event_created",
+                    1,
+                    {"event": {"event_id": 1}},
+                )
+                journal.close()
+
+            rows = [
+                json.loads(line)
+                for line in path.read_text(encoding="utf-8").splitlines()
+            ]
+
+        self.assertEqual([row["sequence"] for row in rows], [1, 2])
+        self.assertEqual(
+            [row["session_id"] for row in rows],
+            ["session-one", "session-two"],
+        )
 
 
 class RealtimeSwingOutputManagerTests(unittest.TestCase):
@@ -377,6 +491,7 @@ class RealtimeSwingOutputManagerTests(unittest.TestCase):
             clip_exists = clip_path.exists()
 
         self.assertEqual(payload["summary"]["swing_event_count"], 1)
+        self.assertEqual(payload["summary"]["session_quality"]["event_count"], 1)
         self.assertEqual(
             payload["events"][0]["schema_version"],
             SWING_EVENT_SCHEMA_VERSION,
@@ -401,7 +516,28 @@ class RealtimeSwingOutputManagerTests(unittest.TestCase):
         self.assertIn("88%", html)
         self.assertIn("76%", html)
         self.assertIn("提前转肩充分引拍", html)
+        self.assertIn("live-coach-feed", html)
+        self.assertIn("会话质量与漂移", html)
+        self.assertIn("session-monitor", html)
+        self.assertIn("setInterval(refreshCoachFeed, 200)", html)
+        self.assertIn("live_swing_events.json", html)
         self.assertIn("<video", html)
+        self.assertIn("swing_manual_annotations_v2", html)
+        self.assertIn('id="timeline-review-complete"', html)
+        self.assertIn('id="annotation-readiness"', html)
+        self.assertIn("updateAnnotationReadiness", html)
+        self.assertIn('id="add-missed-event"', html)
+        self.assertIn('data-field="start_frame"', html)
+        self.assertIn('data-field="contact_frame"', html)
+        self.assertIn('data-field="end_frame"', html)
+        self.assertIn('data-field="needs_review" checked', html)
+        self.assertIn("localStorage.setItem", html)
+        self.assertIn("addMissedEvent", html)
+        self.assertIn('id="manual-review-workflow"', html)
+        self.assertIn('id="manual-review-file"', html)
+        self.assertIn("/api/manual-review/evaluate", html)
+        self.assertIn("实时 Coach（原始）", html)
+        self.assertIn("人工校准 Coach", html)
         self.assertTrue(clip_exists)
         self.assertEqual(clip_frames, 5)
 

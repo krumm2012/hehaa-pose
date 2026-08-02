@@ -12,12 +12,14 @@ BODY_TOPICS = {
     "balance",
     "contact_spacing",
     "follow_through",
+    "knee_flexion",
     "positive_form",
     "power_transfer",
     "preparation",
     "stance",
     "tempo",
 }
+SINGLE_VIEW_BLOCKED_TOPICS = {"balance", "power_transfer"}
 BALL_WARNINGS = {
     "ball_track_gaps",
     "ball_continuity_disabled",
@@ -63,6 +65,7 @@ def build_coach_decision_policy(
         missing_fields=data_quality.get("missing_fields") or [],
         coaching_allowed=coaching_allowed,
     )
+    blocked_topics.update(SINGLE_VIEW_BLOCKED_TOPICS)
     allowed_topics = set(BODY_TOPICS) if coaching_allowed else set()
     if "racket_path" not in blocked_topics and coaching_allowed:
         allowed_topics.add("racket_path")
@@ -158,7 +161,13 @@ def _prohibited_claims(
     warnings: Set[str],
     missing_fields: Iterable[str],
 ) -> Set[str]:
-    prohibited = {"professional_speed_comparison"}
+    prohibited = {
+        "professional_speed_comparison",
+        "true_3d_hip_shoulder_separation",
+        "weight_transfer_from_screen_translation",
+        "balance_from_screen_translation",
+        "injury_risk_from_single_view",
+    }
     for field in missing_fields:
         text = str(field)
         if "spin" in text:
@@ -192,6 +201,8 @@ def _advice_candidates(
     timing = coach_metrics.get("timing") or {}
     scores = coach_metrics.get("scores") or {}
     diagnosis_tags = set(coach_metrics.get("diagnosis_tags") or [])
+    calibration = coach_metrics.get("coach_calibration") or {}
+    assessments = calibration.get("assessments") or {}
     contact_frame = (coach_metrics.get("frames") or {}).get("contact")
     candidates = []
 
@@ -222,6 +233,45 @@ def _advice_candidates(
             [
                 "coach_metrics.diagnosis_tags.short_follow_through",
                 "coach_metrics.timing.phase_durations_frames.follow_through",
+            ],
+        )
+    arm = assessments.get("arm_extension") or {}
+    if (
+        arm.get("status") == "usable"
+        and (_first_float(arm.get("value")) or 0.0) < 145.0
+    ):
+        add(
+            "arm_extension",
+            "挥拍时手臂再舒展",
+            97,
+            ["coach_metrics.coach_calibration.assessments.arm_extension"],
+        )
+    knee = assessments.get("preparation_knee_flexion") or {}
+    if (
+        knee.get("status") == "usable"
+        and (_first_float(knee.get("value")) or 0.0) < 12.0
+    ):
+        add(
+            "knee_flexion",
+            "准备时适当降低重心",
+            96,
+            [
+                "coach_metrics.coach_calibration.assessments."
+                "preparation_knee_flexion"
+            ],
+        )
+    turn = assessments.get("shoulder_turn_change") or {}
+    if (
+        turn.get("status") == "usable"
+        and (_first_float(turn.get("value")) or 0.0) < 12.0
+    ):
+        add(
+            "preparation",
+            "提前转肩充分引拍",
+            95,
+            [
+                "coach_metrics.coach_calibration.assessments."
+                "shoulder_turn_change"
             ],
         )
     if body.get("unit_turn_quality") == "limited":
@@ -284,6 +334,16 @@ def _advice_candidates(
             ["coach_metrics.timing.tempo_consistency"],
         )
 
+    # Multiple evidence paths may support the same coaching focus.  Send the
+    # strongest one once so the model does not interpret repetition as extra
+    # confidence.
+    by_focus = {}
+    for candidate in candidates:
+        focus = candidate["focus"]
+        current = by_focus.get(focus)
+        if current is None or int(candidate["priority"]) > int(current["priority"]):
+            by_focus[focus] = candidate
+    candidates = list(by_focus.values())
     candidates.sort(key=lambda item: (-int(item["priority"]), item["focus"]))
     if candidates or not allowed_topics:
         return candidates

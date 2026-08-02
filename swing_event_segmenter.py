@@ -35,14 +35,235 @@ def _motion_energy(feature: Dict) -> float:
     return max(wrist, racket * 0.75, accel * 0.6, contact)
 
 
-def _phase_for(feature: Dict, energy: float, peak_energy: float) -> str:
-    if energy >= peak_energy * 0.78:
-        return "contact_candidate" if float(feature.get("contact_score") or 0.0) >= 0.35 else "forward_swing"
-    if energy >= peak_energy * 0.45:
-        return "backswing"
-    if energy >= peak_energy * 0.25:
-        return "follow_through"
-    return "ready"
+def _median_absolute_deviation(values: List[float]) -> float:
+    if not values:
+        return 0.0
+    center = median(values)
+    return float(median([abs(value - center) for value in values]))
+
+
+def _sustained_change(values: List[bool]) -> bool:
+    """Allow one noisy sample in the four-frame onset confirmation window."""
+    return bool(values) and sum(values) >= max(1, len(values) - 1)
+
+
+def _timeline_time(features: List[Dict], idx: int, fps: float) -> float:
+    timestamp = features[idx].get("timestamp")
+    if timestamp is not None:
+        return float(timestamp)
+    frame_id = features[idx].get("frame_id")
+    if frame_id is not None:
+        return float(frame_id) / max(float(fps), 1e-6)
+    return float(idx) / max(float(fps), 1e-6)
+
+
+def _first_index_at_or_after(
+    features: List[Dict],
+    target_time: float,
+    fps: float,
+    lower: int,
+    upper: int,
+) -> int:
+    for idx in range(max(0, lower), min(len(features) - 1, upper) + 1):
+        if _timeline_time(features, idx, fps) >= target_time:
+            return idx
+    return min(len(features) - 1, upper)
+
+
+def _last_index_at_or_before(
+    features: List[Dict],
+    target_time: float,
+    fps: float,
+    lower: int,
+    upper: int,
+) -> int:
+    result = max(0, lower)
+    for idx in range(max(0, lower), min(len(features) - 1, upper) + 1):
+        if _timeline_time(features, idx, fps) > target_time:
+            break
+        result = idx
+    return result
+
+
+def _refine_event_start(
+    features: List[Dict],
+    energy: List[float],
+    search_start_idx: int,
+    peak_idx: int,
+    fps: float,
+    active_energy: float,
+) -> Tuple[int, Dict, Optional[int]]:
+    """Find the preparation onset after a stable quiet basin.
+
+    A fixed pre-peak window routinely starts after unit turn has already begun.
+    This search instead identifies a short, stable ready basin and then requires
+    a sustained rise in motion energy or shoulder turn.  If no quiet basin is
+    visible, the seam is explicitly marked as a recovery/preparation transition
+    rather than inventing a static ready phase.
+    """
+    search_start_idx = max(0, min(int(search_start_idx), peak_idx))
+    peak_time = _timeline_time(features, peak_idx, fps)
+    search_end_idx = max(
+        search_start_idx,
+        _last_index_at_or_before(
+            features,
+            peak_time - 0.30,
+            fps,
+            search_start_idx,
+            peak_idx - 1,
+        ),
+    )
+    quiet_windows = []
+    for window_start in range(search_start_idx, search_end_idx + 1):
+        window_end = _first_index_at_or_after(
+            features,
+            _timeline_time(features, window_start, fps) + 0.16,
+            fps,
+            window_start,
+            search_end_idx,
+        )
+        window_times = [
+            _timeline_time(features, idx, fps)
+            for idx in range(window_start, window_end + 1)
+        ]
+        if (
+            window_end > search_end_idx
+            or window_end - window_start + 1 < 3
+            or window_times[-1] - window_times[0] < 0.12
+            or any(
+                later - earlier > max(0.12, 2.5 / fps)
+                for earlier, later in zip(window_times, window_times[1:])
+            )
+        ):
+            continue
+        values = [float(value) for value in energy[window_start : window_end + 1]]
+        quiet_windows.append(
+            {
+                "start": window_start,
+                "end": window_end,
+                "median": float(median(values)),
+                "mad": _median_absolute_deviation(values),
+            }
+        )
+
+    if not quiet_windows:
+        start_idx = search_start_idx
+        evidence = {
+            "mode": "recovery_ready_transition",
+            "confidence": "low",
+            "reason": "insufficient_pre_peak_window",
+            "search_start_frame": int(features[search_start_idx]["frame_id"]),
+            "search_end_frame": int(features[search_end_idx]["frame_id"]),
+        }
+        return start_idx, evidence, start_idx
+
+    best_median = min(window["median"] for window in quiet_windows)
+    near_best_tolerance = max(1.0, best_median * 0.18)
+    stable_windows = [
+        window
+        for window in quiet_windows
+        if window["median"] <= best_median + near_best_tolerance
+        and window["mad"] <= max(1.5, window["median"] * 0.30)
+    ]
+    quiet = stable_windows[0] if stable_windows else min(
+        quiet_windows,
+        key=lambda window: (window["median"], window["mad"], window["start"]),
+    )
+    quiet_start = int(quiet["start"])
+    quiet_end = int(quiet["end"])
+    quiet_is_confident = bool(stable_windows) and quiet["median"] <= max(
+        float(active_energy) * 1.8,
+        float(active_energy) + 3.0,
+    )
+
+    shoulder_values = [
+        float(features[idx]["shoulder_turn_deg"])
+        for idx in range(quiet_start, quiet_end + 1)
+        if features[idx].get("shoulder_turn_deg") is not None
+    ]
+    shoulder_baseline = float(median(shoulder_values)) if shoulder_values else None
+    shoulder_mad = _median_absolute_deviation(shoulder_values)
+    shoulder_threshold = max(4.0, shoulder_mad * 3.0)
+    energy_threshold = float(quiet["median"]) + max(2.5, float(quiet["mad"]) * 2.0)
+
+    onset_idx = None
+    onset_signal = "none"
+    onset_search_end_idx = max(search_end_idx, peak_idx - 1)
+    for idx in range(quiet_start, onset_search_end_idx + 1):
+        horizon_end = _first_index_at_or_after(
+            features,
+            _timeline_time(features, idx, fps) + 0.16,
+            fps,
+            idx,
+            onset_search_end_idx,
+        )
+        horizon = list(range(idx, min(onset_search_end_idx, horizon_end) + 1))
+        if len(horizon) < 3:
+            break
+        horizon_times = [_timeline_time(features, pos, fps) for pos in horizon]
+        if any(
+            later - earlier > max(0.12, 2.5 / fps)
+            for earlier, later in zip(horizon_times, horizon_times[1:])
+        ):
+            continue
+        energy_rise = _sustained_change(
+            [float(energy[pos]) >= energy_threshold for pos in horizon]
+        )
+        shoulder_rise = False
+        if shoulder_baseline is not None:
+            shoulder_rise = _sustained_change(
+                [
+                    features[pos].get("shoulder_turn_deg") is not None
+                    and abs(float(features[pos]["shoulder_turn_deg"]) - shoulder_baseline)
+                    >= shoulder_threshold
+                    for pos in horizon
+                ]
+            )
+        if energy_rise or shoulder_rise:
+            onset_idx = idx
+            onset_signal = (
+                "energy_and_shoulder"
+                if energy_rise and shoulder_rise
+                else "energy"
+                if energy_rise
+                else "shoulder"
+            )
+            break
+
+    if onset_idx is None:
+        onset_idx = quiet_end + 1
+        onset_signal = "quiet_basin_end"
+        quiet_is_confident = False
+    mode = "quiet_onset" if quiet_is_confident else "recovery_ready_transition"
+    start_idx = max(search_start_idx, min(peak_idx - 1, onset_idx - 1))
+    transition_end_idx = start_idx if mode == "recovery_ready_transition" else None
+    confidence = (
+        "high"
+        if quiet_is_confident and onset_signal == "energy_and_shoulder"
+        else "medium"
+        if quiet_is_confident
+        else "low"
+    )
+    evidence = {
+        "mode": mode,
+        "confidence": confidence,
+        "onset_signal": onset_signal,
+        "search_start_frame": int(features[search_start_idx]["frame_id"]),
+        "search_end_frame": int(features[search_end_idx]["frame_id"]),
+        "quiet_start_frame": int(features[quiet_start]["frame_id"]),
+        "quiet_end_frame": int(features[quiet_end]["frame_id"]),
+        "onset_frame": int(features[onset_idx]["frame_id"]),
+        "energy_baseline": round(float(quiet["median"]), 4),
+        "energy_mad": round(float(quiet["mad"]), 4),
+        "energy_onset_threshold": round(energy_threshold, 4),
+        "shoulder_turn_baseline_deg": (
+            round(shoulder_baseline, 4) if shoulder_baseline is not None else None
+        ),
+        "shoulder_turn_onset_threshold_deg": (
+            round(shoulder_threshold, 4) if shoulder_baseline is not None else None
+        ),
+    }
+    return start_idx, evidence, transition_end_idx
 
 
 def _estimate_fps(features: List[Dict]) -> Optional[float]:
@@ -76,60 +297,156 @@ def _peak_quality(feature: Dict, energy_value: float) -> float:
     return quality
 
 
-def _local_peak_candidates(features: List[Dict], energy: List[float], peak_floor: float, edge_margin: int) -> List[Tuple[int, float]]:
+def _local_peak_candidates(
+    features: List[Dict],
+    energy: List[float],
+    peak_floor: float,
+    edge_margin_seconds: float,
+    fps: float,
+) -> List[Tuple[int, float]]:
     candidates = []
+    first_time = _timeline_time(features, 0, fps)
+    last_time = _timeline_time(features, len(features) - 1, fps)
     for idx in range(1, len(energy) - 1):
-        if idx < edge_margin or idx >= len(energy) - edge_margin:
+        current_time = _timeline_time(features, idx, fps)
+        if (
+            current_time - first_time < edge_margin_seconds
+            or last_time - current_time < edge_margin_seconds
+        ):
             continue
         if energy[idx] >= peak_floor and energy[idx] >= energy[idx - 1] and energy[idx] >= energy[idx + 1]:
             candidates.append((idx, _peak_quality(features[idx], energy[idx])))
     return candidates
 
 
-def _select_peak_indices(candidates: List[Tuple[int, float]], peak_min_distance: int) -> List[int]:
+def _select_peak_indices(
+    candidates: List[Tuple[int, float]],
+    peak_min_distance: float,
+    positions: Optional[Dict[int, float]] = None,
+) -> List[int]:
     if not candidates:
         return []
 
-    clusters = []
-    current = [candidates[0]]
-    for candidate in candidates[1:]:
-        if candidate[0] - current[-1][0] <= peak_min_distance:
-            current.append(candidate)
-        else:
-            clusters.append(current)
-            current = [candidate]
-    clusters.append(current)
-
+    # Use quality-ordered non-maximum suppression. Grouping candidates by the
+    # distance to the previous candidate creates transitive chains: a sequence
+    # of weak intermediate peaks can join two genuinely separate swings and
+    # suppress the later one for the lifetime of the realtime rolling window.
     selected = []
-    for cluster in clusters:
-        selected.append(max(cluster, key=lambda item: item[1])[0])
-    return selected
+    for peak_idx, _quality in sorted(candidates, key=lambda item: item[1], reverse=True):
+        peak_position = positions.get(peak_idx, float(peak_idx)) if positions else float(peak_idx)
+        if all(
+            abs(
+                peak_position
+                - (positions.get(kept_idx, float(kept_idx)) if positions else float(kept_idx))
+            )
+            > peak_min_distance
+            for kept_idx in selected
+        ):
+            selected.append(peak_idx)
+    return sorted(selected)
 
 
-def _peak_event_ranges(peak_indices: List[int], feature_count: int, fps: float) -> List[Tuple[int, int, int]]:
-    pre_frames = max(8, int(round(fps * 0.85)))
-    post_frames = max(12, int(round(fps * 1.25)))
+def _peak_event_ranges(
+    features: List[Dict],
+    peak_indices: List[int],
+    fps: float,
+) -> List[Tuple[int, int, int]]:
     ranges = []
     for pos, peak_idx in enumerate(peak_indices):
-        prev_boundary = 0
-        next_boundary = feature_count - 1
+        peak_time = _timeline_time(features, peak_idx, fps)
+        prev_boundary = _first_index_at_or_after(
+            features,
+            peak_time - 1.80,
+            fps,
+            0,
+            peak_idx,
+        )
+        next_boundary = _last_index_at_or_before(
+            features,
+            peak_time + 1.25,
+            fps,
+            peak_idx,
+            len(features) - 1,
+        )
         if pos > 0:
-            prev_boundary = (peak_indices[pos - 1] + peak_idx) // 2 + 1
+            previous_peak_time = _timeline_time(features, peak_indices[pos - 1], fps)
+            prev_boundary = max(
+                prev_boundary,
+                _first_index_at_or_after(
+                    features,
+                    previous_peak_time + 0.45,
+                    fps,
+                    peak_indices[pos - 1] + 1,
+                    peak_idx,
+                ),
+            )
         if pos + 1 < len(peak_indices):
-            next_boundary = (peak_idx + peak_indices[pos + 1]) // 2
-        start_idx = max(prev_boundary, peak_idx - pre_frames)
-        end_idx = min(next_boundary, peak_idx + post_frames)
-        ranges.append((start_idx, end_idx, peak_idx))
+            next_peak_time = _timeline_time(features, peak_indices[pos + 1], fps)
+            next_boundary = min(
+                next_boundary,
+                _last_index_at_or_before(
+                    features,
+                    (peak_time + next_peak_time) / 2.0,
+                    fps,
+                    peak_idx,
+                    peak_indices[pos + 1] - 1,
+                ),
+            )
+        ranges.append((prev_boundary, next_boundary, peak_idx))
     return ranges
 
 
-def _phase_counts(features: List[Dict], energy: List[float], start_idx: int, end_idx: int, peak_energy: float) -> Tuple[Dict[str, int], Dict[int, str]]:
+def _phase_reference_energy(energy: List[float], start_idx: int, end_idx: int) -> float:
+    values = sorted(float(value) for value in energy[start_idx : end_idx + 1])
+    if not values:
+        return 1.0
+    return max(1.0, values[int(round((len(values) - 1) * 0.90))])
+
+
+def _phase_counts(
+    features: List[Dict],
+    energy: List[float],
+    start_idx: int,
+    end_idx: int,
+    contact_idx: int,
+    transition_end_idx: Optional[int] = None,
+) -> Tuple[Dict[str, int], Dict[int, str]]:
     phases = {}
     frame_phases = {}
+    reference_energy = _phase_reference_energy(energy, start_idx, end_idx)
+    ready_threshold = reference_energy * 0.25
+    forward_threshold = reference_energy * 0.78
+    motion_started = False
+    forward_started = False
+    recovered = False
     for idx in range(start_idx, end_idx + 1):
-        phase = _phase_for(features[idx], energy[idx], peak_energy)
+        feature = features[idx]
+        energy_value = float(energy[idx])
+        if transition_end_idx is not None and idx <= transition_end_idx:
+            phase = "recovery_ready_transition"
+        elif idx == contact_idx and float(feature.get("contact_score") or 0.0) >= 0.35:
+            phase = "contact_candidate"
+        elif idx < contact_idx:
+            if forward_started or energy_value >= forward_threshold:
+                forward_started = True
+                motion_started = True
+                phase = "forward_swing"
+            elif motion_started or energy_value >= ready_threshold:
+                motion_started = True
+                phase = "backswing"
+            else:
+                phase = "ready"
+        elif idx == contact_idx:
+            phase = "forward_swing"
+        else:
+            if not recovered:
+                recovery_horizon = energy[idx : min(end_idx + 1, idx + 3)]
+                recovered = len(recovery_horizon) >= 3 and all(
+                    float(value) < ready_threshold for value in recovery_horizon
+                )
+            phase = "ready" if recovered else "follow_through"
         phases[phase] = phases.get(phase, 0) + 1
-        frame_phases[features[idx]["frame_id"]] = phase
+        frame_phases[feature["frame_id"]] = phase
     return phases, frame_phases
 
 
@@ -196,8 +513,10 @@ def _event_quality_flags(features: List[Dict], start_idx: int, end_idx: int, cla
         warnings.append("racket_track_gaps")
     if pose_ratio < 0.90:
         warnings.append("pose_gaps")
-    if float(evidence.get("screen_left_true_right_ratio") or 0.0) >= 0.58:
-        warnings.append("mirror_handedness_rule_applied")
+    classification_context = evidence.get("classification_context") or {}
+    camera_context = classification_context.get("camera") or {}
+    if camera_context.get("view") in {"unknown", "side_or_uncertain"}:
+        warnings.append("camera_view_uncertain")
     if diagnostic_counts.get("static_hard_mask", 0) > 0:
         warnings.append("static_ball_mask_in_event")
     if diagnostic_counts.get("upper_mirror_unsupported", 0) > 0:
@@ -221,50 +540,116 @@ def _event_quality_flags(features: List[Dict], start_idx: int, end_idx: int, cla
     }
 
 
-def _screen_left_true_right_forehand_evidence(event_features: List[Dict]) -> Dict:
-    offsets = [float(f["active_wrist_x_offset"]) for f in event_features if f.get("active_wrist_x_offset") is not None]
-    if not offsets:
-        return {"screen_left_true_right_ratio": 0.0, "screen_left_true_right_frames": 0, "screen_right_frames": 0}
-    left_frames = sum(1 for offset in offsets if offset < 0)
-    right_frames = sum(1 for offset in offsets if offset > 0)
+def summarize_manual_event_range(
+    features: List[Dict],
+    start_frame: int,
+    contact_frame: int,
+    end_frame: int,
+    classification_evidence: Optional[Dict] = None,
+) -> Dict:
+    """Rebuild range-dependent evidence for one human-confirmed event.
+
+    Manual review may change the temporal boundaries without rerunning event
+    segmentation.  This public seam keeps quality and phase aggregation inside
+    the segmenter instead of duplicating its thresholds in the review workflow.
+    """
+    if not features:
+        raise ValueError("Cannot summarize a manual event without frame features")
+
+    start_frame = int(start_frame)
+    contact_frame = int(contact_frame)
+    end_frame = int(end_frame)
+    if not start_frame <= contact_frame <= end_frame:
+        raise ValueError("Manual event must satisfy start <= contact <= end")
+
+    indices = [
+        index
+        for index, feature in enumerate(features)
+        if start_frame <= int(feature.get("frame_id", -1)) <= end_frame
+    ]
+    if not indices:
+        raise ValueError("Manual event range does not contain any frame features")
+    start_idx, end_idx = indices[0], indices[-1]
+    contact_idx = min(
+        indices,
+        key=lambda index: abs(int(features[index].get("frame_id", -1)) - contact_frame),
+    )
+    effective_contact_frame = int(features[contact_idx]["frame_id"])
+    energy = _smooth([_motion_energy(feature) for feature in features], window=3)
+    peak_idx = max(indices, key=lambda index: float(energy[index]))
+    classification = {
+        "evidence": dict(classification_evidence or {}),
+    }
+    quality_flags = _event_quality_flags(
+        features,
+        start_idx,
+        end_idx,
+        classification,
+        effective_contact_frame,
+    )
+    phase_counts, frame_phases = _phase_counts(
+        features,
+        energy,
+        start_idx,
+        end_idx,
+        contact_idx,
+    )
     return {
-        "screen_left_true_right_ratio": round(left_frames / max(1, len(offsets)), 4),
-        "screen_left_true_right_frames": int(left_frames),
-        "screen_right_frames": int(right_frames),
+        "start_frame": int(features[start_idx]["frame_id"]),
+        "contact_frame": effective_contact_frame,
+        "end_frame": int(features[end_idx]["frame_id"]),
+        "duration_frames": int(end_idx - start_idx + 1),
+        "peak_frame": int(features[peak_idx]["frame_id"]),
+        "peak_energy": round(float(energy[peak_idx]), 4),
+        "quality_flags": quality_flags,
+        "phase_counts": dict(sorted(phase_counts.items())),
+        "frame_phases": {
+            str(frame_id): phase
+            for frame_id, phase in sorted(frame_phases.items())
+        },
     }
 
 
-def _classify_peak_event(features: List[Dict], start_idx: int, end_idx: int, peak_idx: int, fps: float) -> Dict:
-    core_radius = max(8, int(round(fps * 0.48)))
-    core_start = max(start_idx, peak_idx - core_radius)
-    core_end = min(end_idx, peak_idx + core_radius)
+def _classify_impact_event(
+    features: List[Dict],
+    start_idx: int,
+    end_idx: int,
+    contact_idx: int,
+    fps: float,
+) -> Dict:
+    """Classify from late preparation through impact, excluding recovery.
+
+    Ready and follow-through frames often put both hands close together.  They
+    are useful for segmentation but are misleading swing-side evidence, so the
+    classifier receives only the impact-centred window.
+    """
+    contact_time = _timeline_time(features, contact_idx, fps)
+    core_start = max(
+        start_idx,
+        _first_index_at_or_after(
+            features,
+            contact_time - 0.56,
+            fps,
+            start_idx,
+            contact_idx,
+        ),
+    )
+    core_end = min(
+        end_idx,
+        _last_index_at_or_before(
+            features,
+            contact_time + 0.12,
+            fps,
+            contact_idx,
+            end_idx,
+        ),
+    )
     classification = classify_swing_event(features[core_start : core_end + 1])
-
-    # Preserve two-handed evidence in the post-impact/follow-through window,
-    # while avoiding ready-position close hands from dominating the decision.
-    post_classification = classify_swing_event(features[peak_idx : end_idx + 1], two_hand_min_ratio=0.28)
-    if (
-        classification["stroke_type"] == "Backhand"
-        and post_classification["stroke_type"] == "Two-Handed Backhand"
-        and post_classification["evidence"].get("two_hand_ratio", 0.0) >= 0.28
-    ):
-        classification = post_classification
-
-    handedness_evidence = _screen_left_true_right_forehand_evidence(features[start_idx : end_idx + 1])
-    if handedness_evidence["screen_left_true_right_ratio"] >= 0.58:
-        classification = {
-            "stroke_type": "Forehand",
-            "confidence": max(float(classification.get("confidence", 0.0)), handedness_evidence["screen_left_true_right_ratio"]),
-            "evidence": {
-                **classification.get("evidence", {}),
-                **handedness_evidence,
-                "handedness_rule": "screen_left_is_true_right_forehand",
-            },
-        }
-    else:
-        classification["evidence"].update(handedness_evidence)
     classification["evidence"]["core_start_frame"] = int(features[core_start]["frame_id"])
     classification["evidence"]["core_end_frame"] = int(features[core_end]["frame_id"])
+    classification["evidence"]["classification_anchor_frame"] = int(
+        features[contact_idx]["frame_id"]
+    )
     return classification
 
 
@@ -272,6 +657,7 @@ def _segment_by_peaks(
     features: List[Dict],
     energy: List[float],
     min_peak_energy: float,
+    active_energy: float,
     min_event_frames: int,
     min_event_gap: int,
     fps: float,
@@ -280,27 +666,86 @@ def _segment_by_peaks(
         return None
 
     peak_floor = _robust_peak_floor(energy, min_peak_energy)
-    peak_min_distance = max(min_event_gap, int(round(fps * 1.6)))
-    edge_margin = max(min_event_frames, int(round(fps * 0.35)))
-    candidates = _local_peak_candidates(features, energy, peak_floor, edge_margin)
-    peak_indices = _select_peak_indices(candidates, peak_min_distance)
+    peak_min_distance_seconds = max(float(min_event_gap) / fps, 1.6)
+    edge_margin_seconds = max(float(min_event_frames) / fps, 0.35)
+    candidates = _local_peak_candidates(
+        features,
+        energy,
+        peak_floor,
+        edge_margin_seconds,
+        fps,
+    )
+    positions = {
+        idx: _timeline_time(features, idx, fps)
+        for idx, _quality in candidates
+    }
+    peak_indices = _select_peak_indices(
+        candidates,
+        peak_min_distance_seconds,
+        positions=positions,
+    )
     if not peak_indices:
         return None
 
     events = []
     frame_to_event = {}
     frame_phases = {}
-    for start_idx, end_idx, peak_idx in _peak_event_ranges(peak_indices, len(features), fps):
+    refined_ranges = []
+    broad_ranges = _peak_event_ranges(features, peak_indices, fps)
+    for search_start_idx, end_idx, peak_idx in broad_ranges:
+        start_idx, boundary_evidence, transition_end_idx = _refine_event_start(
+            features,
+            energy,
+            search_start_idx,
+            peak_idx,
+            fps,
+            active_energy,
+        )
+        refined_ranges.append(
+            (start_idx, end_idx, peak_idx, boundary_evidence, transition_end_idx)
+        )
+
+    for range_pos, (
+        start_idx,
+        end_idx,
+        peak_idx,
+        boundary_evidence,
+        transition_end_idx,
+    ) in enumerate(refined_ranges):
+        if range_pos + 1 < len(refined_ranges):
+            end_idx = min(end_idx, refined_ranges[range_pos + 1][0] - 1)
         if (end_idx - start_idx + 1) < min_event_frames:
             continue
         peak_energy = max(energy[start_idx : end_idx + 1])
         if peak_energy < min_peak_energy:
             continue
-        classification = _classify_peak_event(features, start_idx, end_idx, peak_idx, fps)
         event_id = len(events) + 1
         contact_frame = _best_contact_frame(features, start_idx, end_idx, peak_idx)
+        contact_idx = next(
+            (
+                idx
+                for idx in range(start_idx, end_idx + 1)
+                if int(features[idx]["frame_id"]) == int(contact_frame)
+            ),
+            peak_idx,
+        )
+        classification = _classify_impact_event(
+            features,
+            start_idx,
+            end_idx,
+            contact_idx,
+            fps,
+        )
+        classification["evidence"]["start_boundary"] = boundary_evidence
         quality_flags = _event_quality_flags(features, start_idx, end_idx, classification, contact_frame)
-        phase_counts, event_frame_phases = _phase_counts(features, energy, start_idx, end_idx, peak_energy)
+        phase_counts, event_frame_phases = _phase_counts(
+            features,
+            energy,
+            start_idx,
+            end_idx,
+            contact_idx,
+            transition_end_idx=transition_end_idx,
+        )
         for idx in range(start_idx, end_idx + 1):
             frame_to_event[features[idx]["frame_id"]] = event_id
         frame_phases.update(event_frame_phases)
@@ -329,16 +774,13 @@ def _segment_by_peaks(
 def _build_result(features: List[Dict], energy: List[float], events: List[Dict], frame_to_event: Dict[int, int], frame_phases: Optional[Dict[int, str]] = None) -> Dict:
     frame_trace = []
     frame_phases = frame_phases or {}
-    event_ranges = {event["event_id"]: (event["start_frame"], event["end_frame"], event["peak_energy"]) for event in events}
     for idx, feature in enumerate(features):
         event_id = frame_to_event.get(feature["frame_id"])
-        phase = "ready"
-        if event_id is not None:
-            phase = frame_phases.get(feature["frame_id"], phase)
-            if phase == "ready":
-                start_frame, end_frame, peak = event_ranges[event_id]
-                if start_frame <= feature["frame_id"] <= end_frame:
-                    phase = _phase_for(feature, energy[idx], peak)
+        phase = (
+            frame_phases.get(feature["frame_id"], "ready")
+            if event_id is not None
+            else "ready"
+        )
         frame_trace.append(
             {
                 "frame": int(feature["frame_id"]),
@@ -375,7 +817,15 @@ def segment_swing_events(
     energy = _smooth([_motion_energy(f) for f in features], window=3)
     fps = _estimate_fps(features)
     if fps:
-        peak_result = _segment_by_peaks(features, energy, min_peak_energy, min_event_frames, min_event_gap, fps)
+        peak_result = _segment_by_peaks(
+            features,
+            energy,
+            min_peak_energy,
+            active_energy,
+            min_event_frames,
+            min_event_gap,
+            fps,
+        )
         if peak_result is not None:
             return peak_result
 
@@ -411,23 +861,47 @@ def segment_swing_events(
 
     events = []
     frame_to_event = {}
+    frame_phases = {}
     for start_idx, end_idx in merged:
         segment_energy = energy[start_idx : end_idx + 1]
         peak_energy = max(segment_energy) if segment_energy else 0.0
         if (end_idx - start_idx + 1) < min_event_frames or peak_energy < min_peak_energy:
             continue
 
-        event_features = features[start_idx : end_idx + 1]
-        classification = classify_swing_event(event_features)
         event_id = len(events) + 1
         peak_rel = segment_energy.index(peak_energy) if segment_energy else 0
         peak_idx = start_idx + peak_rel
         contact_frame = _best_contact_frame(features, start_idx, end_idx, peak_idx)
+        contact_idx = next(
+            (
+                idx
+                for idx in range(start_idx, end_idx + 1)
+                if int(features[idx]["frame_id"]) == int(contact_frame)
+            ),
+            peak_idx,
+        )
+        classification = _classify_impact_event(
+            features,
+            start_idx,
+            end_idx,
+            contact_idx,
+            fps or 25.0,
+        )
+        classification["evidence"]["start_boundary"] = {
+            "mode": "active_island",
+            "confidence": "medium",
+            "onset_frame": int(features[start_idx]["frame_id"]),
+        }
         quality_flags = _event_quality_flags(features, start_idx, end_idx, classification, contact_frame)
-        phases = []
+        phase_counts, event_frame_phases = _phase_counts(
+            features,
+            energy,
+            start_idx,
+            end_idx,
+            contact_idx,
+        )
+        frame_phases.update(event_frame_phases)
         for idx in range(start_idx, end_idx + 1):
-            phase = _phase_for(features[idx], energy[idx], peak_energy)
-            phases.append(phase)
             frame_to_event[features[idx]["frame_id"]] = event_id
 
         events.append(
@@ -443,8 +917,14 @@ def segment_swing_events(
                 "confidence": classification["confidence"],
                 "evidence": classification["evidence"],
                 "quality_flags": quality_flags,
-                "phase_counts": {phase: phases.count(phase) for phase in sorted(set(phases))},
+                "phase_counts": dict(sorted(phase_counts.items())),
             }
         )
 
-    return _build_result(features, energy, events, frame_to_event)
+    return _build_result(
+        features,
+        energy,
+        events,
+        frame_to_event,
+        frame_phases,
+    )

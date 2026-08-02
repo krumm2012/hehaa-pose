@@ -79,6 +79,7 @@ class MainPipeCliTests(unittest.TestCase):
             '--realtime-open-report',
             '--session-id', 'court01-20260729',
             '--session-output-root', 'data/sessions',
+            '--evidence-manifest', 'data/live/evidence.json',
         ])
 
         self.assertTrue(args.live_mode)
@@ -110,6 +111,7 @@ class MainPipeCliTests(unittest.TestCase):
         self.assertTrue(args.realtime_open_report)
         self.assertEqual(args.session_id, 'court01-20260729')
         self.assertEqual(args.session_output_root, 'data/sessions')
+        self.assertEqual(args.evidence_manifest, 'data/live/evidence.json')
 
     @patch('main_pipe.MultiprocessPipeline')
     def test_main_cli_passes_swing_analysis_options_to_pipeline(self, pipeline_class):
@@ -127,6 +129,7 @@ class MainPipeCliTests(unittest.TestCase):
             '--min-peak-energy', '11.0',
             '--session-id', 'court01-test',
             '--session-output-root', 'data/sessions',
+            '--evidence-manifest', 'data/live/evidence.json',
         ])
 
         pipeline_class.assert_called_once()
@@ -147,6 +150,7 @@ class MainPipeCliTests(unittest.TestCase):
         self.assertEqual(kwargs['min_peak_energy'], 11.0)
         self.assertEqual(kwargs['session_id'], 'court01-test')
         self.assertEqual(kwargs['session_output_root'], 'data/sessions')
+        self.assertEqual(kwargs['evidence_manifest'], 'data/live/evidence.json')
         pipeline_class.return_value.run.assert_called_once_with()
 
 

@@ -73,14 +73,22 @@ def _metric(
     confidence: float,
     source_frames: Sequence[int],
     sample_count: int,
+    observability: str = "observable_2d",
+    coach_eligible: bool = True,
+    exclusion_reason: Optional[str] = None,
 ) -> Dict:
-    return {
+    result = {
         "value": round(float(value), 4) if value is not None else None,
         "unit": unit,
         "confidence": _bounded(confidence if value is not None else 0.0),
         "sample_count": int(sample_count),
         "source_frames": [int(frame_id) for frame_id in source_frames],
+        "observability": observability,
+        "coach_eligible": bool(coach_eligible and value is not None),
     }
+    if exclusion_reason:
+        result["exclusion_reason"] = exclusion_reason
+    return result
 
 
 def _window_rows(
@@ -100,6 +108,11 @@ def _median_feature_metric(
     frame_id: int,
     key: str,
     pose_ratio: float,
+    unit: str = "deg_2d",
+    confidence_cap: float = 0.92,
+    coach_eligible: bool = True,
+    observability: str = "observable_2d",
+    exclusion_reason: Optional[str] = None,
 ) -> Dict:
     window = _window_rows(features_by_frame, frame_id)
     samples = [
@@ -109,13 +122,100 @@ def _median_feature_metric(
     ]
     availability = len(samples) / max(1, len(window))
     value = median(value for _, value in samples) if samples else None
-    confidence = min(0.92, pose_ratio * 0.65 + availability * 0.35)
+    confidence = min(confidence_cap, pose_ratio * 0.65 + availability * 0.35)
     return _metric(
         value,
-        "deg",
+        unit,
         confidence,
         [frame for frame, _ in samples],
         len(samples),
+        observability=observability,
+        coach_eligible=coach_eligible,
+        exclusion_reason=exclusion_reason,
+    )
+
+
+def _angle_delta(left: float, right: float) -> float:
+    return abs((float(left) - float(right) + 180.0) % 360.0 - 180.0)
+
+
+def _shoulder_turn_change_metric(
+    features_by_frame: Dict[int, Dict],
+    start_frame: int,
+    contact_frame: int,
+    pose_ratio: float,
+) -> Dict:
+    samples = [
+        (frame_id, float(row["shoulder_turn_deg"]))
+        for frame_id, row in sorted(features_by_frame.items())
+        if start_frame <= frame_id <= contact_frame
+        and row.get("shoulder_turn_deg") is not None
+    ]
+    if not samples:
+        return _metric(None, "deg_2d", 0.0, [], 0)
+    baseline_count = min(5, max(2, len(samples) // 4))
+    baseline = median(value for _, value in samples[:baseline_count])
+    source_frame, value = max(
+        samples,
+        key=lambda item: _angle_delta(item[1], baseline),
+    )
+    change = _angle_delta(value, baseline)
+    coverage = len(samples) / max(1, contact_frame - start_frame + 1)
+    confidence = min(0.82, pose_ratio * 0.65 + coverage * 0.35)
+    return _metric(
+        change,
+        "deg_2d",
+        confidence,
+        [frame for frame, _ in samples[:baseline_count]] + [source_frame],
+        len(samples),
+        observability="image_plane_change",
+    )
+
+
+def _joint_angle(a: Optional[Point], b: Optional[Point], c: Optional[Point]) -> Optional[float]:
+    if a is None or b is None or c is None:
+        return None
+    left = (a[0] - b[0], a[1] - b[1])
+    right = (c[0] - b[0], c[1] - b[1])
+    denominator = math.hypot(*left) * math.hypot(*right)
+    if denominator <= 0:
+        return None
+    cosine = max(-1.0, min(1.0, (left[0] * right[0] + left[1] * right[1]) / denominator))
+    return math.degrees(math.acos(cosine))
+
+
+def _preparation_knee_flexion_metric(
+    frames_by_id: Dict[int, Dict],
+    start_frame: int,
+    contact_frame: int,
+    pose_ratio: float,
+) -> Dict:
+    preparation_end = start_frame + max(1, (contact_frame - start_frame) // 2)
+    samples = []
+    source_frames = []
+    for frame_id in range(start_frame, preparation_end + 1):
+        pose = (frames_by_id.get(frame_id) or {}).get("pose") or {}
+        frame_angles = []
+        for side in ("left", "right"):
+            angle = _joint_angle(
+                _point(pose.get(f"{side}_hip")),
+                _point(pose.get(f"{side}_knee")),
+                _point(pose.get(f"{side}_ankle")),
+            )
+            if angle is not None:
+                frame_angles.append(angle)
+        if frame_angles:
+            samples.append(max(0.0, 180.0 - sum(frame_angles) / len(frame_angles)))
+            source_frames.append(frame_id)
+    availability = len(source_frames) / max(1, preparation_end - start_frame + 1)
+    confidence = min(0.82, pose_ratio * 0.65 + availability * 0.35)
+    return _metric(
+        median(samples) if samples else None,
+        "deg_2d",
+        confidence,
+        source_frames,
+        len(samples),
+        observability="image_plane_joint_angle",
     )
 
 
@@ -146,6 +246,7 @@ def _movement_metric(
     end_frame: int,
     body_width: Optional[float],
     pose_ratio: float,
+    exclusion_reason: str,
 ) -> Dict:
     start, start_sources = _median_center(frames_by_id, start_frame)
     end, end_sources = _median_center(frames_by_id, end_frame)
@@ -166,6 +267,9 @@ def _movement_metric(
         confidence,
         sorted(set(start_sources + end_sources)),
         len(start_sources) + len(end_sources),
+        observability="screen_body_center_displacement",
+        coach_eligible=False,
+        exclusion_reason=exclusion_reason,
     )
 
 
@@ -175,6 +279,7 @@ def _contact_position_metric(
     contact_frame: int,
     body_width: Optional[float],
     pose_ratio: float,
+    contact_evidence_confidence: float,
 ) -> Dict:
     candidates = []
     for frame_id in range(contact_frame - 2, contact_frame + 3):
@@ -197,19 +302,51 @@ def _contact_position_metric(
         return _metric(None, "body_width", 0.0, [], 0)
     _, _, source_frame, lateral_distance, contact_score = min(candidates)
     proximity = 1.0 - min(1.0, abs(source_frame - contact_frame) / 3.0)
-    confidence = min(
-        0.85,
-        pose_ratio * 0.45
-        + max(0.0, min(1.0, contact_score)) * 0.4
-        + proximity * 0.15,
+    evidence_confidence = max(
+        float(contact_score),
+        float(contact_evidence_confidence),
     )
+    confidence = min(0.85, pose_ratio * 0.35 + evidence_confidence * 0.5 + proximity * 0.15)
+    normalized_distance = lateral_distance / body_width
+    plausible_geometry = 0.15 <= normalized_distance <= 2.20
+    coach_eligible = evidence_confidence >= 0.35 and plausible_geometry
+    if evidence_confidence < 0.35:
+        exclusion_reason = "contact_not_supported_by_ball_racket_proximity"
+    elif not plausible_geometry:
+        exclusion_reason = "contact_geometry_outside_plausible_single_view_range"
+    else:
+        exclusion_reason = None
     return _metric(
-        lateral_distance / body_width,
+        normalized_distance,
         "body_width",
         confidence,
         [source_frame],
         1,
+        observability="image_plane_lateral_only",
+        coach_eligible=coach_eligible,
+        exclusion_reason=exclusion_reason,
     )
+
+
+def _early_recovery_frame(
+    features_by_frame: Dict[int, Dict],
+    contact_frame: int,
+    end_frame: int,
+    seconds: float = 0.40,
+) -> int:
+    contact = features_by_frame.get(contact_frame) or {}
+    contact_time = contact.get("timestamp")
+    if contact_time is None:
+        return min(end_frame, contact_frame + 10)
+    target = float(contact_time) + seconds
+    candidates = [
+        (frame_id, float(row["timestamp"]))
+        for frame_id, row in features_by_frame.items()
+        if contact_frame <= frame_id <= end_frame and row.get("timestamp") is not None
+    ]
+    if not candidates:
+        return min(end_frame, contact_frame + 10)
+    return min(candidates, key=lambda item: abs(item[1] - target))[0]
 
 
 def aggregate_event_biomechanics(
@@ -263,9 +400,28 @@ def aggregate_event_biomechanics(
         if width is not None
     ]
     body_width = median(width for _, width in valid_widths) if valid_widths else None
+    contact_feature = features_by_frame.get(contact_frame) or {}
+    contact_evidence_confidence = max(
+        0.0,
+        min(1.0, float(contact_feature.get("contact_score") or 0.0)),
+    )
+    peak_frame = int(event.get("peak_frame", contact_frame))
+    arm_reference_frame = (
+        contact_frame if contact_evidence_confidence >= 0.35 else peak_frame
+    )
+    arm_observability = (
+        "contact_window_2d"
+        if contact_evidence_confidence >= 0.35
+        else "swing_peak_window_2d"
+    )
+    early_recovery_frame = _early_recovery_frame(
+        features_by_frame,
+        contact_frame,
+        end_frame,
+    )
 
     return {
-        "schema_version": "single_view_2d_v1",
+        "schema_version": "single_view_2d_v2",
         "coordinate_space": "image_plane_normalized_by_body_width",
         "contact_frame": contact_frame,
         "reference_body_width_px": (
@@ -274,6 +430,8 @@ def aggregate_event_biomechanics(
         "limitations": [
             "single_view_2d_not_3d_kinetics",
             "camera_perspective_affects_depth_and_weight_transfer",
+            "hip_shoulder_separation_is_image_plane_proxy",
+            "screen_translation_is_not_balance_or_weight_transfer",
         ],
         "metrics": {
             "hip_shoulder_separation": _median_feature_metric(
@@ -281,18 +439,42 @@ def aggregate_event_biomechanics(
                 contact_frame,
                 "hip_shoulder_sep_deg",
                 pose_ratio,
+                unit="image_plane_deg",
+                confidence_cap=0.35,
+                coach_eligible=False,
+                observability="image_plane_proxy_only",
+                exclusion_reason="true_3d_separation_not_observable_single_view",
             ),
             "shoulder_turn": _median_feature_metric(
                 features_by_frame,
                 contact_frame,
                 "shoulder_turn_deg",
                 pose_ratio,
+                unit="image_plane_deg",
+                confidence_cap=0.45,
+                coach_eligible=False,
+                observability="absolute_image_orientation_only",
+                exclusion_reason="absolute_projection_is_not_turn_magnitude",
+            ),
+            "shoulder_turn_change": _shoulder_turn_change_metric(
+                features_by_frame,
+                start_frame,
+                contact_frame,
+                pose_ratio,
+            ),
+            "preparation_knee_flexion": _preparation_knee_flexion_metric(
+                frames_by_id,
+                start_frame,
+                contact_frame,
+                pose_ratio,
             ),
             "arm_extension": _median_feature_metric(
                 features_by_frame,
-                contact_frame,
+                arm_reference_frame,
                 "arm_extension_deg",
                 pose_ratio,
+                unit="deg_2d",
+                observability=arm_observability,
             ),
             "contact_lateral_distance": _contact_position_metric(
                 frames_by_id,
@@ -300,6 +482,7 @@ def aggregate_event_biomechanics(
                 contact_frame,
                 body_width,
                 pose_ratio,
+                contact_evidence_confidence,
             ),
             "weight_transfer": _movement_metric(
                 frames_by_id,
@@ -307,13 +490,15 @@ def aggregate_event_biomechanics(
                 contact_frame,
                 body_width,
                 pose_ratio,
+                "screen_translation_is_not_true_weight_transfer",
             ),
             "balance_drift": _movement_metric(
                 frames_by_id,
                 contact_frame,
-                end_frame,
+                early_recovery_frame,
                 body_width,
                 pose_ratio,
+                "body_center_translation_is_not_balance_stability",
             ),
         },
         "quality": {
@@ -322,6 +507,9 @@ def aggregate_event_biomechanics(
                 len(valid_widths) / max(1, len(frames_in_event)),
                 4,
             ),
+            "contact_evidence_confidence": round(contact_evidence_confidence, 4),
+            "arm_extension_reference_frame": int(arm_reference_frame),
+            "early_recovery_frame": int(early_recovery_frame),
         },
     }
 

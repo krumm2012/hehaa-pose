@@ -110,7 +110,7 @@ class DeepSeekCoachSidecarTests(unittest.TestCase):
         )
         self.assertEqual(request["payload"]["temperature"], 0.1)
         evidence = json.loads(request["payload"]["messages"][1]["content"])
-        self.assertEqual(evidence["schema_version"], "deepseek_swing_evidence_v1")
+        self.assertEqual(evidence["schema_version"], "deepseek_swing_evidence_v2")
         self.assertEqual(
             [row["frame_id"] for row in evidence["frame_sequence"]],
             [31, 32],

@@ -208,6 +208,7 @@ class BallTrackSelector:
             "position": [float(best_pos[0]), float(best_pos[1])] if best_pos is not None else None,
             "confidence": best_conf,
             "supported_track": supported_track,
+            "source": best_ball.get("source", "model"),
         }
         min_conf = float(self.config.get("ball_min_selected_confidence", 0.05))
         if best_conf < min_conf and not supported_track:

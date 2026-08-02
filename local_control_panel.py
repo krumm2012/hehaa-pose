@@ -9,6 +9,7 @@ import mimetypes
 import os
 import re
 import secrets
+import shlex
 import shutil
 import signal
 import subprocess
@@ -37,6 +38,48 @@ from roi_stream_config import sanitize_stream_source
 
 SESSION_NAME_PATTERN = re.compile(r"[^A-Za-z0-9_-]+")
 MAX_REQUEST_BYTES = 64 * 1024
+CUSTOM_STREAM_ID = "custom"
+CUSTOM_STREAM_SCHEMES = {"http", "https", "rtmp", "rtsp", "tcp", "udp"}
+ENVIRONMENT_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def load_local_environment_variable(path: Path, name: str) -> bool:
+    """Load one named value from a dotenv file without overriding the process."""
+    variable_name = str(name or "").strip()
+    if not ENVIRONMENT_NAME_PATTERN.fullmatch(variable_name):
+        raise ValueError("环境变量名无效")
+    if os.environ.get(variable_name):
+        return False
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise RuntimeError(f"无法读取本地环境文件: {path}") from exc
+
+    for line_number, raw_line in enumerate(lines, start=1):
+        candidate = raw_line.strip()
+        if not candidate or candidate.startswith("#"):
+            continue
+        if candidate.startswith("export "):
+            candidate = candidate[7:].lstrip()
+        raw_key, raw_separator, _raw_value = candidate.partition("=")
+        if not raw_separator or raw_key.strip() != variable_name:
+            continue
+        try:
+            tokens = shlex.split(candidate, comments=True, posix=True)
+        except ValueError as exc:
+            raise ValueError(
+                f"{path.name} 第 {line_number} 行格式无效"
+            ) from exc
+        if len(tokens) != 1:
+            continue
+        _key, _separator, value = tokens[0].partition("=")
+        if not value:
+            return False
+        os.environ[variable_name] = value
+        return True
+    return False
 
 
 def _bool(payload: Dict[str, Any], key: str, default: bool) -> bool:
@@ -94,6 +137,29 @@ def inject_rtsp_credentials(source: str, username: str, password: str) -> str:
     )
 
 
+def validate_custom_stream_source(source: str) -> str:
+    """Validate an ephemeral stream URL while keeping its connection options."""
+    value = str(source or "").strip()
+    parsed = urlsplit(value)
+    scheme = parsed.scheme.lower()
+    if scheme not in CUSTOM_STREAM_SCHEMES or not parsed.hostname:
+        allowed = ", ".join(sorted(CUSTOM_STREAM_SCHEMES))
+        raise ValueError(f"自定义码流必须是有效地址，支持: {allowed}")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("请通过用户名和密码输入框提供码流凭据")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("自定义码流端口无效") from exc
+    host = parsed.hostname
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    netloc = f"{host}:{port}" if port is not None else host
+    return urlunsplit(
+        (scheme, netloc, parsed.path, parsed.query, parsed.fragment)
+    )
+
+
 @dataclass(frozen=True)
 class ControlSettings:
     stream_id: str
@@ -110,6 +176,7 @@ class ControlSettings:
     save_video: bool
     realtime_swing_events: bool
     realtime_frame_output: bool
+    evidence_bundle: bool
     realtime_coach: bool
     max_suggestions: int
     min_confidence: float
@@ -174,6 +241,7 @@ class ControlSettings:
                 "realtime_frame_output",
                 False,
             ),
+            evidence_bundle=_bool(payload, "evidence_bundle", True),
             realtime_coach=realtime_coach,
             max_suggestions=_number(
                 payload,
@@ -363,6 +431,7 @@ class LocalPipelineController:
                 "realtime_frame_output": bool(
                     realtime.get("frame_output_enabled", False)
                 ),
+                "evidence_bundle": True,
                 "realtime_coach": True,
                 "max_suggestions": int(
                     realtime.get("coach_max_suggestions", 3)
@@ -410,7 +479,7 @@ class LocalPipelineController:
             }
 
     def preview(self, payload: Dict[str, Any]) -> bytes:
-        stream = self._stream(str(payload.get("stream_id") or ""))
+        stream = self._stream_from_payload(payload)
         source = self._authenticated_source(stream, payload)
         config = yaml.safe_load(self.config_path.read_text(encoding="utf-8")) or {}
         frame = capture_calibration_frame(
@@ -430,7 +499,7 @@ class LocalPipelineController:
 
     def start(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         settings = ControlSettings.from_payload(payload)
-        stream = self._stream(settings.stream_id)
+        stream = self._stream_from_payload(payload)
         with self._lock:
             self._refresh_process_state()
             if self._state in {"running", "stopping"}:
@@ -476,7 +545,8 @@ class LocalPipelineController:
             environment["PYTHONUNBUFFERED"] = "1"
             self._logs.clear()
             self._logs.append(
-                f"[control] 启动 {stream['label']} · {stream['source']}"
+                f"[control] 启动 {stream['label']} · "
+                f"{stream.get('public_source') or stream['source']}"
             )
             self._process = subprocess.Popen(
                 command,
@@ -571,6 +641,34 @@ class LocalPipelineController:
             raise ValueError(f"未知球场: {stream_id}")
         return selected
 
+    def _stream_from_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        stream_id = str(payload.get("stream_id") or "").strip()
+        if stream_id != CUSTOM_STREAM_ID:
+            return self._stream(stream_id)
+
+        source = validate_custom_stream_source(
+            str(payload.get("custom_stream_source") or "")
+        )
+        public_source = sanitize_stream_source(source)
+        matched = next(
+            (
+                stream
+                for stream in self.streams
+                if stream["source"] == public_source
+            ),
+            None,
+        )
+        return {
+            "stream_id": CUSTOM_STREAM_ID,
+            "label": "自定义码流",
+            "source": source,
+            "public_source": public_source,
+            "roi_enabled": bool((matched or {}).get("roi_enabled", False)),
+            "points": list((matched or {}).get("points") or []),
+            "frame_size": list((matched or {}).get("frame_size") or [0, 0]),
+            "default": False,
+        }
+
     def _authenticated_source(
         self,
         stream: Dict[str, Any],
@@ -618,6 +716,7 @@ class LocalPipelineController:
         clips_dir = session_dir / f"{stem}_swing_clips"
         frame_jsonl = session_dir / f"{stem}_frames.jsonl"
         frame_snapshot = session_dir / f"{stem}_frames_latest.json"
+        evidence_manifest = session_dir / f"{stem}_evidence_manifest.json"
         preview = session_dir / f"{stem}_swing_report_roi_preview.jpg"
         python_executable = Path(sys.executable)
         preferred_python = self.workspace / "venv_yolo26/bin/python"
@@ -662,7 +761,7 @@ class LocalPipelineController:
                     str(settings.settle_frames),
                 ]
             )
-        if settings.realtime_frame_output:
+        if settings.realtime_frame_output or settings.evidence_bundle:
             command.extend(
                 [
                     "--realtime-frame-output",
@@ -672,6 +771,8 @@ class LocalPipelineController:
                     str(frame_snapshot),
                 ]
             )
+        if settings.evidence_bundle:
+            command.extend(["--evidence-manifest", str(evidence_manifest)])
         if settings.realtime_coach:
             command.extend(
                 [
@@ -702,6 +803,12 @@ class LocalPipelineController:
             "report_path": relative(event_html),
             "report_url": f"/artifacts/{quote(relative(event_html))}",
             "clips_dir": relative(clips_dir),
+            "frame_jsonl": relative(frame_jsonl),
+            "frame_snapshot": relative(frame_snapshot),
+            "evidence_manifest": relative(evidence_manifest),
+            "evidence_manifest_url": (
+                f"/artifacts/{quote(relative(evidence_manifest))}"
+            ),
             "preview_path": relative(preview),
         }
         return command, artifacts
@@ -774,7 +881,7 @@ class LocalPipelineController:
         )
         cv2.putText(
             preview,
-            stream["source"],
+            stream.get("public_source") or stream["source"],
             (24, int(header_height * 0.82)),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.48,
@@ -1013,9 +1120,19 @@ def main(argv=None) -> int:
     if args.host not in {"127.0.0.1", "localhost", "::1"}:
         raise ValueError("控制面板仅允许绑定本机回环地址")
     workspace = Path(__file__).resolve().parent
+    config_path = (workspace / args.config).resolve()
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    deepseek_config = (config.get("realtime_swing") or {}).get("deepseek") or {}
+    deepseek_api_key_env = str(
+        deepseek_config.get("api_key_env") or "DEEPSEEK_API_KEY"
+    )
+    load_local_environment_variable(
+        workspace / ".env.local",
+        deepseek_api_key_env,
+    )
     controller = LocalPipelineController(
         workspace=workspace,
-        config_path=workspace / args.config,
+        config_path=config_path,
         roi_config_path=workspace / args.roi_config,
         frontend_path=workspace / args.frontend,
         username_env=args.username_env,
@@ -1030,6 +1147,10 @@ def main(argv=None) -> int:
     print(
         f"🔐 摄像头凭据环境变量: "
         f"{args.username_env} / {args.password_env}"
+    )
+    print(
+        f"🧠 DeepSeek密钥环境变量: {deepseek_api_key_env} | "
+        f"{'已配置' if os.environ.get(deepseek_api_key_env) else '未配置'}"
     )
     if args.open:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()

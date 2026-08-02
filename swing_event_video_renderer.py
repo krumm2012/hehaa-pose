@@ -12,6 +12,8 @@ from typing import Dict, List, Optional, Tuple
 
 import cv2
 
+from video_overlay_primitives import draw_ball_outline
+
 
 STROKE_COLORS = {
     "Forehand": (0, 190, 255),
@@ -22,6 +24,7 @@ STROKE_COLORS = {
 
 PHASE_COLORS = {
     "ready": (130, 130, 130),
+    "recovery_ready_transition": (190, 150, 70),
     "backswing": (255, 170, 0),
     "forward_swing": (0, 220, 255),
     "contact_candidate": (0, 255, 0),
@@ -230,9 +233,7 @@ def _draw_panel(frame, x: int, y: int, w: int, h: int, alpha: float = 0.72) -> N
 def _draw_ball_and_racket(frame, frame_record: Dict) -> None:
     ball = frame_record.get("ball")
     if isinstance(ball, list) and len(ball) >= 2:
-        center = (int(ball[0]), int(ball[1]))
-        cv2.circle(frame, center, 10, (0, 255, 255), -1)
-        cv2.circle(frame, center, 13, (255, 255, 255), 2)
+        draw_ball_outline(frame, ball)
 
     for racket in frame_record.get("rackets") or []:
         box = racket.get("box") if isinstance(racket, dict) else None
@@ -291,7 +292,7 @@ def draw_unified_overlay(
     _draw_ball_and_racket(frame, frame_record)
 
     panel_w = min(520, max(430, frame.shape[1] // 4))
-    _draw_panel(frame, 24, 24, panel_w, 322)
+    _draw_panel(frame, 24, 24, panel_w, 348)
 
     title = f"Event {event_id}/{event_count}: {event_type}" if event else "Event -/{}: No Event".format(event_count)
     _draw_text(frame, title, (44, 62), 0.72, color, 2)
@@ -309,7 +310,20 @@ def draw_unified_overlay(
     else:
         _draw_text(frame, "Range: outside swing event", (44, 126), 0.5, (180, 180, 180), 1)
 
+    classification = ((event or {}).get("evidence") or {}).get("classification_context") or {}
+    player_context = classification.get("player") or {}
+    camera_context = classification.get("camera") or {}
+    swing_context = classification.get("swing") or {}
+    calibration = (event or {}).get("coach_calibration") or {}
+    visible_score = calibration.get("visible_technique_score_9")
+    classification_line = (
+        f"player: {player_context.get('dominant_hand', '-')}  "
+        f"view: {camera_context.get('view', '-')}  "
+        f"side: {swing_context.get('side', '-')}  "
+        f"visible: {_fmt(visible_score, 1)}/9"
+    )
     metric_lines = [
+        (classification_line, color if event else (180, 180, 180)),
         (f"motion_phase: {motion_phase}", phase_color),
         (f"model_raw: {state['model_raw_label']}{' (evidence)' if state['raw_label_conflict'] else ''}", raw_color),
         (f"energy: {_fmt(state['motion_energy'])}  wrist: {_fmt(state['wrist_speed'])}", (210, 210, 210)),

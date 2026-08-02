@@ -23,7 +23,7 @@ class DeepSeekEvidenceViewTests(unittest.TestCase):
 
         view = build_deepseek_evidence_view(packet)
 
-        self.assertEqual(view["schema_version"], "deepseek_swing_evidence_v1")
+        self.assertEqual(view["schema_version"], "deepseek_swing_evidence_v2")
         self.assertEqual(view["event_id"], 1)
         self.assertEqual(
             [row["frame_id"] for row in view["frame_sequence"]],
@@ -74,7 +74,7 @@ class DeepSeekEvidenceViewTests(unittest.TestCase):
         self.assertIn("racket_face", policy["prohibited_claims"])
         self.assertIn("professional_speed_comparison", policy["prohibited_claims"])
 
-    def test_object_tracking_warnings_do_not_block_body_coaching(self):
+    def test_single_view_policy_blocks_power_transfer_claims(self):
         frame_document, event_document, coach_document = sample_documents()
         quality = {
             "warnings": ["racket_track_gaps", "static_ball_mask_in_event"],
@@ -107,13 +107,82 @@ class DeepSeekEvidenceViewTests(unittest.TestCase):
 
         self.assertTrue(policy["coaching_allowed"])
         self.assertIn("technique", policy["allowed_advice_categories"])
-        self.assertIn("power_transfer", policy["allowed_advice_topics"])
+        self.assertIn("power_transfer", policy["blocked_advice_topics"])
         self.assertIn("racket_face", policy["blocked_advice_topics"])
         self.assertIn("ball_trajectory", policy["blocked_advice_topics"])
-        self.assertEqual(
-            policy["advice_candidates"][0]["focus"],
-            "power_transfer",
+        self.assertIn(
+            "true_3d_hip_shoulder_separation",
+            policy["prohibited_claims"],
         )
+        self.assertNotIn(
+            "power_transfer",
+            [candidate["focus"] for candidate in policy["advice_candidates"]],
+        )
+
+    def test_excluded_biomechanics_are_not_sent_as_numeric_model_evidence(self):
+        frame_document, event_document, coach_document = sample_documents()
+        event_document["events"][0]["biomechanics"] = {
+            "metrics": {
+                "hip_shoulder_separation": {
+                    "value": 31.0,
+                    "confidence": 0.9,
+                    "coach_eligible": False,
+                    "exclusion_reason": "true_3d_separation_unavailable",
+                },
+                "arm_extension": {
+                    "value": 120.0,
+                    "confidence": 0.8,
+                    "coach_eligible": True,
+                },
+            }
+        }
+        for feature in event_document["features"]:
+            feature["hip_shoulder_sep_deg"] = 31.0
+        packet = build_swing_evidence_packet(
+            frame_document,
+            event_document,
+            coach_document,
+            event_id=1,
+        )
+
+        view = build_deepseek_evidence_view(packet)
+        excluded = view["event"]["biomechanics"]["metrics"][
+            "hip_shoulder_separation"
+        ]
+
+        self.assertEqual(excluded["status"], "excluded_from_coaching")
+        self.assertNotIn("value", excluded)
+        self.assertNotIn("confidence", excluded)
+        self.assertNotIn(
+            "hip_shoulder_sep_deg",
+            json.dumps(view["frame_sequence"], ensure_ascii=False),
+        )
+
+    def test_calibrated_candidates_are_unique_per_coaching_focus(self):
+        frame_document, event_document, coach_document = sample_documents()
+        coach_event = coach_document["events"][0]
+        coach_event["body"]["unit_turn_quality"] = "limited"
+        coach_event["coach_calibration"] = {
+            "assessments": {
+                "shoulder_turn_change": {
+                    "status": "usable",
+                    "value": 8.0,
+                }
+            }
+        }
+        packet = build_swing_evidence_packet(
+            frame_document,
+            event_document,
+            coach_document,
+            event_id=1,
+        )
+
+        candidates = build_deepseek_evidence_view(packet)["decision_policy"][
+            "advice_candidates"
+        ]
+        focuses = [candidate["focus"] for candidate in candidates]
+
+        self.assertEqual(focuses.count("preparation"), 1)
 
     def test_intermittent_ball_detection_is_tolerated_when_contact_is_covered(self):
         frame_document, event_document, coach_document = sample_documents()
