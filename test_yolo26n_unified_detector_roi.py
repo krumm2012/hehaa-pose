@@ -6,6 +6,55 @@ from yolo26n_unified_detector import YOLO26nUnifiedDetector
 
 
 class UnifiedDetectorROITests(unittest.TestCase):
+    def test_parses_two_class_end_to_end_output_with_configured_name(self):
+        detector = YOLO26nUnifiedDetector.__new__(YOLO26nUnifiedDetector)
+        detector.original_width = 1920
+        detector.original_height = 1080
+        detector.input_width = 960
+        detector.input_height = 960
+        detector.ball_class_id = 0
+        detector.racket_class_id = 1
+        detector.coreml_detection_output = "var_1440"
+        detector.ball_conf_threshold = 0.692
+        detector.racket_conf_threshold = 0.524
+        detector.last_parse_diagnostics = {}
+
+        output = np.array([[[100, 120, 112, 132, 0.80, 0],
+                            [300, 220, 380, 320, 0.70, 1],
+                            [400, 300, 410, 310, 0.60, 0]]], dtype=float)
+
+        balls, rackets = detector._parse_predictions({"var_1440": output})
+
+        self.assertEqual(len(balls), 1)
+        self.assertEqual(len(rackets), 1)
+        self.assertEqual(detector.last_parse_diagnostics["output_format"], "var_1440")
+        self.assertEqual(detector.last_parse_diagnostics["ball"]["class_candidates"], 2)
+        self.assertEqual(detector.last_parse_diagnostics["ball"]["above_threshold_candidates"], 1)
+
+    def test_letterbox_restores_original_coordinates(self):
+        detector = YOLO26nUnifiedDetector.__new__(YOLO26nUnifiedDetector)
+        detector.original_width = 1920
+        detector.original_height = 1080
+        detector.input_width = 960
+        detector.input_height = 960
+        detector.preprocess_mode = "letterbox"
+        detector.ball_class_id = 0
+        detector.racket_class_id = 1
+        detector.coreml_detection_output = "var_1440"
+        detector.ball_conf_threshold = 0.5
+        detector.racket_conf_threshold = 0.5
+        detector.last_parse_diagnostics = {}
+
+        frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        prepared = detector._preprocess(frame)
+        balls, _ = detector._parse_predictions({
+            "var_1440": np.array([[[100, 300, 200, 400, 0.8, 0]]], dtype=float)
+        })
+
+        self.assertEqual(prepared.size, (960, 960))
+        self.assertEqual(detector._preprocess_pad, (0, 210))
+        self.assertEqual(balls[0]["box"], [200.0, 180.0, 400.0, 380.0])
+
     def test_offsets_ball_and_racket_before_candidate_selection(self):
         detections = [
             {

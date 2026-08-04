@@ -1,0 +1,78 @@
+{
+  "schema_version": "tennis_coreml_candidate_manifest_v1",
+  "model_id": "tennis-yolo26n-exp004-960-fp16",
+  "created_at": "2026-08-04T01:05:57Z",
+  "status": "experimental_candidate_not_promoted",
+  "task": "detect",
+  "classes": {
+    "0": "tennis_ball",
+    "1": "tennis_racket"
+  },
+  "input_size": [
+    960,
+    960
+  ],
+  "batch": 1,
+  "output": {
+    "name": "var_1440",
+    "shape": [
+      1,
+      300,
+      6
+    ],
+    "dtype": "float32",
+    "end_to_end": true,
+    "embedded_nms": false
+  },
+  "precision": "fp16",
+  "coreml_package": {
+    "path": "models/detectors/tennis-yolo26n-exp004-960-fp16/model.mlpackage",
+    "bundle_sha256": "530184d076eab08ed3f9fc940c574055a9e266b039f02064ca48245835d63a93"
+  },
+  "source": {
+    "experiment_id": "exp-20260804-004-960-v002-balanced-finetune-cloud",
+    "pytorch_path": "models/pytorch/tennis-yolo26n-exp004-960/best.pt",
+    "pytorch_sha256": "963bc8307b7606f42aa830fc44bc2fec414af0602f9dacce91d0f6ccce216dac",
+    "dataset_manifest": "data/datasets/dataset-v002/yolo-experimental-session-balanced-20260804/balanced_view_manifest.json",
+    "dataset_manifest_sha256": "36ab5f37cbe95607b76c1daa9f962fe0c7e575dd95c69b277acae595cbdc120a",
+    "dataset_status": "experimental_not_frozen"
+  },
+  "conversion": {
+    "ultralytics": "8.4.14",
+    "coremltools": "9.0",
+    "python": "3.11.15",
+    "torch": "2.7.0",
+    "numpy": "2.3.5",
+    "arguments": {
+      "format": "coreml",
+      "imgsz": 960,
+      "half": true,
+      "nms": false,
+      "device": "cpu"
+    }
+  },
+  "candidate_operating_thresholds": {
+    "selection_split": "val",
+    "minimum_precision": 0.9,
+    "step": 0.001,
+    "tennis_ball": 0.692,
+    "tennis_racket": 0.524,
+    "report": "reports/experiments/exp-20260804-004-960-v002-balanced-finetune-cloud-final-clean-val-threshold-calibration-p0001.json"
+  },
+  "smoke_test": {
+    "platform": "Apple M5",
+    "images": 5,
+    "coreml_loaded": true,
+    "class_mapping_matches_pytorch": true,
+    "both_classes_observed": true,
+    "notes": "Batch-1 per-frame inference completed on five validation images at confidence 0.001. Full Core ML parity and latency validation is still required."
+  },
+  "promotion": {
+    "allowed": false,
+    "reasons": [
+      "dataset-v002 is experimental and not frozen",
+      "blind final_test was waived for exp-004",
+      "Core ML full-set parity and 1500-frame product regression are not complete"
+    ]
+  }
+}

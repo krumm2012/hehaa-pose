@@ -71,9 +71,13 @@ class YOLO26nUnifiedDetector:
         
         print(f"   模型输入尺寸: {self.input_width}x{self.input_height}")
         
-        # COCO 类别 ID
-        self.ball_class_id = 32  # sports ball
-        self.racket_class_id = 38  # tennis racket
+        # 类别 ID 由部署配置决定。旧 COCO 模型默认使用 32/38；两类微调模型使用 0/1。
+        self.ball_class_id = int(config.get('ball_class_id', 32))
+        self.racket_class_id = int(config.get('racket_class_id', 38))
+        self.coreml_detection_output = config.get('coreml_detection_output')
+        self.preprocess_mode = str(config.get('preprocess_mode', 'stretch')).lower()
+        if self.preprocess_mode not in {'stretch', 'letterbox'}:
+            raise ValueError(f"unsupported unified detector preprocess_mode: {self.preprocess_mode}")
         
         # 置信度阈值
         self.ball_conf_threshold = config.get('ball_confidence_threshold', 0.02)
@@ -85,6 +89,8 @@ class YOLO26nUnifiedDetector:
         
         print(f"   球检测阈值: {self.ball_conf_threshold}")
         print(f"   球拍检测阈值: {self.racket_conf_threshold}")
+        print(f"   类别 ID: ball={self.ball_class_id}, racket={self.racket_class_id}")
+        print(f"   预处理: {self.preprocess_mode}")
         
         # 球追踪历史（用于过滤静态球）
         self.ball_history = deque(maxlen=10)
@@ -215,9 +221,32 @@ class YOLO26nUnifiedDetector:
         """预处理图像"""
         # 转换为 RGB
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        
-        # 缩放到模型输入尺寸
-        resized = cv2.resize(rgb_frame, (self.input_width, self.input_height))
+
+        if self.preprocess_mode == 'letterbox':
+            gain = min(
+                self.input_width / self.original_width,
+                self.input_height / self.original_height,
+            )
+            resized_width = max(1, round(self.original_width * gain))
+            resized_height = max(1, round(self.original_height * gain))
+            resized_content = cv2.resize(rgb_frame, (resized_width, resized_height))
+            pad_x = (self.input_width - resized_width) // 2
+            pad_y = (self.input_height - resized_height) // 2
+            resized = np.full(
+                (self.input_height, self.input_width, 3),
+                114,
+                dtype=np.uint8,
+            )
+            resized[
+                pad_y:pad_y + resized_height,
+                pad_x:pad_x + resized_width,
+            ] = resized_content
+            self._preprocess_gain = gain
+            self._preprocess_pad = (pad_x, pad_y)
+        else:
+            resized = cv2.resize(rgb_frame, (self.input_width, self.input_height))
+            self._preprocess_gain = None
+            self._preprocess_pad = (0, 0)
         
         # 转换为 PIL Image
         pil_image = Image.fromarray(resized)
@@ -245,11 +274,28 @@ class YOLO26nUnifiedDetector:
             },
         }
 
-        # YOLO26n Core ML 输出格式: var_1441 [1, 300, 6]
-        # 格式: [x_center, y_center, width, height, confidence, class_id]
-        if 'var_1441' in predictions:
-            diagnostics["output_format"] = "var_1441"
-            output = predictions['var_1441']
+        # YOLO26 端到端 Core ML 输出格式: [1, 300, 6]
+        # 格式: [x1, y1, x2, y2, confidence, class_id]。输出变量名会随导出图变化，
+        # 因此优先使用配置，其次兼容旧名，最后按数组形状识别。
+        output_name = None
+        configured_output = getattr(self, 'coreml_detection_output', None)
+        if configured_output in predictions:
+            output_name = configured_output
+        elif 'var_1441' in predictions:
+            output_name = 'var_1441'
+        else:
+            output_name = next(
+                (
+                    name for name, value in predictions.items()
+                    if np.asarray(value).ndim in (2, 3)
+                    and np.asarray(value).shape[-1] == 6
+                ),
+                None,
+            )
+
+        if output_name is not None:
+            diagnostics["output_format"] = output_name
+            output = np.asarray(predictions[output_name])
             
             # 移除 batch 维度
             if len(output.shape) == 3:
@@ -272,15 +318,21 @@ class YOLO26nUnifiedDetector:
                         diagnostics["racket"]["max_confidence"], confidence
                     )
                 
-                # 计算原始尺寸下的坐标
-                # 注意：Core ML 输出通常是针对 640x640 的像素坐标
-                scale_x = self.original_width / self.input_width
-                scale_y = self.original_height / self.input_height
-                
-                real_x1 = max(0, min(float(x1) * scale_x, self.original_width))
-                real_y1 = max(0, min(float(y1) * scale_y, self.original_height))
-                real_x2 = max(0, min(float(x2) * scale_x, self.original_width))
-                real_y2 = max(0, min(float(y2) * scale_y, self.original_height))
+                # 恢复到推理输入前的图像坐标。微调模型使用 letterbox，旧模型仍可使用 stretch。
+                if getattr(self, 'preprocess_mode', 'stretch') == 'letterbox':
+                    gain = float(self._preprocess_gain)
+                    pad_x, pad_y = self._preprocess_pad
+                    real_x1 = max(0, min((float(x1) - pad_x) / gain, self.original_width))
+                    real_y1 = max(0, min((float(y1) - pad_y) / gain, self.original_height))
+                    real_x2 = max(0, min((float(x2) - pad_x) / gain, self.original_width))
+                    real_y2 = max(0, min((float(y2) - pad_y) / gain, self.original_height))
+                else:
+                    scale_x = self.original_width / self.input_width
+                    scale_y = self.original_height / self.input_height
+                    real_x1 = max(0, min(float(x1) * scale_x, self.original_width))
+                    real_y1 = max(0, min(float(y1) * scale_y, self.original_height))
+                    real_x2 = max(0, min(float(x2) * scale_x, self.original_width))
+                    real_y2 = max(0, min(float(y2) * scale_y, self.original_height))
                 
                 box = [real_x1, real_y1, real_x2, real_y2]
                 

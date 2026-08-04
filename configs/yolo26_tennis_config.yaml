@@ -16,9 +16,14 @@ racket_yolo_model_path: "models/yolov8n.pt"
 # ==================== 🎯 YOLO26n 统一检测配置 ====================
 unified_detection:
   enabled: true                                # 启用统一检测（替代 HSV + YOLOv8n）
-  model_path: "yolo26n.mlpackage"              # YOLO26n Core ML 模型
-  ball_confidence_threshold: 0.02              # 球检测置信度阈值
-  racket_confidence_threshold: 0.35            # 球拍检测置信度阈值 (平衡准确性和召回率)
+  model_path: "models/detectors/tennis-yolo26n-exp004-960-fp16/model.mlpackage"
+  model_manifest_path: "models/detectors/tennis-yolo26n-exp004-960-fp16/model_manifest.json"
+  ball_class_id: 0                             # 两类微调模型 tennis_ball
+  racket_class_id: 1                           # 两类微调模型 tennis_racket
+  coreml_detection_output: "var_1440"          # exp-004 Core ML 端到端输出
+  preprocess_mode: "letterbox"                 # 与 Ultralytics 960 训练/验证预处理保持一致
+  ball_confidence_threshold: 0.692             # exp-004 val: P>=0.90 工作点
+  racket_confidence_threshold: 0.524           # exp-004 val: P>=0.90 工作点
   compute_units: "ANE"                         # 👈 锁定在 ANE (Neural Engine)
   ball_continuity_weight: 0.45                 # 多球候选重排序：上一帧轨迹连续性权重
   ball_continuity_distance_px: 180             # 连续性奖励距离窗口，避免镜中球短暂高置信抢占

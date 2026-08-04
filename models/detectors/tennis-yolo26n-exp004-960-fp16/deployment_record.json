@@ -1,0 +1,38 @@
+{
+  "schema_version": "tennis_production_model_deployment_v1",
+  "deployed_at": "2026-08-04T01:10:00Z",
+  "status": "active_in_default_realtime_config",
+  "model_id": "tennis-yolo26n-exp004-960-fp16",
+  "active_config": "configs/yolo26_tennis_config.yaml",
+  "model_path": "models/detectors/tennis-yolo26n-exp004-960-fp16/model.mlpackage",
+  "model_bundle_sha256": "530184d076eab08ed3f9fc940c574055a9e266b039f02064ca48245835d63a93",
+  "runtime": {
+    "input_size": [960, 960],
+    "preprocess_mode": "letterbox",
+    "output_name": "var_1440",
+    "ball_class_id": 0,
+    "racket_class_id": 1,
+    "ball_confidence_threshold": 0.692,
+    "racket_confidence_threshold": 0.524,
+    "compute_units": "ANE"
+  },
+  "backup": {
+    "manifest": "backups/exp004-production-replacement-20260804-0910/backup_manifest.json",
+    "original_model_preserved_at": "yolo26n.mlpackage",
+    "original_model_bundle_sha256": "1d2b986a5208d839d15e5fd37a389478c4e313eeac72813969badf9369fd8ff1"
+  },
+  "verification": {
+    "targeted_tests": 13,
+    "targeted_tests_passed": 13,
+    "coreml_load": "passed",
+    "single_frame_inference": "passed",
+    "observed_output": "var_1440",
+    "observed_ball_candidates_above_threshold": 2,
+    "observed_racket_candidates_above_threshold": 1,
+    "single_frame_inference_ms": 10.366
+  },
+  "known_limits": [
+    "Full 1500-frame production regression has not yet been run",
+    "The repository-wide default Python 3.14 test discovery lacks optional runtime dependencies; the deployment-specific suite passed in the Core ML Python 3.11 environment"
+  ]
+}
