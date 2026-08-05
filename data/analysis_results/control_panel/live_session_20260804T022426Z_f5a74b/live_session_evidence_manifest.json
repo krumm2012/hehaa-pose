@@ -1,0 +1,289 @@
+{
+  "schema_version": "tennis.replay-evidence-bundle.v1",
+  "bundle_id": "live_session_20260804T022426Z_f5a74b",
+  "created_at": "2026-08-04T02:26:32.788Z",
+  "created_at_unix_ns": 1785810392788155000,
+  "status": "stopped",
+  "session": {
+    "schema_version": "tennis.analysis-session.v1",
+    "session_id": "live_session_20260804T022426Z_f5a74b",
+    "started_at": "2026-08-04T02:24:26.656Z",
+    "started_at_unix_ns": 1785810266656646000,
+    "source": "rtsp://192.168.1.191:554/h264/ch1/main/av_stream",
+    "stream_id": "",
+    "stream_label": "Unmatched stream",
+    "config_hash": "9105b0b4cf4ef03d",
+    "models": {
+      "detector": "models/detectors/tennis-yolo26n-exp004-960-fp16/model.mlpackage",
+      "pose": "yolo26m-pose.mlpackage"
+    }
+  },
+  "capture": {
+    "source_kind": "stream",
+    "source": "rtsp://192.168.1.191:554/h264/ch1/main/av_stream",
+    "fps": 25.0,
+    "output_fps": 25.0,
+    "resolution": [
+      2560,
+      1440
+    ],
+    "drop_stale_frames": true,
+    "dropped_stale_frames": 15,
+    "max_frames": 0,
+    "roi": {
+      "enabled": false,
+      "matched": false,
+      "stream_id": "",
+      "label": "Unmatched stream",
+      "source": "rtsp://192.168.1.191:554/h264/ch1/main/av_stream",
+      "points": [],
+      "configured_frame_size": [
+        2560,
+        1440
+      ],
+      "frame_size": [
+        2560,
+        1440
+      ],
+      "config_path": "/Users/krum5539/Documents/tennis_analyzer/configs/roi_config.yaml",
+      "reason": "ROI disabled"
+    }
+  },
+  "replay": {
+    "engine": "RealtimeSwingEventEngine",
+    "fps": 25.0,
+    "analysis_interval_frames": 5,
+    "settle_frames": 15,
+    "window_frames": 200,
+    "swing_options": {
+      "dominant_hand": "right",
+      "min_peak_energy": 9.0,
+      "active_energy": 5.5,
+      "min_event_frames": 8,
+      "max_internal_gap": 3,
+      "min_event_gap": 18
+    },
+    "coach": {
+      "enabled": true,
+      "max_chars": 15,
+      "max_suggestions": 3,
+      "min_confidence": 0.45,
+      "thresholds": {
+        "min_hip_shoulder_separation_deg": 15.0,
+        "min_shoulder_turn_deg": 75.0,
+        "min_arm_extension_deg": 145.0,
+        "min_contact_lateral_body_widths": 0.55,
+        "min_weight_transfer_body_widths": 0.08,
+        "max_balance_drift_body_widths": 0.65
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "role": "frame_journal",
+      "path": "live_session_frames.jsonl",
+      "external": false,
+      "required_for_replay": true,
+      "exists": true,
+      "bytes": 9925578,
+      "sha256": "1afffeaab9a1ab7be251a4d4f3b817ae41718b7f1290bf2697d0ce029e76b56e"
+    },
+    {
+      "role": "event_snapshot",
+      "path": "live_session_swing_events.json",
+      "external": false,
+      "required_for_replay": true,
+      "exists": true,
+      "bytes": 527259,
+      "sha256": "30c4336472665a82c85d37c97433578aa5e8d7c57e39a1ab7dcdc66d5db82f9d"
+    },
+    {
+      "role": "frame_snapshot",
+      "path": "live_session_frames_latest.json",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 1067251,
+      "sha256": "f014a043cc997643930d2f5fb752311eb5e8862f48d41e1ee743b8d8f1093bd7"
+    },
+    {
+      "role": "event_log",
+      "path": "live_session_swing_events.jsonl",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 126968,
+      "sha256": "cfe369831b45c15b26ce1fd8b4de7665a3991bbbc30411b2b9660cefdc7c0334"
+    },
+    {
+      "role": "report",
+      "path": "live_session_swing_report.html",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 97874,
+      "sha256": "e867bf3efca8c064e390c4cd34c4b90d6a085aa416f29b68b0f5af1a8f6ee402"
+    },
+    {
+      "role": "annotated_video",
+      "path": "live_session_live.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 174710257,
+      "sha256": "85a34b66a72f28cf595a3584fcf1d0043cb0dcbafd8b4c9b3e741df746f41e05"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0001_forehand_f000834-000885.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 4217059,
+      "sha256": "fc962c9596242103ed4d3ba2be3527cf2e44be84f9cd001e3c2016b7e332caa5"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0002_forehand_f001495-001567.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 5575343,
+      "sha256": "0ed19c6e7421e767a8da7d6b9584cdf93fb5b656b7b9eafa1d2a4ac104686804"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0003_forehand_f001573-001631.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 4761107,
+      "sha256": "77b688a7c1b355b0fbabd87a0b054a6259d1fd5cb2a38e359c2dfeb6e68c8844"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0004_forehand_f001636-001678.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 4040860,
+      "sha256": "093a960d25d08da506bd7f7265f3e35521f36b4caf882db7f379a79f172ee498"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0005_two_handed_backhand_f001683-001737.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 4717952,
+      "sha256": "e1fd1d0d4d87446c3d0f0d780bf4132b256cc3282cae87d9338633177e4a0dcc"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0006_forehand_f001747-001820.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 5896831,
+      "sha256": "63b5e4bafb28cef97e149d59bf748542f41a2c20b746422e4bdefc615f62b2e0"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0007_forehand_f001851-001915.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 5212880,
+      "sha256": "785846ff25fda7aca84892d0c96c730b45bda871fb35910c70251a1c2d9d142e"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0008_two_handed_backhand_f001973-002032.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 5145506,
+      "sha256": "ecac4ada0fb4e53086769f6362c4413f47a68159de7966e079bb826423f17393"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0009_backhand_f002043-002110.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 5374283,
+      "sha256": "c3b9218dc8d0e5a598e40a8caff0d2a9b9c5860df37abd1c9d8fb7d2d0863e44"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0010_forehand_f002138-002199.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 5205532,
+      "sha256": "ece6a802ead4b043e5eb9a2eadab8103fe19295bf6273a8fd5d40ff76d918cef"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0011_forehand_f002235-002293.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 5147214,
+      "sha256": "4ed137fbb919c1cd1272a3358020187e3e0a15046e13157a6dcc32417bd97a11"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0012_backhand_f002332-002404.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 5825718,
+      "sha256": "1943544752581ff3f83204c3c0bdec6cd52d7a09aa3e57c435ef58042e79d177"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0013_forehand_f002423-002484.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 4964503,
+      "sha256": "55b4f7c7cd511925af3ba5eb0e47b7976a4f2fcc77a98cdab02ac425024876bd"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0014_forehand_f002486-002513.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 2967763,
+      "sha256": "d15c4aa96a40b8f9e2f28930de64cc15872d3b5e058107dab5cd0c095cdbdf65"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0015_backhand_f002555-002626.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 5688698,
+      "sha256": "087cf221180b1020d08d4588994f0c8de5df2f9d2e7cb027a8ad9767a64a5d60"
+    },
+    {
+      "role": "swing_clip",
+      "path": "live_session_swing_clips/event_0016_forehand_f002640-002707.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 5453286,
+      "sha256": "0ca0e5b7202a40966469a694bcbf4979a1090a865e9316ab4d0c67aec5f625ef"
+    }
+  ],
+  "completeness": {
+    "required_roles": [
+      "event_snapshot",
+      "frame_journal"
+    ],
+    "missing_required_roles": [],
+    "replayable": true
+  }
+}

@@ -49,6 +49,7 @@ data/**
 data/analysis_results/.DS_Store
 
 # Videos and frames (large)
+*.mp4
 player-video/**
 frames_*/
 debug_frames/

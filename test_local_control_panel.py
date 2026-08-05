@@ -1,6 +1,11 @@
+import json
 import os
+import threading
 import time
 import unittest
+import urllib.error
+import urllib.request
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -11,6 +16,7 @@ import numpy as np
 from local_control_panel import (
     ControlSettings,
     LocalPipelineController,
+    create_handler,
     inject_rtsp_credentials,
     load_local_environment_variable,
 )
@@ -162,6 +168,85 @@ streams:
         self.assertIn("court01-main", serialized)
         self.assertNotIn("private", serialized)
         self.assertNotIn("admin@", serialized)
+
+    def test_serves_manual_review_api_for_current_session(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = self.make_controller(root)
+            session = root / "outputs" / "session-001"
+            session.mkdir(parents=True)
+            (session / "live_swing_events.json").write_text(
+                json.dumps({"summary": {}, "events": []}),
+                encoding="utf-8",
+            )
+            (session / "live_swing_frames.jsonl").write_text(
+                "",
+                encoding="utf-8",
+            )
+            (session / "live_swing_report.html").write_text(
+                "<!doctype html>",
+                encoding="utf-8",
+            )
+            server = ThreadingHTTPServer(
+                ("127.0.0.1", 0),
+                create_handler(controller),
+            )
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            origin = f"http://127.0.0.1:{server.server_port}"
+            try:
+                state_request = urllib.request.Request(
+                    f"{origin}/api/manual-review/state",
+                    headers={
+                        "X-Manual-Review-Report": (
+                            "outputs/session-001/live_swing_report.html"
+                        )
+                    },
+                )
+                with urllib.request.urlopen(state_request, timeout=2) as response:
+                    state = json.load(response)
+
+                unknown_request = urllib.request.Request(
+                    f"{origin}/api/not-a-real-route",
+                    data=b"{}",
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with self.assertRaises(urllib.error.HTTPError) as unknown_error:
+                    urllib.request.urlopen(unknown_request, timeout=2)
+                unknown_error.exception.close()
+
+                request = urllib.request.Request(
+                    f"{origin}/api/manual-review/evaluate",
+                    data=json.dumps(
+                        {
+                            "schema_version": "swing_manual_annotations_v2",
+                            "events": [],
+                        }
+                    ).encode("utf-8"),
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-Control-Token": controller.token,
+                        "X-Manual-Review-Report": (
+                            "outputs/session-001/live_swing_report.html"
+                        ),
+                    },
+                    method="POST",
+                )
+                with patch(
+                    "local_control_panel.process_manual_review",
+                    return_value={"status": "finalized"},
+                ):
+                    with urllib.request.urlopen(request, timeout=2) as response:
+                        evaluated = json.load(response)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+        self.assertEqual(state["status"], "waiting_for_annotations")
+        self.assertEqual(unknown_error.exception.code, 404)
+        self.assertEqual(evaluated["status"], "finalized")
 
     def test_command_has_runtime_controls_and_never_contains_rtsp_secret(self):
         with TemporaryDirectory() as directory:

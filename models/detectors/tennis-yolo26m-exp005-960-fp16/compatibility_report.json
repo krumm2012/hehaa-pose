@@ -1,0 +1,90 @@
+{
+  "schema_version": "tennis_coreml_runtime_compatibility_v1",
+  "model_id": "tennis-yolo26m-exp005-960-fp16",
+  "tested_at": "2026-08-04T14:25:26Z",
+  "status": "compatible_as_explicit_backup_candidate",
+  "runtime_contract": {
+    "detector": "YOLO26nUnifiedDetector",
+    "input": "RGB image 960x960 with letterbox preprocessing",
+    "output_name": "var_1555",
+    "output_shape": [1, 300, 6],
+    "row_format": ["x1", "y1", "x2", "y2", "confidence", "class_id"],
+    "ball_class_id": 0,
+    "racket_class_id": 1,
+    "parser_change_required": false
+  },
+  "full_val_coreml": {
+    "frames": 500,
+    "compute_units": "CPU_AND_NE",
+    "thresholds": {
+      "tennis_ball": 0.052,
+      "tennis_racket": 0.479
+    },
+    "tennis_ball": {
+      "precision": 0.900464499004645,
+      "recall": 0.7082463465553236,
+      "map50_95": 0.518702090792315,
+      "recall_8_15_px": 0.5442913385826772
+    },
+    "tennis_racket": {
+      "precision": 0.9003623188405797,
+      "recall": 0.756468797564688,
+      "map50_95": 0.6359608681268766
+    },
+    "overall_map50": 0.8188572874023896,
+    "overall_map50_95": 0.5773314794595958,
+    "inference_ms": {
+      "mean": 24.231925650000093,
+      "p50": 24.110145499999902,
+      "p95": 24.709927399999465
+    }
+  },
+  "pytorch_parity": {
+    "ball_recall_delta": -0.0010438413361169,
+    "ball_recall_loss_limit": 0.02,
+    "ball_recall_parity_passed": true,
+    "small_ball_8_15_px_recall_delta": -0.0014763779527559
+  },
+  "runtime_smoke": {
+    "frames": 20,
+    "compute_units": "CPU_AND_NE",
+    "parse_formats": ["var_1555"],
+    "ball_output_frames": 20,
+    "racket_output_frames": 18,
+    "median_detector_ms": 24.05,
+    "p95_detector_ms": 24.77,
+    "interface_errors": 0
+  },
+  "comparison_to_exp004_runtime_smoke": {
+    "exp004_median_detector_ms": 5.29,
+    "exp005_median_detector_ms": 24.05,
+    "median_delta_ms": 18.76,
+    "assessment": "Compatible but substantially slower; complete pipeline regression is required before any default switch."
+  },
+  "input_video_pipeline_validation": {
+    "source": "data/input_video.mp4",
+    "source_sha256": "a62fe2cd73b739eed5f86e214ab262cc8ffe07a36fca449de327d1e33aa2c07b",
+    "resolution": [2560, 1440],
+    "source_fps": 25,
+    "frames": 250,
+    "exp005_completed_frames": 250,
+    "exp005_elapsed_seconds": 21.30,
+    "exp005_pipeline_fps": 11.74,
+    "exp004_control_elapsed_seconds": 12.68,
+    "exp004_control_pipeline_fps": 19.72,
+    "minimum_pipeline_fps": 15,
+    "performance_passed": false,
+    "exp005_raw_ball_candidate_frames": 250,
+    "exp005_raw_racket_candidate_frames": 42,
+    "exp004_raw_ball_candidate_frames": 250,
+    "exp004_raw_racket_candidate_frames": 103,
+    "evidence_limit": "The source contains pre-drawn pose and detection overlays and is suitable for compatibility/performance smoke testing, not pure-model accuracy claims.",
+    "report": "data/analysis_results/benchmarks/exp005_yolo26m_input_video_validation_20260804.md"
+  },
+  "activation": {
+    "candidate_config": "configs/yolo26_tennis_exp005_candidate.yaml",
+    "example": "python main.py --config configs/yolo26_tennis_exp005_candidate.yaml --input <video-or-rtsp>",
+    "default_config_modified": false,
+    "rollback": "Stop the candidate process and restart with configs/yolo26_tennis_config.yaml."
+  }
+}

@@ -1,0 +1,46 @@
+# 多场地 ROI 配置
+# 码流地址仅保存脱敏版本；运行时输入可以包含用户名和密码。
+
+version: "2.0"
+created_by: "Tennis Analyzer System"
+
+streams:
+  - stream_id: "court01-main"
+    stream_label: "Court 01 Main Camera"
+    stream_source: "rtsp://192.168.1.191:554/h264/ch1/main/av_stream"
+    default: true
+    roi_enabled: true
+    frame_size: [2560, 1440]
+    roi_points:
+      - [850, 130]
+      - [1700, 140]
+      - [1950, 1320]
+      - [580, 1320]
+    roi_description: "P1左上→P2右上→P3右下→P4左下"
+    last_updated: "2026-07-27 15:19:43"
+
+  - stream_id: "court02-main"
+    stream_label: "Court 02 Main Camera"
+    stream_source: "rtsp://192.168.1.192:554/h264/ch1/main/av_stream"
+    roi_enabled: true
+    frame_size: [2560, 1440]
+    roi_points:
+      - [1112, 116]
+      - [1875, 119]
+      - [2326, 1360]
+      - [850, 1351]
+    roi_description: "P1左上→P2右上→P3右下→P4左下"
+    last_updated: "2024-12-19 16:30:00"
+
+  - stream_id: "court03-main"
+    stream_label: "Court 03 Main Camera"
+    stream_source: "rtsp://192.168.1.193:554/h264/ch1/main/av_stream"
+    roi_enabled: true
+    frame_size: [2560, 1440]
+    roi_points:
+      - [847, 67]
+      - [1943, 69]
+      - [2181, 1273]
+      - [677, 1249]
+    roi_description: "P1左上→P2右上→P3右下→P4左下"
+    last_updated: "2024-12-19 16:30:00"

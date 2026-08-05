@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Live Swing Events</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0a0f1a; --panel:#151d2b; --line:#2b3a51; --accent:#f4c95d; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:#edf3fb; font:15px/1.5 system-ui,sans-serif; }
+    header,main { width:min(1180px,calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0 18px; display:flex; justify-content:space-between; gap:20px; align-items:end; }
+    h1,h2,p { margin:0; }
+    .summary { color:#aab8cc; }
+    main { display:grid; gap:18px; padding-bottom:40px; }
+    .stream-card { border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }
+    .stream-heading { display:flex; justify-content:space-between; gap:20px; align-items:center; margin-bottom:12px; }
+    .stream-heading p,.stream-note { color:#93a4bb; overflow-wrap:anywhere; }
+    .stream-heading strong { color:#0a0f1a; background:var(--accent); border-radius:999px; padding:5px 10px; white-space:nowrap; }
+    #roi-preview { display:block; width:100%; max-height:680px; object-fit:contain; background:#000; border-radius:9px; }
+    .stream-note { margin-top:10px; }
+    .live-coach-feed { border:1px solid #46643c; border-radius:14px; background:#182317; padding:16px; }
+    .live-coach-feed h2 { color:#dff7d4; }
+    .live-coach-feed p { margin-top:6px; color:#a9c99e; }
+    .live-coach-feed ol { margin:12px 0 0; padding-left:22px; display:grid; gap:6px; }
+    .live-coach-feed strong { color:#e8ffd8; font-size:18px; }
+    .event-card { border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }
+    .event-heading { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+    .event-heading span { color:var(--accent); font-weight:700; }
+    video { display:block; width:100%; max-height:620px; background:#000; border-radius:9px; }
+    .clip-state { padding:48px 20px; text-align:center; color:#93a4bb; border:1px dashed var(--line); border-radius:9px; }
+    .clip-failed { color:#ff9d9d; }
+    .clip-partial { margin-top:8px; padding:10px; color:#ffd28a; }
+    .coach-advice { margin-top:14px; padding:14px 16px; border-radius:9px; background:#202b1d; border:1px solid #46643c; }
+    .coach-title { display:flex; justify-content:space-between; color:#a9c99e; }
+    .coach-title small { color:#78906f; }
+    .coach-advice ol { list-style:none; display:grid; gap:8px; margin:10px 0 0; padding:0; }
+    .coach-advice li { display:grid; grid-template-columns:28px 1fr auto; align-items:center; gap:10px; }
+    .coach-advice li span { display:grid; place-items:center; width:24px; height:24px; border-radius:50%; background:#46643c; color:#fff; }
+    .coach-advice li strong { color:#e8ffd8; font-size:18px; }
+    .coach-advice li small { color:#b9dcae; font-variant-numeric:tabular-nums; }
+    .biomechanics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:10px; }
+    .bio-metric { display:grid; grid-template-columns:1fr auto; gap:2px 8px; padding:9px 11px; border:1px solid var(--line); border-radius:8px; }
+    .bio-metric span { color:#93a4bb; font-size:12px; } .bio-metric strong { grid-column:1; } .bio-metric small { grid-column:2; grid-row:1/3; align-self:center; color:#7890ad; }
+    .deepseek-advice { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:10px; padding:12px 16px; border-radius:9px; background:#17253a; border:1px solid #365d8c; }
+    .deepseek-advice span,.deepseek-advice small { color:#9bbce2; } .deepseek-advice strong { color:#e3f1ff; font-size:18px; }
+    .deepseek-advice.pending,.deepseek-advice.unavailable { opacity:.72; }
+    dl { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:14px 0 0; }
+    dl div { border:1px solid var(--line); border-radius:8px; padding:9px 11px; }
+    dt { color:#93a4bb; font-size:12px; text-transform:uppercase; } dd { margin:2px 0 0; }
+    .waiting { padding:50px; text-align:center; border:1px dashed var(--line); border-radius:14px; color:#93a4bb; }
+    @media(max-width:720px) { header { align-items:start; flex-direction:column; } dl,.biomechanics { grid-template-columns:1fr 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>Live Swing Events</h1><p class="summary">Coach 建议每 200 ms 增量更新。</p></div>
+    <strong id="report-summary">36 events · frame 2792</strong>
+  </header>
+  <main><section id="live-coach-feed" class="live-coach-feed" aria-live="polite"><h2>实时 Coach</h2><p>等待第一条建议…</p></section>
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #36 · Two-Handed Backhand</h2>
+                    <span>33.2%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0036_two_handed_backhand_f002594-002792.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>本次动作建议复核</strong><small>33%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>5.25°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>91.00°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>131.03°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>3.94×身宽</strong><small>85%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.33×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.70×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>2594–2792</dd></div>
+                    <div><dt>Contact</dt><dd>2600</dd></div>
+                    <div><dt>Peak</dt><dd>2769</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_ball_rejection_in_event, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #35 · Forehand</h2>
+                    <span>64.1%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0035_forehand_f002670-002722.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>26%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>2.49°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>92.30°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>119.03°</strong><small>92%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.77×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.98×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>2670–2722</dd></div>
+                    <div><dt>Contact</dt><dd>2691</dd></div>
+                    <div><dt>Peak</dt><dd>2691</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #34 · Forehand</h2>
+                    <span>65.4%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0034_forehand_f002587-002639.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>80%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>80%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>5.25°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>91.00°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>131.03°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>3.64×身宽</strong><small>85%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.45×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.10×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>2587–2639</dd></div>
+                    <div><dt>Contact</dt><dd>2600</dd></div>
+                    <div><dt>Peak</dt><dd>2608</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #33 · Forehand</h2>
+                    <span>72.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0033_forehand_f002499-002551.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>83%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>83%</small></li><li><span>3</span><strong>击球后稳住重心</strong><small>76%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>9.71°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>83.50°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>75.02°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>4.98×身宽</strong><small>83%</small></div><div class="bio-metric"><span>重心转移</span><strong>1.01×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.68×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>2499–2551</dd></div>
+                    <div><dt>Contact</dt><dd>2521</dd></div>
+                    <div><dt>Peak</dt><dd>2520</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #32 · Forehand</h2>
+                    <span>67.9%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0032_forehand_f002521-002573.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>6%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>9.71°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>83.50°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>122.21°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>3.20×身宽</strong><small>83%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.00×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.48×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>2521–2573</dd></div>
+                    <div><dt>Contact</dt><dd>2521</dd></div>
+                    <div><dt>Peak</dt><dd>2542</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #31 · Forehand</h2>
+                    <span>63.5%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0031_forehand_f002423-002475.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>25%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>1.97°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>91.40°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>130.80°</strong><small>92%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.58×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>1.06×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>2423–2475</dd></div>
+                    <div><dt>Contact</dt><dd>2444</dd></div>
+                    <div><dt>Peak</dt><dd>2444</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_handedness_rule_applied, racket_track_gaps, static_ball_mask_in_event</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #30 · Forehand</h2>
+                    <span>59.6%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0030_forehand_f002337-002389.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>23%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>1.45°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>93.80°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>166.74°</strong><small>92%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.66×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.31×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>2337–2389</dd></div>
+                    <div><dt>Contact</dt><dd>2358</dd></div>
+                    <div><dt>Peak</dt><dd>2358</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #29 · Forehand</h2>
+                    <span>68.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0029_forehand_f002250-002302.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>81%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>81%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>9.57°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>84.20°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>83.62°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>4.46×身宽</strong><small>83%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.89×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.59×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>2250–2302</dd></div>
+                    <div><dt>Contact</dt><dd>2272</dd></div>
+                    <div><dt>Peak</dt><dd>2271</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #28 · Forehand</h2>
+                    <span>62.3%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0028_forehand_f002176-002228.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>6%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>2.55°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>90.50°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>151.92°</strong><small>92%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.52×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>1.07×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>2176–2228</dd></div>
+                    <div><dt>Contact</dt><dd>2197</dd></div>
+                    <div><dt>Peak</dt><dd>2197</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_handedness_rule_applied, racket_track_gaps, static_ball_mask_in_event</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #27 · Forehand</h2>
+                    <span>70.8%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0027_forehand_f002081-002133.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>82%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>82%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>5.68°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>90.50°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>120.70°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>5.12×身宽</strong><small>85%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.18×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.17×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>2081–2133</dd></div>
+                    <div><dt>Contact</dt><dd>2102</dd></div>
+                    <div><dt>Peak</dt><dd>2102</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #26 · Forehand</h2>
+                    <span>68.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0026_forehand_f002002-002054.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>81%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>81%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>8.71°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>84.70°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>84.96°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>4.49×身宽</strong><small>82%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.94×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.62×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>2002–2054</dd></div>
+                    <div><dt>Contact</dt><dd>2024</dd></div>
+                    <div><dt>Peak</dt><dd>2023</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #25 · Forehand</h2>
+                    <span>66.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0025_forehand_f001921-001973.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>21%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>5.15°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>92.30°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>102.42°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>4.79×身宽</strong><small>79%</small></div><div class="bio-metric"><span>重心转移</span><strong>1.41×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>1.07×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>1921–1973</dd></div>
+                    <div><dt>Contact</dt><dd>1942</dd></div>
+                    <div><dt>Peak</dt><dd>1942</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_ball_rejection_in_event, mirror_handedness_rule_applied, racket_track_gaps, static_ball_mask_in_event</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #24 · Forehand</h2>
+                    <span>64.1%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0024_forehand_f001839-001891.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>25%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>1.24°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>93.50°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>151.87°</strong><small>92%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.55×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.31×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>1839–1891</dd></div>
+                    <div><dt>Contact</dt><dd>1860</dd></div>
+                    <div><dt>Peak</dt><dd>1860</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #23 · Forehand</h2>
+                    <span>67.9%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0023_forehand_f001754-001806.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>81%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>81%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>7.77°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>84.80°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>90.65°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>4.51×身宽</strong><small>82%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.82×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.64×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>1754–1806</dd></div>
+                    <div><dt>Contact</dt><dd>1775</dd></div>
+                    <div><dt>Peak</dt><dd>1775</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #22 · Forehand</h2>
+                    <span>64.1%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0022_forehand_f001672-001724.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>15%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>5.47°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>92.00°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>85.49°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>4.84×身宽</strong><small>80%</small></div><div class="bio-metric"><span>重心转移</span><strong>1.40×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>1.08×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>1672–1724</dd></div>
+                    <div><dt>Contact</dt><dd>1693</dd></div>
+                    <div><dt>Peak</dt><dd>1693</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_ball_rejection_in_event, mirror_handedness_rule_applied, racket_track_gaps, static_ball_mask_in_event</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #21 · Forehand</h2>
+                    <span>68.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0021_forehand_f001583-001635.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>81%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>81%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>5.70°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>91.50°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>112.97°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>5.16×身宽</strong><small>85%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.24×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.19×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>1583–1635</dd></div>
+                    <div><dt>Contact</dt><dd>1604</dd></div>
+                    <div><dt>Peak</dt><dd>1604</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #20 · Forehand</h2>
+                    <span>67.9%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0020_forehand_f001514-001566.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>11%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>1.60°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>92.20°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>121.81°</strong><small>92%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.32×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.89×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>1514–1566</dd></div>
+                    <div><dt>Contact</dt><dd>1535</dd></div>
+                    <div><dt>Peak</dt><dd>1535</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #19 · Forehand</h2>
+                    <span>76.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0019_forehand_f001457-001506.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>4%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>5.01°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>97.80°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>123.60°</strong><small>92%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.58×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.20×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>1457–1506</dd></div>
+                    <div><dt>Contact</dt><dd>1478</dd></div>
+                    <div><dt>Peak</dt><dd>1478</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_ball_rejection_in_event, mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #18 · Forehand</h2>
+                    <span>100.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0018_forehand_f001412-001464.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>96%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>96%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>4.78°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>91.00°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>71.54°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>5.74×身宽</strong><small>79%</small></div><div class="bio-metric"><span>重心转移</span><strong>2.49×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.60×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>1412–1464</dd></div>
+                    <div><dt>Contact</dt><dd>1445</dd></div>
+                    <div><dt>Peak</dt><dd>1433</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #17 · Forehand</h2>
+                    <span>70.8%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0017_forehand_f001335-001387.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>82%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>82%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>5.82°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>90.00°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>106.99°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>4.77×身宽</strong><small>85%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.22×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.17×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>1335–1387</dd></div>
+                    <div><dt>Contact</dt><dd>1356</dd></div>
+                    <div><dt>Peak</dt><dd>1356</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #16 · Forehand</h2>
+                    <span>66.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0016_forehand_f001261-001313.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>80%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>80%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>7.89°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>86.00°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>79.45°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>4.09×身宽</strong><small>82%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.59×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.57×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>1261–1313</dd></div>
+                    <div><dt>Contact</dt><dd>1278</dd></div>
+                    <div><dt>Peak</dt><dd>1282</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #15 · Forehand</h2>
+                    <span>62.3%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0015_forehand_f001178-001230.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>79%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>79%</small></li><li><span>3</span><strong>击球后稳住重心</strong><small>72%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>5.26°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>91.00°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>74.24°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>5.12×身宽</strong><small>80%</small></div><div class="bio-metric"><span>重心转移</span><strong>1.20×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>1.52×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>1178–1230</dd></div>
+                    <div><dt>Contact</dt><dd>1196</dd></div>
+                    <div><dt>Peak</dt><dd>1199</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #14 · Forehand</h2>
+                    <span>66.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0014_forehand_f001088-001140.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>80%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>80%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>6.12°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>90.00°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>104.13°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>4.95×身宽</strong><small>85%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.17×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.09×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>1088–1140</dd></div>
+                    <div><dt>Contact</dt><dd>1107</dd></div>
+                    <div><dt>Peak</dt><dd>1109</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #13 · Forehand</h2>
+                    <span>97.6%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0013_forehand_f000971-001013.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>12%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>18.80°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>91.30°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>34.56°</strong><small>92%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.43×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.38×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>971–1013</dd></div>
+                    <div><dt>Contact</dt><dd>992</dd></div>
+                    <div><dt>Peak</dt><dd>992</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, contact_frame_needs_review, mirror_ball_rejection_in_event, mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #12 · Forehand</h2>
+                    <span>64.1%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0012_forehand_f001013-001065.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>79%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>79%</small></li><li><span>3</span><strong>击球后稳住重心</strong><small>73%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>7.94°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>85.00°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>88.31°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>4.21×身宽</strong><small>83%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.66×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.67×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>1013–1065</dd></div>
+                    <div><dt>Contact</dt><dd>1029</dd></div>
+                    <div><dt>Peak</dt><dd>1034</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_ball_rejection_in_event, mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #11 · Forehand</h2>
+                    <span>100.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0011_forehand_f000916-000968.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>96%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>96%</small></li><li><span>3</span><strong>击球后稳住重心</strong><small>89%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>5.36°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>90.00°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>90.23°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>6.26×身宽</strong><small>79%</small></div><div class="bio-metric"><span>重心转移</span><strong>2.63×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.66×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>916–968</dd></div>
+                    <div><dt>Contact</dt><dd>948</dd></div>
+                    <div><dt>Peak</dt><dd>937</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #10 · Forehand</h2>
+                    <span>66.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0010_forehand_f000764-000816.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>80%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>80%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>7.92°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>85.20°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>73.72°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>4.25×身宽</strong><small>83%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.69×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.62×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>764–816</dd></div>
+                    <div><dt>Contact</dt><dd>781</dd></div>
+                    <div><dt>Peak</dt><dd>785</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #9 · Forehand</h2>
+                    <span>62.3%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0009_forehand_f000684-000736.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>17%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>4.99°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>91.20°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>100.90°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>3.96×身宽</strong><small>80%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.65×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>1.56×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>684–736</dd></div>
+                    <div><dt>Contact</dt><dd>699</dd></div>
+                    <div><dt>Peak</dt><dd>705</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #8 · Forehand</h2>
+                    <span>68.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0008_forehand_f000589-000641.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>81%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>81%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>5.60°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>92.30°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>115.77°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>5.16×身宽</strong><small>85%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.32×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.20×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>589–641</dd></div>
+                    <div><dt>Contact</dt><dd>610</dd></div>
+                    <div><dt>Peak</dt><dd>610</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #7 · Forehand</h2>
+                    <span>66.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0007_forehand_f000516-000568.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>80%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>80%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>7.61°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>83.90°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>96.84°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>4.05×身宽</strong><small>83%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.65×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.59×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>516–568</dd></div>
+                    <div><dt>Contact</dt><dd>532</dd></div>
+                    <div><dt>Peak</dt><dd>537</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #6 · Forehand</h2>
+                    <span>61.5%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0006_forehand_f000432-000484.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>25%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>2.73°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>91.90°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>96.10°</strong><small>92%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.84×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>1.13×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>432–484</dd></div>
+                    <div><dt>Contact</dt><dd>453</dd></div>
+                    <div><dt>Peak</dt><dd>453</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_handedness_rule_applied, racket_track_gaps, static_ball_mask_in_event</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #5 · Forehand</h2>
+                    <span>68.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0005_forehand_f000340-000392.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>81%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>81%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>4.75°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>90.90°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>110.64°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>5.01×身宽</strong><small>85%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.19×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.17×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>340–392</dd></div>
+                    <div><dt>Contact</dt><dd>361</dd></div>
+                    <div><dt>Peak</dt><dd>361</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #4 · Two-Handed Backhand</h2>
+                    <span>28.1%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0004_two_handed_backhand_f000280-000320.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>17%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>9.21°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>83.40°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>71.79°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>3.56×身宽</strong><small>83%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.09×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.52×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>280–320</dd></div>
+                    <div><dt>Contact</dt><dd>283</dd></div>
+                    <div><dt>Peak</dt><dd>289</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #3 · Forehand</h2>
+                    <span>64.1%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0003_forehand_f000185-000237.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>19%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>2.23°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>90.90°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>141.04°</strong><small>92%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.63×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>1.05×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>185–237</dd></div>
+                    <div><dt>Contact</dt><dd>206</dd></div>
+                    <div><dt>Peak</dt><dd>206</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_handedness_rule_applied, racket_track_gaps, static_ball_mask_in_event</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #2 · Forehand</h2>
+                    <span>62.3%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0002_forehand_f000100-000152.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>21%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>2.07°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>94.10°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>156.97°</strong><small>92%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.66×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.34×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>100–152</dd></div>
+                    <div><dt>Contact</dt><dd>121</dd></div>
+                    <div><dt>Peak</dt><dd>121</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #1 · Forehand</h2>
+                    <span>68.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0001_forehand_f000013-000065.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>81%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>81%</small></li><li><span>3</span><strong>击球后稳住重心</strong><small>75%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>9.32°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>83.70°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>88.57°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>5.14×身宽</strong><small>83%</small></div><div class="bio-metric"><span>重心转移</span><strong>1.00×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.72×身宽</strong><small>80%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>13–65</dd></div>
+                    <div><dt>Contact</dt><dd>35</dd></div>
+                    <div><dt>Peak</dt><dd>34</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                </main>
+  <script>
+    const eventJsonUrl = "live_session_swing_events.json";
+    const coachFeed = document.getElementById('live-coach-feed');
+    const reportSummary = document.getElementById('report-summary');
+    let coachFeedPending = false;
+
+    function renderCoachFeed(documentPayload) {
+      const events = Array.isArray(documentPayload.events) ? documentPayload.events : [];
+      const summary = documentPayload.summary || {};
+      reportSummary.textContent = `${events.length} events · frame ${summary.latest_frame ?? -1}`;
+      coachFeed.replaceChildren();
+      const title = document.createElement('h2');
+      title.textContent = '实时 Coach';
+      coachFeed.append(title);
+      if (!events.length) {
+        const waiting = document.createElement('p');
+        waiting.textContent = '等待第一条建议…';
+        coachFeed.append(waiting);
+        return;
+      }
+      const latest = events[events.length - 1];
+      const meta = document.createElement('p');
+      meta.textContent = `Swing #${latest.event_id} · ${latest.stroke_type || 'Unknown'}`;
+      coachFeed.append(meta);
+      const advices = Array.isArray(latest.coach_advices) && latest.coach_advices.length
+        ? latest.coach_advices
+        : (latest.coach_advice ? [latest.coach_advice] : []);
+      const list = document.createElement('ol');
+      for (const advice of advices.slice(0, 3)) {
+        if (!advice || !advice.message) continue;
+        const row = document.createElement('li');
+        const message = document.createElement('strong');
+        message.textContent = advice.message;
+        row.append(message);
+        list.append(row);
+      }
+      if (list.children.length) coachFeed.append(list);
+    }
+
+    async function refreshCoachFeed() {
+      if (coachFeedPending) return;
+      coachFeedPending = true;
+      try {
+        const response = await fetch(`${eventJsonUrl}?t=${Date.now()}`, { cache: 'no-store' });
+        if (response.ok) renderCoachFeed(await response.json());
+      } catch (_error) {
+        // file:// reports cannot fetch siblings; the slower HTML refresh below remains available.
+      } finally {
+        coachFeedPending = false;
+      }
+    }
+    refreshCoachFeed();
+    setInterval(refreshCoachFeed, 200);
+
+    const preview = document.getElementById('roi-preview');
+    if (preview) {
+      const previewSource = preview.getAttribute('src').split('?')[0];
+      setInterval(() => {
+        preview.src = previewSource + '?t=' + Date.now();
+      }, 1000);
+    }
+    setInterval(() => {
+      const playing = [...document.querySelectorAll('video')].some(video => !video.paused && !video.ended);
+      if (!playing) location.reload();
+    }, 3000);
+  </script>
+</body>
+</html>

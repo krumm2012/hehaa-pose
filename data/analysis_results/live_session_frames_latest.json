@@ -1,0 +1,4811 @@
+{
+  "summary": {
+    "frame_count": 456,
+    "latest_frame": 461,
+    "snapshot_size": 200,
+    "dropped_records": 0,
+    "realtime": true
+  },
+  "frames": [
+    {
+      "frame_id": 261,
+      "timestamp": 10.44,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 262,
+      "timestamp": 10.48,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 263,
+      "timestamp": 10.52,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 264,
+      "timestamp": 10.56,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 265,
+      "timestamp": 10.6,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 266,
+      "timestamp": 10.64,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 267,
+      "timestamp": 10.68,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 268,
+      "timestamp": 10.72,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 269,
+      "timestamp": 10.76,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 270,
+      "timestamp": 10.8,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 271,
+      "timestamp": 10.84,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 272,
+      "timestamp": 10.88,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 273,
+      "timestamp": 10.92,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 274,
+      "timestamp": 10.96,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 275,
+      "timestamp": 11.0,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 276,
+      "timestamp": 11.04,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 277,
+      "timestamp": 11.08,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 278,
+      "timestamp": 11.12,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 279,
+      "timestamp": 11.16,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 280,
+      "timestamp": 11.2,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 281,
+      "timestamp": 11.24,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 282,
+      "timestamp": 11.28,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 283,
+      "timestamp": 11.32,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 284,
+      "timestamp": 11.36,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 285,
+      "timestamp": 11.4,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 286,
+      "timestamp": 11.44,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 287,
+      "timestamp": 11.48,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 288,
+      "timestamp": 11.52,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 289,
+      "timestamp": 11.56,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 290,
+      "timestamp": 11.6,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 291,
+      "timestamp": 11.64,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 292,
+      "timestamp": 11.68,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 293,
+      "timestamp": 11.72,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 294,
+      "timestamp": 11.76,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 295,
+      "timestamp": 11.8,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 296,
+      "timestamp": 11.84,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 297,
+      "timestamp": 11.88,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 298,
+      "timestamp": 11.92,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 299,
+      "timestamp": 11.96,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 300,
+      "timestamp": 12.0,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 301,
+      "timestamp": 12.04,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 302,
+      "timestamp": 12.08,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 303,
+      "timestamp": 12.12,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 304,
+      "timestamp": 12.16,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 305,
+      "timestamp": 12.2,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 306,
+      "timestamp": 12.24,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 307,
+      "timestamp": 12.28,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 308,
+      "timestamp": 12.32,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 309,
+      "timestamp": 12.36,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 310,
+      "timestamp": 12.4,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 311,
+      "timestamp": 12.44,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 312,
+      "timestamp": 12.48,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 313,
+      "timestamp": 12.52,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 314,
+      "timestamp": 12.56,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 315,
+      "timestamp": 12.6,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 316,
+      "timestamp": 12.64,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 317,
+      "timestamp": 12.68,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 318,
+      "timestamp": 12.72,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 319,
+      "timestamp": 12.76,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 320,
+      "timestamp": 12.8,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 321,
+      "timestamp": 12.84,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 322,
+      "timestamp": 12.88,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 323,
+      "timestamp": 12.92,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 324,
+      "timestamp": 12.96,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 325,
+      "timestamp": 13.0,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 326,
+      "timestamp": 13.04,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 327,
+      "timestamp": 13.08,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 328,
+      "timestamp": 13.12,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 329,
+      "timestamp": 13.16,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 330,
+      "timestamp": 13.2,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 331,
+      "timestamp": 13.24,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 332,
+      "timestamp": 13.28,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 333,
+      "timestamp": 13.32,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 334,
+      "timestamp": 13.36,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 335,
+      "timestamp": 13.4,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 336,
+      "timestamp": 13.44,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 337,
+      "timestamp": 13.48,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 338,
+      "timestamp": 13.52,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 339,
+      "timestamp": 13.56,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 340,
+      "timestamp": 13.6,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 341,
+      "timestamp": 13.64,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 342,
+      "timestamp": 13.68,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 343,
+      "timestamp": 13.72,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 344,
+      "timestamp": 13.76,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 345,
+      "timestamp": 13.8,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 346,
+      "timestamp": 13.84,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 347,
+      "timestamp": 13.88,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 348,
+      "timestamp": 13.92,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 349,
+      "timestamp": 13.96,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 350,
+      "timestamp": 14.0,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 352,
+      "timestamp": 14.08,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 353,
+      "timestamp": 14.12,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 354,
+      "timestamp": 14.16,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 355,
+      "timestamp": 14.2,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 356,
+      "timestamp": 14.24,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 357,
+      "timestamp": 14.28,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 358,
+      "timestamp": 14.32,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 359,
+      "timestamp": 14.36,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 360,
+      "timestamp": 14.4,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 361,
+      "timestamp": 14.44,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 362,
+      "timestamp": 14.48,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 363,
+      "timestamp": 14.52,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 364,
+      "timestamp": 14.56,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 365,
+      "timestamp": 14.6,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 366,
+      "timestamp": 14.64,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 367,
+      "timestamp": 14.68,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 368,
+      "timestamp": 14.72,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 369,
+      "timestamp": 14.76,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 370,
+      "timestamp": 14.8,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 371,
+      "timestamp": 14.84,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 372,
+      "timestamp": 14.88,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 373,
+      "timestamp": 14.92,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 374,
+      "timestamp": 14.96,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 375,
+      "timestamp": 15.0,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 376,
+      "timestamp": 15.04,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 377,
+      "timestamp": 15.08,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 378,
+      "timestamp": 15.12,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 379,
+      "timestamp": 15.16,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 380,
+      "timestamp": 15.2,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 381,
+      "timestamp": 15.24,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 382,
+      "timestamp": 15.28,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 383,
+      "timestamp": 15.32,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 384,
+      "timestamp": 15.36,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 385,
+      "timestamp": 15.4,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 386,
+      "timestamp": 15.44,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 387,
+      "timestamp": 15.48,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 388,
+      "timestamp": 15.52,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 389,
+      "timestamp": 15.56,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 390,
+      "timestamp": 15.6,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 391,
+      "timestamp": 15.64,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 392,
+      "timestamp": 15.68,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 393,
+      "timestamp": 15.72,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 394,
+      "timestamp": 15.76,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 395,
+      "timestamp": 15.8,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 396,
+      "timestamp": 15.84,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 397,
+      "timestamp": 15.88,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 398,
+      "timestamp": 15.92,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 399,
+      "timestamp": 15.96,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 400,
+      "timestamp": 16.0,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 401,
+      "timestamp": 16.04,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 402,
+      "timestamp": 16.08,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 403,
+      "timestamp": 16.12,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 404,
+      "timestamp": 16.16,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 405,
+      "timestamp": 16.2,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 406,
+      "timestamp": 16.24,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 407,
+      "timestamp": 16.28,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 408,
+      "timestamp": 16.32,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 409,
+      "timestamp": 16.36,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 410,
+      "timestamp": 16.4,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 411,
+      "timestamp": 16.44,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 412,
+      "timestamp": 16.48,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 413,
+      "timestamp": 16.52,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 414,
+      "timestamp": 16.56,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 415,
+      "timestamp": 16.6,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 416,
+      "timestamp": 16.64,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 417,
+      "timestamp": 16.68,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 418,
+      "timestamp": 16.72,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 419,
+      "timestamp": 16.76,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 420,
+      "timestamp": 16.8,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 421,
+      "timestamp": 16.84,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 422,
+      "timestamp": 16.88,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 423,
+      "timestamp": 16.92,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 424,
+      "timestamp": 16.96,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 425,
+      "timestamp": 17.0,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 426,
+      "timestamp": 17.04,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 427,
+      "timestamp": 17.08,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 428,
+      "timestamp": 17.12,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 429,
+      "timestamp": 17.16,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 430,
+      "timestamp": 17.2,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 431,
+      "timestamp": 17.24,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 432,
+      "timestamp": 17.28,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 433,
+      "timestamp": 17.32,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 434,
+      "timestamp": 17.36,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 435,
+      "timestamp": 17.4,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 436,
+      "timestamp": 17.44,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 437,
+      "timestamp": 17.48,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 438,
+      "timestamp": 17.52,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 439,
+      "timestamp": 17.56,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 440,
+      "timestamp": 17.6,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 441,
+      "timestamp": 17.64,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 442,
+      "timestamp": 17.68,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 443,
+      "timestamp": 17.72,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 444,
+      "timestamp": 17.76,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 445,
+      "timestamp": 17.8,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 446,
+      "timestamp": 17.84,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 447,
+      "timestamp": 17.88,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 448,
+      "timestamp": 17.92,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 449,
+      "timestamp": 17.96,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 450,
+      "timestamp": 18.0,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 451,
+      "timestamp": 18.04,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 452,
+      "timestamp": 18.08,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 453,
+      "timestamp": 18.12,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 454,
+      "timestamp": 18.16,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 455,
+      "timestamp": 18.2,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 456,
+      "timestamp": 18.24,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 457,
+      "timestamp": 18.28,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 458,
+      "timestamp": 18.32,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 459,
+      "timestamp": 18.36,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 460,
+      "timestamp": 18.4,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    },
+    {
+      "frame_id": 461,
+      "timestamp": 18.44,
+      "swing_type": "No Pose",
+      "ball": null,
+      "rackets": [],
+      "pose": null,
+      "metrics": {},
+      "detection_diagnostics": {
+        "raw_candidates": 0,
+        "kept_candidates": 0,
+        "continuity_enabled": true,
+        "continuity_disabled_reason": null,
+        "rejections": {
+          "static_hard_mask": 0,
+          "low_conf_unsupported": 0,
+          "upper_mirror_unsupported": 0,
+          "track_became_static": 0
+        },
+        "selected": null,
+        "final_decision": "no_candidates",
+        "top_candidates": []
+      }
+    }
+  ]
+}

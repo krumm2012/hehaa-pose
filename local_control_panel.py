@@ -33,6 +33,12 @@ import yaml
 
 from analysis_data_contracts import generate_session_id
 from calibrate_roi import capture_calibration_frame
+from manual_review_workflow import (
+    MAX_ANNOTATION_BYTES,
+    discover_session_paths,
+    load_review_state,
+    process_manual_review,
+)
 from roi_stream_config import sanitize_stream_source
 
 
@@ -628,6 +634,40 @@ class LocalPipelineController:
             return None
         return self.artifact_path(value)
 
+    def manual_review_paths(
+        self,
+        report_path: Optional[str] = None,
+    ) -> Dict[str, Path]:
+        if report_path:
+            report = self.artifact_path(report_path)
+            if report.suffix.lower() != ".html":
+                raise ValueError("人工校准报告路径无效")
+            paths = discover_session_paths(report.parent)
+            if paths["report"].resolve() != report.resolve():
+                raise ValueError("人工校准报告与会话不匹配")
+            return paths
+        with self._lock:
+            session_dir = self._artifacts.get("session_dir")
+        if not session_dir:
+            raise RuntimeError("当前没有可供人工校准的分析会话")
+        return discover_session_paths(self.artifact_path(session_dir))
+
+    def manual_review_state(
+        self,
+        report_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return load_review_state(self.manual_review_paths(report_path))
+
+    def evaluate_manual_review(
+        self,
+        payload: Dict[str, Any],
+        report_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return process_manual_review(
+            self.manual_review_paths(report_path),
+            payload,
+        )
+
     def _stream(self, stream_id: str) -> Dict[str, Any]:
         selected = next(
             (
@@ -960,6 +1000,12 @@ def create_handler(controller: LocalPipelineController):
                     self._send_json(controller.public_config())
                 elif path == "/api/status":
                     self._send_json(controller.status())
+                elif path == "/api/manual-review/state":
+                    self._send_json(
+                        controller.manual_review_state(
+                            self.headers.get("X-Manual-Review-Report")
+                        )
+                    )
                 elif path == "/api/live-preview":
                     preview = controller.live_preview_path()
                     if preview is None or not preview.exists():
@@ -976,7 +1022,7 @@ def create_handler(controller: LocalPipelineController):
                     self._send_file(artifact)
                 else:
                     self.send_error(HTTPStatus.NOT_FOUND)
-            except (ValueError, OSError) as exc:
+            except (ValueError, RuntimeError, OSError) as exc:
                 self._send_json(
                     {"error": str(exc)},
                     status=HTTPStatus.BAD_REQUEST,
@@ -984,6 +1030,15 @@ def create_handler(controller: LocalPipelineController):
 
         def do_POST(self):
             path = self.path.split("?", 1)[0]
+            allowed_paths = {
+                "/api/preview",
+                "/api/start",
+                "/api/stop",
+                "/api/manual-review/evaluate",
+            }
+            if path not in allowed_paths:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
             if self.headers.get("X-Control-Token") != controller.token:
                 self._send_json(
                     {"error": "控制令牌无效，请刷新页面"},
@@ -991,7 +1046,13 @@ def create_handler(controller: LocalPipelineController):
                 )
                 return
             try:
-                payload = self._read_json()
+                payload = self._read_json(
+                    max_bytes=(
+                        MAX_ANNOTATION_BYTES
+                        if path == "/api/manual-review/evaluate"
+                        else MAX_REQUEST_BYTES
+                    )
+                )
                 if path == "/api/preview":
                     image = controller.preview(payload)
                     self._send_bytes(
@@ -1003,22 +1064,58 @@ def create_handler(controller: LocalPipelineController):
                     self._send_json(controller.start(payload))
                 elif path == "/api/stop":
                     self._send_json(controller.stop())
-                else:
-                    self.send_error(HTTPStatus.NOT_FOUND)
-            except (ValueError, RuntimeError, OSError) as exc:
+                elif path == "/api/manual-review/evaluate":
+                    self._send_json(
+                        controller.evaluate_manual_review(
+                            payload,
+                            self.headers.get("X-Manual-Review-Report"),
+                        )
+                    )
+            except FileNotFoundError as exc:
+                self._send_json(
+                    {
+                        "error": "manual_review_unavailable",
+                        "message": str(exc),
+                    },
+                    status=HTTPStatus.NOT_FOUND,
+                )
+            except (json.JSONDecodeError, ValueError) as exc:
+                self._send_json(
+                    {
+                        "error": (
+                            "invalid_annotations"
+                            if path == "/api/manual-review/evaluate"
+                            else str(exc)
+                        ),
+                        "message": str(exc),
+                    },
+                    status=(
+                        HTTPStatus.UNPROCESSABLE_ENTITY
+                        if path == "/api/manual-review/evaluate"
+                        else HTTPStatus.BAD_REQUEST
+                    ),
+                )
+            except (RuntimeError, OSError) as exc:
                 self._send_json(
                     {"error": str(exc)},
                     status=HTTPStatus.BAD_REQUEST,
                 )
+            except Exception as exc:
+                if path != "/api/manual-review/evaluate":
+                    raise
+                self._send_json(
+                    {"error": "workflow_failed", "message": str(exc)},
+                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
 
-        def _read_json(self) -> Dict[str, Any]:
+        def _read_json(self, max_bytes: int = MAX_REQUEST_BYTES) -> Dict[str, Any]:
             if "application/json" not in self.headers.get(
                 "Content-Type",
                 "",
             ):
                 raise ValueError("请求必须使用 application/json")
             length = int(self.headers.get("Content-Length") or 0)
-            if length < 0 or length > MAX_REQUEST_BYTES:
+            if length < 0 or length > max_bytes:
                 raise ValueError("请求内容过大")
             raw = self.rfile.read(length)
             value = json.loads(raw.decode("utf-8")) if raw else {}

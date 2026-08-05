@@ -1,0 +1,58 @@
+{
+  "summary": {
+    "total_frames": 232,
+    "latest_frame": 236,
+    "swing_event_count": 0,
+    "swing_event_type_counts": {},
+    "thresholds": {
+      "dominant_hand": "right",
+      "min_peak_energy": 9.0,
+      "active_energy": 5.5,
+      "min_event_frames": 8,
+      "max_internal_gap": 3,
+      "min_event_gap": 18
+    },
+    "realtime": true,
+    "settle_frames": 15,
+    "analysis_interval_frames": 5,
+    "window_frames": 200,
+    "roi": {
+      "enabled": true,
+      "matched": true,
+      "stream_id": "court03-main",
+      "label": "Court 03 Main Camera ",
+      "source": "rtsp://192.168.1.193:554/h264/ch1/main/av_stream",
+      "points": [
+        [
+          954,
+          540
+        ],
+        [
+          1766,
+          542
+        ],
+        [
+          2036,
+          1314
+        ],
+        [
+          716,
+          1306
+        ]
+      ],
+      "configured_frame_size": [
+        2560,
+        1440
+      ],
+      "frame_size": [
+        2560,
+        1440
+      ],
+      "config_path": "configs/roi_config.yaml",
+      "reason": ""
+    },
+    "clip_buffer_dropped_frames": 0
+  },
+  "events": [],
+  "frame_trace": []
+}

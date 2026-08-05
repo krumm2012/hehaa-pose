@@ -1,0 +1,429 @@
+# YOLO26-pose 配置文件
+# 基于 comprehensive_tennis_config.yaml，使用 YOLO26-pose 模型
+
+# ==================== 基础视频设置 ====================
+video_input_path: "data/input_video.mp4"
+video_output_path: "data/output_video.mp4"
+save_video: true                               # 是否保存结果视频
+
+# 🆕 使用 YOLO26-pose 模型 (Core ML 格式)
+yolo_pose_model_path: "yolo26m-pose.mlpackage"
+pose_compute_units: "ANE"                      # 👈 锁定在 ANE (Neural Engine)
+
+tracknet_model_path: "models/tracknetv2_weights.pth"
+racket_yolo_model_path: "models/yolov8n.pt"
+
+# ==================== 🎯 YOLO26n 统一检测配置 ====================
+unified_detection:
+  enabled: true                                # 启用统一检测（替代 HSV + YOLOv8n）
+  model_path: "yolo26n.mlpackage"              # YOLO26n Core ML 模型
+  ball_confidence_threshold: 0.02              # 球检测置信度阈值
+  racket_confidence_threshold: 0.35            # 球拍检测置信度阈值 (平衡准确性和召回率)
+  compute_units: "ANE"                         # 👈 锁定在 ANE (Neural Engine)
+  ball_continuity_weight: 0.45                 # 多球候选重排序：上一帧轨迹连续性权重
+  ball_continuity_distance_px: 180             # 连续性奖励距离窗口，避免镜中球短暂高置信抢占
+  ball_velocity_prediction_weight: 0.55        # 速度预测连续性权重（抑制静止球首帧抢焦点）
+  ball_velocity_prediction_distance_px: 120    # 速度预测位置容忍窗口
+  ball_max_motion_for_continuity_px: 140       # 前后帧位移超过该阈值时，禁用连续性追踪（防止跳到镜像/幻球）
+  ball_min_selected_confidence: 0.05           # 最终主球最低置信度（无连续性/无球拍支撑时）
+  active_ball_reacquisition_frames: 8           # 主球遮挡/漏检后保留轨迹支持的最大帧数
+  ball_play_area_min_y_ratio_hard: 0.35        # 主球硬下限区域（上半镜像区域剔除，需无支撑才生效）
+  ball_racket_proximity_weight: 0.20           # 多球候选重排序：主球拍附近轻量奖励
+  ball_racket_proximity_distance_px: 360       # 球拍距离奖励窗口
+  ball_mirror_min_y_ratio: 0.03                # 顶部镜像区域轻惩罚阈值（画面高度比例）
+  ball_top_mirror_penalty: 0.25                # 顶部镜像候选惩罚，不硬过滤以保留泛化
+  static_ball_suppression_enabled: true        # 启用静止球时序抑制（训练多球场景）
+  static_ball_grid_size_px: 40                 # 静止球锚点网格尺寸
+  static_ball_match_distance_px: 26            # 静止球锚点匹配距离
+  static_ball_min_seen_frames: 6               # 连续出现达到该帧数后判定为静止候选
+  static_ball_decay_frames: 50                 # 长时间未出现后移除静止锚点
+  static_ball_penalty_max: 0.50                # 静止球最大置信惩罚
+  static_ball_keep_if_near_prev_ratio: 0.80    # 靠近上一帧轨迹时降低惩罚
+  static_ball_keep_if_near_racket_ratio: 0.65  # 靠近主拍时降低惩罚
+  static_ball_hard_mask_enabled: true          # 对持久静止球做硬屏蔽，避免抢占主追踪焦点
+  static_ball_hard_mask_min_seen_frames: 4     # 命中该帧数后进入静态屏蔽区（更快屏蔽地上静止球）
+  static_ball_hard_mask_radius_px: 30          # 静态屏蔽区半径
+  static_ball_hard_mask_allow_near_prev: true  # 贴近上一帧主轨迹时允许放行，降低断轨风险
+  static_ball_hard_mask_allow_near_prev_min_motion_px: 16 # 仅当前一帧轨迹速度足够大时才允许 near_prev 放行
+  static_ball_hard_mask_allow_near_prev_distance_px: 24 # 即使速度低，若与上一帧极近也允许放行，避免误杀真实轨迹
+  static_ball_hard_mask_allow_near_racket: false # 不因靠近球拍而放行，避免“地上球”抢焦点
+  racket_ball_proximity_weight: 0.35           # 多拍候选重排序：靠近运动球的主拍优先
+  racket_ball_proximity_distance_px: 460       # 主拍-球距离奖励窗口
+  racket_continuity_weight: 0.25               # 多拍候选重排序：上一帧主拍连续性权重
+  racket_continuity_distance_px: 260           # 主拍连续性奖励距离窗口
+  racket_mirror_min_y_ratio: 0.18              # 顶部镜像拍惩罚阈值（画面高度比例）
+  racket_top_mirror_penalty: 0.30              # 顶部镜像拍轻惩罚
+  overlay_marker_recovery_enabled: true        # 二次分析视频：恢复本程序绘制的空心球圈/球拍框
+  overlay_legacy_green_racket_enabled: true    # 兼容旧版绿色球拍框；仅接受闭合矩形
+  # CPU: 仅使用 CPU
+  # GPU: 使用 CPU + GPU (Metal)
+  # ANE: 使用 CPU + Apple Neural Engine
+  # ALL: 自动选择最优（推荐）
+
+# ==================== 🚀 I/O Pipeline 配置 ====================
+io_pipeline:
+  enabled: false                                # 启用 I/O Pipeline（并行读写）
+  buffer_size: 3                               # 缓冲区大小（2-4 推荐）
+
+# ==================== 🚀 异步处理配置 ====================
+async_detection:
+  enabled: true                              # 启用异步并行检测
+  max_workers: 3                             # 工作线程数（姿态、球、球拍）
+
+# ==================== ⚡ 速度分析配置 ====================
+speed_analysis:
+  enabled: true                              # 启用速度分析
+  pixel_to_meter: 0.01                       # 像素到米转换比例（需校准）
+  show_ball_speed: true                      # 显示球速
+  show_swing_speed: true                     # 显示挥拍速度
+
+# ==================== 🏸 挥拍分析配置 ====================
+swing_analysis:
+  enabled: true
+  dominant_hand: "right"                     # 球员惯用手: "right" 或 "left"
+  mirror_view: true                          # 🆕 视角镜像: 如果球员面向摄像头（左边是右手），设为 true
+  two_hand_wrist_distance_max_px: 60         # 判定双反的手腕距离阈值
+  min_swing_confidence: 0.5                  # 挥拍分析最小置信度
+
+# ==================== 🎯 击球点分析配置 ====================
+hit_zone_analysis:
+  enabled: true                              # 启用击球点分析
+  sweet_spot_ratio: 0.3                      # 甜区比例
+  show_hit_quality: true                     # 显示击球质量
+
+# ==================== 🤖 姿态检测参数 ====================
+pose_confidence_threshold: 0.4           # 姿态检测置信度阈值
+pose_keypoint_confidence: 0.3            # 关键点置信度阈值
+pose_smoothing_enabled: true             # 关键点时序平滑开关
+pose_smoothing_alpha: 0.45               # EMA 平滑系数（越小越稳，越大越跟手）
+pose_smoothing_max_jump_px: 90           # 单帧最大跳变限幅
+pose_smoothing_hold_missing_frames: 2    # 短时丢点时保持上一帧关键点
+pose_smoothing_reset_frames: 8           # 连续无人帧后重置平滑状态
+pose_smoothing_min_valid_points: 5       # 有效关键点太少时不做平滑更新
+
+pose_estimation_debug:
+  log_keypoints: false                   # 关键点日志
+  log_tracking: true                     # 姿态追踪日志
+  use_roi_detection: false               # 是否在ROI区域内检测姿态（false=全帧检测，推荐）
+
+# 姿态关键点过滤
+pose_tracking_enabled: true              # 启用姿态追踪
+pose_smoothing_factor: 0.7               # 姿态平滑因子
+
+# ==================== 🎾 球检测核心参数 ====================
+ball_confidence_threshold: 0.75
+ball_tracking_enabled: true
+static_filter_only: false
+ball_trajectory_max_len: 50
+max_lost_frames_for_track: 8
+max_ball_match_distance_px: 52
+
+# 球尺寸过滤参数
+min_ball_radius: 18
+max_ball_radius: 45
+min_ball_area: 180
+min_ball_movement: 7
+
+# 静态球过滤参数
+static_ball_movement_threshold_px: 6
+static_ball_frames_threshold: 10
+
+# 噪点过滤参数
+noise_filter_quality_threshold: 0.45
+noise_filter_circularity_threshold: 0.56
+noise_filter_min_edge_distance: 12
+
+# HSV颜色空间过滤参数
+hsv_lower_hue: 20
+hsv_upper_hue: 70
+hsv_lower_sat: 50
+hsv_upper_sat: 255
+hsv_lower_val: 55
+hsv_upper_val: 255
+
+# Hough圆检测
+hough_dp: 1
+hough_min_dist: 36
+hough_param1: 35
+hough_param2: 6
+
+# 球检测策略
+ball_detection_strategy:
+  prefer_largest_ball: false
+
+# ==================== 🏓 球拍检测参数 ====================
+racket_confidence_threshold: 0.4
+racket_lost_threshold_frames: 5
+racket_detection_debug:
+  log_detection: true
+  log_tracking: true
+
+racket_tracking_enabled: true
+racket_smoothing_factor: 0.6
+racket_match_distance_threshold: 80
+
+# ==================== 🏸 挥拍动作分析参数 ====================
+forehand_wrist_elbow_angle_min: 90
+forehand_wrist_elbow_angle_max: 170
+backhand_wrist_elbow_angle_min: 90
+backhand_wrist_elbow_angle_max: 170
+two_hand_wrist_distance_max_px: 50
+dominant_hand: "right"
+
+swing_detection_enabled: true
+swing_velocity_threshold: 15
+swing_acceleration_threshold: 5
+swing_angle_change_threshold: 30
+
+swing_phases:
+  preparation_duration: 10
+  execution_duration: 8
+  follow_through_duration: 12
+
+# ==================== 🚫 边界和掩码设置 ====================
+use_boundary: false
+boundary_x1: 0
+boundary_y1: 0
+boundary_x2: 9999
+boundary_y2: 9999
+draw_boundary: false
+
+use_mask_zones: true
+draw_mask_zones: true
+mask_zones:
+  - name: "interference_881_244"
+    x: 866
+    y: 229
+    width: 30
+    height: 30
+
+# ==================== 🎯 ROI区域功能 ====================
+roi_settings:
+  enabled: true
+  interactive_selection: false
+  auto_load_config: true
+  roi_config_path: "configs/roi_config.yaml"
+  crop_margin: 12
+  preview_interval_frames: 25
+  
+  visualization:
+    show_roi_boundary: false
+    show_roi_fill: false
+    show_roi_points: true
+    highlight_detections: true
+    show_roi_stats: true
+  
+  logging:
+    log_coordinate_adjustment: false
+    log_frame_context: false
+    
+  colors:
+    boundary: [0, 255, 255]
+    fill: [0, 255, 255]
+    points: [0, 255, 0]
+    inside_detection: [0, 255, 0]
+    outside_detection: [0, 0, 255]
+
+# ==================== 🔍 调试和日志设置 ====================
+ball_detection_debug:
+  log_detection: false
+  log_tracking: false
+  log_filtering: false
+  log_noise_filter: false
+  log_static_filtering: false
+  log_size_filtering: false
+  log_mask_zones: false
+  log_trajectory: false
+  log_roi_filtering: false
+  log_hsv_detection: false
+  log_boundary_check: false
+  log_advanced_processing: false
+  log_simulation: false
+  save_debug_frames: false
+  debug_frames_path: "debug_frames/"
+  debug_frame_interval: 25
+  max_log_detections: 15
+
+swing_analysis_debug:
+  log_swing_detection: false
+  log_swing_classification: false
+  log_swing_phases: false
+  log_swing_metrics: false
+
+# ==================== 🚫 人脸替换设置 ====================
+face_replacement:
+  enabled: false
+
+# ==================== 📹 视频处理设置 ====================
+video_processing:
+  skip_frames: 0
+  show_fps: true
+  output_fps: 25
+  resize_factor: 1.0
+  max_frames: 0
+
+# 性能优化设置
+performance_optimization:
+  use_gpu: true
+  batch_processing: false
+  multi_threading: true
+  memory_optimization: true
+  enable_parallel_detection: true
+  skip_frames: 0
+  max_workers: 4
+  enable_gpu_acceleration: true
+  minimal_ui: true
+  headless: true
+
+# ==================== 🎨 显示控制 ====================
+display_options:
+  show_swing_type: true
+  show_swing_phase: true
+  show_ball_position: true
+  show_ball_trajectory: true
+  show_racket_state: true
+  show_racket_trajectory: true
+  show_pose_keypoints: true
+  show_pose_skeleton: true
+  show_velocity_vectors: true
+  show_angle_measurements: true
+  show_boundary: false
+  show_static_balls: true
+  show_fps: true
+  show_frame_number: true
+  show_detection_confidence: true
+
+# 文字显示设置
+text_display:
+  font_size: 16
+  font_thickness: 2
+  text_color: [255, 255, 255]
+  background_color: [0, 0, 0]
+  text_alpha: 0.7
+
+# ==================== 📊 数据输出设置 ====================
+data_export:
+  export_enabled: true
+  export_format: "csv"
+  export_path: "data/analysis_results/"
+  export_ball_trajectory: true
+  export_racket_trajectory: true
+  export_pose_keypoints: true
+  export_swing_analysis: true
+  export_frame_statistics: true
+
+# ==================== 📝 字体设置 ====================
+font_dir: "fonts"
+preferred_chinese_font: "PingFang SC"
+auto_download_font: false
+
+# ==================== 🔧 其他设置 ====================
+enable_manual_boundary: false
+debug_mode: true
+ball_radius_px: 10
+
+# ==================== 🎯 模拟参数 ====================
+sim_ball_detection_noise: 1
+sim_num_static_balls: 0
+
+# ==================== 高级功能设置 ====================
+advanced_face_detection:
+  detection_priority: []
+  detector_control:
+    enable_front_face: false
+    enable_front_face_alt: false
+    enable_front_face_alt2: false
+    enable_profile_face: false
+    enable_full_body: false
+
+glip_model:
+  enabled: false
+
+mtcnn:
+  enabled: false
+
+# ==================== 📈 性能监控 ====================
+performance_monitoring:
+  enabled: true
+  log_processing_time: true
+  log_memory_usage: true
+  log_fps: true
+  save_performance_report: true
+
+# ==================== 🚄 Pipeline性能开关 ====================
+pipeline_perf:
+  inference_workers: 8                    # 推理线程池大小；当前每帧最多并行检测和姿态两个任务
+  limit_reader_fps: true                  # Reader按原视频FPS节流（false可提升离线吞吐）
+  live_limit_reader_fps: true             # 直播突发码流按源FPS整形，避免批量读帧导致过度丢帧
+  live_reader_max_lag_frames: 1.0         # 源阻塞超过一帧后重置时间线，不追赶式爆发
+  reader_buffer_slots: 12                 # 离线模式共享内存槽数量
+  live_reader_buffer_slots: 3             # 直播模式仅保留三阶段各自所需的槽
+  live_slot_wait_ms: 2                    # 直播无空槽时等待时长，随后直接跳过源帧
+  reader_open_timeout_ms: 5000            # 实时码流连接超时
+  reader_read_timeout_ms: 2000            # 实时码流单次读取超时
+  live_reconnect: true                    # 直播断流后自动重连
+  live_reconnect_delay: 0.5               # 重连间隔（秒）
+  video_encoder_backend: auto             # macOS优先VideoToolbox，不可用时回退OpenCV
+  video_encoder_bitrate: 12M              # 1440p H.264目标码率
+  dual_view_enabled: true                 # 双窗口对比显示（关闭可明显提速）
+  dual_view_scale: 0.5                    # 双窗口缩放比例
+  analysis_stride: 1                      # 每N帧做一次完整挥拍指标分析
+  draw_metrics_text: true                 # 绘制详细指标文字
+  collect_frame_results: true             # 累积每帧结果并导出JSON
+  json_dump_indent: 4                     # JSON缩进，设为null可减小文件体积
+  live_mode: false                        # 直播模式：关闭高开销显示/JSON并优先新帧
+  drop_stale_frames: false                # 处理滞后时丢弃旧帧以降低直播延迟
+
+# ==================== 🎾 实时挥拍事件闭环 ====================
+realtime_swing:
+  enabled: false                          # 推荐通过 --realtime-swing-events 显式开启
+  analysis_interval_frames: 5             # 每5个已处理帧刷新滚动事件分析
+  settle_frames: null                     # null=按输入FPS取约0.6秒，降低事件提前结束
+  window_frames: null                     # null=按输入FPS保留约8秒事件特征
+  clip_workers: 1                         # 异步片段编码线程，避免阻塞主分析循环
+  clip_padding_frames: 8                  # 每个事件片段前后附加帧数
+  clip_max_width: 1280                    # 内存中缓存720p级JPEG，不保存1440p原始帧环
+  clip_jpeg_quality: 85                   # 实时片段缓存质量
+  frame_output_enabled: false             # 异步输出逐帧JSONL和最近帧JSON
+  frame_snapshot_size: 200                # 最近帧JSON保留数量
+  frame_flush_interval: 5                 # 每5个处理帧刷新逐帧文件
+  coach_enabled: false                    # 为每个确认挥拍生成1-3条本地动作纠错
+  coach_max_chars: 15                     # 建议硬上限15字
+  coach_max_suggestions: 3                # 每次挥拍最多输出3条，coach_advice仍保留第一条
+  coach_min_confidence: 0.45               # 低于该置信度的生物力学指标不用于技术结论
+  coach_biomechanics:
+    min_hip_shoulder_separation_deg: 15.0  # 肩髋分离低于此值时提示加强转动
+    min_shoulder_turn_deg: 75.0            # 肩部转动不足阈值
+    min_arm_extension_deg: 145.0           # 触球窗口手臂伸展不足阈值
+    min_contact_lateral_body_widths: 0.55  # 击球点横向距离，小于0.55倍身宽视为太近
+    min_weight_transfer_body_widths: 0.08  # 准备到触球身体中心位移下限
+    max_balance_drift_body_widths: 0.65    # 触球到结束身体中心漂移上限
+  deepseek:
+    enabled: false                        # 旁路增强；本地Coach始终先返回
+    model: deepseek-v4-flash              # DeepSeek官方低延迟模型
+    base_url: https://api.deepseek.com    # OpenAI兼容ChatCompletions地址
+    api_key_env: DEEPSEEK_API_KEY         # 仅从环境变量读取密钥
+    timeout_seconds: 3.0                  # 单次请求硬超时，不阻塞主流水线
+    workers: 2                            # 允许相邻挥拍并行请求
+    max_chars: 15                         # DeepSeek建议同样不超过15字
+  open_report: false                      # 启动时自动打开实时HTML
+
+# ==================== ⭐ 精彩瞬间设置 ====================
+highlights:
+  enabled: false
+  output_dir: "data/highlights/"
+  hit_distance_factor: 1.5
+  racket_radius_factor: 1.15
+  cooldown_frames: 12
+  max_highlights: 50
+  distance_scale: 5
+  min_inside_frames: 1
+  min_relative_threshold_ratio: 2.0
+  min_exit_increase_px: 0
+  min_enter_decrease_px: 0
+  min_speed_px_per_frame: 0
+  pre_frames: 5
+  post_frames: 15
+  save_center_image: true
+  annotate_center_image: true
+  racket_selection: nearest

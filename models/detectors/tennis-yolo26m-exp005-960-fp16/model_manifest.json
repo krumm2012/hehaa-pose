@@ -1,0 +1,95 @@
+{
+  "schema_version": "tennis_coreml_candidate_manifest_v1",
+  "model_id": "tennis-yolo26m-exp005-960-fp16",
+  "created_at": "2026-08-04T14:25:26Z",
+  "status": "compatible_backup_candidate_not_promoted",
+  "task": "detect",
+  "classes": {
+    "0": "tennis_ball",
+    "1": "tennis_racket"
+  },
+  "input_size": [
+    960,
+    960
+  ],
+  "batch": 1,
+  "output": {
+    "name": "var_1555",
+    "shape": [
+      1,
+      300,
+      6
+    ],
+    "dtype": "float32",
+    "end_to_end": true,
+    "embedded_nms": false
+  },
+  "precision": "fp16",
+  "coreml_package": {
+    "path": "models/detectors/tennis-yolo26m-exp005-960-fp16/model.mlpackage",
+    "bundle_sha256": "ceba7939ff96f9c4d91931aed3accaed0cdfab16d8e8663e7c385c3414dd4911",
+    "size_bytes": 41037373
+  },
+  "source": {
+    "experiment_id": "exp-20260804-005-960-v002-balanced-yolo26m-cloud",
+    "pytorch_path": "/Users/krum5539/Documents/ball-racket-model/models/pytorch/tennis-yolo26m-exp005-960/best.pt",
+    "pytorch_sha256": "4dcc4cdc99fd794006ccdf9c2c44c6605937bf38a1b3de77c96ff5d44c8338df",
+    "dataset_manifest": "/Users/krum5539/Documents/ball-racket-model/data/datasets/dataset-v002/yolo-experimental-session-balanced-20260804/balanced_view_manifest.json",
+    "dataset_manifest_sha256": "36ab5f37cbe95607b76c1daa9f962fe0c7e575dd95c69b277acae595cbdc120a",
+    "dataset_status": "experimental_not_frozen"
+  },
+  "conversion": {
+    "ultralytics": "8.4.8",
+    "coremltools": "9.0",
+    "python": "3.9.6",
+    "torch": "2.8.0",
+    "numpy": "2.0.2",
+    "arguments": {
+      "format": "coreml",
+      "imgsz": 960,
+      "half": true,
+      "nms": false,
+      "device": "cpu"
+    },
+    "environment_note": "coremltools 9.0 warns that torch 2.8.0 is newer than its tested torch 2.7.0 maximum; full-val inference nevertheless completed successfully."
+  },
+  "candidate_operating_thresholds": {
+    "selection_split": "val",
+    "minimum_precision": 0.9,
+    "step": 0.001,
+    "tennis_ball": 0.052,
+    "tennis_racket": 0.479,
+    "report": "/Users/krum5539/Documents/ball-racket-model/reports/experiments/exp-20260804-005-960-v002-balanced-yolo26m-coreml-fp16-val-threshold-calibration.json"
+  },
+  "compatibility": {
+    "runtime": "YOLO26nUnifiedDetector",
+    "preprocess_mode": "letterbox",
+    "class_mapping_matches": true,
+    "output_shape_supported": true,
+    "full_val_frames": 500,
+    "coreml_ball_recall": 0.7082463465553236,
+    "pytorch_ball_recall": 0.7092901878914405,
+    "ball_recall_delta": -0.0010438413361169,
+    "coreml_small_ball_recall_8_15_px": 0.5442913385826772,
+    "pytorch_small_ball_recall_8_15_px": 0.5457677165354331,
+    "coreml_inference_p50_ms": 24.110145499999902,
+    "coreml_inference_p95_ms": 24.709927399999465,
+    "target_device": "Apple M5",
+    "compute_units_for_full_val": "CPU_AND_NE"
+  },
+  "candidate_config": {
+    "path": "configs/yolo26_tennis_exp005_candidate.yaml",
+    "sha256": "15a3ac4da01f9b4dc6e4489609de3910c4ab505204d8a4f97eaed39c17bade6a",
+    "default_config_unchanged": true
+  },
+  "promotion": {
+    "allowed": false,
+    "backup_testing_allowed": true,
+    "reasons": [
+      "dataset-v002 is experimental and blind final_test is not frozen",
+      "YOLO26m racket recall remains materially below exp-004",
+      "1500-frame product regression has not been completed",
+      "24.71 ms detector p95 leaves limited room in the 40 ms frame budget"
+    ]
+  }
+}

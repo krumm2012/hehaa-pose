@@ -1367,6 +1367,15 @@ class RealtimeSwingOutputManager:
     header {{ padding:28px 0 18px; display:flex; justify-content:space-between; gap:20px; align-items:end; }}
     h1,h2,p {{ margin:0; }}
     .summary {{ color:#aab8cc; }}
+    .header-tools {{ display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:10px; }}
+    #report-summary {{ white-space:nowrap; }}
+    .refresh-controls {{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; }}
+    .refresh-status {{ border:1px solid #46643c; border-radius:999px; background:#182317; color:#baf1c8; padding:5px 10px; white-space:nowrap; }}
+    .refresh-status[data-state="paused"] {{ border-color:#725f2d; background:#1e1b13; color:#f4d995; }}
+    .refresh-button {{ border:1px solid var(--line); border-radius:8px; background:#17253a; color:#dceaff; padding:7px 11px; font:inherit; font-weight:700; cursor:pointer; }}
+    .refresh-button:hover:not(:disabled),.refresh-button:focus-visible {{ border-color:#6f8fb6; outline:none; }}
+    .refresh-button-stop {{ background:#2a2112; border-color:#725f2d; color:#f4d995; }}
+    .refresh-button:disabled {{ opacity:.42; cursor:not-allowed; }}
     main {{ display:grid; gap:18px; padding-bottom:40px; }}
     .session-monitor {{ border:1px solid #365d8c; border-radius:14px; background:#111d2d; padding:16px; }}
     .session-monitor-head {{ display:flex; justify-content:space-between; gap:16px; align-items:start; }}
@@ -1471,13 +1480,20 @@ class RealtimeSwingOutputManager:
     dl div {{ border:1px solid var(--line); border-radius:8px; padding:9px 11px; }}
     dt {{ color:#93a4bb; font-size:12px; text-transform:uppercase; }} dd {{ margin:2px 0 0; }}
     .waiting {{ padding:50px; text-align:center; border:1px dashed var(--line); border-radius:14px; color:#93a4bb; }}
-    @media(max-width:720px) {{ header {{ align-items:start; flex-direction:column; }} .session-monitor-kpis,.review-metrics {{ grid-template-columns:1fr 1fr; }} dl,.biomechanics,.annotation-frames,.annotation-checks,.coach-columns {{ grid-template-columns:1fr; }} .workflow-track {{ grid-template-columns:1fr 1fr; }} }}
+    @media(max-width:720px) {{ header {{ align-items:start; flex-direction:column; }} .header-tools {{ justify-content:flex-start; }} .session-monitor-kpis,.review-metrics {{ grid-template-columns:1fr 1fr; }} dl,.biomechanics,.annotation-frames,.annotation-checks,.coach-columns {{ grid-template-columns:1fr; }} .workflow-track {{ grid-template-columns:1fr 1fr; }} }}
   </style>
 </head>
 <body>
   <header>
     <div><h1>Live Swing Events</h1><p class="summary">Coach 建议每 200 ms 增量更新。</p></div>
-    <strong id="report-summary">{int(summary.get('swing_event_count') or 0)} events · frame {int(summary.get('latest_frame') or -1)}</strong>
+    <div class="header-tools">
+      <strong id="report-summary">{int(summary.get('swing_event_count') or 0)} events · frame {int(summary.get('latest_frame') or -1)}</strong>
+      <div class="refresh-controls" role="group" aria-label="页面刷新控制">
+        <span id="refresh-status" class="refresh-status" data-state="running" aria-live="polite">自动刷新中</span>
+        <button id="refresh-start" class="refresh-button" type="button" aria-pressed="true">自动刷新</button>
+        <button id="refresh-stop" class="refresh-button refresh-button-stop" type="button" aria-pressed="false">停止刷新</button>
+      </div>
+    </div>
   </header>
   <main>
     {session_dashboard}
@@ -1520,6 +1536,9 @@ class RealtimeSwingOutputManager:
     const eventJsonUrl = {json.dumps(event_json_href)};
     const coachFeed = document.getElementById('live-coach-feed');
     const reportSummary = document.getElementById('report-summary');
+    const refreshStatus = document.getElementById('refresh-status');
+    const refreshStart = document.getElementById('refresh-start');
+    const refreshStop = document.getElementById('refresh-stop');
     const annotationWorkspace = document.getElementById('annotation-workspace');
     const manualEvents = document.getElementById('manual-events');
     const timelineReviewComplete = document.getElementById('timeline-review-complete');
@@ -1534,10 +1553,41 @@ class RealtimeSwingOutputManager:
     const evaluateImportedReview = document.getElementById('evaluate-imported-review');
     const evaluateCurrentReview = document.getElementById('evaluate-current-review');
     const annotationStorageKey = `tennis.swing.annotations.v2:${{location.pathname}}:${{eventJsonUrl}}`;
+    const refreshStorageKey = `tennis.swing.auto-refresh.v1:${{location.pathname}}`;
+    let autoRefreshEnabled = true;
     let coachFeedPending = false;
     let manualCounter = 0;
     let lastAnnotationInteraction = 0;
     let importedReviewPayload = null;
+
+    try {{
+      autoRefreshEnabled = sessionStorage.getItem(refreshStorageKey) !== 'false';
+    }} catch (_error) {{
+      // Keep auto-refresh enabled when storage is unavailable (for example, restricted file:// pages).
+    }}
+
+    function updateRefreshControls() {{
+      refreshStatus.dataset.state = autoRefreshEnabled ? 'running' : 'paused';
+      refreshStatus.textContent = autoRefreshEnabled ? '自动刷新中' : '页面刷新已暂停';
+      refreshStart.disabled = autoRefreshEnabled;
+      refreshStop.disabled = !autoRefreshEnabled;
+      refreshStart.setAttribute('aria-pressed', String(autoRefreshEnabled));
+      refreshStop.setAttribute('aria-pressed', String(!autoRefreshEnabled));
+    }}
+
+    function setAutoRefreshEnabled(enabled) {{
+      autoRefreshEnabled = Boolean(enabled);
+      try {{
+        sessionStorage.setItem(refreshStorageKey, String(autoRefreshEnabled));
+      }} catch (_error) {{
+        // The controls still work for the current document when storage is unavailable.
+      }}
+      updateRefreshControls();
+      if (autoRefreshEnabled) {{
+        refreshCoachFeed();
+        refreshPreview();
+      }}
+    }}
 
     function integerField(card, field) {{
       const input = card.querySelector(`[data-field="${{field}}"]`);
@@ -1809,6 +1859,30 @@ class RealtimeSwingOutputManager:
       saveAnnotations();
     }}
 
+    function manualReviewReportHeaders() {{
+      const headers = {{}};
+      const artifactPrefix = '/artifacts/';
+      if (location.pathname.startsWith(artifactPrefix)) {{
+        const reportPath = decodeURIComponent(location.pathname.slice(artifactPrefix.length));
+        if (reportPath) headers['X-Manual-Review-Report'] = reportPath;
+      }}
+      return headers;
+    }}
+
+    async function manualReviewRequestHeaders() {{
+      const headers = manualReviewReportHeaders();
+      headers['Content-Type'] = 'application/json';
+      try {{
+        const response = await fetch('/api/config', {{ cache: 'no-store' }});
+        if (!response.ok) return headers;
+        const config = await response.json();
+        if (config && config.token) headers['X-Control-Token'] = String(config.token);
+      }} catch (_error) {{
+        // The standalone manual-review server does not require a control token.
+      }}
+      return headers;
+    }}
+
     async function submitManualReview(payload) {{
       if (location.protocol === 'file:') {{
         setReviewStatus('需要本地服务', 'error', '请运行 manual_review_workflow.py 后从 http://127.0.0.1 打开本页。');
@@ -1821,7 +1895,7 @@ class RealtimeSwingOutputManager:
       try {{
         const response = await fetch('/api/manual-review/evaluate', {{
           method: 'POST',
-          headers: {{ 'Content-Type': 'application/json' }},
+          headers: await manualReviewRequestHeaders(),
           body: JSON.stringify(payload),
         }});
         const state = await response.json();
@@ -1870,8 +1944,13 @@ class RealtimeSwingOutputManager:
         return;
       }}
       try {{
-        const response = await fetch('/api/manual-review/state', {{ cache: 'no-store' }});
-        if (response.ok) renderReviewState(await response.json());
+        const response = await fetch('/api/manual-review/state', {{
+          cache: 'no-store',
+          headers: manualReviewReportHeaders(),
+        }});
+        const state = await response.json();
+        if (!response.ok) throw new Error(state.message || state.error || '人工校准服务不可用');
+        renderReviewState(state);
       }} catch (error) {{
         setReviewStatus('服务不可用', 'error', error.message || String(error));
       }}
@@ -1912,28 +1991,35 @@ class RealtimeSwingOutputManager:
     }}
 
     async function refreshCoachFeed() {{
-      if (coachFeedPending) return;
+      if (!autoRefreshEnabled || coachFeedPending) return;
       coachFeedPending = true;
       try {{
         const response = await fetch(`${{eventJsonUrl}}?t=${{Date.now()}}`, {{ cache: 'no-store' }});
-        if (response.ok) renderCoachFeed(await response.json());
+        if (autoRefreshEnabled && response.ok) renderCoachFeed(await response.json());
       }} catch (_error) {{
         // file:// reports cannot fetch siblings; the slower HTML refresh below remains available.
       }} finally {{
         coachFeedPending = false;
       }}
     }}
-    refreshCoachFeed();
-    setInterval(refreshCoachFeed, 200);
 
     const preview = document.getElementById('roi-preview');
-    if (preview) {{
-      const previewSource = preview.getAttribute('src').split('?')[0];
-      setInterval(() => {{
-        preview.src = previewSource + '?t=' + Date.now();
-      }}, 1000);
+    const previewSource = preview ? preview.getAttribute('src').split('?')[0] : '';
+    function refreshPreview() {{
+      if (autoRefreshEnabled && preview) preview.src = previewSource + '?t=' + Date.now();
     }}
+
+    refreshStart.addEventListener('click', () => setAutoRefreshEnabled(true));
+    refreshStop.addEventListener('click', () => setAutoRefreshEnabled(false));
+    updateRefreshControls();
+    if (autoRefreshEnabled) {{
+      refreshCoachFeed();
+      refreshPreview();
+    }}
+    setInterval(refreshCoachFeed, 200);
+    setInterval(refreshPreview, 1000);
     setInterval(() => {{
+      if (!autoRefreshEnabled) return;
       const playing = [...document.querySelectorAll('video')].some(video => !video.paused && !video.ended);
       const editingAnnotations = Date.now() - lastAnnotationInteraction < 15000;
       const annotationFocused = annotationWorkspace.contains(document.activeElement);

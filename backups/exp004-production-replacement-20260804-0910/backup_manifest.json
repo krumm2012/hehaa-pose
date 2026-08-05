@@ -1,0 +1,26 @@
+{
+  "schema_version": "tennis_production_model_backup_v1",
+  "created_at": "2026-08-04T01:10:00Z",
+  "reason": "Backup before switching production unified detection to exp-004 FP16 Core ML",
+  "files": {
+    "model": {
+      "original_path": "yolo26n.mlpackage",
+      "backup_path": "backups/exp004-production-replacement-20260804-0910/yolo26n.mlpackage",
+      "bundle_sha256": "1d2b986a5208d839d15e5fd37a389478c4e313eeac72813969badf9369fd8ff1"
+    },
+    "config": {
+      "original_path": "configs/yolo26_tennis_config.yaml",
+      "backup_path": "backups/exp004-production-replacement-20260804-0910/yolo26_tennis_config.yaml",
+      "sha256": "11fdd34de0ee8c75e1ceb141aa053075ff9fc4a834cc5df048691f31971065db"
+    },
+    "detector": {
+      "original_path": "yolo26n_unified_detector.py",
+      "backup_path": "backups/exp004-production-replacement-20260804-0910/yolo26n_unified_detector.py",
+      "sha256": "38cdb3aae651c68c89e92e02c6be5476efa808e3b050cb93625355c15b8b5144"
+    }
+  },
+  "restore": {
+    "model": "The original root yolo26n.mlpackage was not overwritten and remains in place.",
+    "config_and_code": "Copy the backed-up YAML and Python files to their original paths, then restart the running analyzer process."
+  }
+}
