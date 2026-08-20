@@ -474,6 +474,18 @@ class RealtimeSwingOutputManagerTests(unittest.TestCase):
                     }
                 },
             )
+            manager.update_event(
+                1,
+                {
+                    "coach_tts": {
+                        "status": "ready",
+                        "engine": "qwen3-tts-mlx",
+                        "audio_path": "live_swing_report_coach_audio/swing_001_coach.wav",
+                        "latency_ms": 321,
+                        "played": False,
+                    }
+                },
+            )
             manager.close()
 
             payload = json.loads((root / "live_swing_events.json").read_text(encoding="utf-8"))
@@ -498,7 +510,7 @@ class RealtimeSwingOutputManagerTests(unittest.TestCase):
         )
         self.assertEqual(
             [row["operation"] for row in event_log],
-            ["event_created", "event_updated", "event_updated"],
+            ["event_created", "event_updated", "event_updated", "event_updated"],
         )
         self.assertTrue(
             all(row["schema_version"] == EVENT_LOG_SCHEMA_VERSION for row in event_log)
@@ -516,6 +528,9 @@ class RealtimeSwingOutputManagerTests(unittest.TestCase):
         self.assertIn("88%", html)
         self.assertIn("76%", html)
         self.assertIn("提前转肩充分引拍", html)
+        self.assertIn("本地语音 Coach", html)
+        self.assertIn("swing_001_coach.wav", html)
+        self.assertIn("Qwen3-TTS", html)
         self.assertIn("live-coach-feed", html)
         self.assertIn("会话质量与漂移", html)
         self.assertIn("session-monitor", html)

@@ -133,6 +133,8 @@ streams:
                 "session_name": "Court 01 / live",
                 "realtime_swing_events": False,
                 "realtime_coach": True,
+                "coach_tts": True,
+                "coach_tts_playback": False,
                 "max_suggestions": 2,
                 "min_confidence": 0.55,
             }
@@ -143,6 +145,8 @@ streams:
         self.assertTrue(settings.evidence_bundle)
         self.assertEqual(settings.max_suggestions, 2)
         self.assertEqual(settings.min_confidence, 0.55)
+        self.assertTrue(settings.coach_tts)
+        self.assertFalse(settings.coach_tts_playback)
         with self.assertRaisesRegex(ValueError, "1–3"):
             ControlSettings.from_payload(
                 {
@@ -258,6 +262,8 @@ streams:
                     "output_dir": "outputs",
                     "session_name": "court01",
                     "realtime_coach": True,
+                    "coach_tts": True,
+                    "coach_tts_playback": False,
                     "max_suggestions": 3,
                     "min_confidence": 0.45,
                     "hdmi_output": True,
@@ -281,6 +287,8 @@ streams:
 
         joined = " ".join(command)
         self.assertIn("--realtime-coach-max-suggestions 3", joined)
+        self.assertIn("--realtime-coach-tts", command)
+        self.assertIn("--realtime-coach-tts-no-playback", command)
         self.assertIn("--hdmi-output", command)
         self.assertIn("--display-origin 1512 0", joined)
         self.assertNotIn("admin:private", joined)

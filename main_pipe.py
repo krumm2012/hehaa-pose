@@ -92,6 +92,7 @@ class MultiprocessPipeline:
         realtime_coach_max_suggestions=None,
         realtime_coach_min_confidence=None,
         deepseek_coach_options=None,
+        coach_tts_options=None,
         realtime_open_report=False,
         session_id=None,
         session_output_root=None,
@@ -303,7 +304,43 @@ class MultiprocessPipeline:
                 max(1, int(deepseek_option('max_chars', 15))),
             ),
         }
-        if self.deepseek_coach_options['enabled']:
+        coach_tts_cfg = realtime_cfg.get('coach_tts') or {}
+        coach_tts_overrides = coach_tts_options or {}
+
+        def coach_tts_option(name, default):
+            override = coach_tts_overrides.get(name)
+            if override is not None:
+                return override
+            return coach_tts_cfg.get(name, default)
+
+        self.coach_tts_options = {
+            'enabled': bool(
+                coach_tts_overrides.get('enabled', False)
+                or coach_tts_cfg.get('enabled', False)
+            ),
+            'model': str(
+                coach_tts_option(
+                    'model',
+                    'mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16',
+                )
+            ),
+            'voice': str(coach_tts_option('voice', 'Vivian')),
+            'language': str(coach_tts_option('language', 'Chinese')),
+            'playback': bool(coach_tts_option('playback', True)),
+            'max_pending': max(1, int(coach_tts_option('max_pending', 2))),
+            'streaming_interval_seconds': max(
+                0.08,
+                float(coach_tts_option('streaming_interval_seconds', 0.32)),
+            ),
+            'streaming_prebuffer_chunks': max(
+                1,
+                int(coach_tts_option('streaming_prebuffer_chunks', 2)),
+            ),
+        }
+        if (
+            self.deepseek_coach_options['enabled']
+            or self.coach_tts_options['enabled']
+        ):
             self.realtime_coach = True
         if self.realtime_coach:
             self.realtime_swing_events = True
@@ -780,6 +817,7 @@ class MultiprocessPipeline:
         frame_journal = None
         realtime_coach = None
         deepseek_sidecar = None
+        coach_tts_sidecar = None
         realtime_runtime = None
         if self.realtime_frame_output:
             from realtime_swing_pipeline import RealtimeFrameJournal
@@ -830,6 +868,31 @@ class MultiprocessPipeline:
                 f' | 模型: {self.deepseek_coach_options["model"]}'
                 f' | 超时: {self.deepseek_coach_options["timeout_seconds"]:.1f}s'
                 f' | {api_key_env}: {key_status}'
+            )
+        if self.coach_tts_options['enabled']:
+            from qwen3_tts_sidecar import CoachTtsSidecar
+
+            coach_tts_dir = f'{output_stem}_coach_audio'
+            coach_tts_sidecar = CoachTtsSidecar(
+                output_dir=coach_tts_dir,
+                model=self.coach_tts_options['model'],
+                voice=self.coach_tts_options['voice'],
+                language=self.coach_tts_options['language'],
+                playback=self.coach_tts_options['playback'],
+                max_pending=self.coach_tts_options['max_pending'],
+                streaming_interval_seconds=(
+                    self.coach_tts_options['streaming_interval_seconds']
+                ),
+                streaming_prebuffer_chunks=(
+                    self.coach_tts_options['streaming_prebuffer_chunks']
+                ),
+                audio_path_prefix=Path(coach_tts_dir).name,
+            )
+            print(
+                f'🔊 [Qwen3-TTS] 本地语音播报已开启'
+                f' | 模型: {self.coach_tts_options["model"]}'
+                f' | 声音: {self.coach_tts_options["voice"]}'
+                f' | 扬声器: {"开启" if self.coach_tts_options["playback"] else "关闭"}'
             )
         if self.realtime_swing_events:
             from realtime_swing_pipeline import (
@@ -901,9 +964,9 @@ class MultiprocessPipeline:
                 f' | 异步片段线程: {self.realtime_clip_workers}'
                 f' | 本地Coach: {"开启" if realtime_coach is not None else "关闭"}'
                 f' | DeepSeek旁路: {"开启" if deepseek_sidecar is not None else "关闭"}'
+                f' | Qwen3-TTS: {"开启" if coach_tts_sidecar is not None else "关闭"}'
             )
             if self.realtime_open_report:
-                from pathlib import Path
                 import webbrowser
 
                 webbrowser.open(Path(realtime_html).resolve().as_uri())
@@ -916,6 +979,7 @@ class MultiprocessPipeline:
                 output=realtime_output,
                 frame_journal=frame_journal,
                 deepseek_sidecar=deepseek_sidecar,
+                coach_tts_sidecar=coach_tts_sidecar,
                 stop_event=self.stop_event,
                 queue_size=max(64, int(round(self.fps * 12))),
             )
@@ -1347,6 +1411,12 @@ class MultiprocessPipeline:
                 {'role': 'swing_clip', 'path': str(path)}
                 for path in sorted(clips_dir.glob('*.mp4'))
             )
+        coach_tts_dir = Path(f'{output_stem}_coach_audio')
+        if coach_tts_dir.is_dir():
+            artifacts.extend(
+                {'role': 'coach_tts_audio', 'path': str(path)}
+                for path in sorted(coach_tts_dir.glob('*.wav'))
+            )
         effective_settle = (
             self.realtime_settle_frames
             if self.realtime_settle_frames is not None
@@ -1614,6 +1684,14 @@ def build_argument_parser():
                         help='DeepSeek旁路并发请求数，默认 2')
     parser.add_argument('--deepseek-coach-max-chars', type=int, default=None,
                         help='DeepSeek建议最大字数，范围 1-15，默认 15')
+    parser.add_argument('--realtime-coach-tts', action='store_true',
+                        help='用本机 Qwen3-TTS（MLX）异步播报本地 Coach 建议')
+    parser.add_argument('--realtime-coach-tts-model',
+                        help='MLX Qwen3-TTS 模型，默认 mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16')
+    parser.add_argument('--realtime-coach-tts-voice',
+                        help='Qwen3-TTS 声音，默认 Vivian（中文）')
+    parser.add_argument('--realtime-coach-tts-no-playback', action='store_true',
+                        help='只生成报告内可播放 WAV，不通过本机扬声器播报')
     parser.add_argument('--realtime-open-report', action='store_true',
                         help='启动实时 Swing 输出时在系统浏览器打开 HTML 页面')
     return parser
@@ -1681,6 +1759,12 @@ def main_cli(argv=None):
             'timeout_seconds': args.deepseek_timeout_seconds,
             'workers': args.deepseek_workers,
             'max_chars': args.deepseek_coach_max_chars,
+        },
+        coach_tts_options={
+            'enabled': args.realtime_coach_tts,
+            'model': args.realtime_coach_tts_model,
+            'voice': args.realtime_coach_tts_voice,
+            'playback': False if args.realtime_coach_tts_no_playback else None,
         },
         realtime_open_report=args.realtime_open_report,
         session_id=args.session_id,

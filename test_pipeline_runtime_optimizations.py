@@ -11,9 +11,17 @@ import numpy as np
 from performance_metrics import FpsTracker
 from pose_renderer import draw_pose_keypoints
 from video_writer_backend import create_video_writer
+from main_pipe import MultiprocessPipeline
 
 
 class LazyImportTests(unittest.TestCase):
+    def test_analyzer_process_does_not_shadow_module_path_import(self):
+        """TTS setup uses Path before the optional report-open branch."""
+        self.assertNotIn(
+            "Path",
+            MultiprocessPipeline.analyzer_process.__code__.co_varnames,
+        )
+
     def test_main_pipe_does_not_import_model_runtimes(self):
         script = (
             "import json, sys; import main_pipe; "

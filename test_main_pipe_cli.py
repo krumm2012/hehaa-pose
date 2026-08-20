@@ -76,6 +76,10 @@ class MainPipeCliTests(unittest.TestCase):
             '--deepseek-timeout-seconds', '2.5',
             '--deepseek-workers', '3',
             '--deepseek-coach-max-chars', '13',
+            '--realtime-coach-tts',
+            '--realtime-coach-tts-model', 'mlx-community/test-qwen3-tts',
+            '--realtime-coach-tts-voice', 'Vivian',
+            '--realtime-coach-tts-no-playback',
             '--realtime-open-report',
             '--session-id', 'court01-20260729',
             '--session-output-root', 'data/sessions',
@@ -108,6 +112,10 @@ class MainPipeCliTests(unittest.TestCase):
         self.assertEqual(args.deepseek_timeout_seconds, 2.5)
         self.assertEqual(args.deepseek_workers, 3)
         self.assertEqual(args.deepseek_coach_max_chars, 13)
+        self.assertTrue(args.realtime_coach_tts)
+        self.assertEqual(args.realtime_coach_tts_model, 'mlx-community/test-qwen3-tts')
+        self.assertEqual(args.realtime_coach_tts_voice, 'Vivian')
+        self.assertTrue(args.realtime_coach_tts_no_playback)
         self.assertTrue(args.realtime_open_report)
         self.assertEqual(args.session_id, 'court01-20260729')
         self.assertEqual(args.session_output_root, 'data/sessions')
@@ -123,6 +131,7 @@ class MainPipeCliTests(unittest.TestCase):
             '--realtime-frame-output',
             '--realtime-coach',
             '--deepseek-coach',
+            '--realtime-coach-tts',
             '--hdmi-output',
             '--display-origin', '1512', '0',
             '--dominant-hand', 'left',
@@ -143,6 +152,7 @@ class MainPipeCliTests(unittest.TestCase):
         self.assertTrue(kwargs['realtime_frame_output'])
         self.assertTrue(kwargs['realtime_coach'])
         self.assertTrue(kwargs['deepseek_coach_options']['enabled'])
+        self.assertTrue(kwargs['coach_tts_options']['enabled'])
         self.assertTrue(kwargs['hdmi_output'])
         self.assertEqual(kwargs['display_origin'], [1512, 0])
         self.assertIsNone(kwargs['deepseek_coach_options']['model'])

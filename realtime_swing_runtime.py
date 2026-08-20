@@ -22,6 +22,7 @@ class RealtimeSwingRuntime:
         output,
         frame_journal=None,
         deepseek_sidecar=None,
+        coach_tts_sidecar=None,
         stop_event=None,
         queue_size: int = 512,
         logger: Callable[[str], None] = print,
@@ -30,6 +31,7 @@ class RealtimeSwingRuntime:
         self.output = output
         self.frame_journal = frame_journal
         self.deepseek_sidecar = deepseek_sidecar
+        self.coach_tts_sidecar = coach_tts_sidecar
         self.stop_event = stop_event
         self.logger = logger
         self._queue: queue.Queue = queue.Queue(maxsize=max(1, int(queue_size)))
@@ -80,6 +82,11 @@ class RealtimeSwingRuntime:
                 self.deepseek_sidecar.close()
             except BaseException as exc:
                 close_errors.append(exc)
+        if self.coach_tts_sidecar is not None:
+            try:
+                self.coach_tts_sidecar.close()
+            except BaseException as exc:
+                close_errors.append(exc)
         if self.output is not None:
             try:
                 self.output.close()
@@ -124,6 +131,9 @@ class RealtimeSwingRuntime:
                     "model": self.deepseek_sidecar.model,
                     "source": "deepseek_sidecar",
                 }
+        if self.coach_tts_sidecar is not None:
+            for event in events:
+                event["coach_tts"] = self.coach_tts_sidecar.pending_payload(event)
         if events or final:
             self.output.publish_events(events, self.engine.snapshot())
         for event in events:
@@ -158,6 +168,15 @@ class RealtimeSwingRuntime:
                     ),
                     frame_records=frame_records,
                 )
+            if self.coach_tts_sidecar is not None:
+                event_id = int(event["event_id"])
+                self.coach_tts_sidecar.submit(
+                    event,
+                    lambda result, target_event_id=event_id: self._publish_coach_tts(
+                        target_event_id,
+                        result,
+                    ),
+                )
 
     def _publish_deepseek(self, event_id: int, result: Dict) -> None:
         self.output.update_event(event_id, {"deepseek_advice": result})
@@ -173,6 +192,10 @@ class RealtimeSwingRuntime:
                 f" | {result.get('status')}"
                 " | 本地建议继续生效"
             )
+
+    def _publish_coach_tts(self, event_id: int, result: Dict) -> None:
+        """Persist optional local speech state without changing Coach text."""
+        self.output.update_event(event_id, {"coach_tts": result})
 
     def _fail(self, exc: BaseException) -> None:
         if self._worker_error is None:

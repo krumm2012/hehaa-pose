@@ -442,6 +442,8 @@
             <div class="switches">
               <label class="switch"><input id="realtime_swing_events" type="checkbox">实时 Swing 事件</label>
               <label class="switch"><input id="realtime_coach" type="checkbox">本地动作纠错</label>
+              <label class="switch"><input id="coach_tts" type="checkbox">Qwen3-TTS 语音播报（MLX）</label>
+              <label class="switch"><input id="coach_tts_playback" type="checkbox">通过本机扬声器播报</label>
               <label class="switch"><input id="deepseek_coach" type="checkbox">DeepSeek 旁路</label>
               <label class="switch"><input id="realtime_frame_output" type="checkbox">保存逐帧 JSONL</label>
               <label class="switch"><input id="evidence_bundle" type="checkbox">可重放证据包</label>
@@ -515,14 +517,14 @@
       "stream_id", "custom_stream_source", "username", "password", "crop_margin", "output_fps",
       "roi_enabled", "show_roi_boundary", "show_roi_fill", "show_roi_points",
       "analysis_interval", "settle_frames", "max_suggestions", "min_confidence",
-      "realtime_swing_events", "realtime_coach", "deepseek_coach",
+      "realtime_swing_events", "realtime_coach", "coach_tts", "coach_tts_playback", "deepseek_coach",
       "realtime_frame_output", "evidence_bundle", "inference_workers", "display_origin_x",
       "display_origin_y", "live_mode", "save_video", "hdmi_output",
       "output_dir", "session_name"
     ];
     const checkboxIds = new Set([
       "roi_enabled", "show_roi_boundary", "show_roi_fill", "show_roi_points",
-      "realtime_swing_events", "realtime_coach", "deepseek_coach",
+      "realtime_swing_events", "realtime_coach", "coach_tts", "coach_tts_playback", "deepseek_coach",
       "realtime_frame_output", "evidence_bundle", "live_mode", "save_video", "hdmi_output"
     ]);
     const CUSTOM_STREAM_ID = "custom";

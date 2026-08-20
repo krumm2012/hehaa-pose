@@ -411,6 +411,15 @@ realtime_swing:
     timeout_seconds: 3.0                  # 单次请求硬超时，不阻塞主流水线
     workers: 2                            # 允许相邻挥拍并行请求
     max_chars: 15                         # DeepSeek建议同样不超过15字
+  coach_tts:
+    enabled: false                        # 可用 --realtime-coach-tts 覆盖；不会阻塞实时推理
+    model: mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16 # Qwen3-TTS MLX 0.6B
+    voice: Vivian                          # 中文预设声音
+    language: Chinese
+    playback: true                         # 优先流式扬声器；不可用时回退 afplay；关闭后仅写 WAV
+    max_pending: 2                         # 队列满时跳过过期播报，保持实时性
+    streaming_interval_seconds: 0.32       # Qwen3-TTS 每段音频目标时长；越小首段越快
+    streaming_prebuffer_chunks: 2          # 预缓冲两段后播放，吸收推理与设备抖动
   open_report: false                      # 启动时自动打开实时HTML
 
 # ==================== ⭐ 精彩瞬间设置 ====================

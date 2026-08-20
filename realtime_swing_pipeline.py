@@ -718,7 +718,11 @@ class RealtimeSwingOutputManager:
             for event in self._events:
                 if int(event["event_id"]) != int(event_id):
                     continue
-                event.update(deepcopy(patch))
+                for key, value in deepcopy(patch).items():
+                    if isinstance(event.get(key), dict) and isinstance(value, dict):
+                        event[key] = {**event[key], **value}
+                    else:
+                        event[key] = value
                 self._event_journal.append(
                     "event_updated",
                     int(event_id),
@@ -1201,6 +1205,34 @@ class RealtimeSwingOutputManager:
                         '<span>实时动作纠错</span><small>单摄像头2D估计</small></div>'
                         f'<ol>{"".join(advice_rows)}</ol></div>'
                     )
+            coach_tts = event.get("coach_tts") or {}
+            coach_tts_status = str(coach_tts.get("status") or "")
+            coach_tts_content = ""
+            if coach_tts_status == "ready" and coach_tts.get("audio_path"):
+                audio_source = self.output_json.parent / str(
+                    coach_tts["audio_path"]
+                )
+                audio_href = os.path.relpath(
+                    audio_source,
+                    self.output_html.parent,
+                ).replace(os.sep, "/")
+                playback_text = "已通过本机扬声器播报" if coach_tts.get("played") else "可在页面播放"
+                coach_tts_content = (
+                    '<div class="coach-tts"><div><span>本地语音 Coach</span>'
+                    f'<small>Qwen3-TTS · {int(coach_tts.get("latency_ms") or 0)} ms · '
+                    f'{html.escape(playback_text)}</small></div>'
+                    f'<audio controls preload="none" src="{html.escape(audio_href)}"></audio></div>'
+                )
+            elif coach_tts_status == "pending":
+                coach_tts_content = (
+                    '<div class="coach-tts pending"><span>本地语音 Coach</span>'
+                    '<small>Qwen3-TTS 正在合成…</small></div>'
+                )
+            elif coach_tts_status in {"unavailable", "skipped"}:
+                coach_tts_content = (
+                    '<div class="coach-tts unavailable"><span>本地语音 Coach</span>'
+                    '<small>文字建议继续生效</small></div>'
+                )
             metric_labels = {
                 "shoulder_turn_change": "转肩变化",
                 "preparation_knee_flexion": "准备屈膝",
@@ -1308,6 +1340,7 @@ class RealtimeSwingOutputManager:
                   </div>
                   {clip_content}
                   {coach_content}
+                  {coach_tts_content}
                   {biomechanics_content}
                   {deepseek_content}
                   <dl>
@@ -1427,6 +1460,9 @@ class RealtimeSwingOutputManager:
     .deepseek-advice {{ display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:10px; padding:12px 16px; border-radius:9px; background:#17253a; border:1px solid #365d8c; }}
     .deepseek-advice span,.deepseek-advice small {{ color:#9bbce2; }} .deepseek-advice strong {{ color:#e3f1ff; font-size:18px; }}
     .deepseek-advice.pending,.deepseek-advice.unavailable {{ opacity:.72; }}
+    .coach-tts {{ display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:10px; padding:12px 16px; border-radius:9px; background:#1e2933; border:1px solid #3e7181; }}
+    .coach-tts span {{ color:#a9e3f2; font-weight:700; }} .coach-tts small {{ display:block; margin-top:3px; color:#aab8bf; }} .coach-tts audio {{ height:30px; max-width:260px; }}
+    .coach-tts.pending,.coach-tts.unavailable {{ opacity:.72; }}
     .annotation-workspace {{ border:1px solid #725f2d; border-radius:14px; background:#1e1b13; padding:16px; }}
     .annotation-workspace h2 {{ color:#ffe39a; }}
     .annotation-actions {{ display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:12px; }}

@@ -12,6 +12,7 @@ venv_311
 pip-wheel-metadata/
 .pytest_cache/
 venv_yolo26/
+venv_qwen3_tts/
 venv_tracknet/
 
 # Local archives and model packages
@@ -50,6 +51,7 @@ data/analysis_results/.DS_Store
 
 # Videos and frames (large)
 *.mp4
+*_coach_audio/
 player-video/**
 frames_*/
 debug_frames/

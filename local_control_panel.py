@@ -189,6 +189,8 @@ class ControlSettings:
     analysis_interval: int
     settle_frames: int
     deepseek_coach: bool
+    coach_tts: bool
+    coach_tts_playback: bool
     hdmi_output: bool
     display_origin_x: int
     display_origin_y: int
@@ -209,10 +211,12 @@ class ControlSettings:
             raise ValueError("output_dir 不能为空")
         realtime_coach = _bool(payload, "realtime_coach", True)
         deepseek_coach = _bool(payload, "deepseek_coach", False)
+        coach_tts = _bool(payload, "coach_tts", False)
         realtime_swing_events = (
             _bool(payload, "realtime_swing_events", True)
             or realtime_coach
             or deepseek_coach
+            or coach_tts
         )
         return cls(
             stream_id=str(payload.get("stream_id") or "").strip(),
@@ -281,6 +285,8 @@ class ControlSettings:
                 integer=True,
             ),
             deepseek_coach=deepseek_coach,
+            coach_tts=coach_tts,
+            coach_tts_playback=_bool(payload, "coach_tts_playback", True),
             hdmi_output=_bool(payload, "hdmi_output", False),
             display_origin_x=_number(
                 payload,
@@ -452,6 +458,8 @@ class LocalPipelineController:
                     realtime.get("settle_frames") or 15
                 ),
                 "deepseek_coach": False,
+                "coach_tts": bool((realtime.get("coach_tts") or {}).get("enabled", False)),
+                "coach_tts_playback": bool((realtime.get("coach_tts") or {}).get("playback", True)),
                 "hdmi_output": False,
                 "display_origin_x": 0,
                 "display_origin_y": 0,
@@ -825,6 +833,10 @@ class LocalPipelineController:
             )
         if settings.deepseek_coach:
             command.append("--deepseek-coach")
+        if settings.coach_tts:
+            command.append("--realtime-coach-tts")
+            if not settings.coach_tts_playback:
+                command.append("--realtime-coach-tts-no-playback")
         if settings.hdmi_output:
             command.extend(
                 [

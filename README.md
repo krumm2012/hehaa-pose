@@ -2,6 +2,65 @@
 
 `tennis_analyzer` 是一个面向网球训练视频的本地分析项目，重点能力是从单机位视频中提取人体姿态、网球、球拍、挥拍事件和面向 AI 网球教练的数据。当前主线分支是 `new`，已同步到远端 `origin-paused/new`。
 
+## 系统架构
+
+系统以 `main_pipe.py` 为唯一的分析入口：Reader、Inference 和 Analyzer 是受监督的
+独立进程；挥拍事件、逐帧日志和本地 Coach 在 `RealtimeSwingRuntime` 中异步落盘；视频
+渲染、DeepSeek 与人工校准均不阻塞检测/姿态推理关键路径。
+
+```mermaid
+flowchart LR
+    subgraph Input[输入与控制]
+        V["本地视频 / HTTP / RTSP"]
+        P["local_control_panel.py\n本地控制面板 :8765"]
+        C["配置\nROI、模型、实时参数"]
+    end
+
+    subgraph Online[实时关键路径：main_pipe.py]
+        R["Reader\n最新帧 / 丢弃过期帧"]
+        I["Inference\nYOLO 检测 + Pose"]
+        A["Analyzer\nROI 恢复、轨迹、静止球过滤\nFrameRecord"]
+        R --> I --> A
+    end
+
+    subgraph Runtime[事件与 Coach：RealtimeSwingRuntime]
+        E["RealtimeSwingEventEngine\n分段、去重、触球/峰值"]
+        L["Local Coach\n确定性证据门控"]
+        O["Output Manager\n原子快照 + HTML"]
+        A --> E --> L --> O
+    end
+
+    subgraph Sidecars[异步旁路：不阻塞关键路径]
+        D["DeepSeek / Qwen3-TTS Sidecar\n结构化证据 → 建议 / 语音"]
+        M["人工校准 API\n评估、重算 Coach"]
+        J["Journal / Evidence Bundle\nJSONL、SHA-256、重放"]
+    end
+
+    P --> C
+    V --> R
+    C --> I
+    C --> A
+    E --> D
+    A --> J
+    O --> J
+    O --> H["Live Swing Events / 会话报告"]
+    D -. "pending → ready / failed" .-> O
+    H --> M
+    M --> F["final_manual_events.json\nEvaluation + Coach 对比"]
+```
+
+| 层级 | 职责 | 关键产物 / 边界 |
+| --- | --- | --- |
+| 输入与控制 | 选择码流或视频、ROI、运行参数、启动/停止会话 | 控制面板仅监听 `127.0.0.1`；RTSP 凭据和 API Key 不写入报告或证据包。 |
+| 实时关键路径 | 读取、检测、姿态、候选筛选、坐标恢复与 FrameRecord | 发生子进程异常即监督退出，避免静默卡死。 |
+| 事件与本地 Coach | 挥拍分段、重叠去重、触球估计、确定性建议 | 本地 Coach 先于网络建议发布；仅使用通过证据门控的指标。 |
+| 异步旁路 | DeepSeek、报告重绘、视频片段编码、日志、哈希、人工校准 | 延迟或失败不会阻塞下一帧推理，也不会覆盖原始事件快照。 |
+| 可复核闭环 | 人工修正边界与漏检、计算 Precision/Recall/F1、重算 Coach | `final_events.json` 不变；确认完整视频前，评估状态保持 provisional。 |
+
+每个会话拥有独立 `session_id` 和目录。事件 JSON / HTML 是兼容性快照，事件 JSONL 是
+追加式历史；启用证据包时，`FrameRecord` JSONL 与事件快照构成最小可重放集合。重放验证
+本地事件与 Coach 的稳定语义，不依赖原码流，也不复现 DeepSeek 的非确定性输出。
+
 ## 当前能力
 
 - `main_pipe.py`：多进程视频检测流水线，生成标注视频、逐帧 JSON 和诊断 JSON。
@@ -73,7 +132,7 @@ venv_yolo26/bin/python main_pipe.py \
 实时输出：
 
 - `live_session_swing_events.json`：已确认的事件快照。
-- `live_session_swing_report.html`：自动刷新事件页面，顶部显示带 ROI 标识的实时码流截图，播放视频时暂停刷新。
+- `live_session_swing_report.html`：自动刷新事件页面，顶部显示带 ROI 标识的实时码流截图，播放视频时暂停刷新；页面提供“自动刷新 / 停止刷新”按钮。
 - `live_session_swing_report_roi_preview.jpg`：每秒更新的脱敏码流截图，标注 ROI 边界与 P1–P4。
 - `live_session_swing_clips/`：每个挥拍的独立 OSD MP4。
 - `live_session_frames.jsonl`：每个完成推理帧一行，适合实时追加和故障恢复。
@@ -89,6 +148,13 @@ venv_yolo26/bin/python main_pipe.py \
 
 实时事件只分析上一个已发布事件结束后的未提交时间线，峰值去重间隔与离线分段器统一为
 至少 1.6 秒，因此滚动窗口中的次峰不会再次发布成范围重叠的 Swing。
+
+### Live Swing Events 刷新控制
+
+报告页默认刷新已发布的事件、Coach 旁路结果与 ROI 预览：事件数据约每 200 ms 更新，
+ROI 预览约每秒更新，并保留 3 秒一次的页面兜底刷新。点击“停止刷新”只暂停当前浏览器
+标签页的这些读取操作，不会停止 `main_pipe.py`、事件检测或 DeepSeek 请求；点击“自动刷新”
+即可恢复。该选择保存在当前标签页会话中，页面重载后仍会保持。
 
 对于本程序生成后再次输入的标注视频，`unified_detection.overlay_marker_recovery_enabled`
 可恢复黄色空心球圈和蓝橙球拍框；旧版绿色球拍框由
@@ -112,6 +178,46 @@ venv_yolo26/bin/python main_pipe.py \
 `--realtime-coach-max-suggestions 1|2|3` 控制建议数上限，
 `--realtime-coach-min-confidence 0.45` 过滤不可靠指标；具体阈值位于
 `configs/yolo26_tennis_config.yaml` 的 `realtime_swing.coach_biomechanics`。
+
+### 本地 Coach 语音播报（Qwen3-TTS / MLX）
+
+在 Apple Silicon Mac 上，可选用 Qwen3-TTS 的 MLX 0.6B Base 模型播报本地 Coach 建议。
+语音合成、WAV 写入与扬声器播放都在单独旁路线程串行执行：模型首次加载或下载、TTS
+失败、播放失败均不会阻塞挥拍检测或影响文字 Coach。Qwen3-TTS 使用流式生成，默认约每
+0.32 秒产出一段音频；首段到达后由 MLX worker 直接写入本机音频流，而完整 WAV 会继续
+写入报告同目录的 `*_coach_audio/swing_XXX_coach.wav`。事件卡片同时提供可手动播放的
+音频控件；若流式音频设备不可用，系统退回在完整 WAV 后使用 `afplay` 播放。
+
+为避免推理或设备抖动导致断音，流式播放默认先预缓冲两段音频（约 0.64 秒）再开始；
+`realtime_swing.coach_tts.streaming_prebuffer_chunks` 可调高以优先连续性，或调低以优先首声延迟。
+
+由于现有视频管线使用 Python 3.9，而当前 MLX-Audio 的 Qwen3-TTS 适配器要求 Python
+3.10+，语音模块运行在独立的 `venv_qwen3_tts` 进程。首次安装和下载模型：
+
+```bash
+scripts/setup_qwen3_tts_mlx.sh
+```
+
+脚本默认使用 `/opt/homebrew/bin/python3.11`；如需指定其他 Python 3.10+ 路径，可将它作为
+第一个参数传入。主进程默认寻找 `venv_qwen3_tts/bin/python`，也可通过
+`TENNIS_QWEN3_TTS_PYTHON` 覆盖。模型权重在首次加载时下载，不提交到 Git。
+
+然后为实时会话增加：
+
+```bash
+  --realtime-coach-tts
+```
+
+若只想把音频保存在报告中而不自动出声，增加：
+
+```bash
+  --realtime-coach-tts-no-playback
+```
+
+控制面板的 “Qwen3-TTS 语音播报（MLX）” 开关等价于上述参数；“通过本机扬声器播报”
+控制自动播放。默认模型为
+`mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16`，默认中文声音为 `Vivian`。该模型和声音
+接口来自 [MLX-Audio 的 Qwen3-TTS 文档](https://github.com/Blaizzy/mlx-audio/blob/main/mlx_audio/tts/models/qwen3_tts/README.md)；Qwen 官方也提供 0.6B Base / CustomVoice 系列及离线下载说明，[见其项目文档](https://github.com/QwenLM/Qwen3-TTS)。
 
 数据质量不足时优先提示机位、入镜或遮挡问题，质量合格后才给动作建议。
 高速球允许间歇漏检：全事件球检测覆盖率达到 20%，且触球帧前后 4 帧内至少
@@ -160,8 +266,14 @@ venv_yolo26/bin/python local_control_panel.py --open
 - ROI 裁剪边距、边界/填充/P1–P4 显示开关；
 - FPS、推理线程池、低延迟直播、完整视频和 HDMI 输出参数；
 - Swing 事件间隔、结束等待、本地 Coach、建议条数与最低置信度；
-- DeepSeek 旁路、逐帧 JSONL、启动/停止、状态、日志及 Swing 报告入口。
+- DeepSeek 旁路、逐帧 JSONL、启动/停止、状态、日志及 Swing 报告入口；
+- 从 Swing 报告入口打开的人工校准闭环，包括标注导入、评估、人工边界重算和 Coach 对比。
 - 默认开启的“可重放证据包”；开启时会自动保留逐帧日志和事件快照。
+
+控制面板打开的报告地址形如
+`http://127.0.0.1:8765/artifacts/<会话目录>/final_report.html`。该地址会自动携带本地
+控制令牌和报告路径，因此即使控制面板重启后，也能在对应历史会话中继续进行人工校准；
+令牌不会显示或保存到人工标注 JSON 中。
 
 `run_swing_report.py` 仅保留为已完成录制的离线兼容适配器；实时模式不调用它。
 离线与实时事件识别都复用 `swing_event_analyzer.analyze_frame_records()`，避免维护两套挥拍算法。
@@ -384,23 +496,28 @@ V2 使用事件时间范围和触球帧做一对一时间匹配，不依赖模�
 
 ### 7. 在实时报告中完成人工校准闭环
 
-实时会话已经生成 `final_events.json`、`final_frames.jsonl` 和
-`final_report.html` 后，启动本地 workflow 服务：
+推荐通过“本地 ROI / Pipeline 控制台”启动会话，并从该控制台的 Swing 报告入口打开
+`final_report.html`。控制面板已经集成校准 API，不需要额外启动 workflow 服务。不要通过
+`file://` 打开报告执行评估：本地文件页可以编辑和下载标注，但浏览器无法向本地 API 提交
+评估或重算 Coach。
+
+在报告的“人工校准闭环”区域导入 `swing_manual_annotations_v2.json`，或先在时间轴修正
+开始帧、触球帧、结束帧并补充漏检挥拍。页面会依次完成来源与边界校验、评估、人工边界
+证据重算和 Coach 对比。还有“需要复核”的事件时，页面只生成 provisional 评估，正式人工
+Coach 不会提前覆盖；全部确认后才生成 `final_manual_events.json`，并并列显示“实时 Coach
+（原始）”与“人工校准 Coach”。原始 `final_events.json` 保持不变。
+
+如需在没有控制面板的环境中单独服务一个已完成会话，仍可使用兼容的 standalone workflow
+（端口避免与控制面板的 8765 冲突）：
 
 ```bash
 python3 manual_review_workflow.py \
   --session-dir /tmp/tennis_rtsp_calibration \
+  --port 8766 \
   --open
 ```
 
-不要继续用 `file://` 地址完成持久化评估；请使用命令输出的
-`http://127.0.0.1:8765/final_report.html`。在“人工校准闭环”区域导入
-`swing_manual_annotations_v2.json`，页面会依次完成来源与边界校验、评估、
-人工边界证据重算和 Coach 对比。
-
-还有“需要复核”的事件时，页面只生成 provisional 评估，正式人工 Coach 不会提前覆盖；
-全部确认后才生成 `final_manual_events.json`，并并列显示“实时 Coach（原始）”与
-“人工校准 Coach”。原始 `final_events.json` 保持不变。
+使用命令输出的 `http://127.0.0.1:8766/final_report.html` 完成持久化评估。
 
 ## 已验证样例
 
@@ -454,10 +571,15 @@ configs/yolo26_tennis_config.yaml
 
 当前关键策略：
 
-- 检测模型：`yolo26n` 统一检测。
+- 默认检测模型：`tennis-yolo26n-exp004-960-fp16`（统一检测人、球、球拍）。
+- 备选检测模型：`tennis-yolo26m-exp005-960-fp16` 已完成 Core ML 接口兼容验证，
+  但数据集尚未冻结、球拍召回与完整流水线性能仍未达标；仅可通过
+  `configs/yolo26_tennis_exp005_candidate.yaml` 显式试用，不能替换默认配置。
 - pose 模型：`yolo26m-pose`。
 - 计算单元：优先 `ANE`。
 - pose 阈值：`pose_confidence_threshold: 0.4`。
+- 本地语音：默认关闭；启用后使用 `Qwen3-TTS-12Hz-0.6B-Base-bf16`（MLX），音频只保存在
+  会话目录的 `*_coach_audio/`，无需网络 API Key。
 - 静止球：启用静止球时序抑制和 hard mask。
 - 轨迹：启用球连续性、速度预测和镜中球弱惩罚。
 
@@ -483,6 +605,11 @@ python3 -m unittest -v \
 - 当前远端：`origin-paused`
 - `new` 与 `origin-paused/new` 已同步。
 - `origin-paused/main` 有一个独立清理提交；它会删除/移动大量调试和历史文件，暂未直接合并到 `new`，避免破坏当前 swing 分析闭环。
+- `.gitignore` 全局忽略 `*.mp4`，因此原始视频、标注视频和挥拍片段不应提交到 Git；请通过
+  本地路径、对象存储或可重放证据清单共享视频。
+- 可提交的分析快照包括配置、事件/评估 JSON、CSV、HTML 报告、模型 manifest 与兼容性报告。
+  Core ML `*.mlpackage` 二进制包同样保持忽略，需按部署流程单独分发。
+- Qwen3-TTS 的下载模型缓存和运行生成的 `*_coach_audio/` WAV 都属于本地运行产物，不应提交。
 
 ## 已知限制
 
@@ -497,6 +624,6 @@ python3 -m unittest -v \
 2. 基于多条人工标注结果优化 `swing_event_classifier.py`。
 3. 增加 `camera_profile`，显式记录镜像/正视/侧视和左右手映射。
 4. 把报告页升级为教练工作台，支持导入 Gemini 反馈和训练建议归档。
-5. 单独清理 `.gitignore` 和历史缓存产物，减少后续 Git 噪声。
+5. 用冻结的盲测集完成 exp005 的 1500 帧产品回归，再决定是否提升为默认小球/球拍模型。
 
-最后更新：2026-05-24
+最后更新：2026-08-05
