@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Live Swing Events</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0a0f1a; --panel:#151d2b; --line:#2b3a51; --accent:#f4c95d; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:#edf3fb; font:15px/1.5 system-ui,sans-serif; }
+    header,main { width:min(1180px,calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0 18px; display:flex; justify-content:space-between; gap:20px; align-items:end; }
+    h1,h2,p { margin:0; }
+    .summary { color:#aab8cc; }
+    main { display:grid; gap:18px; padding-bottom:40px; }
+    .stream-card { border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }
+    .stream-heading { display:flex; justify-content:space-between; gap:20px; align-items:center; margin-bottom:12px; }
+    .stream-heading p,.stream-note { color:#93a4bb; overflow-wrap:anywhere; }
+    .stream-heading strong { color:#0a0f1a; background:var(--accent); border-radius:999px; padding:5px 10px; white-space:nowrap; }
+    #roi-preview { display:block; width:100%; max-height:680px; object-fit:contain; background:#000; border-radius:9px; }
+    .stream-note { margin-top:10px; }
+    .event-card { border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }
+    .event-heading { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+    .event-heading span { color:var(--accent); font-weight:700; }
+    video { display:block; width:100%; max-height:620px; background:#000; border-radius:9px; }
+    .clip-state { padding:48px 20px; text-align:center; color:#93a4bb; border:1px dashed var(--line); border-radius:9px; }
+    .clip-failed { color:#ff9d9d; }
+    .clip-partial { margin-top:8px; padding:10px; color:#ffd28a; }
+    .coach-advice { margin-top:14px; padding:14px 16px; border-radius:9px; background:#202b1d; border:1px solid #46643c; }
+    .coach-title { display:flex; justify-content:space-between; color:#a9c99e; }
+    .coach-title small { color:#78906f; }
+    .coach-advice ol { list-style:none; display:grid; gap:8px; margin:10px 0 0; padding:0; }
+    .coach-advice li { display:grid; grid-template-columns:28px 1fr auto; align-items:center; gap:10px; }
+    .coach-advice li span { display:grid; place-items:center; width:24px; height:24px; border-radius:50%; background:#46643c; color:#fff; }
+    .coach-advice li strong { color:#e8ffd8; font-size:18px; }
+    .coach-advice li small { color:#b9dcae; font-variant-numeric:tabular-nums; }
+    .biomechanics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:10px; }
+    .bio-metric { display:grid; grid-template-columns:1fr auto; gap:2px 8px; padding:9px 11px; border:1px solid var(--line); border-radius:8px; }
+    .bio-metric span { color:#93a4bb; font-size:12px; } .bio-metric strong { grid-column:1; } .bio-metric small { grid-column:2; grid-row:1/3; align-self:center; color:#7890ad; }
+    .deepseek-advice { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:10px; padding:12px 16px; border-radius:9px; background:#17253a; border:1px solid #365d8c; }
+    .deepseek-advice span,.deepseek-advice small { color:#9bbce2; } .deepseek-advice strong { color:#e3f1ff; font-size:18px; }
+    .deepseek-advice.pending,.deepseek-advice.unavailable { opacity:.72; }
+    dl { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:14px 0 0; }
+    dl div { border:1px solid var(--line); border-radius:8px; padding:9px 11px; }
+    dt { color:#93a4bb; font-size:12px; text-transform:uppercase; } dd { margin:2px 0 0; }
+    .waiting { padding:50px; text-align:center; border:1px dashed var(--line); border-radius:14px; color:#93a4bb; }
+    @media(max-width:720px) { header { align-items:start; flex-direction:column; } dl,.biomechanics { grid-template-columns:1fr 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>Live Swing Events</h1><p class="summary">Auto-refresh pauses while a clip is playing.</p></div>
+    <strong>0 events · frame 461</strong>
+  </header>
+  <main>
+            <section class="stream-card">
+              <div class="stream-heading">
+                <div><h2>Court 03 Main Camera </h2>
+                <p>rtsp://192.168.1.193:554/h264/ch1/main/av_stream</p></div>
+                <strong>ROI ACTIVE</strong>
+              </div>
+              <img id="roi-preview" src="live_session_swing_report_roi_preview.jpg" alt="Live stream ROI preview">
+              <p class="stream-note">实时截图 · 黄色区域为推理 ROI · P1–P4 为配置点</p>
+            </section>
+            <p class="waiting">Waiting for the first completed Swing event…</p></main>
+  <script>
+    const preview = document.getElementById('roi-preview');
+    if (preview) {
+      const previewSource = preview.getAttribute('src').split('?')[0];
+      setInterval(() => {
+        preview.src = previewSource + '?t=' + Date.now();
+      }, 1000);
+    }
+    setInterval(() => {
+      const playing = [...document.querySelectorAll('video')].some(video => !video.paused && !video.ended);
+      if (!playing) location.reload();
+    }, 3000);
+  </script>
+</body>
+</html>

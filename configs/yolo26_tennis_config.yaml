@@ -7,7 +7,7 @@ video_output_path: "data/output_video.mp4"
 save_video: true                               # 是否保存结果视频
 
 # 🆕 使用 YOLO26-pose 模型 (Core ML 格式)
-yolo_pose_model_path: "yolo26n-pose.mlpackage"
+yolo_pose_model_path: "yolo26m-pose.mlpackage"
 pose_compute_units: "ANE"                      # 👈 锁定在 ANE (Neural Engine)
 
 tracknet_model_path: "models/tracknetv2_weights.pth"
@@ -16,10 +16,50 @@ racket_yolo_model_path: "models/yolov8n.pt"
 # ==================== 🎯 YOLO26n 统一检测配置 ====================
 unified_detection:
   enabled: true                                # 启用统一检测（替代 HSV + YOLOv8n）
-  model_path: "yolo26n.mlpackage"              # YOLO26n Core ML 模型
-  ball_confidence_threshold: 0.02              # 球检测置信度阈值
-  racket_confidence_threshold: 0.35            # 球拍检测置信度阈值 (平衡准确性和召回率)
-  compute_units: "GPU"                         # 👈 锁定在 GPU (Metal)
+  model_path: "models/detectors/tennis-yolo26n-exp004-960-fp16/model.mlpackage"
+  model_manifest_path: "models/detectors/tennis-yolo26n-exp004-960-fp16/model_manifest.json"
+  ball_class_id: 0                             # 两类微调模型 tennis_ball
+  racket_class_id: 1                           # 两类微调模型 tennis_racket
+  coreml_detection_output: "var_1440"          # exp-004 Core ML 端到端输出
+  preprocess_mode: "letterbox"                 # 与 Ultralytics 960 训练/验证预处理保持一致
+  ball_confidence_threshold: 0.692             # exp-004 val: P>=0.90 工作点
+  racket_confidence_threshold: 0.524           # exp-004 val: P>=0.90 工作点
+  compute_units: "ANE"                         # 👈 锁定在 ANE (Neural Engine)
+  ball_continuity_weight: 0.45                 # 多球候选重排序：上一帧轨迹连续性权重
+  ball_continuity_distance_px: 180             # 连续性奖励距离窗口，避免镜中球短暂高置信抢占
+  ball_velocity_prediction_weight: 0.55        # 速度预测连续性权重（抑制静止球首帧抢焦点）
+  ball_velocity_prediction_distance_px: 120    # 速度预测位置容忍窗口
+  ball_max_motion_for_continuity_px: 140       # 前后帧位移超过该阈值时，禁用连续性追踪（防止跳到镜像/幻球）
+  ball_min_selected_confidence: 0.05           # 最终主球最低置信度（无连续性/无球拍支撑时）
+  active_ball_reacquisition_frames: 8           # 主球遮挡/漏检后保留轨迹支持的最大帧数
+  ball_play_area_min_y_ratio_hard: 0.35        # 主球硬下限区域（上半镜像区域剔除，需无支撑才生效）
+  ball_racket_proximity_weight: 0.20           # 多球候选重排序：主球拍附近轻量奖励
+  ball_racket_proximity_distance_px: 360       # 球拍距离奖励窗口
+  ball_mirror_min_y_ratio: 0.03                # 顶部镜像区域轻惩罚阈值（画面高度比例）
+  ball_top_mirror_penalty: 0.25                # 顶部镜像候选惩罚，不硬过滤以保留泛化
+  static_ball_suppression_enabled: true        # 启用静止球时序抑制（训练多球场景）
+  static_ball_grid_size_px: 40                 # 静止球锚点网格尺寸
+  static_ball_match_distance_px: 26            # 静止球锚点匹配距离
+  static_ball_min_seen_frames: 6               # 连续出现达到该帧数后判定为静止候选
+  static_ball_decay_frames: 50                 # 长时间未出现后移除静止锚点
+  static_ball_penalty_max: 0.50                # 静止球最大置信惩罚
+  static_ball_keep_if_near_prev_ratio: 0.80    # 靠近上一帧轨迹时降低惩罚
+  static_ball_keep_if_near_racket_ratio: 0.65  # 靠近主拍时降低惩罚
+  static_ball_hard_mask_enabled: true          # 对持久静止球做硬屏蔽，避免抢占主追踪焦点
+  static_ball_hard_mask_min_seen_frames: 4     # 命中该帧数后进入静态屏蔽区（更快屏蔽地上静止球）
+  static_ball_hard_mask_radius_px: 30          # 静态屏蔽区半径
+  static_ball_hard_mask_allow_near_prev: true  # 贴近上一帧主轨迹时允许放行，降低断轨风险
+  static_ball_hard_mask_allow_near_prev_min_motion_px: 16 # 仅当前一帧轨迹速度足够大时才允许 near_prev 放行
+  static_ball_hard_mask_allow_near_prev_distance_px: 24 # 即使速度低，若与上一帧极近也允许放行，避免误杀真实轨迹
+  static_ball_hard_mask_allow_near_racket: false # 不因靠近球拍而放行，避免“地上球”抢焦点
+  racket_ball_proximity_weight: 0.35           # 多拍候选重排序：靠近运动球的主拍优先
+  racket_ball_proximity_distance_px: 460       # 主拍-球距离奖励窗口
+  racket_continuity_weight: 0.25               # 多拍候选重排序：上一帧主拍连续性权重
+  racket_continuity_distance_px: 260           # 主拍连续性奖励距离窗口
+  racket_mirror_min_y_ratio: 0.18              # 顶部镜像拍惩罚阈值（画面高度比例）
+  racket_top_mirror_penalty: 0.30              # 顶部镜像拍轻惩罚
+  overlay_marker_recovery_enabled: true        # 二次分析视频：恢复本程序绘制的空心球圈/球拍框
+  overlay_legacy_green_racket_enabled: true    # 兼容旧版绿色球拍框；仅接受闭合矩形
   # CPU: 仅使用 CPU
   # GPU: 使用 CPU + GPU (Metal)
   # ANE: 使用 CPU + Apple Neural Engine
@@ -57,8 +97,14 @@ hit_zone_analysis:
   show_hit_quality: true                     # 显示击球质量
 
 # ==================== 🤖 姿态检测参数 ====================
-pose_confidence_threshold: 0.5           # 姿态检测置信度阈值
+pose_confidence_threshold: 0.4           # 姿态检测置信度阈值
 pose_keypoint_confidence: 0.3            # 关键点置信度阈值
+pose_smoothing_enabled: true             # 关键点时序平滑开关
+pose_smoothing_alpha: 0.45               # EMA 平滑系数（越小越稳，越大越跟手）
+pose_smoothing_max_jump_px: 90           # 单帧最大跳变限幅
+pose_smoothing_hold_missing_frames: 2    # 短时丢点时保持上一帧关键点
+pose_smoothing_reset_frames: 8           # 连续无人帧后重置平滑状态
+pose_smoothing_min_valid_points: 5       # 有效关键点太少时不做平滑更新
 
 pose_estimation_debug:
   log_keypoints: false                   # 关键点日志
@@ -163,6 +209,7 @@ roi_settings:
   auto_load_config: true
   roi_config_path: "configs/roi_config.yaml"
   crop_margin: 12
+  preview_interval_frames: 25
   
   visualization:
     show_roi_boundary: false
@@ -173,6 +220,7 @@ roi_settings:
   
   logging:
     log_coordinate_adjustment: false
+    log_frame_context: false
     
   colors:
     boundary: [0, 255, 255]
@@ -306,6 +354,73 @@ performance_monitoring:
   log_memory_usage: true
   log_fps: true
   save_performance_report: true
+
+# ==================== 🚄 Pipeline性能开关 ====================
+pipeline_perf:
+  inference_workers: 8                    # 推理线程池大小；当前每帧最多并行检测和姿态两个任务
+  limit_reader_fps: true                  # Reader按原视频FPS节流（false可提升离线吞吐）
+  live_limit_reader_fps: true             # 直播突发码流按源FPS整形，避免批量读帧导致过度丢帧
+  live_reader_max_lag_frames: 1.0         # 源阻塞超过一帧后重置时间线，不追赶式爆发
+  reader_buffer_slots: 12                 # 离线模式共享内存槽数量
+  live_reader_buffer_slots: 3             # 直播模式仅保留三阶段各自所需的槽
+  live_slot_wait_ms: 2                    # 直播无空槽时等待时长，随后直接跳过源帧
+  reader_open_timeout_ms: 5000            # 实时码流连接超时
+  reader_read_timeout_ms: 2000            # 实时码流单次读取超时
+  live_reconnect: true                    # 直播断流后自动重连
+  live_reconnect_delay: 0.5               # 重连间隔（秒）
+  video_encoder_backend: auto             # macOS优先VideoToolbox，不可用时回退OpenCV
+  video_encoder_bitrate: 12M              # 1440p H.264目标码率
+  dual_view_enabled: true                 # 双窗口对比显示（关闭可明显提速）
+  dual_view_scale: 0.5                    # 双窗口缩放比例
+  analysis_stride: 1                      # 每N帧做一次完整挥拍指标分析
+  draw_metrics_text: true                 # 绘制详细指标文字
+  collect_frame_results: true             # 累积每帧结果并导出JSON
+  json_dump_indent: 4                     # JSON缩进，设为null可减小文件体积
+  live_mode: false                        # 直播模式：关闭高开销显示/JSON并优先新帧
+  drop_stale_frames: false                # 处理滞后时丢弃旧帧以降低直播延迟
+
+# ==================== 🎾 实时挥拍事件闭环 ====================
+realtime_swing:
+  enabled: false                          # 推荐通过 --realtime-swing-events 显式开启
+  analysis_interval_frames: 5             # 每5个已处理帧刷新滚动事件分析
+  settle_frames: null                     # null=按输入FPS取约0.6秒，降低事件提前结束
+  window_frames: null                     # null=按输入FPS保留约8秒事件特征
+  clip_workers: 1                         # 异步片段编码线程，避免阻塞主分析循环
+  clip_padding_frames: 8                  # 每个事件片段前后附加帧数
+  clip_max_width: 1280                    # 内存中缓存720p级JPEG，不保存1440p原始帧环
+  clip_jpeg_quality: 85                   # 实时片段缓存质量
+  frame_output_enabled: false             # 异步输出逐帧JSONL和最近帧JSON
+  frame_snapshot_size: 200                # 最近帧JSON保留数量
+  frame_flush_interval: 5                 # 每5个处理帧刷新逐帧文件
+  coach_enabled: false                    # 为每个确认挥拍生成1-3条本地动作纠错
+  coach_max_chars: 15                     # 建议硬上限15字
+  coach_max_suggestions: 3                # 每次挥拍最多输出3条，coach_advice仍保留第一条
+  coach_min_confidence: 0.45               # 低于该置信度的生物力学指标不用于技术结论
+  coach_biomechanics:
+    min_hip_shoulder_separation_deg: 15.0  # 肩髋分离低于此值时提示加强转动
+    min_shoulder_turn_deg: 75.0            # 肩部转动不足阈值
+    min_arm_extension_deg: 145.0           # 触球窗口手臂伸展不足阈值
+    min_contact_lateral_body_widths: 0.55  # 击球点横向距离，小于0.55倍身宽视为太近
+    min_weight_transfer_body_widths: 0.08  # 准备到触球身体中心位移下限
+    max_balance_drift_body_widths: 0.65    # 触球到结束身体中心漂移上限
+  deepseek:
+    enabled: false                        # 旁路增强；本地Coach始终先返回
+    model: deepseek-v4-flash              # DeepSeek官方低延迟模型
+    base_url: https://api.deepseek.com    # OpenAI兼容ChatCompletions地址
+    api_key_env: DEEPSEEK_API_KEY         # 仅从环境变量读取密钥
+    timeout_seconds: 3.0                  # 单次请求硬超时，不阻塞主流水线
+    workers: 2                            # 允许相邻挥拍并行请求
+    max_chars: 15                         # DeepSeek建议同样不超过15字
+  coach_tts:
+    enabled: false                        # 可用 --realtime-coach-tts 覆盖；不会阻塞实时推理
+    model: mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16 # Qwen3-TTS MLX 0.6B
+    voice: Vivian                          # 中文预设声音
+    language: Chinese
+    playback: true                         # 优先流式扬声器；不可用时回退 afplay；关闭后仅写 WAV
+    max_pending: 2                         # 队列满时跳过过期播报，保持实时性
+    streaming_interval_seconds: 0.32       # Qwen3-TTS 每段音频目标时长；越小首段越快
+    streaming_prebuffer_chunks: 2          # 预缓冲两段后播放，吸收推理与设备抖动
+  open_report: false                      # 启动时自动打开实时HTML
 
 # ==================== ⭐ 精彩瞬间设置 ====================
 highlights:

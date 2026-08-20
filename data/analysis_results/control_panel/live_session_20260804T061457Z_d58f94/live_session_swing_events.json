@@ -1,0 +1,174 @@
+{
+  "schema_version": "tennis.swing-document.v1",
+  "document_type": "swing_events",
+  "session": {
+    "schema_version": "tennis.analysis-session.v1",
+    "session_id": "live_session_20260804T061457Z_d58f94",
+    "started_at": "2026-08-04T06:14:57.827Z",
+    "started_at_unix_ns": 1785824097827503000,
+    "source": "rtsp://192.168.1.193:554/h264/ch1/main/av_stream",
+    "stream_id": "",
+    "stream_label": "Unmatched stream",
+    "config_hash": "f131ee05ff60b489",
+    "models": {
+      "detector": "models/detectors/tennis-yolo26n-exp004-960-fp16/model.mlpackage",
+      "pose": "yolo26m-pose.mlpackage"
+    }
+  },
+  "summary": {
+    "total_frames": 496,
+    "latest_frame": 525,
+    "swing_event_count": 0,
+    "swing_event_type_counts": {},
+    "thresholds": {
+      "dominant_hand": "right",
+      "min_peak_energy": 9.0,
+      "active_energy": 5.5,
+      "min_event_frames": 8,
+      "max_internal_gap": 3,
+      "min_event_gap": 18
+    },
+    "realtime": true,
+    "settle_frames": 15,
+    "analysis_interval_frames": 5,
+    "window_frames": 200,
+    "peak_dedup_frames": 40,
+    "session_quality": {
+      "schema_version": "swing_session_quality_v1",
+      "event_count": 0,
+      "monitoring_state": "warming_up",
+      "quality": {
+        "evidence_quality_score_100": null,
+        "grade": "unavailable",
+        "visible_technique_mean_9": null,
+        "visible_technique_median_9": null,
+        "median_uncertainty_9": null,
+        "calibrated_event_ratio": 0.0,
+        "contact_supported_ratio": 0.0,
+        "review_recommended_ratio": 0.0,
+        "mean_pose_frame_ratio": null,
+        "mean_ball_frame_ratio": null,
+        "mean_racket_frame_ratio": null
+      },
+      "operations": {
+        "local_coach_latency_p50_ms": null,
+        "deepseek_ready_ratio": null,
+        "deepseek_latency_p50_ms": null,
+        "deepseek_status_counts": {}
+      },
+      "integrity": {
+        "overlapping_event_pair_count": 0,
+        "overlapping_event_pairs": [],
+        "event_ranges_non_overlapping": true
+      },
+      "drift": {
+        "status": "warming_up",
+        "ready": false,
+        "minimum_event_count": 6,
+        "window_size": 1,
+        "baseline_event_ids": [],
+        "recent_event_ids": [],
+        "indicators": [
+          {
+            "name": "visible_technique_score",
+            "label": "可见动作分",
+            "baseline": null,
+            "recent": null,
+            "delta": null,
+            "threshold": 0.75,
+            "status": "unavailable"
+          },
+          {
+            "name": "evidence_quality",
+            "label": "证据质量",
+            "baseline": null,
+            "recent": null,
+            "delta": null,
+            "threshold": 10.0,
+            "status": "unavailable"
+          },
+          {
+            "name": "pose_coverage",
+            "label": "姿态覆盖",
+            "baseline": null,
+            "recent": null,
+            "delta": null,
+            "threshold": 0.12,
+            "status": "unavailable"
+          },
+          {
+            "name": "ball_coverage",
+            "label": "网球覆盖",
+            "baseline": null,
+            "recent": null,
+            "delta": null,
+            "threshold": 0.12,
+            "status": "unavailable"
+          },
+          {
+            "name": "racket_coverage",
+            "label": "球拍覆盖",
+            "baseline": null,
+            "recent": null,
+            "delta": null,
+            "threshold": 0.12,
+            "status": "unavailable"
+          },
+          {
+            "name": "contact_evidence",
+            "label": "触球证据",
+            "baseline": null,
+            "recent": null,
+            "delta": null,
+            "threshold": 0.15,
+            "status": "unavailable"
+          },
+          {
+            "name": "camera_scale",
+            "label": "人物画面尺度",
+            "baseline": null,
+            "recent": null,
+            "relative_delta": null,
+            "threshold": 0.15,
+            "status": "unavailable"
+          }
+        ],
+        "camera_confounded": false
+      },
+      "recurring": {
+        "warnings": [],
+        "warning_counts": {},
+        "advice_counts": {}
+      },
+      "alerts": [],
+      "series": [],
+      "limitations": [
+        "drift_requires_at_least_six_events",
+        "technique_trend_is_single_view_visible_motion_only",
+        "camera_scale_shift_blocks_technique_drift_conclusions",
+        "compare_sessions_only_after_camera_calibration"
+      ]
+    },
+    "roi": {
+      "enabled": false,
+      "matched": false,
+      "stream_id": "",
+      "label": "Unmatched stream",
+      "source": "rtsp://192.168.1.193:554/h264/ch1/main/av_stream",
+      "points": [],
+      "configured_frame_size": [
+        2560,
+        1440
+      ],
+      "frame_size": [
+        2560,
+        1440
+      ],
+      "config_path": "/Users/krum5539/Documents/tennis_analyzer/configs/roi_config.yaml",
+      "reason": "ROI disabled"
+    },
+    "clip_buffer_dropped_frames": 0
+  },
+  "events": [],
+  "frame_trace": []
+}

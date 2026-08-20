@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Live Swing Events</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0a0f1a; --panel:#151d2b; --line:#2b3a51; --accent:#f4c95d; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:#edf3fb; font:15px/1.5 system-ui,sans-serif; }
+    header,main { width:min(1180px,calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0 18px; display:flex; justify-content:space-between; gap:20px; align-items:end; }
+    h1,h2,p { margin:0; }
+    .summary { color:#aab8cc; }
+    main { display:grid; gap:18px; padding-bottom:40px; }
+    .stream-card { border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }
+    .stream-heading { display:flex; justify-content:space-between; gap:20px; align-items:center; margin-bottom:12px; }
+    .stream-heading p,.stream-note { color:#93a4bb; overflow-wrap:anywhere; }
+    .stream-heading strong { color:#0a0f1a; background:var(--accent); border-radius:999px; padding:5px 10px; white-space:nowrap; }
+    #roi-preview { display:block; width:100%; max-height:680px; object-fit:contain; background:#000; border-radius:9px; }
+    .stream-note { margin-top:10px; }
+    .live-coach-feed { border:1px solid #46643c; border-radius:14px; background:#182317; padding:16px; }
+    .live-coach-feed h2 { color:#dff7d4; }
+    .live-coach-feed p { margin-top:6px; color:#a9c99e; }
+    .live-coach-feed ol { margin:12px 0 0; padding-left:22px; display:grid; gap:6px; }
+    .live-coach-feed strong { color:#e8ffd8; font-size:18px; }
+    .event-card { border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }
+    .event-heading { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+    .event-heading span { color:var(--accent); font-weight:700; }
+    video { display:block; width:100%; max-height:620px; background:#000; border-radius:9px; }
+    .clip-state { padding:48px 20px; text-align:center; color:#93a4bb; border:1px dashed var(--line); border-radius:9px; }
+    .clip-failed { color:#ff9d9d; }
+    .clip-partial { margin-top:8px; padding:10px; color:#ffd28a; }
+    .coach-advice { margin-top:14px; padding:14px 16px; border-radius:9px; background:#202b1d; border:1px solid #46643c; }
+    .coach-title { display:flex; justify-content:space-between; color:#a9c99e; }
+    .coach-title small { color:#78906f; }
+    .coach-advice ol { list-style:none; display:grid; gap:8px; margin:10px 0 0; padding:0; }
+    .coach-advice li { display:grid; grid-template-columns:28px 1fr auto; align-items:center; gap:10px; }
+    .coach-advice li span { display:grid; place-items:center; width:24px; height:24px; border-radius:50%; background:#46643c; color:#fff; }
+    .coach-advice li strong { color:#e8ffd8; font-size:18px; }
+    .coach-advice li small { color:#b9dcae; font-variant-numeric:tabular-nums; }
+    .biomechanics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:10px; }
+    .bio-metric { display:grid; grid-template-columns:1fr auto; gap:2px 8px; padding:9px 11px; border:1px solid var(--line); border-radius:8px; }
+    .bio-metric span { color:#93a4bb; font-size:12px; } .bio-metric strong { grid-column:1; } .bio-metric small { grid-column:2; grid-row:1/3; align-self:center; color:#7890ad; }
+    .deepseek-advice { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:10px; padding:12px 16px; border-radius:9px; background:#17253a; border:1px solid #365d8c; }
+    .deepseek-advice span,.deepseek-advice small { color:#9bbce2; } .deepseek-advice strong { color:#e3f1ff; font-size:18px; }
+    .deepseek-advice.pending,.deepseek-advice.unavailable { opacity:.72; }
+    dl { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:14px 0 0; }
+    dl div { border:1px solid var(--line); border-radius:8px; padding:9px 11px; }
+    dt { color:#93a4bb; font-size:12px; text-transform:uppercase; } dd { margin:2px 0 0; }
+    .waiting { padding:50px; text-align:center; border:1px dashed var(--line); border-radius:14px; color:#93a4bb; }
+    @media(max-width:720px) { header { align-items:start; flex-direction:column; } dl,.biomechanics { grid-template-columns:1fr 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>Live Swing Events</h1><p class="summary">Coach 建议每 200 ms 增量更新。</p></div>
+    <strong id="report-summary">3 events · frame 356</strong>
+  </header>
+  <main><section id="live-coach-feed" class="live-coach-feed" aria-live="polite"><h2>实时 Coach</h2><p>等待第一条建议…</p></section>
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #3 · Two-Handed Backhand</h2>
+                    <span>36.7%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0003_two_handed_backhand_f000158-000356.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>确保来球完整入镜</strong><small>17%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>4.40°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>91.40°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>125.58°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>3.77×身宽</strong><small>85%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.81×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.68×身宽</strong><small>80%</small></div></div>
+                  <div class="deepseek-advice pending"><span>DeepSeek旁路</span><strong>分析中…</strong></div>
+                  <dl>
+                    <div><dt>Frames</dt><dd>158–356</dd></div>
+                    <div><dt>Contact</dt><dd>311</dd></div>
+                    <div><dt>Peak</dt><dd>317</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps, mirror_ball_rejection_in_event, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #2 · Forehand</h2>
+                    <span>100.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0002_forehand_f000114-000166.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>96%</small></li><li><span>2</span><strong>击球后稳住重心</strong><small>89%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>24.44°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>127.40°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>98.91°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>7.39×身宽</strong><small>60%</small></div><div class="bio-metric"><span>重心转移</span><strong>1.85×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>1.21×身宽</strong><small>80%</small></div></div>
+                  <div class="deepseek-advice unavailable"><span>DeepSeek旁路</span><strong>本地建议已生效</strong></div>
+                  <dl>
+                    <div><dt>Frames</dt><dd>114–166</dd></div>
+                    <div><dt>Contact</dt><dd>135</dd></div>
+                    <div><dt>Peak</dt><dd>135</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps, static_ball_mask_in_event</dd></div>
+                  </dl>
+                </article>
+                
+
+                <article class="event-card">
+                  <div class="event-heading">
+                    <h2>Swing #1 · Forehand</h2>
+                    <span>68.0%</span>
+                  </div>
+                  <video controls preload="metadata" src="live_session_swing_clips/event_0001_forehand_f000041-000093.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单摄像头2D估计</small></div><ol><li><span>1</span><strong>击球时手臂再伸展</strong><small>81%</small></li><li><span>2</span><strong>加大肩髋分离</strong><small>81%</small></li></ol></div>
+                  <div class="biomechanics"><div class="bio-metric"><span>肩髋分离</span><strong>5.48°</strong><small>92%</small></div><div class="bio-metric"><span>肩部转动</span><strong>90.40°</strong><small>92%</small></div><div class="bio-metric"><span>手臂伸展</span><strong>108.60°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>4.64×身宽</strong><small>84%</small></div><div class="bio-metric"><span>重心转移</span><strong>0.21×身宽</strong><small>80%</small></div><div class="bio-metric"><span>平衡漂移</span><strong>0.25×身宽</strong><small>80%</small></div></div>
+                  <div class="deepseek-advice"><span>DeepSeek旁路</span><strong>加强转髋带动挥拍</strong><small>1441 ms</small></div>
+                  <dl>
+                    <div><dt>Frames</dt><dd>41–93</dd></div>
+                    <div><dt>Contact</dt><dd>62</dd></div>
+                    <div><dt>Peak</dt><dd>62</dd></div>
+                    <div><dt>Warnings</dt><dd>mirror_handedness_rule_applied, racket_track_gaps</dd></div>
+                  </dl>
+                </article>
+                </main>
+  <script>
+    const eventJsonUrl = "live_session_swing_events.json";
+    const coachFeed = document.getElementById('live-coach-feed');
+    const reportSummary = document.getElementById('report-summary');
+    let coachFeedPending = false;
+
+    function renderCoachFeed(documentPayload) {
+      const events = Array.isArray(documentPayload.events) ? documentPayload.events : [];
+      const summary = documentPayload.summary || {};
+      reportSummary.textContent = `${events.length} events · frame ${summary.latest_frame ?? -1}`;
+      coachFeed.replaceChildren();
+      const title = document.createElement('h2');
+      title.textContent = '实时 Coach';
+      coachFeed.append(title);
+      if (!events.length) {
+        const waiting = document.createElement('p');
+        waiting.textContent = '等待第一条建议…';
+        coachFeed.append(waiting);
+        return;
+      }
+      const latest = events[events.length - 1];
+      const meta = document.createElement('p');
+      meta.textContent = `Swing #${latest.event_id} · ${latest.stroke_type || 'Unknown'}`;
+      coachFeed.append(meta);
+      const advices = Array.isArray(latest.coach_advices) && latest.coach_advices.length
+        ? latest.coach_advices
+        : (latest.coach_advice ? [latest.coach_advice] : []);
+      const list = document.createElement('ol');
+      for (const advice of advices.slice(0, 3)) {
+        if (!advice || !advice.message) continue;
+        const row = document.createElement('li');
+        const message = document.createElement('strong');
+        message.textContent = advice.message;
+        row.append(message);
+        list.append(row);
+      }
+      if (list.children.length) coachFeed.append(list);
+    }
+
+    async function refreshCoachFeed() {
+      if (coachFeedPending) return;
+      coachFeedPending = true;
+      try {
+        const response = await fetch(`${eventJsonUrl}?t=${Date.now()}`, { cache: 'no-store' });
+        if (response.ok) renderCoachFeed(await response.json());
+      } catch (_error) {
+        // file:// reports cannot fetch siblings; the slower HTML refresh below remains available.
+      } finally {
+        coachFeedPending = false;
+      }
+    }
+    refreshCoachFeed();
+    setInterval(refreshCoachFeed, 200);
+
+    const preview = document.getElementById('roi-preview');
+    if (preview) {
+      const previewSource = preview.getAttribute('src').split('?')[0];
+      setInterval(() => {
+        preview.src = previewSource + '?t=' + Date.now();
+      }, 1000);
+    }
+    setInterval(() => {
+      const playing = [...document.querySelectorAll('video')].some(video => !video.paused && !video.ended);
+      if (!playing) location.reload();
+    }, 3000);
+  </script>
+</body>
+</html>

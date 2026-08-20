@@ -60,7 +60,7 @@ class ROIManager:
             List of (x, y) coordinates for the 4 ROI points
         """
         self.logger.info("开始交互式ROI选择")
-        self.logger.info("请按顺序点击4个点来定义兴趣区域，按'r'重置，按'c'确认，按'q'退出")
+        self.logger.info("请点击4个角点来定义兴趣区域，按'r'重置，按'c'确认，按'q'退出")
         
         self.roi_points = []
         self.current_point_index = 0
@@ -122,6 +122,8 @@ class ROIManager:
             
             if key == ord('q'):
                 self.logger.info("用户取消ROI选择")
+                self.roi_points = []
+                self.is_roi_set = False
                 break
             elif key == ord('r'):
                 # 重置
@@ -139,6 +141,7 @@ class ROIManager:
             elif key == 27:  # ESC键
                 self.logger.info("用户按ESC退出")
                 self.roi_points = []
+                self.is_roi_set = False
                 break
         
         cv2.destroyWindow(window_name)
@@ -185,6 +188,23 @@ class ROIManager:
         if len(self.roi_points) == self.max_points:
             self.roi_polygon = np.array(self.roi_points, dtype=np.int32)
             self.logger.info("ROI多边形创建完成")
+
+    def set_roi_points(self, roi_points: List[Tuple[int, int]]) -> bool:
+        """Set a validated four-point ROI supplied by a stream profile."""
+        if not isinstance(roi_points, (list, tuple)) or len(roi_points) != self.max_points:
+            self.logger.error(f"ROI点数不正确: 需要{self.max_points}个点")
+            return False
+        normalized = []
+        for point in roi_points:
+            if not isinstance(point, (list, tuple)) or len(point) < 2:
+                self.logger.error(f"无效的ROI点格式: {point}")
+                return False
+            normalized.append((int(point[0]), int(point[1])))
+        self.roi_points = normalized
+        self.current_point_index = self.max_points
+        self.is_roi_set = True
+        self._create_roi_polygon()
+        return True
     
     def is_point_in_roi(self, point: Tuple[int, int]) -> bool:
         """
@@ -238,7 +258,12 @@ class ROIManager:
                 
             elif detection_type == "ball":
                 # 球检测：检查球心是否在ROI内
-                if isinstance(detection, (tuple, list)) and len(detection) >= 2:
+                if isinstance(detection, dict) and detection.get("position"):
+                    position = detection["position"]
+                    is_inside = self.is_point_in_roi(
+                        (int(position[0]), int(position[1]))
+                    )
+                elif isinstance(detection, (tuple, list)) and len(detection) >= 2:
                     is_inside = self.is_point_in_roi((int(detection[0]), int(detection[1])))
                 
             elif detection_type == "racket":
@@ -384,6 +409,22 @@ class ROIManager:
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
                 roi_config = yaml.safe_load(f)
+
+            # 多码流配置下，旧调用方没有 source 参数时加载 default，
+            # 没有显式 default 则回退第一项，保持向后兼容。
+            streams = roi_config.get('streams') if isinstance(roi_config, dict) else None
+            if isinstance(streams, list):
+                candidates = [item for item in streams if isinstance(item, dict)]
+                roi_config = next(
+                    (item for item in candidates if item.get('default', False)),
+                    candidates[0] if candidates else {},
+                )
+            elif isinstance(streams, dict):
+                candidates = [item for item in streams.values() if isinstance(item, dict)]
+                roi_config = next(
+                    (item for item in candidates if item.get('default', False)),
+                    candidates[0] if candidates else {},
+                )
             
             if roi_config.get('roi_enabled', False) and 'roi_points' in roi_config:
                 roi_points = roi_config['roi_points']
@@ -512,9 +553,25 @@ class ROIManager:
                 adjusted_detections.append(adjusted_person)
                 
         elif detection_type == "ball":
-            # 球检测结果：每个球是 [x, y, ...] 格式
+            # 球检测结果：支持检测字典或 [x, y, ...] 格式
             for ball in detections:
-                if len(ball) >= 2:
+                if isinstance(ball, dict) and ball.get("position"):
+                    adjusted_ball = ball.copy()
+                    position = ball["position"]
+                    adjusted_ball["position"] = [
+                        position[0] + x_offset,
+                        position[1] + y_offset,
+                    ]
+                    box = ball.get("box")
+                    if isinstance(box, (list, tuple)) and len(box) >= 4:
+                        adjusted_ball["box"] = [
+                            box[0] + x_offset,
+                            box[1] + y_offset,
+                            box[2] + x_offset,
+                            box[3] + y_offset,
+                        ]
+                    adjusted_detections.append(adjusted_ball)
+                elif isinstance(ball, (list, tuple)) and len(ball) >= 2:
                     adjusted_ball = [
                         ball[0] + x_offset,  # x坐标
                         ball[1] + y_offset,  # y坐标

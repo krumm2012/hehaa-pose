@@ -1,0 +1,36 @@
+# ROI (兴趣区域) 配置文件
+# 这个文件用于存储用户定义的兴趣区域设置
+
+roi_enabled: true
+stream_id: "court01-main"
+stream_label: "Court 01 Main Camera"
+# 只保存脱敏后的地址；运行时即使输入含账号密码也能正确匹配。
+stream_source: "rtsp://192.168.1.191:554/h264/ch1/main/av_stream"
+frame_size: [2560, 1440]
+# 使用从test_roi_config.yaml中获取的坐标
+# roi_points: 
+#   - [847, 67]
+#   - [1943, 69]
+#   - [2181, 1273]
+#   - [677, 1249]
+# #roi_description: "4-point ROI: [[847, 67], [1943, 69], [2181, 1273], [677, 1249]]"    #-- court03
+
+# roi_points: 
+#   - [1112, 116]
+#   - [850, 1351]
+#   - [2326, 1360]
+#   - [1875, 119]
+# roi_description: "4-point ROI: [[1112, 116], [850, 1351], [2326, 1360], [1875, 119]]"  #-- court02
+
+roi_points: 
+  - [954, 179]
+  - [1833, 183]
+  - [2099, 1205]
+  - [738, 1184]
+roi_description: "4-point ROI: [[954, 179], [1833, 183], [2099, 1205], [738, 1184]]"    #-- court01
+
+#
+# 最后更新时间
+last_updated: "2024-12-19 16:30:00"
+created_by: "Tennis Analyzer System"
+version: "1.0"

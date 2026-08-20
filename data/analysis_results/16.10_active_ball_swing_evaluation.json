@@ -1,0 +1,148 @@
+{
+  "schema_version": "swing_evaluation_v2",
+  "source": {
+    "event_json": "data/analysis_results/16.10_active_ball_swing_events.json",
+    "annotation_schema": "swing_manual_annotations_v2",
+    "annotation_json": "/Users/krum5539/Downloads/swing_manual_annotations_v2.json"
+  },
+  "settings": {
+    "contact_tolerance_frames": 3,
+    "match_contact_tolerance_frames": 12,
+    "min_event_iou": 0.1,
+    "matching": "ordered_temporal_alignment"
+  },
+  "summary": {
+    "provisional": false,
+    "timeline_review_complete": true,
+    "predicted_event_count": 3,
+    "manual_annotation_count": 3,
+    "manual_valid_event_count": 3,
+    "event_count_delta": 0,
+    "true_positive_count": 3,
+    "false_positive_count": 0,
+    "false_negative_count": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "stroke_type_comparable": 3,
+    "stroke_type_correct": 3,
+    "stroke_type_accuracy": 1.0,
+    "contact_comparable": 3,
+    "contact_within_tolerance": 3,
+    "contact_accuracy": 1.0,
+    "contact_mean_abs_error_frames": 0.0,
+    "start_mean_abs_error_frames": 0.0,
+    "end_mean_abs_error_frames": 0.0,
+    "event_mean_iou": 1.0,
+    "manual_review_count": 3,
+    "model_review_recommended_count": 3,
+    "unmatched_model_event_count": 0,
+    "unmatched_annotation_count": 0
+  },
+  "review": {
+    "manual_review_annotation_ids": [
+      "model-1",
+      "model-2",
+      "model-3"
+    ],
+    "model_review_event_ids": [
+      1,
+      2,
+      3
+    ],
+    "false_positive_event_ids": [],
+    "false_negative_annotation_ids": [],
+    "unmatched_model_event_ids": [],
+    "unmatched_annotation_ids": [],
+    "unmatched_annotation_event_ids": []
+  },
+  "events": [
+    {
+      "model_event_id": 1,
+      "annotation_id": "model-1",
+      "source_event_id": 1,
+      "matched": true,
+      "predicted_stroke_type": "Forehand",
+      "actual_stroke_type": "Forehand",
+      "stroke_type_correct": true,
+      "model_contact_frame": 41,
+      "manual_contact_frame": 41,
+      "contact_delta_frames": 0,
+      "contact_within_tolerance": true,
+      "model_start_frame": 25,
+      "manual_start_frame": 25,
+      "start_delta_frames": 0,
+      "model_end_frame": 77,
+      "manual_end_frame": 77,
+      "end_delta_frames": 0,
+      "event_iou": 1.0,
+      "manual_needs_review": true,
+      "model_review_recommended": true,
+      "issue_tags": [],
+      "quality_warnings": [
+        "ball_track_gaps",
+        "mirror_handedness_rule_applied",
+        "racket_track_gaps",
+        "static_ball_mask_in_event"
+      ]
+    },
+    {
+      "model_event_id": 2,
+      "annotation_id": "model-2",
+      "source_event_id": 2,
+      "matched": true,
+      "predicted_stroke_type": "Forehand",
+      "actual_stroke_type": "Forehand",
+      "stroke_type_correct": true,
+      "model_contact_frame": 119,
+      "manual_contact_frame": 119,
+      "contact_delta_frames": 0,
+      "contact_within_tolerance": true,
+      "model_start_frame": 98,
+      "manual_start_frame": 98,
+      "start_delta_frames": 0,
+      "model_end_frame": 150,
+      "manual_end_frame": 150,
+      "end_delta_frames": 0,
+      "event_iou": 1.0,
+      "manual_needs_review": true,
+      "model_review_recommended": true,
+      "issue_tags": [],
+      "quality_warnings": [
+        "ball_track_gaps",
+        "mirror_handedness_rule_applied",
+        "racket_track_gaps"
+      ]
+    },
+    {
+      "model_event_id": 3,
+      "annotation_id": "model-3",
+      "source_event_id": 3,
+      "matched": true,
+      "predicted_stroke_type": "Forehand",
+      "actual_stroke_type": "Forehand",
+      "stroke_type_correct": true,
+      "model_contact_frame": 208,
+      "manual_contact_frame": 208,
+      "contact_delta_frames": 0,
+      "contact_within_tolerance": true,
+      "model_start_frame": 187,
+      "manual_start_frame": 187,
+      "start_delta_frames": 0,
+      "model_end_frame": 239,
+      "manual_end_frame": 239,
+      "end_delta_frames": 0,
+      "event_iou": 1.0,
+      "manual_needs_review": true,
+      "model_review_recommended": true,
+      "issue_tags": [],
+      "quality_warnings": [
+        "ball_track_gaps",
+        "mirror_ball_rejection_in_event",
+        "mirror_handedness_rule_applied",
+        "racket_track_gaps",
+        "static_ball_mask_in_event"
+      ]
+    }
+  ]
+}

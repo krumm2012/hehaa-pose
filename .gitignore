@@ -12,7 +12,12 @@ venv_311
 pip-wheel-metadata/
 .pytest_cache/
 venv_yolo26/
+venv_qwen3_tts/
 venv_tracknet/
+
+# Local archives and model packages
+archives/
+*.mlpackage/
 
 # Byte-compiled / logs
 *.log
@@ -29,6 +34,9 @@ Thumbs.db
 .cursor/
 .cursorignore
 
+# Local secrets
+.env.local
+
 # Build / Dist
 build/
 dist/
@@ -39,14 +47,33 @@ data/**
 !data/analysis_results/
 !data/analysis_results/**
 !data/.gitkeep
+data/analysis_results/.DS_Store
 
 # Videos and frames (large)
+*.mp4
+*_coach_audio/
 player-video/**
 frames_*/
 debug_frames/
+debug_frames_*/
 extracted_frames/
 false_detection_analysis/
 frames_70_90_analysis/
+output/
+test_output/
+test_*.mp4
+
+# Generated diagnostics and one-off debug artifacts
+debug_frame_*.jpg
+frame_*_analysis.jpg
+*_test_result.jpg
+roi_*_test.jpg
+mask_zone_*_result.jpg
+mask_zone_*-test_result.jpg
+logs_frame_*.txt
+run_*.log
+*_predict_analysis.csv
+adjusted_params_analysis.csv
 
 # Models (ignore binaries)
 models/*.pt

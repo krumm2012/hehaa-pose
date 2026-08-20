@@ -1,0 +1,91 @@
+{
+  "schema_version": "tennis_rtsp_latency_comparison_v1",
+  "created_at": "2026-08-04",
+  "stream": {
+    "url": "rtsp://127.0.0.1:8554/16-10",
+    "codec": "h264",
+    "resolution": [2560, 1440],
+    "fps": 25.0
+  },
+  "hardware": "Apple M5",
+  "compute_units": "CPU_AND_NE",
+  "pipeline_benchmark": {
+    "policy": "same RTSP loop, same machine, 500 frames per model, reader paced at source 25 FPS, target detector and pose model run concurrently, video writing and display disabled",
+    "old_yolo26n_640": {
+      "session": "data/analysis_results/benchmarks/benchmark-old-yolo26n-640-20260804/output_video.json",
+      "frames": 500,
+      "inference_ms": {
+        "mean": 17.220026,
+        "p50": 17.221,
+        "p95": 18.5672,
+        "p99": 19.55831,
+        "max": 40.804
+      },
+      "capture_to_analysis_ms": {
+        "mean": 18.362284,
+        "p50": 18.2085,
+        "p95": 19.66515,
+        "p99": 20.92439,
+        "max": 69.705
+      },
+      "completion_span_fps": 25.0755
+    },
+    "exp004_960_fp16": {
+      "session": "data/analysis_results/benchmarks/benchmark-exp004-960-fp16-20260804/output_video.json",
+      "frames": 500,
+      "inference_ms": {
+        "mean": 20.456964,
+        "p50": 20.4265,
+        "p95": 21.9276,
+        "p99": 23.12627,
+        "max": 38.782
+      },
+      "capture_to_analysis_ms": {
+        "mean": 21.459814,
+        "p50": 21.316,
+        "p95": 23.10035,
+        "p99": 25.31343,
+        "max": 51.032
+      },
+      "completion_span_fps": 25.0577
+    },
+    "exp004_delta": {
+      "inference_mean_ms": 3.236938,
+      "inference_mean_percent": 18.8,
+      "inference_p95_ms": 3.3604,
+      "capture_to_analysis_mean_ms": 3.09753,
+      "capture_to_analysis_mean_percent": 16.9,
+      "capture_to_analysis_p95_ms": 3.4352
+    }
+  },
+  "detector_only_benchmark": {
+    "policy": "same 200 RTSP frames after 20 warm-up frames; old and new detector alternate execution order on every identical frame; Core ML predict time only",
+    "old_yolo26n_640": {
+      "mean_ms": 2.3093,
+      "p50_ms": 2.2389,
+      "p95_ms": 2.6694,
+      "p99_ms": 3.6759,
+      "max_ms": 4.9489
+    },
+    "exp004_960_fp16": {
+      "mean_ms": 5.305,
+      "p50_ms": 5.1404,
+      "p95_ms": 6.1999,
+      "p99_ms": 6.8544,
+      "max_ms": 8.3561
+    },
+    "exp004_delta": {
+      "mean_ms": 2.9957,
+      "mean_percent": 129.7,
+      "p95_ms": 3.5305
+    }
+  },
+  "assessment": {
+    "source_frame_budget_ms": 40.0,
+    "exp004_capture_to_analysis_p95_ms": 23.10035,
+    "exp004_p95_headroom_ms": 16.89965,
+    "source_rate_sustained": true,
+    "preliminary_25fps_gate": "pass",
+    "formal_1500_frame_gate": "not_run"
+  }
+}

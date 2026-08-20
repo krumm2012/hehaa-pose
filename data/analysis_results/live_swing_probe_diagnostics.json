@@ -1,0 +1,2565 @@
+{
+    "video_info": {
+        "path": "http://127.0.0.1:1234/",
+        "fps": 25.0,
+        "resolution": [
+            2560,
+            1440
+        ]
+    },
+    "config_snapshot": {
+        "ball_min_selected_confidence": 0.05,
+        "ball_play_area_min_y_ratio_hard": 0.35,
+        "ball_max_motion_for_continuity_px": 140,
+        "static_ball_hard_mask_min_seen_frames": 4,
+        "static_ball_hard_mask_radius_px": 30
+    },
+    "summary": {
+        "total_frames": 75,
+        "no_ball_frames": 49,
+        "no_ball_ratio": 0.6533,
+        "final_decision_counts": {
+            "selected": 26,
+            "reject_low_conf_unsupported": 3,
+            "no_candidates": 45,
+            "reject_upper_mirror_unsupported": 1
+        },
+        "rejection_counts": {
+            "static_hard_mask": 0,
+            "low_conf_unsupported": 3,
+            "upper_mirror_unsupported": 1,
+            "track_became_static": 0
+        },
+        "continuity_disabled_frames": 5
+    },
+    "tuning_suggestions": [
+        {
+            "priority": "medium",
+            "issue": "Upper mirror interference exists but no-ball ratio is already high",
+            "recommendation": "Keep mirror gate conservative for now; if recall is poor, try lowering ball_play_area_min_y_ratio_hard from 0.35 to 0.33",
+            "parameter": "unified_detection.ball_play_area_min_y_ratio_hard"
+        },
+        {
+            "priority": "high",
+            "issue": "No-ball frames ratio is high",
+            "recommendation": "Primary recommendation: relax hard gates first (min_selected_confidence, continuity motion gate, hard-mask maturity) before tightening mirror gates",
+            "parameter": "composite"
+        }
+    ],
+    "frames": [
+        {
+            "frame_id": 0,
+            "timestamp": 0.0,
+            "ball_selected": [
+                1340.0,
+                1279.125
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": false,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1340.0,
+                        1279.125
+                    ],
+                    "confidence": 0.6943359375,
+                    "supported_track": false
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1340.0,
+                            1279.125
+                        ],
+                        "raw_confidence": 0.6943359375,
+                        "adjusted_confidence": 0.6943359375,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 1,
+            "timestamp": 0.04,
+            "ball_selected": [
+                1330.5,
+                1202.0625
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1330.5,
+                        1202.0625
+                    ],
+                    "confidence": 0.76123046875,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1330.5,
+                            1202.0625
+                        ],
+                        "raw_confidence": 0.76123046875,
+                        "adjusted_confidence": 0.76123046875,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 2,
+            "timestamp": 0.08,
+            "ball_selected": [
+                1323.5,
+                1141.875
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1323.5,
+                        1141.875
+                    ],
+                    "confidence": 0.69873046875,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1323.5,
+                            1141.875
+                        ],
+                        "raw_confidence": 0.69873046875,
+                        "adjusted_confidence": 0.69873046875,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 3,
+            "timestamp": 0.12,
+            "ball_selected": [
+                1316.5,
+                1095.75
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 2,
+                "kept_candidates": 2,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1316.5,
+                        1095.75
+                    ],
+                    "confidence": 0.47705078125,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1316.5,
+                            1095.75
+                        ],
+                        "raw_confidence": 0.47705078125,
+                        "adjusted_confidence": 0.47705078125,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1316.0,
+                            1096.03125
+                        ],
+                        "raw_confidence": 0.136474609375,
+                        "adjusted_confidence": 0.136474609375,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 4,
+            "timestamp": 0.16,
+            "ball_selected": [
+                1307.5,
+                1062.0
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1307.5,
+                        1062.0
+                    ],
+                    "confidence": 0.46728515625,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1307.5,
+                            1062.0
+                        ],
+                        "raw_confidence": 0.46728515625,
+                        "adjusted_confidence": 0.46728515625,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 5,
+            "timestamp": 0.2,
+            "ball_selected": [
+                1301.5,
+                1038.375
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1301.5,
+                        1038.375
+                    ],
+                    "confidence": 0.669921875,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1301.5,
+                            1038.375
+                        ],
+                        "raw_confidence": 0.669921875,
+                        "adjusted_confidence": 0.669921875,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 6,
+            "timestamp": 0.24,
+            "ball_selected": [
+                1297.0,
+                1024.59375
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1297.0,
+                        1024.59375
+                    ],
+                    "confidence": 0.509765625,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1297.0,
+                            1024.59375
+                        ],
+                        "raw_confidence": 0.509765625,
+                        "adjusted_confidence": 0.509765625,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 7,
+            "timestamp": 0.28,
+            "ball_selected": [
+                1292.5,
+                1016.71875
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 2,
+                "kept_candidates": 2,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1292.5,
+                        1016.71875
+                    ],
+                    "confidence": 0.7021484375,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1292.5,
+                            1016.71875
+                        ],
+                        "raw_confidence": 0.7021484375,
+                        "adjusted_confidence": 0.7021484375,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1339.0,
+                            19.845703125
+                        ],
+                        "raw_confidence": 0.0274505615234375,
+                        "adjusted_confidence": 0.0274505615234375,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 8,
+            "timestamp": 0.32,
+            "ball_selected": [
+                1288.0,
+                1015.875
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1288.0,
+                        1015.875
+                    ],
+                    "confidence": 0.65869140625,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1288.0,
+                            1015.875
+                        ],
+                        "raw_confidence": 0.65869140625,
+                        "adjusted_confidence": 0.65869140625,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 9,
+            "timestamp": 0.36,
+            "ball_selected": [
+                1287.0,
+                1021.21875
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 3,
+                "kept_candidates": 3,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1287.0,
+                        1021.21875
+                    ],
+                    "confidence": 0.60009765625,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1287.0,
+                            1021.21875
+                        ],
+                        "raw_confidence": 0.60009765625,
+                        "adjusted_confidence": 0.60009765625,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1331.5,
+                            110.07421875
+                        ],
+                        "raw_confidence": 0.0491943359375,
+                        "adjusted_confidence": 0.0491943359375,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1288.0,
+                            1022.625
+                        ],
+                        "raw_confidence": 0.043121337890625,
+                        "adjusted_confidence": 0.043121337890625,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 10,
+            "timestamp": 0.4,
+            "ball_selected": [
+                1284.5,
+                955.40625
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 3,
+                "kept_candidates": 3,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1284.5,
+                        955.40625
+                    ],
+                    "confidence": 0.256103515625,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1284.5,
+                            955.40625
+                        ],
+                        "raw_confidence": 0.256103515625,
+                        "adjusted_confidence": 0.256103515625,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1284.0,
+                            955.40625
+                        ],
+                        "raw_confidence": 0.047760009765625,
+                        "adjusted_confidence": 0.047760009765625,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1329.0,
+                            122.6953125
+                        ],
+                        "raw_confidence": 0.0272369384765625,
+                        "adjusted_confidence": 0.0272369384765625,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 11,
+            "timestamp": 0.44,
+            "ball_selected": [
+                1285.0,
+                883.96875
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 3,
+                "kept_candidates": 3,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1285.0,
+                        883.96875
+                    ],
+                    "confidence": 0.454833984375,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1285.0,
+                            883.96875
+                        ],
+                        "raw_confidence": 0.454833984375,
+                        "adjusted_confidence": 0.454833984375,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1330.5,
+                            99.87890625
+                        ],
+                        "raw_confidence": 0.10919189453125,
+                        "adjusted_confidence": 0.10919189453125,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1285.5,
+                            883.96875
+                        ],
+                        "raw_confidence": 0.04156494140625,
+                        "adjusted_confidence": 0.04156494140625,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 12,
+            "timestamp": 0.48,
+            "ball_selected": [
+                1285.5,
+                819.28125
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 2,
+                "kept_candidates": 2,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1285.5,
+                        819.28125
+                    ],
+                    "confidence": 0.50537109375,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1285.5,
+                            819.28125
+                        ],
+                        "raw_confidence": 0.50537109375,
+                        "adjusted_confidence": 0.50537109375,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1329.5,
+                            81.0703125
+                        ],
+                        "raw_confidence": 0.280517578125,
+                        "adjusted_confidence": 0.280517578125,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 13,
+            "timestamp": 0.52,
+            "ball_selected": [
+                1285.5,
+                758.53125
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 3,
+                "kept_candidates": 3,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1285.5,
+                        758.53125
+                    ],
+                    "confidence": 0.435546875,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1285.5,
+                            758.53125
+                        ],
+                        "raw_confidence": 0.435546875,
+                        "adjusted_confidence": 0.435546875,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1327.0,
+                            65.25
+                        ],
+                        "raw_confidence": 0.227783203125,
+                        "adjusted_confidence": 0.227783203125,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1285.0,
+                            757.6875
+                        ],
+                        "raw_confidence": 0.0714111328125,
+                        "adjusted_confidence": 0.0714111328125,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 14,
+            "timestamp": 0.56,
+            "ball_selected": [
+                1286.0,
+                702.5625
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 4,
+                "kept_candidates": 4,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1286.0,
+                        702.5625
+                    ],
+                    "confidence": 0.43359375,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1326.5,
+                            50.607421875
+                        ],
+                        "raw_confidence": 0.521484375,
+                        "adjusted_confidence": 0.521484375,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1286.0,
+                            702.5625
+                        ],
+                        "raw_confidence": 0.43359375,
+                        "adjusted_confidence": 0.43359375,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1286.0,
+                            702.5625
+                        ],
+                        "raw_confidence": 0.1273193359375,
+                        "adjusted_confidence": 0.1273193359375,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1328.0,
+                            51.451171875
+                        ],
+                        "raw_confidence": 0.089599609375,
+                        "adjusted_confidence": 0.089599609375,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 15,
+            "timestamp": 0.6,
+            "ball_selected": [
+                1286.0,
+                653.90625
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 2,
+                "kept_candidates": 2,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1286.0,
+                        653.90625
+                    ],
+                    "confidence": 0.71142578125,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1286.0,
+                            653.90625
+                        ],
+                        "raw_confidence": 0.71142578125,
+                        "adjusted_confidence": 0.71142578125,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1327.0,
+                            40.21875
+                        ],
+                        "raw_confidence": 0.56005859375,
+                        "adjusted_confidence": 0.56005859375,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 16,
+            "timestamp": 0.64,
+            "ball_selected": [
+                1286.5,
+                612.28125
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 4,
+                "kept_candidates": 4,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1286.5,
+                        612.28125
+                    ],
+                    "confidence": 0.52490234375,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1286.5,
+                            612.28125
+                        ],
+                        "raw_confidence": 0.52490234375,
+                        "adjusted_confidence": 0.52490234375,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1325.0,
+                            33.2578125
+                        ],
+                        "raw_confidence": 0.25439453125,
+                        "adjusted_confidence": 0.25439453125,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1286.5,
+                            612.28125
+                        ],
+                        "raw_confidence": 0.135986328125,
+                        "adjusted_confidence": 0.135986328125,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1326.0,
+                            33.4951171875
+                        ],
+                        "raw_confidence": 0.1339111328125,
+                        "adjusted_confidence": 0.1339111328125,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 17,
+            "timestamp": 0.68,
+            "ball_selected": [
+                1286.5,
+                575.71875
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 3,
+                "kept_candidates": 3,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1286.5,
+                        575.71875
+                    ],
+                    "confidence": 0.43603515625,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1286.5,
+                            575.71875
+                        ],
+                        "raw_confidence": 0.43603515625,
+                        "adjusted_confidence": 0.43603515625,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1323.5,
+                            27.6591796875
+                        ],
+                        "raw_confidence": 0.28271484375,
+                        "adjusted_confidence": 0.28271484375,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": true,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1286.0,
+                            575.578125
+                        ],
+                        "raw_confidence": 0.27490234375,
+                        "adjusted_confidence": 0.27490234375,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 18,
+            "timestamp": 0.72,
+            "ball_selected": [
+                1287.5,
+                545.34375
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 3,
+                "kept_candidates": 3,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1287.5,
+                        545.34375
+                    ],
+                    "confidence": 0.79736328125,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1287.5,
+                            545.34375
+                        ],
+                        "raw_confidence": 0.79736328125,
+                        "adjusted_confidence": 0.79736328125,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1322.5,
+                            26.3583984375
+                        ],
+                        "raw_confidence": 0.474365234375,
+                        "adjusted_confidence": 0.474365234375,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1478.0,
+                            258.609375
+                        ],
+                        "raw_confidence": 0.065673828125,
+                        "adjusted_confidence": 0.065673828125,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 19,
+            "timestamp": 0.76,
+            "ball_selected": [
+                1285.0,
+                522.984375
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 4,
+                "kept_candidates": 4,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1285.0,
+                        522.984375
+                    ],
+                    "confidence": 0.432861328125,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1322.0,
+                            27.3779296875
+                        ],
+                        "raw_confidence": 0.673828125,
+                        "adjusted_confidence": 0.673828125,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": true,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1285.0,
+                            522.984375
+                        ],
+                        "raw_confidence": 0.432861328125,
+                        "adjusted_confidence": 0.432861328125,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": true,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1281.5,
+                            497.671875
+                        ],
+                        "raw_confidence": 0.04864501953125,
+                        "adjusted_confidence": 0.04864501953125,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": true,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1477.5,
+                            258.6796875
+                        ],
+                        "raw_confidence": 0.032928466796875,
+                        "adjusted_confidence": 0.032928466796875,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": true,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 20,
+            "timestamp": 0.8,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 1,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1324.0,
+                        32.4404296875
+                    ],
+                    "confidence": 0.0291290283203125,
+                    "supported_track": false
+                },
+                "final_decision": "reject_low_conf_unsupported",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1324.0,
+                            32.4404296875
+                        ],
+                        "raw_confidence": 0.0291290283203125,
+                        "adjusted_confidence": 0.0291290283203125,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 21,
+            "timestamp": 0.84,
+            "ball_selected": [
+                1314.0,
+                608.90625
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 4,
+                "kept_candidates": 4,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1314.0,
+                        608.90625
+                    ],
+                    "confidence": 0.310302734375,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1314.0,
+                            608.90625
+                        ],
+                        "raw_confidence": 0.310302734375,
+                        "adjusted_confidence": 0.310302734375,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": true,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1312.0,
+                            609.75
+                        ],
+                        "raw_confidence": 0.028289794921875,
+                        "adjusted_confidence": 0.028289794921875,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": true,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1470.0,
+                            248.765625
+                        ],
+                        "raw_confidence": 0.0249786376953125,
+                        "adjusted_confidence": 0.0249786376953125,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": true,
+                        "reason": "kept"
+                    },
+                    {
+                        "position": [
+                            1474.0,
+                            246.234375
+                        ],
+                        "raw_confidence": 0.02484130859375,
+                        "adjusted_confidence": 0.02484130859375,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 22,
+            "timestamp": 0.88,
+            "ball_selected": [
+                1351.5,
+                770.0625
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1351.5,
+                        770.0625
+                    ],
+                    "confidence": 0.32568359375,
+                    "supported_track": false
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1351.5,
+                            770.0625
+                        ],
+                        "raw_confidence": 0.32568359375,
+                        "adjusted_confidence": 0.32568359375,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 23,
+            "timestamp": 0.92,
+            "ball_selected": [
+                1410.5,
+                1041.46875
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1410.5,
+                        1041.46875
+                    ],
+                    "confidence": 0.1221923828125,
+                    "supported_track": false
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1410.5,
+                            1041.46875
+                        ],
+                        "raw_confidence": 0.1221923828125,
+                        "adjusted_confidence": 0.1221923828125,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 24,
+            "timestamp": 0.96,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 25,
+            "timestamp": 1.0,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 26,
+            "timestamp": 1.04,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 27,
+            "timestamp": 1.08,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 28,
+            "timestamp": 1.12,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 29,
+            "timestamp": 1.16,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 30,
+            "timestamp": 1.2,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 31,
+            "timestamp": 1.24,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 32,
+            "timestamp": 1.28,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 33,
+            "timestamp": 1.32,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 34,
+            "timestamp": 1.36,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 35,
+            "timestamp": 1.4,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 36,
+            "timestamp": 1.44,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 37,
+            "timestamp": 1.48,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 38,
+            "timestamp": 1.52,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 39,
+            "timestamp": 1.56,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 40,
+            "timestamp": 1.6,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 41,
+            "timestamp": 1.64,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 42,
+            "timestamp": 1.68,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 43,
+            "timestamp": 1.72,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 44,
+            "timestamp": 1.76,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 45,
+            "timestamp": 1.8,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 46,
+            "timestamp": 1.84,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 47,
+            "timestamp": 1.88,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 48,
+            "timestamp": 1.92,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 49,
+            "timestamp": 1.96,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 50,
+            "timestamp": 2.0,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 51,
+            "timestamp": 2.04,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": false,
+                "continuity_disabled_reason": "reacquisition_window_expired",
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 1,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1557.0,
+                        229.8515625
+                    ],
+                    "confidence": 0.0479736328125,
+                    "supported_track": false
+                },
+                "final_decision": "reject_low_conf_unsupported",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1557.0,
+                            229.8515625
+                        ],
+                        "raw_confidence": 0.0479736328125,
+                        "adjusted_confidence": 0.0479736328125,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 52,
+            "timestamp": 2.08,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 53,
+            "timestamp": 2.12,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 54,
+            "timestamp": 2.16,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 55,
+            "timestamp": 2.2,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 56,
+            "timestamp": 2.24,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 57,
+            "timestamp": 2.28,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 58,
+            "timestamp": 2.32,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 59,
+            "timestamp": 2.36,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 60,
+            "timestamp": 2.4,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": false,
+                "continuity_disabled_reason": "reacquisition_window_expired",
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 1,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1591.0,
+                        226.828125
+                    ],
+                    "confidence": 0.04022216796875,
+                    "supported_track": false
+                },
+                "final_decision": "reject_low_conf_unsupported",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1591.0,
+                            226.828125
+                        ],
+                        "raw_confidence": 0.04022216796875,
+                        "adjusted_confidence": 0.04022216796875,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 61,
+            "timestamp": 2.44,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 62,
+            "timestamp": 2.48,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 63,
+            "timestamp": 2.52,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 64,
+            "timestamp": 2.56,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 65,
+            "timestamp": 2.6,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 66,
+            "timestamp": 2.64,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": false,
+                "continuity_disabled_reason": "reacquisition_window_expired",
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 1,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1519.0,
+                        241.59375
+                    ],
+                    "confidence": 0.0626220703125,
+                    "supported_track": false
+                },
+                "final_decision": "reject_upper_mirror_unsupported",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1519.0,
+                            241.59375
+                        ],
+                        "raw_confidence": 0.0626220703125,
+                        "adjusted_confidence": 0.0626220703125,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 67,
+            "timestamp": 2.68,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 68,
+            "timestamp": 2.72,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 69,
+            "timestamp": 2.76,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 70,
+            "timestamp": 2.8,
+            "ball_selected": [
+                1670.0,
+                694.125
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": false,
+                "continuity_disabled_reason": "reacquisition_window_expired",
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1670.0,
+                        694.125
+                    ],
+                    "confidence": 0.061767578125,
+                    "supported_track": false
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1670.0,
+                            694.125
+                        ],
+                        "raw_confidence": 0.061767578125,
+                        "adjusted_confidence": 0.061767578125,
+                        "masked": false,
+                        "near_prev": false,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 71,
+            "timestamp": 2.84,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 72,
+            "timestamp": 2.88,
+            "ball_selected": [
+                1668.5,
+                694.40625
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1668.5,
+                        694.40625
+                    ],
+                    "confidence": 0.021575927734375,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1668.5,
+                            694.40625
+                        ],
+                        "raw_confidence": 0.021575927734375,
+                        "adjusted_confidence": 0.021575927734375,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        },
+        {
+            "frame_id": 73,
+            "timestamp": 2.92,
+            "ball_selected": null,
+            "ball_diagnostics": {
+                "raw_candidates": 0,
+                "kept_candidates": 0,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": null,
+                "final_decision": "no_candidates",
+                "top_candidates": []
+            }
+        },
+        {
+            "frame_id": 74,
+            "timestamp": 2.96,
+            "ball_selected": [
+                1668.5,
+                694.6875
+            ],
+            "ball_diagnostics": {
+                "raw_candidates": 1,
+                "kept_candidates": 1,
+                "continuity_enabled": true,
+                "continuity_disabled_reason": null,
+                "rejections": {
+                    "static_hard_mask": 0,
+                    "low_conf_unsupported": 0,
+                    "upper_mirror_unsupported": 0,
+                    "track_became_static": 0
+                },
+                "selected": {
+                    "position": [
+                        1668.5,
+                        694.6875
+                    ],
+                    "confidence": 0.0210418701171875,
+                    "supported_track": true
+                },
+                "final_decision": "selected",
+                "top_candidates": [
+                    {
+                        "position": [
+                            1668.5,
+                            694.6875
+                        ],
+                        "raw_confidence": 0.0210418701171875,
+                        "adjusted_confidence": 0.0210418701171875,
+                        "masked": false,
+                        "near_prev": true,
+                        "near_racket": false,
+                        "reason": "kept"
+                    }
+                ]
+            }
+        }
+    ]
+}

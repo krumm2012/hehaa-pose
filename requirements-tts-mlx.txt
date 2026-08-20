@@ -1,0 +1,5 @@
+# Optional local Coach speech output (Apple Silicon / MLX only).
+# The Qwen3-TTS model is downloaded by mlx-audio on first use and is not stored in Git.
+# PyPI 0.2.9 does not yet include the Qwen3-TTS model adapter.
+# Install the upstream MLX-Audio revision that contains mlx_audio.tts.models.qwen3_tts.
+git+https://github.com/Blaizzy/mlx-audio.git

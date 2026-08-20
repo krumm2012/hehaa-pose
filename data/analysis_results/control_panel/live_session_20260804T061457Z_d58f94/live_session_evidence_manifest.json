@@ -1,0 +1,145 @@
+{
+  "schema_version": "tennis.replay-evidence-bundle.v1",
+  "bundle_id": "live_session_20260804T061457Z_d58f94",
+  "created_at": "2026-08-04T06:15:26.826Z",
+  "created_at_unix_ns": 1785824126826124000,
+  "status": "completed",
+  "session": {
+    "schema_version": "tennis.analysis-session.v1",
+    "session_id": "live_session_20260804T061457Z_d58f94",
+    "started_at": "2026-08-04T06:14:57.827Z",
+    "started_at_unix_ns": 1785824097827503000,
+    "source": "rtsp://192.168.1.193:554/h264/ch1/main/av_stream",
+    "stream_id": "",
+    "stream_label": "Unmatched stream",
+    "config_hash": "f131ee05ff60b489",
+    "models": {
+      "detector": "models/detectors/tennis-yolo26n-exp004-960-fp16/model.mlpackage",
+      "pose": "yolo26m-pose.mlpackage"
+    }
+  },
+  "capture": {
+    "source_kind": "stream",
+    "source": "rtsp://192.168.1.193:554/h264/ch1/main/av_stream",
+    "fps": 25.0,
+    "output_fps": 25.0,
+    "resolution": [
+      2560,
+      1440
+    ],
+    "drop_stale_frames": true,
+    "dropped_stale_frames": 30,
+    "max_frames": 0,
+    "roi": {
+      "enabled": false,
+      "matched": false,
+      "stream_id": "",
+      "label": "Unmatched stream",
+      "source": "rtsp://192.168.1.193:554/h264/ch1/main/av_stream",
+      "points": [],
+      "configured_frame_size": [
+        2560,
+        1440
+      ],
+      "frame_size": [
+        2560,
+        1440
+      ],
+      "config_path": "/Users/krum5539/Documents/tennis_analyzer/configs/roi_config.yaml",
+      "reason": "ROI disabled"
+    }
+  },
+  "replay": {
+    "engine": "RealtimeSwingEventEngine",
+    "fps": 25.0,
+    "analysis_interval_frames": 5,
+    "settle_frames": 15,
+    "window_frames": 200,
+    "swing_options": {
+      "dominant_hand": "right",
+      "min_peak_energy": 9.0,
+      "active_energy": 5.5,
+      "min_event_frames": 8,
+      "max_internal_gap": 3,
+      "min_event_gap": 18
+    },
+    "coach": {
+      "enabled": true,
+      "max_chars": 15,
+      "max_suggestions": 3,
+      "min_confidence": 0.45,
+      "thresholds": {
+        "min_hip_shoulder_separation_deg": 15.0,
+        "min_shoulder_turn_deg": 75.0,
+        "min_arm_extension_deg": 145.0,
+        "min_contact_lateral_body_widths": 0.55,
+        "min_weight_transfer_body_widths": 0.08,
+        "max_balance_drift_body_widths": 0.65
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "role": "frame_journal",
+      "path": "live_session_frames.jsonl",
+      "external": false,
+      "required_for_replay": true,
+      "exists": true,
+      "bytes": 828855,
+      "sha256": "e4698fdb846dbafbe7d432338b450319f73f3c2ceb74e53f1a6492bc8a79bb82"
+    },
+    {
+      "role": "event_snapshot",
+      "path": "live_session_swing_events.json",
+      "external": false,
+      "required_for_replay": true,
+      "exists": true,
+      "bytes": 5070,
+      "sha256": "b32d4f214188a88f5bb51d890352857963f38ed5be47bb1aec9341fae27487fb"
+    },
+    {
+      "role": "frame_snapshot",
+      "path": "live_session_frames_latest.json",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 506329,
+      "sha256": "f934f8012e5c47be263c0f4e9a793d072838e83b0cc374437ea45f57507ee633"
+    },
+    {
+      "role": "event_log",
+      "path": "live_session_swing_events.jsonl",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "role": "report",
+      "path": "live_session_swing_report.html",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 38502,
+      "sha256": "67f91f130223af7c70313a08788a83c20771d1e9fc50aa4e4809fee404901a17"
+    },
+    {
+      "role": "annotated_video",
+      "path": "live_session_live.mp4",
+      "external": false,
+      "required_for_replay": false,
+      "exists": true,
+      "bytes": 31457666,
+      "sha256": "0b443ad099eb00616961c254ca1a5e1c8e436ae2623818c12a90ea447c6619bc"
+    }
+  ],
+  "completeness": {
+    "required_roles": [
+      "event_snapshot",
+      "frame_journal"
+    ],
+    "missing_required_roles": [],
+    "replayable": true
+  }
+}

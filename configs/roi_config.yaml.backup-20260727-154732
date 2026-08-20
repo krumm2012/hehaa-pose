@@ -1,0 +1,62 @@
+version: '2.0'
+created_by: Tennis Analyzer System
+streams:
+- stream_id: court01-main
+  stream_label: 'Court 01 Main Camera     '
+  stream_source: rtsp://192.168.1.191:554/h264/ch1/main/av_stream
+  default: true
+  roi_enabled: true
+  frame_size:
+  - 2560
+  - 1440
+  roi_points:
+  - - 712
+    - 434
+  - - 1544
+    - 440
+  - - 1818
+    - 1198
+  - - 424
+    - 1198
+  roi_description: '4-point ROI: [[712, 434], [1544, 440], [1818, 1198], [424, 1198]]'
+  last_updated: '2026-07-27 15:46:39'
+  created_by: Tennis Analyzer ROI Calibration
+  version: '2.0'
+- stream_id: court02-main
+  stream_label: Court 02 Main Camera
+  stream_source: rtsp://192.168.1.192:554/h264/ch1/main/av_stream
+  roi_enabled: true
+  frame_size:
+  - 2560
+  - 1440
+  roi_points:
+  - - 1170
+    - 336
+  - - 1952
+    - 358
+  - - 2186
+    - 1196
+  - - 962
+    - 1194
+  roi_description: '4-point ROI: [[1170, 336], [1952, 358], [2186, 1196], [962, 1194]]'
+  last_updated: '2026-07-27 15:44:28'
+  created_by: Tennis Analyzer ROI Calibration
+  version: '2.0'
+- stream_id: court03-main
+  stream_label: Court 03 Main Camera
+  stream_source: rtsp://192.168.1.193:554/h264/ch1/main/av_stream
+  roi_enabled: true
+  frame_size:
+  - 2560
+  - 1440
+  roi_points:
+  - - 847
+    - 67
+  - - 1943
+    - 69
+  - - 2181
+    - 1273
+  - - 677
+    - 1249
+  roi_description: P1左上→P2右上→P3右下→P4左下
+  last_updated: '2024-12-19 16:30:00'
