@@ -1,0 +1,43 @@
+# configs/dual_view_config.yaml
+# 算法 2.0：虚拟双机位解耦配置（适用于 Camera04 室内平镜场景）
+
+camera_profile: "camera04_mirror_booth"
+
+# 背面机位（镜面虚像）配置
+mirror_view:
+  enabled: true
+  # 镜中人像核心区域归一化边界 [x1, y1, x2, y2]
+  # 对应 2560x1440 画面中 [920:1380, 158:633]
+  reflection_roi: [0.36, 0.11, 0.54, 0.44]
+  # 完整镜面多边形归一化坐标 [x, y] (用于球/拍过滤或大范围检索)
+  polygon:
+    - [0.0, 0.20]
+    - [0.34, 0.105]
+    - [0.615, 0.125]
+    - [0.59, 0.478]
+    - [0.0, 0.478]
+  
+  # 镜中人像边界外扩比例
+  padding: 0.10
+  # 关键：必须水平翻转以纠正左右镜像，使动作与标准背面机位完全一致
+  horizontal_flip: true
+  # 目标输出分辨率 (宽, 高)；若为 null 则保留原始裁剪尺寸
+  target_size: [540, 720]
+
+# 正面机位（前景真实选手）配置
+front_view:
+  enabled: true
+  # 默认静态击球区归一化边界 [x1, y1, x2, y2]
+  default_roi: [0.34, 0.30, 0.58, 0.85]
+  # 借鉴 Tennis-Vision 经真实网球场景测算的黄金扩展比例 (0.45)
+  # 紧贴身体的框容易截断完全伸展的挥拍手臂，0.45 既能容纳完整拍头挥洒，又不会引入过多背景噪声
+  bbox_padding: 0.45
+  target_size: [540, 720]
+
+# 可视化与合成配置
+visualization:
+  side_by_side: true
+  front_label: "FRONT VIEW"
+  back_label: "BACK VIEW (MIRROR FLIPPED)"
+  font_scale: 0.8
+  label_color: [0, 255, 0] # BGR

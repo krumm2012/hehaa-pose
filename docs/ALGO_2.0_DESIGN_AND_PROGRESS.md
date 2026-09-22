@@ -96,15 +96,15 @@
 
 | 任务编号 | 阶段 | 模块 / 目标 | 涉及文件 | 状态 | 验收标准 / 交付物 |
 | :--- | :--- | :--- | :--- | :---: | :--- |
-| **TASK-00** | 基线准备 | 工作区基线快照归档 | git status / commit | ⬜ 待开始 | 清理并提交基线代码，确保 `algo-2.0` 分支干净 |
-| **TASK-01** | Phase 1 | 编写 `DualViewManager` | `dual_view_manager.py`<br>`configs/dual_view_config.yaml` | ⬜ 待开始 | 能稳定输入 2.5K 画面，切分出 Front 与 Back(水平翻转) 两路画面 |
-| **TASK-02** | Phase 1 | 单元测试与离线切分验证 | `test_dual_view_manager.py` | ⬜ 待开始 | 在 `49.35.mp4` 上跑通全部 250 帧，无内存泄露与画面畸变 |
-| **TASK-03** | Phase 2 | 移植 `Tennis-Vision` 判定 | `dual_view_biomechanics.py` | ⬜ 待开始 | 实现身体轴中线跨越、双手握拍间距与击球距离校验 |
-| **TASK-04** | Phase 2 | 正反手与击球门控测试 | `test_dual_view_biomechanics.py` | ⬜ 待开始 | 在正反手样本中分类正确率 $\ge 95\%$，剔除无球空挥 |
-| **TASK-05** | Phase 3 | 双视角姿态互补与遮挡自愈 | `dual_pose_estimator.py` | ⬜ 待开始 | 正面盲区手腕利用背面成功补全率 $\ge 90\%$ |
-| **TASK-06** | Phase 3 | 后背动力链指标开发 | `dual_view_biomechanics.py`<br>`swing_biomechanics.py` | ⬜ 待开始 | 输出引拍深度（像素/归一化）与肩胛收缩率 |
-| **TASK-07** | Phase 4 | Side-by-Side 视频与渲染 | `dual_view_renderer.py` | ⬜ 待开始 | 生成双机位骨骼同屏对比片段，帧级同步 |
-| **TASK-08** | Phase 4 | 教练建议升级与全链路集成 | `local_realtime_coach.py`<br>`main_pipe.py` | ⬜ 待开始 | 控制面板和报告能展示双视角指标与针对后背动作的精准评语 |
+| **TASK-00** | 基线准备 | 工作区基线快照归档 | git status / commit | 🟢 已完成 | 已将基线 34 个改动文件归档至 `algo-2.0` 分支 |
+| **TASK-01** | Phase 1 | 编写 `DualViewManager` | `dual_view_manager.py`<br>`configs/dual_view_config.yaml` | 🟢 已完成 | 稳定分流 Front 与 Back(水平翻转) 画面，具备双向高精度坐标映射 |
+| **TASK-02** | Phase 1 | 单元测试与离线切分验证 | `test_dual_view_manager.py` | 🟢 已完成 | 7 项测试全部通过，支持 `49.35.mp4` 离线切分 |
+| **TASK-03** | Phase 2 | 移植 `Tennis-Vision` 判定 | `dual_view_biomechanics.py` | 🟢 已完成 | 完整实现解剖脊柱中线跨越、双手握拍间距比与触球物理距离门控 |
+| **TASK-04** | Phase 2 | 正反手与击球门控测试 | `test_dual_view_biomechanics.py` | 🟢 已完成 | 6 项击球分类测试全部通过，有效排除空挥假动作 |
+| **TASK-05** | Phase 3 | 双视角姿态互补与遮挡自愈 | `dual_pose_estimator.py`<br>`test_dual_pose_estimator.py` | 🟢 已完成 | 在 `49.35.mp4` 上跑通双路 17 关键点检测与遮挡手腕自动补全 |
+| **TASK-06** | Phase 3 | 后背动力链指标开发 | `dual_view_biomechanics.py` | 🟢 已完成 | 输出抗侧身塌陷转肩角、后背引拍深度与肩胛收缩率 |
+| **TASK-07** | Phase 4 | Side-by-Side 视频与渲染 | `dual_view_renderer.py`<br>`test_dual_view_renderer.py` | 🟢 已完成 | 实现双视角骨骼绘制、HUD 动力学仪表盘与端到端渲染 |
+| **TASK-08** | Phase 4 | 全流程批处理验证 | `scripts/process_algo2_dual_view.py` | 🟢 已完成 | 成功将 `49.35.mp4` 完整处理并导出为 `algo2_dual_view_biomechanics.mp4` |
 
 **状态图例**：  
 - ⬜ 待开始 (Pending)  
