@@ -75,6 +75,8 @@ class DualPoseEstimator:
         self.backend = backend
         self.model = None
         self._last_back_eyes: List[Tuple[int, int, int, int]] = []
+        self._last_valid_back_pose: Dict[str, Keypoint] = {}
+        self._back_missing_count: int = 0
         self._init_backend(model_path)
 
     def _init_backend(self, model_path: Optional[str]):
@@ -146,9 +148,9 @@ class DualPoseEstimator:
             if not pts:
                 continue
 
-            # 区域判断：背面视口中，真实人脸仅出现在画面下部前景闯入区 (y > 0.55 * h)
+            # 区域判断：背面视口中，真实人脸仅出现在画面下半部前景闯入区 (y > 0.40 * h)
             avg_y = sum(pt[1] for pt in pts) / len(pts)
-            if avg_y <= 0.55 * h:
+            if avg_y <= 0.40 * h:
                 continue
 
             eye_pts = [pt for pt in (le, re) if pt is not None]
@@ -196,9 +198,9 @@ class DualPoseEstimator:
             if not pts:
                 continue
 
-            # 区域判断：背面视口中，真实人脸仅出现在画面下部前景闯入区 (y > 0.55 * h)
+            # 区域判断：背面视口中，真实人脸仅出现在画面下半部前景闯入区 (y > 0.40 * h)
             avg_y = sum(pt[1] for pt in pts) / len(pts)
-            if avg_y <= 0.55 * h:
+            if avg_y <= 0.40 * h:
                 continue
 
             eye_pts = [pt for pt in (le, re) if pt is not None]
@@ -245,7 +247,7 @@ class DualPoseEstimator:
             if len(kp_data) == 0:
                 return {}
 
-            # 背面镜面机位：提取人脸眼睛遮挡区域并通过区域与朝向优先选择镜中背影
+            # 背面镜面机位：提取人脸眼睛遮挡区域并严格过滤正面人脸，优先选择镜中背影
             best_person = None
             if is_back_view:
                 self._last_back_eyes = self._extract_eye_boxes_from_kp_data(kp_data, h, w)
@@ -259,11 +261,13 @@ class DualPoseEstimator:
                     has_re = p.shape[0] > 2 and (p.shape[1] <= 2 or p[2, 2] >= self.conf_threshold)
                     has_frontal_face = (has_le and has_re)
 
+                    # 严格排除正面人脸（正面人像不能作为 Backview 背影姿态）
+                    if has_frontal_face:
+                        continue
+
                     if sh_ys:
-                        # 物理打分：优先选择无正面人脸、位于镜面区域（y 较小）的背影
-                        score = min(sh_ys) + (1000.0 if has_frontal_face else 0.0)
-                        candidates.append((score, p))
-                    elif not has_frontal_face:
+                        candidates.append((min(sh_ys), p))
+                    else:
                         valid_ys = [p[i, 1] for i in range(len(p)) if p.shape[1] <= 2 or p[i, 2] >= self.conf_threshold]
                         if valid_ys:
                             candidates.append((min(valid_ys) + 50.0, p))
@@ -271,19 +275,30 @@ class DualPoseEstimator:
                 if candidates:
                     candidates.sort(key=lambda x: x[0])
                     best_person = candidates[0][1]
-                else:
-                    return {}
-
-            if best_person is None:
+            else:
                 best_person = kp_data[0]
 
             parsed = {}
-            for idx, name in COCO_KEYPOINTS.items():
-                x = float(best_person[idx, 0])
-                y = float(best_person[idx, 1])
-                conf = float(best_person[idx, 2]) if best_person.shape[1] > 2 else 1.0
-                if conf >= self.conf_threshold:
-                    parsed[name] = Keypoint(x=x, y=y, conf=conf)
+            if best_person is not None:
+                for idx, name in COCO_KEYPOINTS.items():
+                    x = float(best_person[idx, 0])
+                    y = float(best_person[idx, 1])
+                    conf = float(best_person[idx, 2]) if best_person.shape[1] > 2 else 1.0
+                    if conf >= self.conf_threshold:
+                        parsed[name] = Keypoint(x=x, y=y, conf=conf)
+
+            if is_back_view:
+                if parsed:
+                    self._last_valid_back_pose = parsed
+                    self._back_missing_count = 0
+                    return parsed
+                elif self._last_valid_back_pose and self._back_missing_count < 3:
+                    self._back_missing_count += 1
+                    return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_back_pose.items()}
+                else:
+                    self._back_missing_count += 1
+                    return {}
+
             return parsed
 
         # Core ML 分支
@@ -291,13 +306,16 @@ class DualPoseEstimator:
             try:
                 kpts_list = self.model.get_keypoints(view_frame)
                 if not kpts_list:
+                    if is_back_view and self._last_valid_back_pose and self._back_missing_count < 3:
+                        self._back_missing_count += 1
+                        return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_back_pose.items()}
                     return {}
 
                 best = None
                 if is_back_view:
                     # 背面机位提取人脸眼睛遮挡区域（区域判断：仅针对下部真实人脸）
                     self._last_back_eyes = self._extract_eye_boxes_from_kpts_list(kpts_list, h, w)
-                    # 背面镜面机位：通过物理区域与朝向优先选择镜中背影，去除真实 face 干扰
+                    # 背面镜面机位：严格过滤正面人脸，仅保留背影姿态
                     candidates = []
                     for p in kpts_list:
                         ls = p.get("left_shoulder")
@@ -308,11 +326,13 @@ class DualPoseEstimator:
                         has_re = p.get("right_eye") is not None
                         has_frontal_face = (has_le and has_re)
 
+                        # 严格排除正面人脸（正面人像不能作为 Backview 背影姿态）
+                        if has_frontal_face:
+                            continue
+
                         if sh_ys:
-                            # 物理打分：优先选择无正面人脸、位于镜面区域（y 较小）的背影
-                            score = min(sh_ys) + (1000.0 if has_frontal_face else 0.0)
-                            candidates.append((score, p))
-                        elif not has_frontal_face:
+                            candidates.append((min(sh_ys), p))
+                        else:
                             valid_ys = [pt[1] for pt in p.values() if pt is not None]
                             if valid_ys:
                                 candidates.append((min(valid_ys) + 50.0, p))
@@ -320,16 +340,27 @@ class DualPoseEstimator:
                     if candidates:
                         candidates.sort(key=lambda x: x[0])
                         best = candidates[0][1]
-                    else:
-                        return {}
-
-                if best is None:
+                else:
                     best = kpts_list[0]
 
                 parsed = {}
-                for name, pt in best.items():
-                    if pt is not None:
-                        parsed[name] = Keypoint(x=float(pt[0]), y=float(pt[1]), conf=0.85)
+                if best is not None:
+                    for name, pt in best.items():
+                        if pt is not None:
+                            parsed[name] = Keypoint(x=float(pt[0]), y=float(pt[1]), conf=0.85)
+
+                if is_back_view:
+                    if parsed:
+                        self._last_valid_back_pose = parsed
+                        self._back_missing_count = 0
+                        return parsed
+                    elif self._last_valid_back_pose and self._back_missing_count < 3:
+                        self._back_missing_count += 1
+                        return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_back_pose.items()}
+                    else:
+                        self._back_missing_count += 1
+                        return {}
+
                 return parsed
             except Exception as e:
                 logger.debug(f"CoreML prediction exception: {e}")

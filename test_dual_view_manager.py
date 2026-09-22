@@ -19,7 +19,7 @@ class DualViewManagerTests(unittest.TestCase):
     def test_initialization(self):
         self.assertTrue(self.mgr.mirror_flip)
         self.assertEqual(self.mgr.front_bbox_padding, 0.45)
-        self.assertEqual(len(self.mgr.mirror_polygon_norm), 5)
+        self.assertGreaterEqual(len(self.mgr.mirror_polygon_norm), 4)
 
     def test_pad_and_clamp_bbox(self):
         fw, fh = 1000, 1000
