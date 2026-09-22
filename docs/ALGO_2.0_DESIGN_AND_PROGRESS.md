@@ -112,6 +112,7 @@
 | **TASK-13** | Phase 6 | 全管线集成与回归验证 | `test_algo2_pipeline_integration.py`<br>`scripts/process_algo2_dual_view.py` | 🟢 已完成 | 254 项测试全绿通过，在 `49.35.mp4` 上精准输出正手判定与后背引拍分析报告 |
 | **TASK-14** | Phase 7 | 复杂长视频多动作分割 | `dual_view_biomechanics.py`<br>`dual_pose_estimator.py` | 🟢 已完成 | 解剖归一化遮挡自愈、多事件动态能量分割，在 `40.16.mp4` 实测 >40 FPS |
 | **TASK-15** | Phase 7 | 网球击球接触窗口物理重构与随挥误判治理 | `configs/dual_view_config.yaml`<br>`swing_event_classifier.py`<br>`swing_event_segmenter.py`<br>`dual_view_renderer.py`<br>`scripts/process_algo2_dual_view.py` | 🟢 已完成 | 1. 彻底剔除随挥收拍对动作定性的污染，建立触球核心窗口机制；<br>2. 镜面 ROI 精确收缩杜绝前景人脸穿透；<br>3. 实现 Two-Pass 视频渲染与 PingFang 中文教练 HUD；<br>4. 在 `40.16.mp4` 修正为 100% 精准正手（Forehand），254 项测试全绿。 |
+| **TASK-16** | Phase 8 | 统一球/拍感知、物理触球反弹检验、静止微动门控与 HUD 交互重构 | `dual_view_renderer.py`<br>`swing_event_classifier.py`<br>`scripts/process_algo2_dual_view.py`<br>`test_algo2_pipeline_integration.py` | 🟢 已完成 | 1. 接入 CoreML ANE YOLO26n 统一检测器 (6.8ms)，正面视口叠加动态球轨迹拖尾与青色球拍框；<br>2. 建立物理触球与轨迹反弹检验，精准判定真实击球与空挥；<br>3. 引入手腕邻域球拍优选与峰值窗口生物力学蓄力门控，完美解决第 197 帧站立误检并归位 `READY STANCE`；<br>4. 顶部 HUD 彻底消除文字重叠；<br>5. 256 项自动化测试全绿通过，产出 `algo2_40_26_biomechanics.mp4`。 |
 
 **状态图例**：  
 - ⬜ 待开始 (Pending)  
@@ -141,5 +142,15 @@
        - **事件 #1 (帧 64~130, 击球点 99)**: `Forehand` (置信度 90.0%)，引拍深度比 `1.7248`, 肩胛收紧度 `1.2522`, 转肩角 `47.61°`, 展臂 `82.85°`, 教练建议：`[limited_arm_extension] 挥拍时手臂再舒展`。
        - **事件 #2 (帧 165~218, 击球点 187)**: `Forehand` (置信度 100.0%)，引拍深度比 `1.6294`, 肩胛收紧度 `1.0056`, 转肩角 `41.09°`, 展臂 `157.63°`, 教练建议：`[limited_knee_flexion] 准备时适当降低重心`。
      - 导出视频：`/Users/krum5539/Desktop/Camera/test/algo2_40_16_biomechanics.mp4`。
-3. **基线数据集 3**：`Tennis-Vision` 中的基准测试片段（反手、双手反拍、侧身击球）。
-   - 重点验证：正反手分类准确度、双手握拍识别率、抗侧身塌陷稳定性。全量 254 项自动化单元测试全绿通过。
+3. **基线视频 3**：`/Users/krum5539/Desktop/Camera/test/40.26.mp4`
+   - 规格：2560x1440, 25.1 FPS, 250帧 (~10秒), 包含真实击球与站立准备状态。
+   - 治理与进化验证：
+     - **球/拍感知与轨迹**：全流程集成 YOLO26n ANE 统一检测器，实时勾勒正面视角动态荧光网球轨迹拖尾与持拍框。
+     - **第 197 帧站立误检根治**：手腕关联优选球拍杜绝后墙镜面虚像跳跃，配合击球峰值窗口转肩引拍物理门控，成功将原先被误判为 `Forehand (Event #3)` 的第 197 帧准确判定为 `READY STANCE`。
+     - **HUD 交互排版**：正面/背面视角标题两端靠齐，中间置入独立胶囊徽章与智能教练建议，实现零文字碰撞。
+     - 验证输出：2 次真实物理挥拍事件：
+       - **事件 #1 (帧 10~69, 击球点 36)**: `Forehand` (置信度 99.7%)，引拍深度比 `1.5215`, 肩胛收紧度 `1.2368`, 转肩角 `45.85°`, 展臂 `142.75°`, 教练建议：`挥拍时手臂再舒展`。
+       - **事件 #2 (帧 98~170, 击球点 132)**: `Forehand` (置信度 100.0%)，引拍深度比 `1.5330`, 肩胛收紧度 `1.4367`, 转肩角 `42.56°`, 展臂 `150.30°`, 教练建议：`准备时适当降低重心`。
+     - 导出成果视频：`/Users/krum5539/Desktop/Camera/test/algo2_40_26_biomechanics.mp4`（Pass 1 耗时 8.71s / 28.7 FPS，Pass 2 渲染耗时 1.36s / 183.8 FPS）。
+4. **单元回归测试套件**：全量 256 项自动化测试覆盖所有动力学与机位解耦模块，在 Python 3.14 与 Python 3.11 (CoreML) 双环境均 100% 通过。
+

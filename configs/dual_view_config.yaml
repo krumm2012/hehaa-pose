@@ -7,8 +7,8 @@ camera_profile: "camera04_mirror_booth"
 mirror_view:
   enabled: true
   # 镜中人像核心区域归一化边界 [x1, y1, x2, y2]
-  # 严格对应 2560x1440 画面中后墙镜面玻璃区域 [920:1380, 158:504]，绝不延伸到下方前景选手头部
-  reflection_roi: [0.36, 0.11, 0.54, 0.35]
+  # 严格对应 2560x1440 画面中后墙镜面玻璃区域 [920:1380, 158:475]，绝不延伸到下方前景选手头部
+  reflection_roi: [0.36, 0.11, 0.54, 0.33]
   # 完整镜面多边形归一化坐标 [x, y] (用于球/拍过滤或大范围检索)
   polygon:
     - [0.0, 0.20]
@@ -33,6 +33,15 @@ front_view:
   # 紧贴身体的框容易截断完全伸展的挥拍手臂，0.45 既能容纳完整拍头挥洒，又不会引入过多背景噪声
   bbox_padding: 0.45
   target_size: [540, 720]
+
+# 统一球与球拍感知配置 (Core ML ANE 加速)
+unified_detection:
+  enabled: true
+  model_path: "models/detectors/tennis-yolo26n-exp004-960-fp16/model.mlpackage"
+  ball_confidence_threshold: 0.20
+  racket_confidence_threshold: 0.30
+  ball_racket_contact_distance_px: 180.0
+  compute_units: "ANE"
 
 # 可视化与合成配置
 visualization:

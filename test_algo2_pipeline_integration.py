@@ -156,6 +156,101 @@ class Algo2PipelineIntegrationTests(unittest.TestCase):
             elif advice["code"] == "limited_scapular_retraction":
                 self.assertEqual(advice["message"], "转肩蓄力拉开后背")
 
+    def test_contact_and_shadow_swing_classification(self):
+        # 1. 真实触球事件 (带反弹与近距离)
+        contact_features = [
+            {"frame_id": i, "ball": (100.0, 200.0 - i * 10), "racket": (100.0, 150.0), "ball_racket_distance": abs(50.0 - i * 10)}
+            for i in range(3)
+        ]
+        # 添加反弹
+        contact_features.extend([
+            {"frame_id": 3 + j, "ball": (95.0, 170.0 + j * 15), "racket": (100.0, 150.0), "ball_racket_distance": 20.0 + j * 15}
+            for j in range(3)
+        ])
+        res_contact = classify_swing_event(contact_features, contact_frame=3)
+        self.assertFalse(res_contact["is_shadow_swing"])
+        self.assertTrue(res_contact["is_valid_contact"])
+
+        # 2. 空挥/未触球事件 (球距离拍子远且无反弹)
+        shadow_features = [
+            {"frame_id": i, "ball": (100.0, 200.0 - i * 20), "racket": (400.0, 150.0), "ball_racket_distance": 320.0}
+            for i in range(5)
+        ]
+        res_shadow = classify_swing_event(shadow_features, contact_frame=2)
+        self.assertTrue(res_shadow["is_shadow_swing"])
+        self.assertFalse(res_shadow["is_valid_contact"])
+        self.assertGreater(res_shadow["min_ball_distance"], 180.0)
+
+    def test_dual_view_renderer_renders_ball_trail_and_racket_box(self):
+        import numpy as np
+        from dual_view_renderer import DualViewRenderer
+        from dual_view_manager import DualViewCropInfo, DualViewFrame
+        from dual_pose_estimator import DualPoseResult
+        from dual_view_biomechanics import DualViewBiomechanicsResult, ShotClassificationResult
+
+        renderer = DualViewRenderer(show_hud=True, show_skeleton=False)
+        front_img = np.zeros((720, 540, 3), dtype=np.uint8)
+        back_img = np.zeros((720, 540, 3), dtype=np.uint8)
+        orig_img = np.zeros((1440, 2560, 3), dtype=np.uint8)
+
+        front_info = DualViewCropInfo(
+            bbox_orig=(100, 100, 1100, 1300),
+            crop_size=(1000, 1200),
+            view_size=(540, 720),
+            is_horizontally_flipped=False,
+        )
+        back_info = DualViewCropInfo(
+            bbox_orig=(100, 100, 640, 820),
+            crop_size=(540, 720),
+            view_size=(540, 720),
+            is_horizontally_flipped=True,
+        )
+        dual_frame = DualViewFrame(
+            frame_id=1,
+            original_frame=orig_img,
+            front_frame=front_img,
+            back_frame=back_img,
+            front_info=front_info,
+            back_info=back_info,
+        )
+        pose_res = DualPoseResult(
+            frame_id=1,
+            front_pose_local={},
+            back_pose_local={},
+            front_pose_orig={},
+            back_pose_orig={},
+            fused_pose_local={},
+            fused_pose_orig={},
+            biomechanics=DualViewBiomechanicsResult(
+                shot_classification=ShotClassificationResult(
+                    shot_type="Forehand",
+                    confidence=0.9,
+                    hitting_hand="right",
+                    is_two_handed=False,
+                    midline_side_projection=-1.0,
+                ),
+                front_shoulder_width=100.0,
+                back_shoulder_width=100.0,
+                robust_shoulder_turn_deg=45.0,
+                takeback_depth_ratio=0.85,
+                scapular_retraction_ratio=0.45,
+            ),
+        )
+
+        ball_trail = [(500.0, 600.0), (520.0, 580.0), (540.0, 560.0)]
+        racket_box = (500.0, 520.0, 600.0, 620.0)
+
+        out_canvas = renderer.render_dual_frame(
+            dual_frame,
+            pose_res,
+            event_label="FOREHAND (SHADOW SWING)",
+            coaching_text="未触及球，注意盯球击球点",
+            ball_trail=ball_trail,
+            racket_box=racket_box,
+        )
+        self.assertEqual(out_canvas.shape, (720, 1080, 3))
+
 
 if __name__ == "__main__":
     unittest.main()
+

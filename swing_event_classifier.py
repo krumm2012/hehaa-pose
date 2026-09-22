@@ -275,9 +275,46 @@ def classify_swing_event(
         confidence = label_backhand_ratio
         decision_rule = "label_fallback_backhand"
 
+    # Contact & Shadow swing analysis (物理触球与空挥判定)
+    ball_pts = [f["ball"] for f in event_features if f.get("ball") is not None]
+    has_ball_in_event = len(ball_pts) >= 2 or any(f.get("has_ball") for f in event_features)
+
+    min_ball_distance = None
+    for f in event_features:
+        d = f.get("ball_racket_distance")
+        if d is None and f.get("ball") is not None and f.get("wrist") is not None:
+            bx, by = f["ball"]
+            wx, wy = f["wrist"]
+            d = ((bx - wx) ** 2 + (by - wy) ** 2) ** 0.5
+        if d is not None:
+            if min_ball_distance is None or d < min_ball_distance:
+                min_ball_distance = d
+
+    # 轨迹反弹检验 (Trajectory Rebound Detection)
+    has_trajectory_rebound = False
+    if len(ball_pts) >= 3:
+        y_diffs = [ball_pts[i][1] - ball_pts[i - 1][1] for i in range(1, len(ball_pts))]
+        has_negative = any(dy < -10 for dy in y_diffs)
+        has_positive = any(dy > 10 for dy in y_diffs)
+        if has_negative and has_positive:
+            has_trajectory_rebound = True
+
+    is_shadow_swing = False
+    is_valid_contact = True
+    if has_ball_in_event:
+        if (min_ball_distance is not None and min_ball_distance > 180.0) and not has_trajectory_rebound:
+            is_shadow_swing = True
+            is_valid_contact = False
+        elif has_trajectory_rebound or (min_ball_distance is not None and min_ball_distance <= 180.0):
+            is_shadow_swing = False
+            is_valid_contact = True
+
     return {
         "stroke_type": stroke_type,
         "confidence": round(float(confidence), 4),
+        "is_shadow_swing": is_shadow_swing,
+        "is_valid_contact": is_valid_contact,
+        "min_ball_distance": round(float(min_ball_distance), 2) if min_ball_distance is not None else None,
         "evidence": {
             "label_counts": swing_label_counts,
             "two_hand_ratio": round(float(two_hand_ratio), 4),
@@ -302,6 +339,13 @@ def classify_swing_event(
                     "evidence_frames": int(dv_evidence_count),
                     "two_handed_frames": int(dv_two_handed_count),
                 } if dv_evidence_count > 0 else None,
+                "contact_analysis": {
+                    "has_ball": bool(has_ball_in_event),
+                    "is_shadow_swing": bool(is_shadow_swing),
+                    "is_valid_contact": bool(is_valid_contact),
+                    "min_ball_distance": round(float(min_ball_distance), 2) if min_ball_distance is not None else None,
+                    "has_trajectory_rebound": bool(has_trajectory_rebound),
+                },
                 "decision_rule": decision_rule,
             },
         },

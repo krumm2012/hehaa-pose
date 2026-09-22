@@ -109,7 +109,9 @@ def extract_motion_features(
         left_hip = _point(pose.get("left_hip"))
         right_hip = _point(pose.get("right_hip"))
         ball = _point(frame.get("ball"))
-        racket = _racket_center(frame.get("rackets") or [])
+        racket = _point(frame.get("racket"))
+        if racket is None:
+            racket = _racket_center(frame.get("rackets") or [])
 
         wrist_speed = _distance(wrist, prev.get("wrist")) or 0.0
         racket_speed = _distance(racket, prev.get("racket")) or 0.0
@@ -129,9 +131,12 @@ def extract_motion_features(
             hip_shoulder_sep = abs((shoulder_line_angle - hip_line_angle + 180.0) % 360.0 - 180.0)
 
         ball_racket_distance = _distance(ball, racket)
+        ball_wrist_distance = _distance(ball, wrist)
         contact_score = 0.0
         if ball_racket_distance is not None:
             contact_score = max(0.0, 1.0 - min(ball_racket_distance, 180.0) / 180.0)
+        elif ball_wrist_distance is not None:
+            contact_score = max(0.0, 1.0 - min(ball_wrist_distance, 220.0) / 220.0)
 
         dv_biomech = frame.get("dual_view_biomechanics") or frame.get("dual_view") or {}
         robust_turn = None

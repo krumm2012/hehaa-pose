@@ -148,7 +148,7 @@ class DualPoseEstimator:
             if len(kp_data) == 0:
                 return {}
 
-            # 背面镜面机位：过滤底部前景闯入人像（双肩位于画面底部 68% 以外）
+            # 背面镜面机位：过滤底部前景闯入人像（双肩位于画面高度 65% 以外）
             best_person = None
             if is_back_view:
                 candidates = []
@@ -156,11 +156,13 @@ class DualPoseEstimator:
                     ls_y = p[5, 1] if p.shape[0] > 5 and (p.shape[1] <= 2 or p[5, 2] >= self.conf_threshold) else None
                     rs_y = p[6, 1] if p.shape[0] > 6 and (p.shape[1] <= 2 or p[6, 2] >= self.conf_threshold) else None
                     sh_ys = [y for y in (ls_y, rs_y) if y is not None]
-                    if sh_ys and min(sh_ys) <= h * 0.68:
+                    if sh_ys and min(sh_ys) <= h * 0.65:
                         candidates.append((min(sh_ys), p))
                 if candidates:
                     candidates.sort(key=lambda x: x[0])
                     best_person = candidates[0][1]
+                else:
+                    return {}
 
             if best_person is None:
                 best_person = kp_data[0]
@@ -189,11 +191,13 @@ class DualPoseEstimator:
                         ls = p.get("left_shoulder")
                         rs = p.get("right_shoulder")
                         sh_ys = [pt[1] for pt in (ls, rs) if pt is not None]
-                        if sh_ys and min(sh_ys) <= h * 0.68:
+                        if sh_ys and min(sh_ys) <= h * 0.65:
                             candidates.append((min(sh_ys), p))
                     if candidates:
                         candidates.sort(key=lambda x: x[0])
                         best = candidates[0][1]
+                    else:
+                        return {}
 
                 if best is None:
                     best = kpts_list[0]

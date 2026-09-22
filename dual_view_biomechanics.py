@@ -403,11 +403,12 @@ class DualViewBiomechanicsEngine:
         if b_l_sh and b_r_sh:
             spine_x = (b_l_sh.x + b_r_sh.x) / 2.0
             hitting_wrist_b = b_pose.get("right_wrist") if self.dominant_hand == "right" else b_pose.get("left_wrist")
-            if hitting_wrist_b and b_w > 10.0:
-                takeback_depth_ratio = abs(hitting_wrist_b.x - spine_x) / b_w
+            if hitting_wrist_b and b_w > 20.0:
+                raw_ratio = abs(hitting_wrist_b.x - spine_x) / b_w
+                takeback_depth_ratio = min(2.5, max(0.0, raw_ratio))
 
         # 6. 肩胛收缩度 (Scapular Retraction)
-        scapular_ratio = (b_w / max(1.0, f_w)) if f_w > 10.0 else 1.0
+        scapular_ratio = min(3.0, max(0.0, (b_w / max(1.0, f_w)))) if f_w > 15.0 else 1.0
 
         return DualViewBiomechanicsResult(
             shot_classification=shot_res,
