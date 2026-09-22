@@ -204,6 +204,7 @@ def main():
 
     frame_to_label = {}
     frame_to_coach = {}
+    contact_telemetry_map = {}
     events = []
 
     if frame_records:
@@ -270,16 +271,28 @@ def main():
             print(f"   判定规则: {rule}")
 
             metrics = biomech_summary["metrics"]
-            print("   📊 核心生物力学指标:")
+            ext = biomech_summary.get("extended_biomechanics") or {}
+            print("   📊 核心生物力学指标 (第一、二、三梯队全景遥测):")
             tb = metrics.get("takeback_depth") or {}
             sc = metrics.get("scapular_retraction") or {}
             st = metrics.get("shoulder_turn") or {}
             arm = metrics.get("arm_extension") or {}
+            rkt = ext.get("racket_head_speed") or {}
+            brush = ext.get("brush_angle") or {}
+            stc = ext.get("stance") or {}
+            leg = ext.get("leg_drive") or {}
+            seq = ext.get("kinematic_sequence") or {}
+            score = ext.get("swing_quality_score") or {}
 
             print(f"      • 后背引拍深度比 (Takeback Depth): {tb.get('value', 'N/A')} (置信度: {tb.get('confidence', 0)*100:.1f}%)")
             print(f"      • 肩胛骨收缩比率 (Scapular Pinch): {sc.get('value', 'N/A')} (置信度: {sc.get('confidence', 0)*100:.1f}%)")
             print(f"      • 抗侧身塌陷转肩角 (Shoulder Turn): {st.get('value', 'N/A')}° (置信度: {st.get('confidence', 0)*100:.1f}%)")
             print(f"      • 手臂延展角度 (Arm Extension): {arm.get('value', 'N/A')}° (置信度: {arm.get('confidence', 0)*100:.1f}%)")
+            print(f"      • 拍头动力学挥速 (Racket Speed): 击球 {rkt.get('contact_kmh', 0):.1f} km/h | 峰值 {rkt.get('max_kmh', 0):.1f} km/h")
+            print(f"      • 刷球角与下潜深度 (Brush & Drop): 刷球角 {brush.get('low_to_high_angle_deg', 0):+.1f} deg | 下潜 {brush.get('drop_depth_ratio', 'N/A')}x")
+            print(f"      • 步法站位与蹬地 (Stance & Leg Drive): {stc.get('stance_type', 'Semi-Open Stance')} | 垂直蹬地比 {leg.get('drive_ratio', 'N/A')}")
+            print(f"      • 动力学链时序 (Kinematic Sequence): 腿 -> 髋 -> 肩 -> 拍 ({seq.get('sequence_quality', 'OPTIMAL')}) [髋-肩延时: {seq.get('latency_hip_to_shoulder_ms', 0)}ms, 肩-拍延时: {seq.get('latency_shoulder_to_racket_ms', 0)}ms]")
+            print(f"      • 单拍综合技术评分 (Swing Quality Score): {score.get('overall_score', 0):.1f} 分 [{score.get('grade', 'N/A')}]")
 
             print("   📢 实时教练纠错建议 (≤15字):")
             for j, adv in enumerate(advices, 1):
@@ -290,6 +303,20 @@ def main():
             for f_no in range(s_f, e_f + 1):
                 frame_to_label[f_no] = event_display_label
                 frame_to_coach[f_no] = first_coach_msg
+
+            # 击球瞬间特写遥测卡片信息绑定
+            contact_telemetry_map[c_f] = {
+                "stroke_type": event_dict.get("stroke_type", "FOREHAND"),
+                "swing_score": score.get("overall_score", 0.0),
+                "swing_grade": score.get("grade", "N/A"),
+                "racket_speed_kmh": rkt.get("contact_kmh", 0.0),
+                "racket_max_speed_kmh": rkt.get("max_kmh", 0.0),
+                "brush_angle_deg": brush.get("low_to_high_angle_deg", 0.0),
+                "drop_depth_ratio": brush.get("drop_depth_ratio"),
+                "stance_type": stc.get("stance_type", "Semi-Open Stance"),
+                "leg_drive_ratio": leg.get("drive_ratio"),
+                "kinematic_sequence_text": f"腿 -> 髋 -> 肩 -> 拍 ({seq.get('sequence_quality', 'OPTIMAL')})",
+            }
 
         print("=" * 60)
 
@@ -337,6 +364,8 @@ def main():
 
         cur_racket = frame_detections[frame_idx].get("racket") if frame_idx < len(frame_detections) else None
 
+        # 击球瞬间特写遥测卡片与子弹时间定格
+        card_data = contact_telemetry_map.get(frame_idx)
         rendered_sbs = renderer.render_dual_frame(
             dual_frame,
             pose_res,
@@ -344,8 +373,19 @@ def main():
             coaching_text=ev_coach,
             ball_trail=recent_balls,
             racket_box=cur_racket,
+            telemetry_card=card_data,
         )
         writer.write(rendered_sbs)
+
+        # 击球瞬间子弹时间定格 (Bullet-Time Impact Freeze: 延展 10 帧，约 0.4s)
+        if card_data is not None:
+            freeze_frames = 10
+            for _ in range(freeze_frames):
+                writer.write(rendered_sbs)
+            snap_path = snapshot_dir / f"algo2_verified_frame_{frame_idx}_impact_freeze.jpg"
+            cv2.imwrite(str(snap_path), rendered_sbs)
+            snapshots_saved.add(frame_idx)
+            print(f"   ⚡ 已触发击球瞬间特写遥测卡片与子弹时间定格 (帧 {frame_idx})，快照已保存: {snap_path}")
 
         if frame_idx in target_snapshots and frame_idx not in snapshots_saved:
             snap_path = snapshot_dir / f"algo2_verified_frame_{frame_idx}.jpg"

@@ -85,9 +85,10 @@ class DualViewBiomechanicsResult:
     robust_shoulder_turn_deg: float   # 消除侧身退化后的真实转肩角
     shoulder_hip_separation_deg: Optional[float] = None  # X-Factor (肩髋分离角)
 
-    # 后背特色指标
+    # 后背特色指标与 3D 相对深度
     takeback_depth_ratio: float = 0.0       # 引拍深度比率（手腕引拍离后背脊柱距离 / 肩宽）
     scapular_retraction_ratio: float = 1.0  # 肩胛骨收紧比率
+    relative_depth_z: Optional[float] = None  # 双机位前后尺度视差拟合的相对 3D 深度比率
 
     # 姿态自愈记录
     occlusion_healed_points: List[str] = field(default_factory=list)
@@ -410,6 +411,9 @@ class DualViewBiomechanicsEngine:
         # 6. 肩胛收缩度 (Scapular Retraction)
         scapular_ratio = min(3.0, max(0.0, (b_w / max(1.0, f_w)))) if f_w > 15.0 else 1.0
 
+        # 7. 双重视角视差拟合与相对 3D 深度比率推算 (Relative 3D Depth Ratio)
+        relative_depth_z = round(float(f_w / max(1.0, b_w)), 3) if (f_w > 15.0 and b_w > 15.0) else None
+
         return DualViewBiomechanicsResult(
             shot_classification=shot_res,
             front_shoulder_width=round(f_w, 2),
@@ -418,5 +422,6 @@ class DualViewBiomechanicsEngine:
             shoulder_hip_separation_deg=round(sep_deg, 2) if sep_deg is not None else None,
             takeback_depth_ratio=round(takeback_depth_ratio, 4),
             scapular_retraction_ratio=round(scapular_ratio, 4),
+            relative_depth_z=relative_depth_z,
             occlusion_healed_points=healed_points,
         )

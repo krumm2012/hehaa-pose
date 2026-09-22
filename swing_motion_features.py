@@ -108,6 +108,10 @@ def extract_motion_features(
         right_shoulder = _point(pose.get("right_shoulder"))
         left_hip = _point(pose.get("left_hip"))
         right_hip = _point(pose.get("right_hip"))
+        left_knee = _point(pose.get("left_knee"))
+        right_knee = _point(pose.get("right_knee"))
+        left_ankle = _point(pose.get("left_ankle"))
+        right_ankle = _point(pose.get("right_ankle"))
         ball = _point(frame.get("ball"))
         racket = _point(frame.get("racket"))
         if racket is None:
@@ -129,6 +133,49 @@ def extract_motion_features(
         hip_shoulder_sep = None
         if shoulder_line_angle is not None and hip_line_angle is not None:
             hip_shoulder_sep = abs((shoulder_line_angle - hip_line_angle + 180.0) % 360.0 - 180.0)
+
+        # 步法站位分类 (Stance Type Classification: Open vs Semi-Open vs Closed)
+        stance_angle = None
+        stance_type = "Unknown"
+        ref_p1 = left_ankle or left_knee or left_hip
+        ref_p2 = right_ankle or right_knee or right_hip
+        if ref_p1 is not None and ref_p2 is not None:
+            dx = abs(ref_p2[0] - ref_p1[0])
+            dy = abs(ref_p2[1] - ref_p1[1])
+            stance_angle = math.degrees(math.atan2(dy, dx + 1e-5))
+            if stance_angle < 25.0:
+                stance_type = "Open Stance"
+            elif stance_angle < 55.0:
+                stance_type = "Semi-Open Stance"
+            else:
+                stance_type = "Closed Stance"
+
+        # 身体质心垂直位置 (Vertical Hip/COM Position)
+        hip_vertical_pos = None
+        if left_hip is not None and right_hip is not None:
+            hip_vertical_pos = (left_hip[1] + right_hip[1]) / 2.0
+
+        # 动力链角速度 (Hip & Shoulder Angular Rotation Speed)
+        prev_hip_angle = prev.get("hip_line_angle")
+        hip_rotation_speed = (
+            abs(hip_line_angle - prev_hip_angle)
+            if hip_line_angle is not None and prev_hip_angle is not None
+            else 0.0
+        )
+        prev_shoulder_angle = prev.get("shoulder_line_angle")
+        shoulder_rotation_speed = (
+            abs(shoulder_line_angle - prev_shoulder_angle)
+            if shoulder_line_angle is not None and prev_shoulder_angle is not None
+            else 0.0
+        )
+
+        # 真实拍头速度换算 (Racket Head Speed in km/h & m/s)
+        dt = timestamp - float(prev.get("timestamp", timestamp - 0.04))
+        if dt <= 0.001:
+            dt = 0.04  # 默认 25 FPS
+        ppm = (shoulder_width / 0.42) if shoulder_width and shoulder_width > 15.0 else 320.0
+        racket_speed_mps = (racket_speed / ppm) / dt
+        racket_head_speed_kmh = min(180.0, max(0.0, racket_speed_mps * 3.6))
 
         ball_racket_distance = _distance(ball, racket)
         ball_wrist_distance = _distance(ball, wrist)
@@ -224,14 +271,24 @@ def extract_motion_features(
             "dual_view_is_two_handed": dv_is_two_handed,
             "dual_view_contact_valid": dv_contact_valid,
             "hip_shoulder_sep_deg": round(hip_shoulder_sep, 4) if hip_shoulder_sep is not None else _metric(metrics, "power_indicators", "hip_shoulder_sep"),
+            "racket_head_speed_kmh": round(racket_head_speed_kmh, 1),
+            "racket_speed_mps": round(racket_speed_mps, 2),
+            "stance_angle": round(stance_angle, 1) if stance_angle is not None else None,
+            "stance_type": stance_type,
+            "hip_vertical_pos": round(hip_vertical_pos, 2) if hip_vertical_pos is not None else None,
+            "hip_rotation_speed": round(hip_rotation_speed, 2),
+            "shoulder_rotation_speed": round(shoulder_rotation_speed, 2),
         }
         features.append(feature)
         prev = {
             "wrist": wrist,
             "racket": racket,
             "ball": ball,
+            "timestamp": timestamp,
             "wrist_speed": wrist_speed,
             "racket_speed": racket_speed,
+            "hip_line_angle": hip_line_angle,
+            "shoulder_line_angle": shoulder_line_angle,
         }
 
     return features

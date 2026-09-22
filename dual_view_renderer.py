@@ -224,8 +224,10 @@ class DualViewRenderer:
             turn_text += f" | X-Factor: {bio.shoulder_hip_separation_deg:.1f} deg"
         cv2.putText(canvas, turn_text, (20, h - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (255, 255, 255), 1, cv2.LINE_AA)
 
-        # 后背引拍深度与自愈状态
+        # 后背引拍深度与自愈状态及 3D 相对深度
         back_text = f"Takeback: {bio.takeback_depth_ratio * 100:.1f}% | Scapular: {bio.scapular_retraction_ratio:.2f}"
+        if getattr(bio, "relative_depth_z", None) is not None:
+            back_text += f" | Z-Disparity: {bio.relative_depth_z:.2f}"
         if bio.occlusion_healed_points:
             back_text += f" | Healed: {','.join(bio.occlusion_healed_points)}"
         cv2.putText(
@@ -305,6 +307,107 @@ class DualViewRenderer:
 
         return canvas
 
+    def draw_impact_telemetry_card(
+        self,
+        sbs_canvas: np.ndarray,
+        card_data: Dict[str, Any],
+    ) -> np.ndarray:
+        """
+        在画面中央/指定位置渲染击球瞬间特写遥测卡片 (Impact Telemetry Card)
+        包含第一、第二、第三梯队拓展的高级网球生物力学指标
+        """
+        canvas = sbs_canvas.copy()
+        h, w = canvas.shape[:2]
+
+        card_w = min(500, w - 40)
+        card_h = 220
+        x1 = (w - card_w) // 2
+        y1 = 80  # 紧接在顶部 HUD 下方居中浮动，位于左右机位交界处
+        x2 = x1 + card_w
+        y2 = y1 + card_h
+
+        overlay = canvas.copy()
+        # 半透明深黑底板 (高级磨砂质感)
+        cv2.rectangle(overlay, (x1, y1), (x2, y2), (16, 18, 24), -1)
+        # 顶部标题栏背景
+        cv2.rectangle(overlay, (x1, y1), (x2, y1 + 38), (28, 35, 48), -1)
+        cv2.addWeighted(overlay, 0.88, canvas, 0.12, 0, canvas)
+
+        # 发光外边框 (高科技青蓝色)
+        cv2.rectangle(canvas, (x1, y1), (x2, y2), (0, 220, 255), 2, cv2.LINE_AA)
+        cv2.line(canvas, (x1, y1 + 38), (x2, y1 + 38), (0, 180, 210), 1, cv2.LINE_AA)
+
+        # 标题栏文本
+        title_text = ">> IMPACT TELEMETRY <<"
+        canvas = self.font_mgr.put_text_with_font(
+            canvas,
+            title_text,
+            (x1 + 16, y1 + 8),
+            font_scale=0.60,
+            color=(0, 240, 255),
+            thickness=2,
+        )
+
+        score = float(card_data.get("swing_score", 0.0) or 0.0)
+        grade = str(card_data.get("swing_grade", "N/A"))
+        grade_colors = {
+            "PRO": (0, 215, 255),          # 金黄色
+            "ADVANCED": (0, 255, 128),     # 翡翠绿
+            "INTERMEDIATE": (0, 200, 255), # 暖橙
+            "DEVELOPING": (200, 200, 200), # 灰白
+        }
+        badge_color = grade_colors.get(grade, (0, 240, 255))
+        score_badge = f"SCORE: {score:.1f} [{grade}]"
+        canvas = self.font_mgr.put_text_with_font(
+            canvas,
+            score_badge,
+            (x2 - 190, y1 + 8),
+            font_scale=0.55,
+            color=badge_color,
+            thickness=2,
+        )
+
+        # 4 行遥测核心指标
+        speed_kmh = float(card_data.get("racket_speed_kmh", 0.0) or 0.0)
+        max_speed = float(card_data.get("racket_max_speed_kmh", 0.0) or 0.0)
+        brush_deg = float(card_data.get("brush_angle_deg", 0.0) or 0.0)
+        drop_ratio = card_data.get("drop_depth_ratio")
+        stance_str = str(card_data.get("stance_type") or "Semi-Open")
+        drive_ratio = card_data.get("leg_drive_ratio")
+        seq_text = str(card_data.get("kinematic_sequence_text") or "腿 -> 髋 -> 肩 -> 拍 (OPTIMAL)")
+
+        drive_display = f"+{float(drive_ratio)*100:.1f}%" if drive_ratio is not None else "N/A"
+        drop_display = f"{float(drop_ratio):.2f}x" if drop_ratio is not None else "N/A"
+
+        items = [
+            ("RACKET SPEED", f"{speed_kmh:.1f} km/h (Peak: {max_speed:.1f})", (0, 255, 180)),
+            ("BRUSH & DROP", f"{brush_deg:+.1f} deg | Drop: {drop_display}", (0, 220, 255)),
+            ("STANCE & LEG", f"{stance_str} | Drive: {drive_display}", (255, 230, 100)),
+            ("KINETIC CHAIN", f"{seq_text}", (255, 180, 255)),
+        ]
+
+        row_y = y1 + 48
+        for label, val_str, val_col in items:
+            canvas = self.font_mgr.put_text_with_font(
+                canvas,
+                label,
+                (x1 + 16, row_y),
+                font_scale=0.48,
+                color=(170, 180, 195),
+                thickness=1,
+            )
+            canvas = self.font_mgr.put_text_with_font(
+                canvas,
+                val_str,
+                (x1 + 160, row_y),
+                font_scale=0.50,
+                color=val_col,
+                thickness=1,
+            )
+            row_y += 38
+
+        return canvas
+
     def render_dual_frame(
         self,
         dual_frame: DualViewFrame,
@@ -314,6 +417,7 @@ class DualViewRenderer:
         ball_trail: Optional[List[Tuple[float, float]]] = None,
         racket_box: Optional[Tuple[float, float, float, float]] = None,
         mask_back_eyes: Optional[bool] = None,
+        telemetry_card: Optional[Dict[str, Any]] = None,
     ) -> np.ndarray:
         """
         全量渲染单帧双视角画面：
@@ -322,6 +426,7 @@ class DualViewRenderer:
         3. 背面机位人脸眼睛隐私遮蔽
         4. Side-by-Side 拼接
         5. 生物力学 HUD 叠加
+        6. 击球瞬间特写遥测卡片叠加 (可选)
         """
         f_img = dual_frame.front_frame.copy()
         b_img = dual_frame.back_frame.copy()
@@ -389,5 +494,8 @@ class DualViewRenderer:
 
         if self.show_hud:
             sbs = self.draw_hud(sbs, pose_result, event_label=event_label, coaching_text=coaching_text)
+
+        if telemetry_card is not None:
+            sbs = self.draw_impact_telemetry_card(sbs, telemetry_card)
 
         return sbs
