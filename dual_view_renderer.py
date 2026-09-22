@@ -69,11 +69,17 @@ class DualViewRenderer:
         show_skeleton: bool = True,
         line_thickness: int = 2,
         point_radius: int = 4,
+        mask_backview_eyes: bool = True,
+        eye_mask_style: str = "bar",  # "bar" | "mosaic"
     ):
         self.show_hud = show_hud
         self.show_skeleton = show_skeleton
         self.line_thickness = line_thickness
         self.point_radius = point_radius
+        self.mask_backview_eyes = mask_backview_eyes
+        self.eye_mask_style = eye_mask_style
+        self._prev_eye_boxes: List[Tuple[int, int, int, int]] = []
+        self._eye_hold_counter: int = 0
         self._font_mgr = None
 
     @property
@@ -235,6 +241,70 @@ class DualViewRenderer:
 
         return canvas
 
+    def apply_eye_privacy_mask(
+        self,
+        b_img: np.ndarray,
+        detected_boxes: Optional[List[Tuple[int, int, int, int]]] = None,
+    ) -> np.ndarray:
+        """
+        在背面视角 (Mirror view) 上对出现的人脸眼睛区域进行隐私遮挡。
+        支持黑色隐私遮挡条 (bar) 与马赛克 (mosaic)。
+        包含帧间平滑与两帧防闪烁保持机制。
+        """
+        canvas = b_img.copy()
+        h, w = canvas.shape[:2]
+
+        boxes_to_draw: List[Tuple[int, int, int, int]] = []
+        if detected_boxes:
+            # 当前帧检测到眼睛遮挡框
+            current_boxes = list(detected_boxes)
+            # 若上一帧存在对应框，进行 EMA 平滑处理 (alpha=0.7)
+            if self._prev_eye_boxes and len(self._prev_eye_boxes) == len(current_boxes):
+                smoothed = []
+                for (cx1, cy1, cx2, cy2), (px1, py1, px2, py2) in zip(current_boxes, self._prev_eye_boxes):
+                    sx1 = int(round(0.7 * cx1 + 0.3 * px1))
+                    sy1 = int(round(0.7 * cy1 + 0.3 * py1))
+                    sx2 = int(round(0.7 * cx2 + 0.3 * px2))
+                    sy2 = int(round(0.7 * cy2 + 0.3 * py2))
+                    smoothed.append((sx1, sy1, sx2, sy2))
+                boxes_to_draw = smoothed
+            else:
+                boxes_to_draw = current_boxes
+
+            self._prev_eye_boxes = list(boxes_to_draw)
+            self._eye_hold_counter = 2
+        elif self._eye_hold_counter > 0 and self._prev_eye_boxes:
+            # 帧间短暂丢失时的平滑保持 (最多保持 2 帧)
+            self._eye_hold_counter -= 1
+            boxes_to_draw = list(self._prev_eye_boxes)
+        else:
+            self._prev_eye_boxes = []
+            self._eye_hold_counter = 0
+
+        # 绘制隐私遮挡
+        for (x1, y1, x2, y2) in boxes_to_draw:
+            bx1 = max(0, min(w - 1, x1))
+            bx2 = max(0, min(w, x2))
+            by1 = max(0, min(h - 1, y1))
+            by2 = max(0, min(h, y2))
+            if bx2 <= bx1 or by2 <= by1:
+                continue
+
+            if self.eye_mask_style == "mosaic":
+                roi = canvas[by1:by2, bx1:bx2]
+                rw, rh = bx2 - bx1, by2 - by1
+                if rw > 4 and rh > 4:
+                    small = cv2.resize(roi, (max(2, rw // 8), max(2, rh // 4)), interpolation=cv2.INTER_NEAREST)
+                    mosaic = cv2.resize(small, (rw, rh), interpolation=cv2.INTER_NEAREST)
+                    canvas[by1:by2, bx1:bx2] = mosaic
+                    cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (180, 180, 180), 1, cv2.LINE_AA)
+            else:
+                # 经典隐私条 (Solid Charcoal Redaction Bar with subtle 1px border)
+                cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (20, 20, 20), -1)
+                cv2.rectangle(canvas, (bx1, by1), (bx2, by2), (200, 200, 200), 1, cv2.LINE_AA)
+
+        return canvas
+
     def render_dual_frame(
         self,
         dual_frame: DualViewFrame,
@@ -243,13 +313,15 @@ class DualViewRenderer:
         coaching_text: Optional[str] = None,
         ball_trail: Optional[List[Tuple[float, float]]] = None,
         racket_box: Optional[Tuple[float, float, float, float]] = None,
+        mask_back_eyes: Optional[bool] = None,
     ) -> np.ndarray:
         """
         全量渲染单帧双视角画面：
         1. 骨骼绘制
         2. 运动球轨迹拖尾与球拍框绘制（正面视角）
-        3. Side-by-Side 拼接
-        4. 生物力学 HUD 叠加
+        3. 背面机位人脸眼睛隐私遮蔽
+        4. Side-by-Side 拼接
+        5. 生物力学 HUD 叠加
         """
         f_img = dual_frame.front_frame.copy()
         b_img = dual_frame.back_frame.copy()
@@ -305,6 +377,12 @@ class DualViewRenderer:
             f_img = self.draw_skeleton(f_img, pose_result.fused_pose_local, is_back_view=False)
             # 在背面绘制背面视角关键点
             b_img = self.draw_skeleton(b_img, pose_result.back_pose_local, is_back_view=True)
+
+        # 在背面视角画面上叠加人脸眼睛隐私遮挡（在骨骼绘制之后，确保完整遮蔽）
+        should_mask_eyes = self.mask_backview_eyes if mask_back_eyes is None else mask_back_eyes
+        if should_mask_eyes:
+            back_eyes = getattr(pose_result, "back_view_eyes", [])
+            b_img = self.apply_eye_privacy_mask(b_img, back_eyes)
 
         # 拼接左右画面
         sbs = np.hstack([f_img, b_img])

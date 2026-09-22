@@ -250,6 +250,44 @@ class Algo2PipelineIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(out_canvas.shape, (720, 1080, 3))
 
+    def test_backview_eye_privacy_masking(self):
+        """测试背面视角人脸眼睛隐私遮挡机制与防闪烁平滑。"""
+        import numpy as np
+        from dual_view_renderer import DualViewRenderer
+        from dual_pose_estimator import DualPoseEstimator
+
+        renderer = DualViewRenderer(mask_backview_eyes=True, eye_mask_style="bar")
+        b_img = np.full((720, 540, 3), 200, dtype=np.uint8)
+
+        # 1. 模拟眼睛区域并在其上绘制亮色
+        eye_box = (200, 300, 280, 330)
+        # 初始帧应用隐私条
+        masked = renderer.apply_eye_privacy_mask(b_img, [eye_box])
+        # 验证隐私条内部已被覆盖为深灰色 (20, 20, 20)
+        center_pixel = masked[315, 240]
+        self.assertEqual(center_pixel[0], 20)
+        self.assertEqual(center_pixel[1], 20)
+        self.assertEqual(center_pixel[2], 20)
+
+        # 2. 模拟下一帧检测暂时丢失（验证 2 帧保持机制生效）
+        masked_held = renderer.apply_eye_privacy_mask(b_img, [])
+        self.assertEqual(masked_held[315, 240, 0], 20)
+
+        # 3. 验证姿态提取模块对背面人脸眼睛提取与背面朝向过滤
+        estimator = DualPoseEstimator(backend="mock")
+        # 前景人脸（双眼可见）
+        kpts_face = [{"left_eye": (250, 600), "right_eye": (210, 600), "nose": (230, 620)}]
+        boxes = estimator._extract_eye_boxes_from_kpts_list(kpts_face, h=720, w=540)
+        self.assertEqual(len(boxes), 1)
+        bx1, by1, bx2, by2 = boxes[0]
+        self.assertTrue(bx1 < 230 < bx2)
+        self.assertTrue(by1 < 600 < by2)
+
+        # 镜中转身击球背向人像（眼睛不可见，无误遮挡）
+        kpts_back = [{"left_eye": None, "right_eye": None, "nose": None, "left_ear": (250, 300)}]
+        boxes_back = estimator._extract_eye_boxes_from_kpts_list(kpts_back, h=720, w=540)
+        self.assertEqual(len(boxes_back), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

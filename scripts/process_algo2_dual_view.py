@@ -311,13 +311,12 @@ def main():
     snapshot_dir = Path("/Users/krum5539/.gemini/antigravity/brain/853db2fd-bbb9-45de-8209-c65d2189b516/scratch")
     snapshot_dir.mkdir(parents=True, exist_ok=True)
 
-    # 记录待截图保存的关键帧（每个事件的 contact 帧与典型 follow-through 帧，如 197）
-    target_snapshots = set()
+    # 记录待截图保存的关键帧（击球瞬间与人脸隐私遮挡核验帧）
+    target_snapshots = {36, 100, 132, 197, 205}
     for ev in events:
         c_f = ev.get("contact_frame")
         if c_f is not None:
             target_snapshots.add(c_f)
-    target_snapshots.add(197)  # 用户重点关注的第 197 帧
 
     while True:
         ret, frame = cap.read()
