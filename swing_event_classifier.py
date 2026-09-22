@@ -135,6 +135,7 @@ def classify_swing_event(
     event_features: List[Dict],
     two_hand_distance_px: float = 95.0,
     two_hand_min_ratio: float = 0.28,
+    contact_frame: Optional[int] = None,
 ) -> Dict:
     """Classify a complete swing event using event-level evidence.
 
@@ -147,6 +148,16 @@ def classify_swing_event(
             "confidence": 0.0,
             "evidence": {},
         }
+
+    # 若指定了触球帧，严格限定在触球瞬间及之前 (Pre-impact & Contact Window) 进行定性，
+    # 坚决剔除击球后的随挥收拍帧 (Follow-through)，避免正手随挥扫过对侧胸前被误导。
+    if contact_frame is not None:
+        active_features = [
+            f for f in event_features
+            if f.get("frame_id") is None or f["frame_id"] <= contact_frame + 2
+        ]
+        if len(active_features) >= 3:
+            event_features = active_features
 
     label_counts = Counter(f.get("raw_swing_type", "Unknown") for f in event_features)
     swing_label_counts = {k: label_counts.get(k, 0) for k in sorted(SWING_TYPES)}
@@ -168,12 +179,11 @@ def classify_swing_event(
     label_backhand_ratio = backhand_support_ratio
 
     # Dual-view biomechanics evidence (virtual rear camera + front camera fusion)
-    # 结合挥拍动态权重与击球核心窗口双手持续特征
+    # 结合挥拍动态权重与解剖中线跨越法则
     dv_stroke_weights = Counter()
     total_dv_weight = 0.0
     dv_two_handed_weight = 0.0
     dv_two_handed_count = 0
-    dv_bh_types = 0
 
     for f in event_features:
         st = f.get("dual_view_stroke_type")
@@ -184,8 +194,6 @@ def classify_swing_event(
             if f.get("dual_view_is_two_handed") is True:
                 dv_two_handed_count += 1
                 dv_two_handed_weight += w
-            if st in {"Backhand", "Two-Handed Backhand"}:
-                dv_bh_types += 1
 
     dv_evidence_count = sum(
         1
@@ -198,17 +206,7 @@ def classify_swing_event(
         top_stroke, top_weight = dv_stroke_weights.most_common(1)[0]
         dv_ratio = top_weight / max(1.0, total_dv_weight)
 
-        # 核心网球规则：若击球核心区间存在持续双手持拍反拍特征（或双手握拍权重显著），确定为双手反手
-        two_handed_bh_frames = sum(
-            1 for f in event_features if f.get("dual_view_stroke_type") == "Two-Handed Backhand"
-        )
-        if two_handed_bh_frames >= 3 or (
-            dv_bh_types >= 3 and (dv_two_handed_count >= 3 or two_hand_ratio >= 0.30)
-        ):
-            stroke_type = "Two-Handed Backhand"
-            confidence = max(0.92, dv_ratio)
-            decision_rule = "dual_view_two_handed_backhand"
-        elif dv_ratio >= 0.55:
+        if dv_ratio >= 0.55:
             if top_stroke == "Two-Handed Backhand" or (
                 top_stroke == "Backhand"
                 and (

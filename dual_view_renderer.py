@@ -74,6 +74,14 @@ class DualViewRenderer:
         self.show_skeleton = show_skeleton
         self.line_thickness = line_thickness
         self.point_radius = point_radius
+        self._font_mgr = None
+
+    @property
+    def font_mgr(self):
+        if self._font_mgr is None:
+            from font_manager import FontManager
+            self._font_mgr = FontManager()
+        return self._font_mgr
 
     def draw_skeleton(
         self,
@@ -110,6 +118,8 @@ class DualViewRenderer:
         self,
         sbs_canvas: np.ndarray,
         pose_result: DualPoseResult,
+        event_label: Optional[str] = None,
+        coaching_text: Optional[str] = None,
     ) -> np.ndarray:
         """在拼接画面顶部与底部叠加网球动力学生物力学仪表盘。"""
         canvas = sbs_canvas.copy()
@@ -117,9 +127,10 @@ class DualViewRenderer:
         bio = pose_result.biomechanics
         shot = bio.shot_classification
 
-        # 1. 顶部半透明背景条
+        # 1. 顶部半透明背景条 (根据是否有教练建议自适应高度)
+        top_bar_h = 96 if coaching_text else 72
         overlay = canvas.copy()
-        cv2.rectangle(overlay, (0, 0), (w, 70), (20, 20, 20), -1)
+        cv2.rectangle(overlay, (0, 0), (w, top_bar_h), (20, 20, 20), -1)
         # 底部信息条
         cv2.rectangle(overlay, (0, h - 50), (w, h), (20, 20, 20), -1)
         cv2.addWeighted(overlay, 0.65, canvas, 0.35, 0, canvas)
@@ -140,12 +151,23 @@ class DualViewRenderer:
         )
 
         # 3. 击球分类核心指标 (居中显示)
-        shot_color = (0, 255, 255) if shot.is_two_handed else (0, 255, 0)
-        shot_text = f"{shot.shot_type.upper()} ({shot.confidence * 100:.0f}%)"
+        if event_label is not None:
+            shot_text = event_label.upper()
+            if "FOREHAND" in shot_text:
+                shot_color = (0, 255, 128)
+            elif "BACKHAND" in shot_text:
+                shot_color = (0, 215, 255)
+            else:
+                shot_color = (180, 180, 180)
+        else:
+            shot_color = (0, 255, 255) if shot.is_two_handed else (0, 255, 0)
+            shot_text = f"{shot.shot_type.upper()} ({shot.confidence * 100:.0f}%)"
+
+        (text_w, text_h), _ = cv2.getTextSize(shot_text, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)
         cv2.putText(
             canvas,
             shot_text,
-            (w // 2 - 130, 55),
+            ((w - text_w) // 2, 55),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
             shot_color,
@@ -153,7 +175,19 @@ class DualViewRenderer:
             cv2.LINE_AA,
         )
 
-        # 4. 底部生物力学指标详情
+        # 4. 实时智能教练建议 (若提供)
+        if coaching_text:
+            coach_banner = f"COACH: {coaching_text}"
+            canvas = self.font_mgr.put_text_with_font(
+                canvas,
+                coach_banner,
+                (w // 2 - 200, 68),
+                font_scale=0.55,
+                color=(0, 255, 255),
+                thickness=1,
+            )
+
+        # 5. 底部生物力学指标详情
         # 转肩角与 X-Factor
         turn_text = f"Turn: {bio.robust_shoulder_turn_deg:.1f} deg"
         if bio.shoulder_hip_separation_deg is not None:
@@ -181,6 +215,8 @@ class DualViewRenderer:
         self,
         dual_frame: DualViewFrame,
         pose_result: DualPoseResult,
+        event_label: Optional[str] = None,
+        coaching_text: Optional[str] = None,
     ) -> np.ndarray:
         """
         全量渲染单帧双视角画面：
@@ -201,6 +237,6 @@ class DualViewRenderer:
         sbs = np.hstack([f_img, b_img])
 
         if self.show_hud:
-            sbs = self.draw_hud(sbs, pose_result)
+            sbs = self.draw_hud(sbs, pose_result, event_label=event_label, coaching_text=coaching_text)
 
         return sbs

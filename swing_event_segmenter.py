@@ -644,7 +644,10 @@ def _classify_impact_event(
             end_idx,
         ),
     )
-    classification = classify_swing_event(features[core_start : core_end + 1])
+    classification = classify_swing_event(
+        features[core_start : core_end + 1],
+        contact_frame=int(features[contact_idx]["frame_id"]),
+    )
     classification["evidence"]["core_start_frame"] = int(features[core_start]["frame_id"])
     classification["evidence"]["core_end_frame"] = int(features[core_end]["frame_id"])
     classification["evidence"]["classification_anchor_frame"] = int(
