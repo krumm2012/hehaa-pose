@@ -21,6 +21,8 @@ class LocalRealtimeCoach:
         "min_contact_lateral_body_widths": 0.55,
         "min_weight_transfer_body_widths": 0.08,
         "max_balance_drift_body_widths": 0.65,
+        "min_takeback_depth_ratio": 0.35,
+        "min_scapular_retraction_ratio": 0.20,
     }
 
     def __init__(
@@ -330,6 +332,24 @@ class LocalRealtimeCoach:
             "limited_shoulder_turn",
             "提前转肩充分引拍",
             "shoulder_turn",
+            "rotation",
+        )
+        add_low(
+            "takeback_depth",
+            "min_takeback_depth_ratio",
+            85,
+            "limited_takeback_depth",
+            "充分展开后背引拍",
+            "takeback_depth",
+            "preparation",
+        )
+        add_low(
+            "scapular_retraction",
+            "min_scapular_retraction_ratio",
+            83,
+            "limited_scapular_retraction",
+            "转肩蓄力拉开后背",
+            "scapular_retraction",
             "rotation",
         )
         return candidates

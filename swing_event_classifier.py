@@ -166,8 +166,47 @@ def classify_swing_event(
 
     label_forehand_ratio = swing_label_counts.get("Forehand", 0) / total_swing_labels
     label_backhand_ratio = backhand_support_ratio
+
+    # Dual-view biomechanics evidence (virtual rear camera + front camera fusion)
+    dv_strokes = [
+        f.get("dual_view_stroke_type")
+        for f in event_features
+        if f.get("dual_view_stroke_type") in {"Forehand", "Backhand", "Two-Handed Backhand"}
+    ]
+    dv_two_handed_count = sum(
+        1 for f in event_features if f.get("dual_view_is_two_handed") is True
+    )
+    dv_evidence_count = len(dv_strokes)
+
     side = swing_side["side"]
-    if side == "forehand":
+    if dv_evidence_count >= 3:
+        dv_counts = Counter(dv_strokes)
+        top_stroke, top_count = dv_counts.most_common(1)[0]
+        dv_ratio = top_count / dv_evidence_count
+        if dv_ratio >= 0.55:
+            if top_stroke == "Two-Handed Backhand" or (
+                top_stroke == "Backhand"
+                and (
+                    dv_two_handed_count / dv_evidence_count >= 0.35
+                    or two_hand_ratio >= 0.35
+                )
+            ):
+                stroke_type = "Two-Handed Backhand"
+                confidence = max(0.90, dv_ratio)
+                decision_rule = "dual_view_two_handed_backhand"
+            else:
+                stroke_type = top_stroke
+                confidence = max(0.90, dv_ratio)
+                decision_rule = "dual_view_transverse_projection"
+        elif side == "forehand":
+            stroke_type = "Forehand"
+            confidence = float(swing_side["confidence"]) * 0.60 + 0.30
+            decision_rule = "dual_view_fallback_forehand"
+        else:
+            stroke_type = "Backhand"
+            confidence = float(swing_side["confidence"]) * 0.60 + 0.30
+            decision_rule = "dual_view_fallback_backhand"
+    elif side == "forehand":
         stroke_type = "Forehand"
         confidence = (
             float(swing_side["confidence"]) * 0.60
@@ -236,6 +275,10 @@ def classify_swing_event(
                     "two_hand_ratio": round(float(two_hand_ratio), 4),
                     "two_hand_evidence_frames": int(two_hand_evidence_frames),
                 },
+                "dual_view": {
+                    "evidence_frames": int(dv_evidence_count),
+                    "two_handed_frames": int(dv_two_handed_count),
+                } if dv_evidence_count > 0 else None,
                 "decision_rule": decision_rule,
             },
         },

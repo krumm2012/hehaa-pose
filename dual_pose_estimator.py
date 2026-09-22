@@ -77,7 +77,7 @@ class DualPoseEstimator:
         # 1. 尝试 Core ML
         if self.backend in ("auto", "coreml"):
             try:
-                import coremltools as ct
+                from pose_estimator_yolo26 import PoseEstimatorYOLO26
                 candidate_paths = [
                     model_path,
                     "yolo26m-pose.mlpackage",
@@ -86,7 +86,14 @@ class DualPoseEstimator:
                 ]
                 for cp in candidate_paths:
                     if cp and Path(cp).exists():
-                        self.model = ct.models.MLModel(cp)
+                        self.model = PoseEstimatorYOLO26(
+                            cp,
+                            {
+                                "pose_confidence_threshold": self.conf_threshold,
+                                "pose_keypoint_confidence": self.conf_threshold * 0.7,
+                                "pose_smoothing_enabled": False,
+                            },
+                        )
                         self.backend = "coreml"
                         logger.info(f"Loaded CoreML pose model from {cp}")
                         return
@@ -145,18 +152,16 @@ class DualPoseEstimator:
 
         # Core ML 分支
         if self.backend == "coreml":
-            # 将图像预处理为模型所需尺寸进行推理
-            # 根据 yolo26m-pose 规范提取关键点
             try:
-                # 简易通用 CoreML 预测包装
-                import PIL.Image
-                pil_img = PIL.Image.fromarray(cv2.cvtColor(view_frame, cv2.COLOR_BGR2RGB))
-                out = self.model.predict({"image": pil_img})
-                # 解析 CoreML 输出中的 keypoints
-                # 如果是 yolo26 coreml 输出格式：
-                if "keypoints" in out:
-                    raw_kp = out["keypoints"]
-                    return self.biomech_engine.parse_pose_dict(raw_kp)
+                kpts_list = self.model.get_keypoints(view_frame)
+                if not kpts_list:
+                    return {}
+                best = kpts_list[0]
+                parsed = {}
+                for name, pt in best.items():
+                    if pt is not None:
+                        parsed[name] = Keypoint(x=float(pt[0]), y=float(pt[1]), conf=0.85)
+                return parsed
             except Exception as e:
                 logger.debug(f"CoreML prediction exception: {e}")
                 return {}

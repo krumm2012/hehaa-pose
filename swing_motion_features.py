@@ -95,7 +95,7 @@ def extract_motion_features(
     elbow_key = "right_elbow" if dominant_hand == "right" else "left_elbow"
 
     for frame in frames:
-        pose = frame.get("pose") or {}
+        pose = frame.get("healed_pose") or frame.get("pose") or {}
         metrics = frame.get("metrics") or {}
         frame_id = int(frame.get("frame_id", len(features)))
         timestamp = float(frame.get("timestamp", frame_id))
@@ -132,6 +132,27 @@ def extract_motion_features(
         contact_score = 0.0
         if ball_racket_distance is not None:
             contact_score = max(0.0, 1.0 - min(ball_racket_distance, 180.0) / 180.0)
+
+        dv_biomech = frame.get("dual_view_biomechanics") or frame.get("dual_view") or {}
+        robust_turn = None
+        takeback_ratio = None
+        scapular_ratio = None
+        dv_stroke_type = None
+        dv_is_two_handed = None
+        dv_contact_valid = None
+
+        if dv_biomech:
+            st = dv_biomech.get("shoulder_turn") or {}
+            robust_turn = st.get("shoulder_turn_deg")
+            tb = dv_biomech.get("takeback_depth") or {}
+            takeback_ratio = tb.get("takeback_depth_ratio")
+            sc = dv_biomech.get("scapular_retraction") or {}
+            scapular_ratio = sc.get("scapular_retraction_ratio")
+            sc_cls = dv_biomech.get("shot_classification") or {}
+            dv_stroke_type = sc_cls.get("stroke_type")
+            dv_is_two_handed = sc_cls.get("is_two_handed")
+            cd_gate = dv_biomech.get("contact_distance_gate") or {}
+            dv_contact_valid = cd_gate.get("is_valid_contact")
 
         arm_extension = _angle(shoulder, elbow, wrist)
         feature = {
@@ -180,7 +201,23 @@ def extract_motion_features(
                 if arm_extension is not None
                 else _metric(metrics, "swing_motion", "arm_ext")
             ),
-            "shoulder_turn_deg": _metric(metrics, "preparation", "shoulder_turn"),
+            "shoulder_turn_deg": (
+                round(float(robust_turn), 4)
+                if robust_turn is not None
+                else _metric(metrics, "preparation", "shoulder_turn")
+            ),
+            "robust_shoulder_turn_deg": (
+                round(float(robust_turn), 4) if robust_turn is not None else None
+            ),
+            "takeback_depth_ratio": (
+                round(float(takeback_ratio), 4) if takeback_ratio is not None else None
+            ),
+            "scapular_retraction_ratio": (
+                round(float(scapular_ratio), 4) if scapular_ratio is not None else None
+            ),
+            "dual_view_stroke_type": dv_stroke_type,
+            "dual_view_is_two_handed": dv_is_two_handed,
+            "dual_view_contact_valid": dv_contact_valid,
             "hip_shoulder_sep_deg": round(hip_shoulder_sep, 4) if hip_shoulder_sep is not None else _metric(metrics, "power_indicators", "hip_shoulder_sep"),
         }
         features.append(feature)

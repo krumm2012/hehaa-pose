@@ -6,7 +6,10 @@
 
 import cv2
 import time
-import coremltools as ct
+try:
+    import coremltools as ct
+except ModuleNotFoundError:
+    ct = None
 from PIL import Image
 import numpy as np
 

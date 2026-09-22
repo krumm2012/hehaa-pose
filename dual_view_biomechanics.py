@@ -289,28 +289,21 @@ class DualViewBiomechanicsEngine:
         # 投影到轴向量: >0 为偏左肩侧, <0 为偏右肩侧
         side_proj = (rel_x * axis_dx + rel_y * axis_dy) / axis_len
 
-        # 5. 分类逻辑
-        if is_two_handed:
-            # 双手持拍在现代网球中 90%+ 是双手反拍 (Two-Handed Backhand)
+        # 5. 分类逻辑 (结合双手握拍与中线跨越几何)
+        is_backhand_side = (side_proj > 0) if self.dominant_hand == "right" else (side_proj < 0)
+
+        if is_two_handed and is_backhand_side:
+            # 双手持拍且位于反手侧，确认为双手反拍
             shot_type = TWO_HANDED_BACKHAND
             confidence = min(1.0, max(0.65, 1.0 - (wrist_gap / (self.two_handed_max_gap * axis_len))))
+        elif is_backhand_side:
+            # 单手反拍
+            shot_type = BACKHAND
+            confidence = min(1.0, 0.6 + abs(side_proj) / axis_len)
         else:
-            if self.dominant_hand == "right":
-                # 右手选手：手腕在右半身(side_proj < 0)为正手；跨越中线至左半身(side_proj > 0)为反手
-                if side_proj <= 0:
-                    shot_type = FOREHAND
-                    confidence = min(1.0, 0.6 + abs(side_proj) / axis_len)
-                else:
-                    shot_type = BACKHAND
-                    confidence = min(1.0, 0.6 + abs(side_proj) / axis_len)
-            else:
-                # 左手选手镜像对称
-                if side_proj >= 0:
-                    shot_type = FOREHAND
-                    confidence = min(1.0, 0.6 + abs(side_proj) / axis_len)
-                else:
-                    shot_type = BACKHAND
-                    confidence = min(1.0, 0.6 + abs(side_proj) / axis_len)
+            # 正手侧（即便引拍阶段双手扶拍喉，亦属正手引拍准备）
+            shot_type = FOREHAND
+            confidence = min(1.0, 0.6 + abs(side_proj) / axis_len)
 
         return ShotClassificationResult(
             shot_type=shot_type,

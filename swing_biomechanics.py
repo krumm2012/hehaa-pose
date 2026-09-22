@@ -172,6 +172,44 @@ def _shoulder_turn_change_metric(
     )
 
 
+def _event_peak_or_median_feature(
+    features_by_frame: Dict[int, Dict],
+    start_frame: int,
+    end_frame: int,
+    key: str,
+    pose_ratio: float,
+    unit: str = "ratio",
+    use_max: bool = True,
+    confidence_cap: float = 0.90,
+    coach_eligible: bool = True,
+    observability: str = "dual_view_mirror_projection",
+) -> Dict:
+    samples = [
+        (int(row["frame_id"]), float(row[key]))
+        for frame_id, row in features_by_frame.items()
+        if start_frame <= frame_id <= end_frame and row.get(key) is not None
+    ]
+    if not samples:
+        return _metric(None, unit, 0.0, [], 0, observability=observability, coach_eligible=False)
+    coverage = len(samples) / max(1, end_frame - start_frame + 1)
+    if use_max:
+        source_frame, value = max(samples, key=lambda s: s[1])
+        source_frames = [source_frame]
+    else:
+        value = median(v for _, v in samples)
+        source_frames = [f for f, _ in samples]
+    confidence = min(confidence_cap, pose_ratio * 0.65 + coverage * 0.35)
+    return _metric(
+        value,
+        unit,
+        confidence,
+        source_frames,
+        len(samples),
+        observability=observability,
+        coach_eligible=coach_eligible,
+    )
+
+
 def _joint_angle(a: Optional[Point], b: Optional[Point], c: Optional[Point]) -> Optional[float]:
     if a is None or b is None or c is None:
         return None
@@ -420,8 +458,65 @@ def aggregate_event_biomechanics(
         end_frame,
     )
 
+    has_robust_turn = any(
+        row.get("robust_shoulder_turn_deg") is not None
+        for row in features_in_event
+    )
+    has_dual_view = has_robust_turn or any(
+        row.get("takeback_depth_ratio") is not None
+        for row in features_in_event
+    )
+
+    if has_robust_turn:
+        shoulder_turn_metric = _median_feature_metric(
+            features_by_frame,
+            contact_frame,
+            "robust_shoulder_turn_deg",
+            pose_ratio,
+            unit="deg_360",
+            confidence_cap=0.88,
+            coach_eligible=True,
+            observability="dual_view_anti_collapse",
+        )
+    else:
+        shoulder_turn_metric = _median_feature_metric(
+            features_by_frame,
+            contact_frame,
+            "shoulder_turn_deg",
+            pose_ratio,
+            unit="image_plane_deg",
+            confidence_cap=0.45,
+            coach_eligible=False,
+            observability="absolute_image_orientation_only",
+            exclusion_reason="absolute_projection_is_not_turn_magnitude",
+        )
+
+    takeback_depth_metric = _event_peak_or_median_feature(
+        features_by_frame,
+        start_frame,
+        contact_frame,
+        "takeback_depth_ratio",
+        pose_ratio,
+        unit="ratio",
+        use_max=True,
+        coach_eligible=True,
+        observability="dual_view_mirror_projection",
+    )
+
+    scapular_retraction_metric = _event_peak_or_median_feature(
+        features_by_frame,
+        start_frame,
+        contact_frame,
+        "scapular_retraction_ratio",
+        pose_ratio,
+        unit="ratio",
+        use_max=True,
+        coach_eligible=True,
+        observability="dual_view_mirror_projection",
+    )
+
     return {
-        "schema_version": "single_view_2d_v2",
+        "schema_version": "dual_view_2d_v1" if has_dual_view else "single_view_2d_v2",
         "coordinate_space": "image_plane_normalized_by_body_width",
         "contact_frame": contact_frame,
         "reference_body_width_px": (
@@ -445,17 +540,7 @@ def aggregate_event_biomechanics(
                 observability="image_plane_proxy_only",
                 exclusion_reason="true_3d_separation_not_observable_single_view",
             ),
-            "shoulder_turn": _median_feature_metric(
-                features_by_frame,
-                contact_frame,
-                "shoulder_turn_deg",
-                pose_ratio,
-                unit="image_plane_deg",
-                confidence_cap=0.45,
-                coach_eligible=False,
-                observability="absolute_image_orientation_only",
-                exclusion_reason="absolute_projection_is_not_turn_magnitude",
-            ),
+            "shoulder_turn": shoulder_turn_metric,
             "shoulder_turn_change": _shoulder_turn_change_metric(
                 features_by_frame,
                 start_frame,
@@ -500,6 +585,8 @@ def aggregate_event_biomechanics(
                 pose_ratio,
                 "body_center_translation_is_not_balance_stability",
             ),
+            "takeback_depth": takeback_depth_metric,
+            "scapular_retraction": scapular_retraction_metric,
         },
         "quality": {
             "pose_frame_ratio": round(pose_ratio, 4),
