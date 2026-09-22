@@ -30,6 +30,10 @@ class StaticBallFilter:
         self.hard_mask_allow_near_racket = bool(config.get("static_ball_hard_mask_allow_near_racket", False))
         self._frame_idx = 0
         self._anchors: Dict[str, Dict] = {}
+        self.stationary_radius = (
+            max(1.0, float(config.get("static_ball_movement_threshold_px", 6.0)))
+            if config.get("active_ball_motion_filter_enabled", False) else None
+        )
 
     @staticmethod
     def _distance(a: Sequence[float], b: Sequence[float]) -> float:
@@ -62,9 +66,17 @@ class StaticBallFilter:
             if anchor is None:
                 self._anchors[self._new_key(pos)] = {
                     "center": [float(pos[0]), float(pos[1])],
+                    "origin": [float(pos[0]), float(pos[1])],
                     "hits": 1,
                     "last_seen": self._frame_idx,
                 }
+                continue
+
+            # Multiple detections of the same ball in one frame count as one observation.
+            if anchor["last_seen"] == self._frame_idx:
+                continue
+            if self.stationary_radius is not None and self._distance(anchor.get("origin", anchor["center"]), pos) > self.stationary_radius:
+                anchor.update(center=list(pos), origin=list(pos), hits=1, last_seen=self._frame_idx)
                 continue
 
             # Smooth center to absorb small detection jitter.
@@ -77,6 +89,17 @@ class StaticBallFilter:
             k: v
             for k, v in self._anchors.items()
             if (self._frame_idx - int(v.get("last_seen", self._frame_idx))) <= self.decay_frames
+        }
+
+    def remember_static(self, position: Sequence[float], observed_frames: int) -> None:
+        """Promote a selected track only after the caller verified sustained immobility."""
+        if not self.enabled:
+            return
+        self._anchors[self._new_key(position)] = {
+            "center": [float(position[0]), float(position[1])],
+            "origin": [float(position[0]), float(position[1])],
+            "hits": max(self.hard_mask_min_seen_frames, observed_frames),
+            "last_seen": self._frame_idx,
         }
 
     def penalty(

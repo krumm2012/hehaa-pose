@@ -132,6 +132,11 @@ class YOLO26nUnifiedDetector:
         """
         # 保存原始尺寸
         self.original_height, self.original_width = frame.shape[:2]
+        self.tracking_frame_width = (
+            int(full_frame_size[0])
+            if full_frame_size is not None
+            else self.original_width
+        )
         self.tracking_frame_height = (
             int(full_frame_size[1])
             if full_frame_size is not None
@@ -479,6 +484,7 @@ class YOLO26nUnifiedDetector:
         selection = self.ball_track_selector.select(
             ball_detections,
             racket_detections=racket_detections,
+            frame_width=getattr(self, "tracking_frame_width", getattr(self, "original_width", None)),
             frame_height=getattr(
                 self,
                 "tracking_frame_height",

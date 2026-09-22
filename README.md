@@ -1,5 +1,13 @@
 # Tennis Analyzer
 
+## 设计、需求与运维文档
+
+- [系统设计与算法流程](docs/SYSTEM_DESIGN.md)：进程架构、模型、事件与 Coach 算法、前后端接口及数据闭环。
+- [需求与验收基线](docs/REQUIREMENTS_BASELINE.md)：现有功能、验收边界和待优化事项。
+- [本地运行与运维手册](docs/OPERATIONS.md)：启动、停止、校准、故障排查、证据重放和回退。
+
+以上文档于 2026-09-16 按代码核对；旧架构图保留为历史资料。
+
 `tennis_analyzer` 是一个面向网球训练视频的本地分析项目，重点能力是从单机位视频中提取人体姿态、网球、球拍、挥拍事件和面向 AI 网球教练的数据。当前主线分支是 `new`，已同步到远端 `origin-paused/new`。
 
 ## 系统架构
@@ -64,7 +72,7 @@ flowchart LR
 ## 当前能力
 
 - `main_pipe.py`：多进程视频检测流水线，生成标注视频、逐帧 JSON 和诊断 JSON。
-- `yolo26n_unified_detector.py`：统一检测人、球、球拍，包含静止球抑制、镜中球过滤、轨迹连续性和球拍候选重排序。
+- `yolo26n_unified_detector.py`：当前 exp004 配置检测球、球拍，包含静止球抑制、镜中球过滤、轨迹连续性和球拍候选重排序；人体姿态由独立 Pose 模型处理。
 - `overlay_marker_recovery.py`：二次分析视频中恢复本程序绘制的空心球圈和球拍框，保留 `overlay_*` 来源并继续经过原有轨迹筛选。
 - `pose_estimator_yolo26.py`：YOLO26 pose 检测，支持 Core ML / ANE，并加入 pose 时序平滑以减少骨骼节点跳动。
 - `swing_event_analyzer.py`：把逐帧检测结果聚合成事件级挥拍，输出 `start/contact/peak/end/stroke_type/confidence/quality_flags`。
@@ -182,14 +190,18 @@ ROI 预览约每秒更新，并保留 3 秒一次的页面兜底刷新。点击�
 ### 本地 Coach 语音播报（Qwen3-TTS / MLX）
 
 在 Apple Silicon Mac 上，可选用 Qwen3-TTS 的 MLX 0.6B Base 模型播报本地 Coach 建议。
-语音合成、WAV 写入与扬声器播放都在单独旁路线程串行执行：模型首次加载或下载、TTS
-失败、播放失败均不会阻塞挥拍检测或影响文字 Coach。Qwen3-TTS 使用流式生成，默认约每
-0.32 秒产出一段音频；首段到达后由 MLX worker 直接写入本机音频流，而完整 WAV 会继续
+语音请求在旁路串行处理，MLX worker 内的音频生成和播放由独立线程协作。模型加载、TTS
+失败、播放失败均保留文字 Coach。Qwen3-TTS 使用流式生成，默认目标分段时长为
+0.32 秒；满足预缓冲后由独立播放器持续写入本机音频流，而完整 WAV 会继续
 写入报告同目录的 `*_coach_audio/swing_XXX_coach.wav`。事件卡片同时提供可手动播放的
 音频控件；若流式音频设备不可用，系统退回在完整 WAV 后使用 `afplay` 播放。
 
 为避免推理或设备抖动导致断音，流式播放默认先预缓冲两段音频（约 0.64 秒）再开始；
 `realtime_swing.coach_tts.streaming_prebuffer_chunks` 可调高以优先连续性，或调低以优先首声延迟。
+
+首请求等待上限默认 120 秒，后续请求 30 秒，对应 `startup_timeout_seconds` 和
+`request_timeout_seconds`；停止会话会取消未完成播报。音频状态记录 `first_audio_ms`、
+`audio_underflows` 与 `playback_error`。MLX-Audio 已固定到本机生成验证通过的 Git commit。
 
 由于现有视频管线使用 Python 3.9，而当前 MLX-Audio 的 Qwen3-TTS 适配器要求 Python
 3.10+，语音模块运行在独立的 `venv_qwen3_tts` 进程。首次安装和下载模型：
@@ -243,6 +255,23 @@ Coach 门控按证据域授权，不再把局部识别警告升级为整次挥�
 接口格式参考 [DeepSeek Chat Completion 官方文档](https://api-docs.deepseek.com/api/create-chat-completion)。
 
 ## 本地 ROI / Pipeline 控制台
+
+摄像头凭据可在项目根目录 `.camera-credentials.local.env` 配置一次：
+
+```dotenv
+TENNIS_RTSP_USERNAME='admin'
+TENNIS_RTSP_PASSWORD='填写摄像头密码'
+```
+
+模板见 [configs/camera-credentials.env.example](configs/camera-credentials.env.example)。
+修改后重启控制面板，页面用户名和密码留空即可自动使用。多个通道可分别配置
+`TENNIS_CAMERA_COURT01_MAIN_USERNAME` / `TENNIS_CAMERA_COURT01_MAIN_PASSWORD`，
+Court 02、03 分别改为 `COURT02_MAIN`、`COURT03_MAIN`。变量名来自 ROI 的 `stream_id`，
+转大写并将连字符替换为下划线。优先级为页面完整凭据、对应通道凭据、通用凭据；
+同一变量优先使用已有环境变量。通道用户名留空时使用通用值，填写通道用户名后应填写对应密码。
+自定义流地址匹配已有通道时复用该通道配置，其他地址使用通用值。
+文件保存明文凭据，已排除在 Git 之外；建议权限为 `chmod 600 .camera-credentials.local.env`。
+后端只向页面返回配置状态，不返回文件中的密码。
 
 本地控制台可选择 Court 01–03、预览当前 ROI、调整实时分析参数，并安全启动或停止
 `main_pipe.py`。服务只监听本机回环地址，RTSP 密码不会返回前端，也不会出现在
@@ -571,7 +600,7 @@ configs/yolo26_tennis_config.yaml
 
 当前关键策略：
 
-- 默认检测模型：`tennis-yolo26n-exp004-960-fp16`（统一检测人、球、球拍）。
+- 默认检测模型：`tennis-yolo26n-exp004-960-fp16`（球、球拍两类检测；人体姿态由独立 Pose 模型处理）。
 - 备选检测模型：`tennis-yolo26m-exp005-960-fp16` 已完成 Core ML 接口兼容验证，
   但数据集尚未冻结、球拍召回与完整流水线性能仍未达标；仅可通过
   `configs/yolo26_tennis_exp005_candidate.yaml` 显式试用，不能替换默认配置。
@@ -581,6 +610,8 @@ configs/yolo26_tennis_config.yaml
 - 本地语音：默认关闭；启用后使用 `Qwen3-TTS-12Hz-0.6B-Base-bf16`（MLX），音频只保存在
   会话目录的 `*_coach_audio/`，无需网络 API Key。
 - 静止球：启用静止球时序抑制和 hard mask。
+- 运动主球过滤：`active_ball_motion_filter_enabled` 默认在生产配置开启。已选球连续 8 次观测停在约 6 px 范围内且远离球拍时解除锁定并学习为静止锚点；静止锚点附近仅凭距离近不再直接放行，需要速度预测支持。无预测支持的大幅跳转会暂时拒绝，短暂漏检保留原重捕获窗口。
+- 静止锚点同帧重复框只计一次；启用运动过滤后，持续位置漂移会重置静止计数。阈值为原图像素/处理帧尺度，跨分辨率与机位仍需验证；不能仅凭单张截图判断真实球的运动轨迹。
 - 轨迹：启用球连续性、速度预测和镜中球弱惩罚。
 
 ## 测试
@@ -597,7 +628,7 @@ python3 -m unittest -v \
   test_swing_evaluation.py
 ```
 
-当前最近一次验证：41 个相关测试通过。
+2026-08-26 上述组合验证：54 项测试通过。后续针对运行时、控制面板、校准与旁路的 62 项回归记录见 [需求基线](docs/REQUIREMENTS_BASELINE.md)，两者测试集合不同。
 
 ## Git 状态说明
 
@@ -608,7 +639,7 @@ python3 -m unittest -v \
 - `.gitignore` 全局忽略 `*.mp4`，因此原始视频、标注视频和挥拍片段不应提交到 Git；请通过
   本地路径、对象存储或可重放证据清单共享视频。
 - 可提交的分析快照包括配置、事件/评估 JSON、CSV、HTML 报告、模型 manifest 与兼容性报告。
-  Core ML `*.mlpackage` 二进制包同样保持忽略，需按部署流程单独分发。
+  新的 Core ML `*.mlpackage` 默认被忽略，但 exp004 和部分 Pose 包已受 Git 跟踪；忽略规则不会移除这些既有文件，部署前需核对实际模型清单。
 - Qwen3-TTS 的下载模型缓存和运行生成的 `*_coach_audio/` WAV 都属于本地运行产物，不应提交。
 
 ## 已知限制
@@ -627,3 +658,11 @@ python3 -m unittest -v \
 5. 用冻结的盲测集完成 exp005 的 1500 帧产品回归，再决定是否提升为默认小球/球拍模型。
 
 最后更新：2026-08-05
+# 控制面板：本地视频分析
+
+启动或重启 `venv_yolo26/bin/python local_control_panel.py`，打开 http://127.0.0.1:8765。
+在“球场码流”选择“本地视频文件”，选择视频，等待上传就绪后点击刷新预览或启动分析。
+支持 MP4/MOV/MKV/AVI/WebM/M4V（实际需本机解码器支持），单文件最大 2 GB。
+视频使用现有球/球拍检测、挥拍事件和 Coach 链路；强制关闭直播丢帧与摄像头 ROI，按视频完整处理。
+上传文件仅存储在本机 `data/control_uploads/`，已排除 Git；不会自动清理，可在分析结束后手动删除。
+刷新页面后需重新选择文件；摄像头及自定义码流入口保留不变。

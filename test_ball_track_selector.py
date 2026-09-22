@@ -11,6 +11,51 @@ from yolo26n_unified_detector import YOLO26nUnifiedDetector
 class BallTrackSelectorTests(unittest.TestCase):
     """Verify Active Ball selection through the public track-selection seams."""
 
+    def test_motion_filter_releases_ground_ball_and_selects_moving_ball(self):
+        selector = BallTrackSelector({"active_ball_motion_filter_enabled": True})
+        ground = {"position": [300, 600], "confidence": 0.99}
+        for _ in range(8):
+            selector.select([ground])
+        result = selector.select([ground, {"position": [500, 400], "confidence": 0.75}])
+        self.assertEqual(result.active_ball["position"], [500, 400])
+        self.assertEqual(result.diagnostics["rejections"]["track_became_static"], 1)
+
+    def test_motion_filter_preserves_moving_ball_crossing_static_anchor(self):
+        selector = BallTrackSelector({"active_ball_motion_filter_enabled": True})
+        selector.static_ball_filter.remember_static([160, 300], 8)
+        for x in (100, 120, 140, 160, 180):
+            result = selector.select([{"position": [x, 300], "confidence": 0.9}])
+            self.assertIsNotNone(result.active_ball)
+            self.assertEqual(result.active_ball["position"], [x, 300])
+
+    def test_motion_filter_does_not_jump_to_distant_ground_ball(self):
+        selector = BallTrackSelector({"active_ball_motion_filter_enabled": True})
+        for x in (100, 120):
+            selector.select([{"position": [x, 300], "confidence": 0.9}])
+        result = selector.select([{"position": [700, 600], "confidence": 0.99}])
+        self.assertIsNone(result.active_ball)
+        self.assertEqual(result.diagnostics["rejections"]["implausible_jump"], 1)
+        recovered = selector.select([{"position": [160, 300], "confidence": 0.8}])
+        self.assertEqual(recovered.active_ball["position"], [160, 300])
+
+    def test_motion_filter_keeps_ball_held_near_racket(self):
+        selector = BallTrackSelector({"active_ball_motion_filter_enabled": True})
+        for _ in range(16):
+            result = selector.select([{"position": [300, 400], "confidence": 0.9}],
+                [{"box": [280, 380, 320, 420], "confidence": 0.9}])
+            self.assertIsNotNone(result.active_ball)
+
+    def test_duplicate_boxes_do_not_create_static_anchor_in_one_frame(self):
+        filter_ = StaticBallFilter({"static_ball_min_seen_frames": 3, "static_ball_hard_mask_min_seen_frames": 3})
+        filter_.update([[100, 100]] * 20)
+        self.assertFalse(filter_.should_mask([100, 100]))
+
+    def test_slow_drift_is_not_learned_as_stationary(self):
+        filter_ = StaticBallFilter({"active_ball_motion_filter_enabled": True})
+        for x in range(100, 170, 4):
+            filter_.update([[x, 300]])
+            self.assertFalse(filter_.should_mask([x, 300]))
+
     def test_continuous_active_ball_beats_a_persistent_static_candidate(self) -> None:
         """Prefer a continuous Active Ball over a persistent static candidate."""
         selector = BallTrackSelector(

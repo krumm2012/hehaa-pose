@@ -353,6 +353,9 @@ class RealtimeSwingEventEngine:
                 "swing_event_count": len(self._events),
                 "swing_event_type_counts": dict(sorted(type_counts.items())),
                 "thresholds": dict(self.options),
+                "coach_configuration": (
+                    self.coach.configuration() if self.coach is not None else None
+                ),
                 "realtime": True,
                 "settle_frames": self.settle_frames,
                 "analysis_interval_frames": self.analysis_interval_frames,
@@ -538,7 +541,8 @@ class RealtimeSwingOutputManager:
         self._events: List[Dict] = []
         self._buffer_condition = threading.Condition()
         self._output_lock = threading.Lock()
-        self._output_queue: queue.Queue = queue.Queue()
+        from latest_snapshot_queue import LatestSnapshotQueue
+        self._output_queue = LatestSnapshotQueue()
         self._output_sentinel = object()
         self._output_worker_error: Optional[BaseException] = None
         raw_frame_bytes = max(1, source_width * source_height * 3)
@@ -563,7 +567,6 @@ class RealtimeSwingOutputManager:
             max_workers=max(1, int(clip_workers)),
             thread_name_prefix="swing-clip",
         )
-        self._futures: List[Future] = []
         self.output_json.parent.mkdir(parents=True, exist_ok=True)
         self.output_html.parent.mkdir(parents=True, exist_ok=True)
         self.clips_dir.mkdir(parents=True, exist_ok=True)
@@ -707,9 +710,6 @@ class RealtimeSwingOutputManager:
                     event_id,
                     completed,
                 )
-            )
-            self._futures.append(
-                future
             )
 
     def update_event(self, event_id: int, patch: Dict) -> bool:
@@ -952,7 +952,12 @@ class RealtimeSwingOutputManager:
         )
 
     def _queue_live_outputs(self, document: Dict) -> None:
-        self._output_queue.put(deepcopy(document))
+        self.check_health()
+        self._output_queue.publish(deepcopy(document))
+
+    def check_health(self) -> None:
+        if self._output_worker_error is not None:
+            raise RuntimeError("Realtime Swing JSON/HTML writer failed") from self._output_worker_error
 
     def _write_outputs_loop(self) -> None:
         while True:
@@ -1282,6 +1287,11 @@ class RealtimeSwingOutputManager:
                 deepseek_content = (
                     '<div class="deepseek-advice pending"><span>DeepSeek旁路</span>'
                     '<strong>分析中…</strong></div>'
+                )
+            elif deepseek_status == "skipped":
+                deepseek_content = (
+                    '<div class="deepseek-advice unavailable"><span>DeepSeek旁路</span>'
+                    '<small>本次已跳过，本地建议继续生效</small></div>'
                 )
             elif deepseek_status in {"failed", "unavailable"}:
                 deepseek_content = (

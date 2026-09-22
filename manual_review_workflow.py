@@ -26,6 +26,8 @@ from swing_session_quality import build_session_quality_dashboard
 
 
 MAX_ANNOTATION_BYTES = 5 * 1024 * 1024
+# Serialize review publication across HTTP handler threads in this process.
+_REVIEW_LOCK = threading.RLock()
 VALID_STROKE_TYPES = {
     "Forehand",
     "Backhand",
@@ -186,6 +188,10 @@ def validate_manual_annotations(
             raise ValueError(
                 f"标注 {annotation_id} 超出逐帧证据范围 {min_frame}-{max_frame}"
             )
+        if annotation.get("valid_hit", True) and not any(
+            start <= frame_id <= end for frame_id in frame_ids
+        ):
+            raise ValueError(f"标注 {annotation_id} 区间内没有逐帧证据，无法重算 Coach")
         stroke_type = str(annotation.get("actual_stroke_type") or "Unclear")
         if stroke_type not in VALID_STROKE_TYPES:
             raise ValueError(f"标注 {annotation_id} 的挥拍类型不支持: {stroke_type}")
@@ -239,13 +245,16 @@ def derive_manual_coach_events(
     annotation_document: Dict,
     frame_records: List[Dict],
 ) -> Dict:
-    features = extract_motion_features(frame_records)
+    summary = event_document.get("summary") or {}
+    dominant_hand = (summary.get("thresholds") or {}).get("dominant_hand", "right")
+    coach_configuration = summary.get("coach_configuration")
+    features = extract_motion_features(frame_records, dominant_hand=dominant_hand)
     model_by_id = {
         int(event["event_id"]): event
         for event in event_document.get("events") or []
         if event.get("event_id") is not None
     }
-    coach = LocalRealtimeCoach()
+    coach = LocalRealtimeCoach(**(coach_configuration or {}))
     annotation_hash = _sha256_json(annotation_document)
     manual_events = []
 
@@ -280,6 +289,9 @@ def derive_manual_coach_events(
         event["coach_advices"] = advices
         event["coach_advice"] = advices[0]
         event["review_provenance"] = {
+            "dominant_hand": dominant_hand,
+            "coach_configuration": coach.configuration(),
+            "configuration_source": "session" if coach_configuration is not None else "legacy_defaults",
             "mode": "manual_recomputed",
             "annotation_id": annotation.get("annotation_id"),
             "source_event_id": event.get("source_event_id"),
@@ -340,6 +352,11 @@ def _comparison_rows(event_document: Dict, manual_document: Optional[Dict]) -> L
 
 
 def process_manual_review(paths: Dict[str, Path], annotation_document: Dict) -> Dict:
+    with _REVIEW_LOCK:
+        return _process_manual_review(paths, annotation_document)
+
+
+def _process_manual_review(paths: Dict[str, Path], annotation_document: Dict) -> Dict:
     event_document = _load_json(paths["events"])
     frame_records = _load_jsonl(paths["frames"])
     validation = validate_manual_annotations(
@@ -348,12 +365,10 @@ def process_manual_review(paths: Dict[str, Path], annotation_document: Dict) -> 
         frame_records,
         event_path=paths["events"],
     )
-    _atomic_json(paths["annotations"], annotation_document)
 
     evaluation = evaluate_swing_events(event_document, annotation_document)
     evaluation.setdefault("source", {})["event_json"] = str(paths["events"])
     evaluation["source"]["annotation_json"] = str(paths["annotations"])
-    _atomic_json(paths["evaluation"], evaluation)
 
     manual_document = None
     if validation["metrics_finalizable"]:
@@ -362,7 +377,6 @@ def process_manual_review(paths: Dict[str, Path], annotation_document: Dict) -> 
             annotation_document,
             frame_records,
         )
-        _atomic_json(paths["manual_events"], manual_document)
 
     state = {
         "schema_version": "tennis.manual-review-state.v1",
@@ -376,6 +390,11 @@ def process_manual_review(paths: Dict[str, Path], annotation_document: Dict) -> 
             if key not in {"session_dir"}
         },
     }
+    # Complete validation and all derived calculations before replacing artifacts.
+    _atomic_json(paths["annotations"], annotation_document)
+    _atomic_json(paths["evaluation"], evaluation)
+    if manual_document is not None:
+        _atomic_json(paths["manual_events"], manual_document)
     _atomic_json(paths["state"], state)
     return state
 

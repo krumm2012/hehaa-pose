@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 import numpy as np
 
 from ball_candidate_selector import select_ball_candidate
+from mirror_ball_filter import MirrorBallFilter
 from racket_candidate_selector import racket_center
 from static_ball_filter import StaticBallFilter
 
@@ -32,6 +33,7 @@ class BallTrackSelector:
         self.config = dict(config or {})
         self.ball_history = deque(maxlen=10)
         self.static_ball_filter = StaticBallFilter(self.config)
+        self.mirror_ball_filter = MirrorBallFilter(self.config.get("mirror_ball_filter"))
         self.static_threshold = float(self.config.get("static_ball_movement_threshold_px", 6.0))
         self.reacquisition_frames = max(
             0,
@@ -43,16 +45,20 @@ class BallTrackSelector:
             ),
         )
         self.missed_frames = 0
+        self.motion_filter = bool(self.config.get("active_ball_motion_filter_enabled", False))
+        self.stationary_frames = max(3, min(10, int(self.config.get("active_ball_stationary_frames", 8))))
 
     def select(
         self,
         ball_detections: Iterable[Detection],
         racket_detections: Optional[Iterable[Detection]] = None,
         frame_height: Optional[float] = None,
+        frame_width: Optional[float] = None,
     ) -> BallTrackSelection:
         """Select the Active Ball and retain compatibility diagnostics."""
         candidates = [det for det in ball_detections or [] if isinstance(det, dict)]
         diagnostics = self._diagnostics(len(candidates))
+        diagnostics["mirror_filter"] = {"mode": self.mirror_ball_filter.mode, "candidates": []}
         if not candidates:
             self._record_miss()
             self.static_ball_filter.update([])
@@ -77,6 +83,17 @@ class BallTrackSelector:
             if center is not None
         ]
 
+        if self.motion_filter and len(self.ball_history) >= self.stationary_frames:
+            recent = list(self.ball_history)[-self.stationary_frames:]
+            if (max(self._distance(point, recent[0]) for point in recent) <= self.static_threshold
+                    and not self._near_any(recent[-1], racket_centers, 50.0)):
+                self.static_ball_filter.remember_static(recent[-1], self.stationary_frames)
+                self.ball_history.clear()
+                previous_position, previous_velocity = None, None
+                diagnostics["continuity_enabled"] = False
+                diagnostics["continuity_disabled_reason"] = "track_became_static"
+                diagnostics["rejections"]["track_became_static"] += 1
+
         adjusted_candidates: List[Dict] = []
         for candidate in candidates:
             pos = candidate.get("position")
@@ -88,6 +105,45 @@ class BallTrackSelector:
                 near_prev_threshold,
             )
             near_racket = self._near_any(pos, racket_centers, near_racket_threshold)
+            mirror = self.mirror_ball_filter.assess(
+                candidate,
+                frame_width=frame_width,
+                frame_height=frame_height,
+                previous_position=previous_position,
+                previous_velocity=previous_velocity,
+                missed_frames=self.missed_frames,
+                continuity_distance=near_prev_threshold,
+                prediction_distance=float(self.config.get("ball_velocity_prediction_distance_px", 120.0)),
+                racket_centers=racket_centers,
+                racket_distance=min(near_racket_threshold, float(frame_height or 0) * 0.06),
+            )
+            if self.mirror_ball_filter.mode != "off":
+                diagnostics["mirror_filter"]["candidates"].append({"position": list(pos), **mirror})
+            if mirror["rejected"]:
+                diagnostics["rejections"]["small_mirror_unsupported"] += 1
+                diagnostics["top_candidates"].append(
+                    self._candidate_diagnostic(candidate, 0.0, True, near_prev, near_racket,
+                                               "small_mirror_unsupported")
+                )
+                continue
+            if self.motion_filter:
+                speed = self._distance(previous_velocity, (0, 0)) if previous_velocity is not None else 0.0
+                predicted = (
+                    [previous_position[i] + previous_velocity[i] * (self.missed_frames + 1) for i in (0, 1)]
+                    if previous_position is not None and previous_velocity is not None else previous_position
+                )
+                moving_support = bool(
+                    predicted is not None and speed >= self.static_threshold
+                    and self._distance(pos, previous_position) >= self.static_threshold
+                    and self._distance(pos, predicted) <= max(40.0, speed * 0.8) * (1 + 0.25 * self.missed_frames)
+                )
+                if previous_position is not None and not moving_support and self._distance(pos, previous_position) > max(
+                    float(self.config.get("active_ball_max_jump_px", 180)), speed * 1.5
+                ):
+                    diagnostics["rejections"]["implausible_jump"] += 1
+                    continue
+                # Proximity alone is not trajectory evidence for an established static anchor.
+                near_prev = moving_support
             if not near_prev and self.static_ball_filter.should_mask(
                 pos,
                 near_previous_track=False,
@@ -114,6 +170,8 @@ class BallTrackSelector:
             adjusted = dict(candidate)
             adjusted["confidence"] = max(0.0, float(candidate.get("confidence", 0.0)) - penalty)
             adjusted["static_penalty"] = float(penalty)
+            if self.motion_filter:
+                adjusted["motion_supported"] = near_prev
             adjusted_candidates.append(adjusted)
             diagnostics["top_candidates"].append(
                 self._candidate_diagnostic(
@@ -137,6 +195,8 @@ class BallTrackSelector:
                 near_prev_threshold,
             )
         ]
+        if self.motion_filter:
+            supported_candidates = [candidate for candidate in adjusted_candidates if candidate.get("motion_supported")]
         selection_candidates = supported_candidates or adjusted_candidates
         best_ball = select_ball_candidate(
             selection_candidates,
@@ -292,6 +352,8 @@ class BallTrackSelector:
                 "low_conf_unsupported": 0,
                 "upper_mirror_unsupported": 0,
                 "track_became_static": 0,
+                "implausible_jump": 0,
+                "small_mirror_unsupported": 0,
             },
             "selected": None,
             "final_decision": "no_candidates",

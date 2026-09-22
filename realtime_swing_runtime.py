@@ -186,7 +186,7 @@ class RealtimeSwingRuntime:
                 f" | {result['message']}"
                 f" | {int(result.get('latency_ms') or 0)}ms"
             )
-        elif result.get("status") in {"failed", "unavailable"}:
+        elif result.get("status") in {"failed", "unavailable", "skipped"}:
             self.logger(
                 f"⚠️ [DeepSeek] Swing #{event_id}"
                 f" | {result.get('status')}"
@@ -205,5 +205,7 @@ class RealtimeSwingRuntime:
                 self.stop_event.set()
 
     def _raise_if_failed(self) -> None:
+        if self.output is not None and hasattr(self.output, "check_health"):
+            self.output.check_health()
         if self._worker_error is not None:
             raise RuntimeError("Realtime Swing data runtime failed") from self._worker_error

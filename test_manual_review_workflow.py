@@ -1,6 +1,7 @@
 import hashlib
 import json
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -101,6 +102,43 @@ def _annotations(needs_review: bool):
 
 
 class ManualReviewWorkflowTests(unittest.TestCase):
+    def test_rejects_empty_evidence_interval(self):
+        annotations = _annotations(False)
+        with self.assertRaisesRegex(ValueError, "没有逐帧证据"):
+            validate_manual_annotations(_event_document(), annotations, [_frame(0), _frame(19)])
+
+    def test_recomputation_error_preserves_previous_artifacts(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_session(root)
+            paths = discover_session_paths(root)
+            process_manual_review(paths, _annotations(False))
+            keys = ("annotations", "evaluation", "manual_events", "state")
+            before = {key: paths[key].read_bytes() for key in keys}
+            with patch("manual_review_workflow.derive_manual_coach_events", side_effect=ValueError("failed")):
+                with self.assertRaisesRegex(ValueError, "failed"):
+                    process_manual_review(paths, _annotations(False))
+            self.assertEqual(before, {key: paths[key].read_bytes() for key in keys})
+
+    def test_inherits_left_hand_and_coach_configuration(self):
+        from local_realtime_coach import LocalRealtimeCoach
+        from realtime_swing_pipeline import RealtimeSwingEventEngine
+        from manual_review_workflow import derive_manual_coach_events
+        from swing_motion_features import extract_motion_features
+
+        coach = LocalRealtimeCoach(max_suggestions=1, min_confidence=0.8,
+                                   thresholds={"min_arm_extension_deg": 160})
+        engine = RealtimeSwingEventEngine(fps=25, dominant_hand="left", coach=coach)
+        document = _event_document()
+        document["summary"] = engine.snapshot()["summary"]
+        with patch("manual_review_workflow.extract_motion_features", wraps=extract_motion_features) as extract:
+            result = derive_manual_coach_events(document, _annotations(False), [_frame(i) for i in range(20)])
+        self.assertEqual(extract.call_args.kwargs["dominant_hand"], "left")
+        provenance = result["events"][0]["review_provenance"]
+        self.assertEqual(provenance["coach_configuration"], coach.configuration())
+        self.assertEqual(provenance["configuration_source"], "session")
+        self.assertLessEqual(len(result["events"][0]["coach_advices"]), 1)
+
     def _write_session(self, root: Path):
         events = _event_document()
         event_path = root / "final_events.json"

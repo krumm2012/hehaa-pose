@@ -299,6 +299,7 @@ class MultiprocessPipeline:
                 float(deepseek_option('timeout_seconds', 3.0)),
             ),
             'workers': max(1, int(deepseek_option('workers', 2))),
+            'max_pending': max(0, int(deepseek_option('max_pending', 2))),
             'max_chars': min(
                 15,
                 max(1, int(deepseek_option('max_chars', 15))),
@@ -328,6 +329,8 @@ class MultiprocessPipeline:
             'language': str(coach_tts_option('language', 'Chinese')),
             'playback': bool(coach_tts_option('playback', True)),
             'max_pending': max(1, int(coach_tts_option('max_pending', 2))),
+            'startup_timeout_seconds': max(0.1, float(coach_tts_option('startup_timeout_seconds', 120))),
+            'request_timeout_seconds': max(0.1, float(coach_tts_option('request_timeout_seconds', 30))),
             'streaming_interval_seconds': max(
                 0.08,
                 float(coach_tts_option('streaming_interval_seconds', 0.32)),
@@ -860,6 +863,7 @@ class MultiprocessPipeline:
                 base_url=self.deepseek_coach_options['base_url'],
                 timeout_seconds=self.deepseek_coach_options['timeout_seconds'],
                 workers=self.deepseek_coach_options['workers'],
+                max_pending=self.deepseek_coach_options['max_pending'],
                 max_chars=self.deepseek_coach_options['max_chars'],
             )
             key_status = '已配置' if os.environ.get(api_key_env) else '未配置'
@@ -880,6 +884,8 @@ class MultiprocessPipeline:
                 language=self.coach_tts_options['language'],
                 playback=self.coach_tts_options['playback'],
                 max_pending=self.coach_tts_options['max_pending'],
+                startup_timeout_seconds=self.coach_tts_options['startup_timeout_seconds'],
+                request_timeout_seconds=self.coach_tts_options['request_timeout_seconds'],
                 streaming_interval_seconds=(
                     self.coach_tts_options['streaming_interval_seconds']
                 ),

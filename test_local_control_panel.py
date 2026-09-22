@@ -1,4 +1,5 @@
 import json
+import io
 import os
 import threading
 import time
@@ -24,6 +25,67 @@ from roi_stream_config import sanitize_stream_source
 
 
 class LocalControlPanelTests(unittest.TestCase):
+    def test_video_upload_http_requires_control_token(self):
+        with TemporaryDirectory() as directory:
+            controller = self.make_controller(Path(directory))
+            server = ThreadingHTTPServer(("127.0.0.1", 0), create_handler(controller))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                url = f"http://127.0.0.1:{server.server_port}/api/video/upload"
+                request = urllib.request.Request(url, data=b"video", method="POST")
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(request)
+                self.assertEqual(error.exception.code, 403)
+                request.add_header("X-Control-Token", controller.token)
+                request.add_header("X-Video-Suffix", ".avi")
+                with patch.object(controller, "upload_video", return_value={"video_id": "uploaded"}) as upload:
+                    with urllib.request.urlopen(request) as response:
+                        self.assertEqual(json.load(response)["video_id"], "uploaded")
+                    self.assertEqual(upload.call_args.args[1:], (5, ".avi"))
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+    def test_local_video_upload_preview_and_offline_settings(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = self.make_controller(root)
+            sample = root / "sample.avi"
+            writer = cv2.VideoWriter(str(sample), cv2.VideoWriter_fourcc(*"MJPG"), 15, (320, 180))
+            for _ in range(10):
+                writer.write(np.zeros((180, 320, 3), dtype=np.uint8))
+            writer.release()
+            data = sample.read_bytes()
+            result = controller.upload_video(io.BytesIO(data), len(data), ".avi")
+            payload = {"stream_id": "local_video", "video_id": result["video_id"],
+                       "live_mode": True, "roi_enabled": True}
+            stream = controller._stream_from_payload(payload)
+            self.assertTrue(Path(stream["source"]).is_file())
+            self.assertFalse(stream["roi_enabled"])
+            self.assertTrue(controller.preview(payload).startswith(b"\xff\xd8"))
+            settings = ControlSettings.from_payload(payload)
+            self.assertFalse(settings.live_mode)
+            self.assertFalse(settings.roi_enabled)
+            command, _ = controller._build_command(settings, root / "runtime.yaml", root / "out")
+            self.assertNotIn("--drop-stale-frames", command)
+            self.assertNotIn("--live-mode", command)
+
+    def test_local_video_rejects_invalid_uploads_and_paths(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = self.make_controller(root)
+            for data, length, suffix in [(b"", 0, ".mp4"), (b"x", 1, ".py"),
+                                         (b"x", 10, ".mp4"), (b"garbage", 7, ".mp4"),
+                                         (b"", 3 * 1024 ** 3, ".mp4")]:
+                with self.assertRaises(ValueError):
+                    controller.upload_video(io.BytesIO(data), length, suffix)
+            self.assertEqual(list((root / "data/control_uploads").glob("*")), [])
+            for video_id in ["../../config.yaml", "", "a" * 32 + ".mp4"]:
+                with self.assertRaises(ValueError):
+                    controller._stream_from_payload({"stream_id": "local_video", "video_id": video_id})
+
     def make_controller(self, root: Path) -> LocalPipelineController:
         config = root / "config.yaml"
         roi = root / "roi.yaml"
@@ -172,6 +234,66 @@ streams:
         self.assertIn("court01-main", serialized)
         self.assertNotIn("private", serialized)
         self.assertNotIn("admin@", serialized)
+
+    def test_local_camera_file_authenticates_without_browser_input(self):
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
+            root = Path(directory)
+            (root / ".camera-credentials.local.env").write_text(
+                "TENNIS_RTSP_USERNAME='admin'\nTENNIS_RTSP_PASSWORD='test # pass'\n",
+                encoding="utf-8",
+            )
+            controller = self.make_controller(root)
+            source = controller._authenticated_source({"source": "rtsp://127.0.0.1/live"}, {})
+            self.assertEqual(source, "rtsp://admin:test%20%23%20pass@127.0.0.1/live")
+            config = controller.public_config()
+            self.assertTrue(config["credentials_configured"])
+            self.assertNotIn("test # pass", str(config))
+            overridden = controller._authenticated_source(
+                {"source": "rtsp://127.0.0.1/live"}, {"username": "other", "password": "manual"}
+            )
+            self.assertEqual(overridden, "rtsp://other:manual@127.0.0.1/live")
+
+    def test_empty_camera_password_does_not_claim_ready(self):
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
+            root = Path(directory)
+            (root / ".camera-credentials.local.env").write_text(
+                "TENNIS_RTSP_USERNAME='admin'\nTENNIS_RTSP_PASSWORD=''\n", encoding="utf-8"
+            )
+            self.assertFalse(self.make_controller(root).public_config()["credentials_configured"])
+
+    def test_camera_specific_credentials_and_common_fallback(self):
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {}, clear=True):
+            root = Path(directory)
+            (root / ".camera-credentials.local.env").write_text(
+                "TENNIS_RTSP_USERNAME='shared'\nTENNIS_RTSP_PASSWORD='shared-pass'\n"
+                "TENNIS_CAMERA_COURT01_MAIN_USERNAME='first'\n"
+                "TENNIS_CAMERA_COURT01_MAIN_PASSWORD='first-pass'\n",
+                encoding="utf-8",
+            )
+            controller = self.make_controller(root)
+            first = {"stream_id": "court01-main", "source": "rtsp://127.0.0.1/ch1"}
+            second = {"stream_id": "court02-main", "source": "rtsp://127.0.0.1/ch2"}
+            self.assertEqual(controller._authenticated_source(first, {}), "rtsp://first:first-pass@127.0.0.1/ch1")
+            self.assertEqual(controller._authenticated_source(second, {}), "rtsp://shared:shared-pass@127.0.0.1/ch2")
+            os.environ["TENNIS_CAMERA_COURT02_MAIN_USERNAME"] = "second"
+            os.environ["TENNIS_CAMERA_COURT02_MAIN_PASSWORD"] = "second-pass"
+            self.assertEqual(controller._authenticated_source(second, {}), "rtsp://second:second-pass@127.0.0.1/ch2")
+            os.environ.pop("TENNIS_CAMERA_COURT02_MAIN_PASSWORD")
+            self.assertEqual(controller._saved_credentials("court02-main"), ("second", ""))
+            config = controller.public_config()
+            self.assertTrue(config["camera_credentials_configured"]["court01-main"])
+            self.assertNotIn("first-pass", str(config))
+
+    def test_custom_stream_reuses_matching_camera_credentials(self):
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {
+            "TENNIS_CAMERA_COURT01_MAIN_USERNAME": "first",
+            "TENNIS_CAMERA_COURT01_MAIN_PASSWORD": "secret",
+        }, clear=True):
+            controller = self.make_controller(Path(directory))
+            source = controller.streams[0]["source"]
+            stream = controller._stream_from_payload({"stream_id": "custom", "custom_stream_source": source})
+            self.assertEqual(stream["credentials_stream_id"], "court01-main")
+            self.assertIn("first:secret@", controller._authenticated_source(stream, {}))
 
     def test_serves_manual_review_api_for_current_session(self):
         with TemporaryDirectory() as directory:

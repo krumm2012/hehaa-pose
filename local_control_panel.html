@@ -366,13 +366,18 @@
       <aside class="side">
         <form id="settings-form" class="card" autocomplete="off">
           <div class="section">
-            <div class="section-title"><h3>摄像头</h3><span>凭据不会保存</span></div>
+            <div class="section-title"><h3>摄像头</h3><span>支持本机凭据配置</span></div>
             <div class="fields">
               <div class="field wide">
                 <label for="stream_id">球场码流</label>
                 <select id="stream_id" name="stream_id"></select>
               </div>
-              <div id="custom-stream-field" class="field wide" hidden>
+          <div id="local-video-field" class="field wide" hidden>
+            <label for="local_video_file">选择本地视频（最大 2 GB）</label>
+            <input id="local_video_file" type="file" accept=".mp4,.mov,.mkv,.avi,.webm,.m4v">
+            <span id="video-upload-status">视频上传至本机后，可刷新预览并启动分析；不使用摄像头 ROI 或直播丢帧。</span>
+          </div>
+          <div id="custom-stream-field" class="field wide" hidden>
                 <label for="custom_stream_source">自定义码流地址</label>
                 <input
                   id="custom_stream_source"
@@ -386,7 +391,7 @@
               </div>
               <div class="field">
                 <label for="username">用户名</label>
-                <input id="username" name="username" placeholder="环境变量或手动输入">
+                <input id="username" name="username" placeholder="留空使用本机配置；可临时覆盖">
               </div>
               <div class="field">
                 <label for="password">密码</label>
@@ -542,7 +547,7 @@
     async function api(path, options = {}) {
       const headers = { ...(options.headers || {}) };
       if (options.method === "POST") {
-        headers["Content-Type"] = "application/json";
+        headers["Content-Type"] = headers["Content-Type"] || "application/json";
         headers["X-Control-Token"] = state.token;
       }
       const response = await fetch(path, { ...options, headers, cache: "no-store" });
@@ -559,6 +564,7 @@
 
     function formPayload() {
       const payload = {};
+      if ($("stream_id").value === "local_video") payload.video_id = state.videoId || "";
       for (const id of ids) {
         const element = $(id);
         payload[id] = checkboxIds.has(id) ? element.checked : element.value;
@@ -571,6 +577,8 @@
       delete payload.password;
       delete payload.username;
       delete payload.custom_stream_source;
+      delete payload.video_id;
+      if (payload.stream_id === "local_video") delete payload.stream_id;
       if (payload.stream_id === CUSTOM_STREAM_ID) delete payload.stream_id;
       localStorage.setItem("tennis-control-preset-v1", JSON.stringify(payload));
     }
@@ -604,9 +612,25 @@
     }
 
     function updateStreamMeta() {
+      const video = $("stream_id").value === "local_video";
+      $("local-video-field").hidden = !video;
+      $("username").disabled = video;
+      $("password").disabled = video;
+      $("roi_enabled").disabled = video;
+      $("live_mode").disabled = video;
       const custom = $("stream_id").value === CUSTOM_STREAM_ID;
+      const configured = custom ? state.defaultCredentialsConfigured :
+        (state.cameraCredentialsConfigured || {})[$("stream_id").value];
+      $("username").placeholder = configured ? "当前通道已配置，留空自动使用" : "留空使用本机配置；可临时覆盖";
+      $("password").placeholder = configured ? "当前通道已配置，无需重复输入" : "不在浏览器中保存";
       $("custom-stream-field").hidden = !custom;
       $("custom_stream_source").required = custom;
+      if (video) {
+        $("stream-meta").textContent = "本地视频 · " + (state.videoName || "请先选择视频文件");
+        $("point-list").textContent = "全画面分析 · 不使用摄像头 ROI · 不启用直播丢帧";
+        savePreset();
+        return;
+      }
       if (custom) {
         $("stream-meta").innerHTML = `<strong>自定义码流</strong><span>${escapeHtml(customPublicSource())}</span>`;
         $("point-list").innerHTML = "<span>ROI 将按码流地址自动匹配</span>";
@@ -673,6 +697,10 @@
     }
 
     async function startAnalysis() {
+      if ($("stream_id").value === "local_video" && !state.videoId) {
+        showToast("请先选择视频并等待上传完成", true);
+        return;
+      }
       if (!$("settings-form").reportValidity()) return;
       savePreset();
       $("start-button").disabled = true;
@@ -766,10 +794,12 @@
         const response = await api("/api/config");
         const config = await response.json();
         state.token = config.token;
+        state.defaultCredentialsConfigured = config.credentials_configured;
+        state.cameraCredentialsConfigured = config.camera_credentials_configured || {};
         state.streams = config.streams || [];
         $("stream_id").innerHTML = state.streams.map(
           stream => `<option value="${escapeHtml(stream.stream_id)}">${escapeHtml(stream.label)}</option>`
-        ).join("") + `<option value="${CUSTOM_STREAM_ID}">自定义码流</option>`;
+        ).join("") + `<option value="${CUSTOM_STREAM_ID}">自定义码流</option><option value="local_video">本地视频文件</option>`;
         applyValues(config.defaults);
         try {
           const saved = JSON.parse(localStorage.getItem("tennis-control-preset-v1") || "null");
@@ -779,16 +809,37 @@
           }
         } catch (_) {}
         updateStreamMeta();
-        if (config.credentials_configured) {
-          $("username").placeholder = "已由服务端环境变量配置";
-          $("password").placeholder = "已由服务端环境变量配置";
-        }
         await pollStatus();
       } catch (error) {
         showToast(`页面初始化失败：${error.message}`, true);
       }
     }
 
+    $("local_video_file").addEventListener("change", async () => {
+      const file = $("local_video_file").files[0];
+      const generation = (state.uploadGeneration || 0) + 1;
+      state.uploadGeneration = generation;
+      state.videoId = "";
+      state.videoName = "";
+      updateStreamMeta();
+      if (!file) return;
+      $("video-upload-status").textContent = "正在上传到本机，请稍候…";
+      try {
+        if (!file.size || file.size > 2 * 1024 ** 3) throw new Error("请选择不超过 2 GB 的非空视频");
+        const response = await api("/api/video/upload", {
+          method: "POST", body: file,
+          headers: { "Content-Type": "application/octet-stream", "X-Video-Suffix": "." + file.name.split(".").pop().toLowerCase() }
+        });
+        const result = await response.json();
+        if (generation !== state.uploadGeneration) return;
+        state.videoId = result.video_id;
+        state.videoName = file.name;
+        $("video-upload-status").textContent = `${file.name} 已就绪，可刷新预览或启动分析`;
+        updateStreamMeta();
+      } catch (error) {
+        if (generation === state.uploadGeneration) $("video-upload-status").textContent = `上传失败：${error.message}`;
+      }
+    });
     $("preview-button").addEventListener("click", () => refreshPreview(true));
     $("start-button").addEventListener("click", startAnalysis);
     $("stop-button").addEventListener("click", stopAnalysis);

@@ -41,6 +41,15 @@ class LocalRealtimeCoach:
             **(thresholds or {}),
         }
 
+    def configuration(self) -> Dict:
+        """Return the effective rules required to reproduce coaching decisions."""
+        return {
+            "max_chars": self.max_chars,
+            "max_suggestions": self.max_suggestions,
+            "min_confidence": self.min_confidence,
+            "thresholds": dict(self.thresholds),
+        }
+
     def advise(self, event: Dict) -> Dict:
         """Return the primary recommendation for backward compatibility."""
         return self.advise_all(event)[0]

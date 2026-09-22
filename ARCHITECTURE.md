@@ -1,4 +1,10 @@
-# 🎾 网球分析系统 - 架构和数据流
+# 架构文档入口
+
+当前设计以 [系统设计与算法流程](docs/SYSTEM_DESIGN.md) 为准（2026-09-16）。配套文档：[需求与验收基线](docs/REQUIREMENTS_BASELINE.md)、[运行与运维手册](docs/OPERATIONS.md)。
+
+以下保留的是早期 YOLOv8 / HSV / TrackNet 架构历史记录，不适用于当前默认实时链路及能力验收。
+
+# 历史架构和数据流
 
 ## 📐 系统架构图
 

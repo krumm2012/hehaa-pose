@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+import threading
 import urllib.request
 from concurrent.futures import Future, ThreadPoolExecutor
 from copy import deepcopy
@@ -60,6 +61,7 @@ class DeepSeekCoachSidecar:
         max_chars: int = HARD_MAX_CHARS,
         workers: int = 2,
         transport=None,
+        max_pending: int = 2,
     ):
         self.api_key = str(api_key or "")
         self.model = str(model or "deepseek-v4-flash")
@@ -71,7 +73,9 @@ class DeepSeekCoachSidecar:
             max_workers=max(1, int(workers)),
             thread_name_prefix="deepseek-coach",
         )
-        self._futures = []
+        self._futures = set()
+        self._lock = threading.RLock()
+        self._capacity = max(1, int(workers)) + max(0, int(max_pending))
         self._closed = False
 
     def submit(
@@ -82,26 +86,44 @@ class DeepSeekCoachSidecar:
         evidence_packet: Optional[Dict] = None,
     ) -> Future:
         """Queue one completed event and deliver a status document to callback."""
-        if self._closed:
-            raise RuntimeError("Cannot submit after the DeepSeek Coach sidecar is closed")
-        future = self._executor.submit(
-            self._generate,
-            deepcopy(event),
-            deepcopy(frame_records or []),
-            deepcopy(evidence_packet),
-        )
+        with self._lock:
+            if self._closed:
+                raise RuntimeError("Cannot submit after the DeepSeek Coach sidecar is closed")
+            if len(self._futures) >= self._capacity:
+                future = Future()
+                future.set_result({"status": "skipped", "reason": "deepseek_backlog", "model": self.model})
+            else:
+                future = self._executor.submit(
+                    self._generate_queued, time.perf_counter(),
+                    deepcopy(event), deepcopy(frame_records or []), deepcopy(evidence_packet),
+                )
+                self._futures.add(future)
+                future.add_done_callback(self._forget)
         future.add_done_callback(
             lambda completed: self._deliver(completed, callback)
         )
-        self._futures.append(future)
         return future
+
+    def _forget(self, future):
+        with self._lock:
+            self._futures.discard(future)
+
+    def _generate_queued(self, submitted, *args):
+        queued_ms = self._elapsed_ms(submitted)
+        if queued_ms > self.timeout_seconds * 1000:
+            return {"status": "skipped", "reason": "stale_request", "queue_ms": queued_ms}
+        result = self._generate(*args)
+        result["queue_ms"] = queued_ms
+        result["total_latency_ms"] = self._elapsed_ms(submitted)
+        return result
 
     def close(self) -> None:
         """Wait only for bounded in-flight HTTP calls."""
         if self._closed:
             return
-        self._closed = True
-        self._executor.shutdown(wait=True)
+        with self._lock:
+            self._closed = True
+        self._executor.shutdown(wait=True, cancel_futures=True)
 
     def _generate(
         self,
@@ -398,7 +420,7 @@ class DeepSeekCoachSidecar:
     @staticmethod
     def _deliver(future: Future, callback: Callable[[Dict], None]) -> None:
         try:
-            callback(future.result())
+            callback({"status": "skipped", "reason": "session_closed"} if future.cancelled() else future.result())
         except Exception:
             # Callback failures must not escape the sidecar worker thread.
             return

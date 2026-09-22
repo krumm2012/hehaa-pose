@@ -36,6 +36,7 @@ Thumbs.db
 
 # Local secrets
 .env.local
+.camera-credentials.local.env
 
 # Build / Dist
 build/
@@ -92,6 +93,7 @@ models/*.onnx
 .ipynb_checkpoints/
 
 # Node/Frontend (if any)
+data/control_uploads/
 node_modules/
 __pycache__/*.pyc
 clips/highlights/recordings/

@@ -45,6 +45,9 @@ from roi_stream_config import sanitize_stream_source
 SESSION_NAME_PATTERN = re.compile(r"[^A-Za-z0-9_-]+")
 MAX_REQUEST_BYTES = 64 * 1024
 CUSTOM_STREAM_ID = "custom"
+LOCAL_VIDEO_ID = "local_video"
+MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
+VIDEO_SUFFIXES = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
 CUSTOM_STREAM_SCHEMES = {"http", "https", "rtmp", "rtsp", "tcp", "udp"}
 ENVIRONMENT_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -231,7 +234,7 @@ class ControlSettings:
                 32,
                 integer=True,
             ),
-            roi_enabled=_bool(payload, "roi_enabled", True),
+            roi_enabled=payload.get("stream_id") != LOCAL_VIDEO_ID and _bool(payload, "roi_enabled", True),
             crop_margin=_number(
                 payload,
                 "crop_margin",
@@ -243,7 +246,7 @@ class ControlSettings:
             show_roi_boundary=_bool(payload, "show_roi_boundary", True),
             show_roi_fill=_bool(payload, "show_roi_fill", False),
             show_roi_points=_bool(payload, "show_roi_points", True),
-            live_mode=_bool(payload, "live_mode", True),
+            live_mode=payload.get("stream_id") != LOCAL_VIDEO_ID and _bool(payload, "live_mode", True),
             save_video=_bool(payload, "save_video", False),
             realtime_swing_events=realtime_swing_events,
             realtime_frame_output=_bool(
@@ -386,8 +389,15 @@ class LocalPipelineController:
         self.frontend_path = frontend_path.resolve()
         self.username_env = str(username_env)
         self.password_env = str(password_env)
+        # Load only camera credentials, never expose file contents to the browser.
+        credentials_path = self.workspace / ".camera-credentials.local.env"
+        for name in (self.username_env, self.password_env):
+            load_local_environment_variable(credentials_path, name)
         self.token = secrets.token_urlsafe(24)
         self.streams = load_stream_profiles(self.roi_config_path)
+        for stream in self.streams:
+            for name in self._camera_variable_names(stream["stream_id"]):
+                load_local_environment_variable(credentials_path, name)
         self._lock = threading.RLock()
         self._process: Optional[subprocess.Popen] = None
         self._reader_thread: Optional[threading.Thread] = None
@@ -415,9 +425,14 @@ class LocalPipelineController:
         )
         return {
             "token": self.token,
+            "camera_credentials_configured": {
+                stream["stream_id"]: all(self._saved_credentials(stream["stream_id"]))
+                for stream in self.streams
+            },
             "streams": self.streams,
             "credentials_configured": bool(
                 os.environ.get(self.username_env)
+                and os.environ.get(self.password_env)
             ),
             "defaults": {
                 "stream_id": default_stream,
@@ -534,7 +549,7 @@ class LocalPipelineController:
             )
             roi = config.setdefault("roi_settings", {})
             roi["enabled"] = settings.roi_enabled
-            roi["auto_load_config"] = True
+            roi["auto_load_config"] = settings.stream_id != LOCAL_VIDEO_ID
             roi["roi_config_path"] = str(self.roi_config_path)
             roi["crop_margin"] = settings.crop_margin
             visualization = roi.setdefault("visualization", {})
@@ -689,8 +704,53 @@ class LocalPipelineController:
             raise ValueError(f"未知球场: {stream_id}")
         return selected
 
+    def upload_video(self, body, length: int, suffix: str) -> Dict[str, Any]:
+        """Stream a bounded upload to private storage; expose only opaque IDs."""
+        if not 0 < length <= MAX_VIDEO_BYTES:
+            raise ValueError("视频大小必须在 0 到 2 GB 之间")
+        suffix = suffix.lower()
+        if suffix not in VIDEO_SUFFIXES:
+            raise ValueError("不支持的视频格式")
+        directory = self.workspace / "data" / "control_uploads"
+        directory.mkdir(parents=True, exist_ok=True)
+        video_id = secrets.token_hex(16) + suffix
+        target = directory / video_id
+        try:
+            with target.open("xb") as output:
+                target.chmod(0o600)
+                remaining = length
+                while remaining:
+                    chunk = body.read(min(1024 * 1024, remaining))
+                    if not chunk:
+                        raise ValueError("视频上传未完成，请重新选择文件")
+                    output.write(chunk)
+                    remaining -= len(chunk)
+            capture = cv2.VideoCapture(str(target))
+            try:
+                ok, frame = capture.read()
+                if not ok or frame is None:
+                    raise ValueError("无法解码视频，请选择可播放的视频文件")
+            finally:
+                capture.release()
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+        return {"video_id": video_id, "size": length}
+
     def _stream_from_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         stream_id = str(payload.get("stream_id") or "").strip()
+        if stream_id == LOCAL_VIDEO_ID:
+            video_id = str(payload.get("video_id") or "")
+            if not re.fullmatch(r"[0-9a-f]{32}\.(mp4|mov|mkv|avi|webm|m4v)", video_id):
+                raise ValueError("请先选择并上传本地视频")
+            directory = (self.workspace / "data" / "control_uploads").resolve()
+            source = (directory / video_id).resolve()
+            if source.parent != directory or not source.is_file():
+                raise ValueError("本地视频不存在，请重新上传")
+            return {"stream_id": LOCAL_VIDEO_ID, "label": "本地视频",
+                    "source": str(source), "public_source": video_id,
+                    "roi_enabled": False, "points": [], "frame_size": [0, 0],
+                    "default": False}
         if stream_id != CUSTOM_STREAM_ID:
             return self._stream(stream_id)
 
@@ -708,6 +768,7 @@ class LocalPipelineController:
         )
         return {
             "stream_id": CUSTOM_STREAM_ID,
+            "credentials_stream_id": (matched or {}).get("stream_id", CUSTOM_STREAM_ID),
             "label": "自定义码流",
             "source": source,
             "public_source": public_source,
@@ -717,6 +778,19 @@ class LocalPipelineController:
             "default": False,
         }
 
+    @staticmethod
+    def _camera_variable_names(stream_id: str):
+        key = re.sub(r"[^A-Za-z0-9_]", "_", stream_id).upper()
+        return f"TENNIS_CAMERA_{key}_USERNAME", f"TENNIS_CAMERA_{key}_PASSWORD"
+
+    def _saved_credentials(self, stream_id: str):
+        username_key, password_key = self._camera_variable_names(stream_id)
+        username = os.environ.get(username_key, "")
+        if username:
+            # Credentials are a pair: never combine one camera's user with a default password.
+            return username, os.environ.get(password_key, "")
+        return os.environ.get(self.username_env, ""), os.environ.get(self.password_env, "")
+
     def _authenticated_source(
         self,
         stream: Dict[str, Any],
@@ -725,8 +799,9 @@ class LocalPipelineController:
         username = str(payload.get("username") or "").strip()
         password = str(payload.get("password") or "")
         if not username:
-            username = os.environ.get(self.username_env, "")
-            password = os.environ.get(self.password_env, "")
+            username, password = self._saved_credentials(
+                stream.get("credentials_stream_id") or stream.get("stream_id", "")
+            )
         return inject_rtsp_credentials(
             stream["source"],
             username,
@@ -1045,6 +1120,7 @@ def create_handler(controller: LocalPipelineController):
             allowed_paths = {
                 "/api/preview",
                 "/api/start",
+                "/api/video/upload",
                 "/api/stop",
                 "/api/manual-review/evaluate",
             }
@@ -1058,6 +1134,13 @@ def create_handler(controller: LocalPipelineController):
                 )
                 return
             try:
+                if path == "/api/video/upload":
+                    self.connection.settimeout(120)
+                    self._send_json(controller.upload_video(
+                        self.rfile, int(self.headers.get("Content-Length", "0")),
+                        self.headers.get("X-Video-Suffix", ""),
+                    ))
+                    return
                 payload = self._read_json(
                     max_bytes=(
                         MAX_ANNOTATION_BYTES

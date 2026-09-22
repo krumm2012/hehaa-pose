@@ -1,0 +1,14 @@
+# Calibration overlay for Camera04 / 49.35.mp4, 2560x1440 full frame.
+# Merge this block into unified_detection; this is not a standalone pipeline config.
+# Shadow is deliberate: observe decisions until more labeled trajectories are tested.
+unified_detection:
+  mirror_ball_filter:
+    mode: shadow                       # off | shadow | enforce
+    polygon:                           # normalized full-frame coordinates
+      - [0.0, 0.20]
+      - [0.34, 0.105]
+      - [0.615, 0.125]
+      - [0.59, 0.478]
+      - [0.0, 0.478]
+    max_size_height_ratio: 0.011111111111111112 # max(box width, height) <= 16px at 1440p
+    boundary_margin_height_ratio: 0.01 # 14.4px + half box diagonal: keep boundary balls

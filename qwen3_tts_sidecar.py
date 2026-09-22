@@ -7,7 +7,6 @@ separate Python 3.11 process and only exchanges short JSON-line requests.
 
 from __future__ import annotations
 
-import json
 import os
 import queue
 import shutil
@@ -16,6 +15,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Callable, Dict, Optional
+from tts_worker_client import SpeechWorkerClient
 
 
 DEFAULT_MODEL = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16"
@@ -42,6 +42,8 @@ class CoachTtsSidecar:
         worker_path: Optional[str] = None,
         synthesizer: Optional[Callable[[int, str, Path], Dict]] = None,
         logger: Callable[[str], None] = print,
+        startup_timeout_seconds: float = 120.0,
+        request_timeout_seconds: float = 30.0,
     ):
         self.output_dir = Path(output_dir)
         self.model_name = str(model)
@@ -65,8 +67,14 @@ class CoachTtsSidecar:
         self._queue: queue.Queue = queue.Queue(maxsize=max(1, int(max_pending)))
         self._sentinel = object()
         self._closed = False
-        self._process: Optional[subprocess.Popen] = None
-        self._process_lock = threading.RLock()
+        self._state_lock = threading.Lock()
+        self._cancel = threading.Event()
+        self._client = SpeechWorkerClient(
+            [self.python_executable, str(self.worker_path), "--model", self.model_name,
+             "--voice", self.voice, "--language", self.language],
+            startup_timeout=max(0.1, float(startup_timeout_seconds)),
+            request_timeout=max(0.1, float(request_timeout_seconds)),
+        )
         self._thread = threading.Thread(
             target=self._run,
             name="qwen3-tts-coach",
@@ -89,19 +97,37 @@ class CoachTtsSidecar:
             callback({"status": "skipped", "engine": "qwen3-tts-mlx", "reason": "no_local_coach_advice"})
             return
         try:
-            self._queue.put_nowait((int(event["event_id"]), text, callback))
+            with self._state_lock:
+                if self._closed:
+                    raise RuntimeError("Cannot submit after speech sidecar closes")
+                self._queue.put_nowait((int(event["event_id"]), text, callback))
         except queue.Full:
             callback({"status": "skipped", "engine": "qwen3-tts-mlx", "reason": "tts_backlog"})
 
     def close(self) -> None:
-        if self._closed:
-            return
-        self._closed = True
-        self._queue.join()
+        with self._state_lock:
+            if self._closed:
+                return
+            self._closed = True
+        # Keep shutdown shorter than the pipeline supervisor's grace period.
+        self._thread.join(timeout=0.2)
+        self._cancel.set()
+        self._client.close()
+        while True:
+            try:
+                item = self._queue.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                item[2]({"status": "skipped", "reason": "session_closed"})
+            except Exception as exc:
+                self.logger(f"⚠️ [Qwen3-TTS] cancellation callback failed: {exc}")
+            finally:
+                self._queue.task_done()
         self._queue.put(self._sentinel)
-        self._queue.join()
-        self._thread.join()
-        self._close_worker()
+        self._thread.join(timeout=2)
+        if self._thread.is_alive():
+            raise RuntimeError("Speech sidecar did not stop within deadline")
 
     def _run(self) -> None:
         while True:
@@ -134,11 +160,13 @@ class CoachTtsSidecar:
                 "audio_path": (f"{self.audio_path_prefix}/{target.name}" if self.audio_path_prefix else target.name),
                 "sample_rate": int(worker_result.get("sample_rate") or 24000),
                 "latency_ms": latency_ms, "played": False,
+                "first_audio_ms": worker_result.get("first_audio_ms"),
+                "audio_underflows": worker_result.get("audio_underflows", 0),
             })
             streamed = bool(worker_result.get("stream_playback"))
-            callback({"status": "ready", "played": streamed, "playback_error": str(worker_result.get("playback_error") or "")})
+            callback({"status": "ready", "played": streamed and not worker_result.get("playback_error"), "playback_error": str(worker_result.get("playback_error") or "")})
             self.logger(f"🔊 [Qwen3-TTS] Swing #{event_id} | {latency_ms}ms | {target.name}")
-            if self.playback and not streamed:
+            if self.playback and not streamed and not self._cancel.is_set():
                 played, playback_error = self._play(target)
                 callback({"status": "ready", "played": played, "playback_error": playback_error})
         except BaseException as exc:
@@ -146,45 +174,12 @@ class CoachTtsSidecar:
             self.logger(f"⚠️ [Qwen3-TTS] Swing #{event_id} | unavailable | 本地文字建议继续生效: {exc}")
 
     def _request_worker(self, event_id: int, text: str, target: Path) -> Dict:
-        with self._process_lock:
-            process = self._ensure_worker()
-            if process.stdin is None or process.stdout is None:
-                raise RuntimeError("Qwen3-TTS worker has no standard input/output")
-            process.stdin.write(json.dumps({"event_id": event_id, "text": text, "output_path": str(target), "stream_playback": self.playback, "streaming_interval": self.streaming_interval_seconds, "streaming_prebuffer_chunks": self.streaming_prebuffer_chunks}, ensure_ascii=False) + "\n")
-            process.stdin.flush()
-            response = process.stdout.readline()
-            if not response:
-                stderr = process.stderr.read() if process.stderr is not None else ""
-                self._close_worker()
-                raise RuntimeError(f"Qwen3-TTS worker exited: {stderr.strip()}")
-            return json.loads(response)
-
-    def _ensure_worker(self) -> subprocess.Popen:
-        if self._process is not None and self._process.poll() is None:
-            return self._process
-        executable = Path(self.python_executable)
-        if not executable.is_file():
-            raise RuntimeError("未找到 Qwen3-TTS Python 环境；请运行 scripts/setup_qwen3_tts_mlx.sh")
-        if not self.worker_path.is_file():
-            raise RuntimeError("缺少 qwen3_tts_worker.py")
-        self._process = subprocess.Popen(
-            [str(executable), str(self.worker_path), "--model", self.model_name, "--voice", self.voice, "--language", self.language],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, encoding="utf-8", bufsize=1,
-        )
-        return self._process
-
-    def _close_worker(self) -> None:
-        with self._process_lock:
-            process, self._process = self._process, None
-        if process is None:
-            return
-        try:
-            if process.stdin is not None:
-                process.stdin.close()
-            process.wait(timeout=3)
-        except (OSError, subprocess.SubprocessError):
-            process.terminate()
+        return self._client.request({
+            "event_id": event_id, "text": text, "output_path": str(target),
+            "stream_playback": self.playback,
+            "streaming_interval": self.streaming_interval_seconds,
+            "streaming_prebuffer_chunks": self.streaming_prebuffer_chunks,
+        })
 
     @staticmethod
     def _speech_text(event: Dict) -> str:
@@ -194,13 +189,18 @@ class CoachTtsSidecar:
             return ""
         return f"第{int(event.get('event_id') or 0)}次{str(event.get('stroke_type') or '挥拍')}。" + "。".join(messages)
 
-    @staticmethod
-    def _play(path: Path) -> tuple:
+    def _play(self, path: Path) -> tuple:
         player = shutil.which("afplay")
         if not player:
             return False, "afplay_not_available"
         try:
-            subprocess.run([player, str(path)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
-            return True, ""
+            process = subprocess.Popen([player, str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            deadline = time.monotonic() + 30
+            while process.poll() is None:
+                if self._cancel.wait(0.05) or time.monotonic() >= deadline:
+                    process.kill()
+                    process.wait()
+                    return False, "playback_cancelled"
+            return process.returncode == 0, "" if process.returncode == 0 else "playback_failed"
         except (OSError, subprocess.SubprocessError) as exc:
             return False, str(exc)

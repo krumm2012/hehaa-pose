@@ -8,7 +8,7 @@ import contextlib
 import json
 import sys
 import wave
-from collections import deque
+from streaming_audio_player import StreamingAudioPlayer
 from pathlib import Path
 
 import numpy as np
@@ -44,22 +44,17 @@ def main() -> None:
             playback_error = ""
             if request.get("stream_playback"):
                 try:
-                    playback_stream = sd.OutputStream(
+                    playback_stream = StreamingAudioPlayer(lambda: sd.OutputStream(
                         samplerate=sample_rate,
                         channels=1,
                         dtype="float32",
                         blocksize=1024,
                         latency="high",
-                    )
+                    ), prebuffer_chunks=max(1, int(request.get("streaming_prebuffer_chunks") or 2)))
                 except BaseException as exc:
                     playback_error = str(exc)
                     playback_stream = None
-            prebuffer_chunks = max(
-                1,
-                int(request.get("streaming_prebuffer_chunks") or 2),
-            )
             chunks = []
-            playback_queue = deque()
             try:
                 with contextlib.redirect_stdout(sys.stderr):
                     results = model.generate(
@@ -75,33 +70,21 @@ def main() -> None:
                             continue
                         chunks.append(chunk)
                         if playback_stream is not None:
-                            playback_queue.append(chunk)
-                            if len(playback_queue) >= prebuffer_chunks:
-                                if not playback_stream.active:
-                                    playback_stream.start()
-                                playback_stream.write(
-                                    playback_queue.popleft().reshape(-1, 1)
-                                )
+                            playback_stream.push(chunk)
             finally:
                 if playback_stream is not None:
-                    try:
-                        while playback_queue:
-                            if not playback_stream.active:
-                                playback_stream.start()
-                            playback_stream.write(
-                                playback_queue.popleft().reshape(-1, 1)
-                            )
-                    finally:
-                        playback_stream.stop()
-                        playback_stream.close()
+                    playback_stream.finish()
+                    playback_error = playback_stream.error
             if not chunks:
                 raise RuntimeError("Qwen3-TTS returned no audio samples")
             write_wav(Path(request["output_path"]), sample_rate, np.concatenate(chunks))
             response = {
                 "ok": True,
                 "sample_rate": sample_rate,
-                "stream_playback": playback_stream is not None,
+                "stream_playback": bool(playback_stream and playback_stream.played),
                 "playback_error": playback_error,
+                "first_audio_ms": playback_stream.first_audio_ms if playback_stream else None,
+                "audio_underflows": playback_stream.underflows if playback_stream else 0,
             }
         except BaseException as exc:
             response = {"ok": False, "error": str(exc)}
