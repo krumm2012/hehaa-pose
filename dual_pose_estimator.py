@@ -135,39 +135,38 @@ class DualPoseEstimator:
     def _extract_eye_boxes_from_kpts_list(
         self, kpts_list: List[Dict[str, Any]], h: int, w: int
     ) -> List[Tuple[int, int, int, int]]:
-        """从 Core ML 关键点列表中提取人脸眼睛隐私遮挡区域。"""
+        """从 Core ML 关键点列表中提取人脸眼睛隐私遮挡区域（区域判断：仅针对下半部真实人脸）。"""
         boxes: List[Tuple[int, int, int, int]] = []
         for p in kpts_list:
             le = p.get("left_eye")
             re = p.get("right_eye")
             nose = p.get("nose")
 
-            is_face = False
-            if le is not None and re is not None:
-                is_face = True
-            elif (le is not None or re is not None) and nose is not None:
-                pts = [pt for pt in (le, re, nose) if pt is not None]
-                avg_y = sum(pt[1] for pt in pts) / len(pts)
-                if avg_y > 0.60 * h:
-                    is_face = True
-
-            if not is_face:
-                continue
-
-            pts = [pt for pt in (le, re) if pt is not None]
+            pts = [pt for pt in (le, re, nose) if pt is not None]
             if not pts:
                 continue
-            xs = [pt[0] for pt in pts]
-            ys = [pt[1] for pt in pts]
-            cx = int(sum(xs) / len(xs))
-            cy = int(sum(ys) / len(ys))
 
-            if le is not None and re is not None:
-                dist = float(np.hypot(le[0] - re[0], le[1] - re[1]))
-            elif nose is not None:
-                dist = float(np.hypot(pts[0][0] - nose[0], pts[0][1] - nose[1])) * 1.1
-            else:
+            # 区域判断：背面视口中，真实人脸仅出现在画面下部前景闯入区 (y > 0.55 * h)
+            avg_y = sum(pt[1] for pt in pts) / len(pts)
+            if avg_y <= 0.55 * h:
+                continue
+
+            eye_pts = [pt for pt in (le, re) if pt is not None]
+            if not eye_pts:
+                # 只有鼻子，根据鼻子估算眼睛位置
+                cx, cy = int(nose[0]), int(nose[1] - 25)
                 dist = 32.0
+            else:
+                xs = [pt[0] for pt in eye_pts]
+                ys = [pt[1] for pt in eye_pts]
+                cx = int(sum(xs) / len(xs))
+                cy = int(sum(ys) / len(ys))
+                if le is not None and re is not None:
+                    dist = float(np.hypot(le[0] - re[0], le[1] - re[1]))
+                elif nose is not None:
+                    dist = float(np.hypot(eye_pts[0][0] - nose[0], eye_pts[0][1] - nose[1])) * 1.1
+                else:
+                    dist = 32.0
 
             bar_w = int(max(60.0, dist * 2.2))
             bar_h = int(max(16.0, dist * 0.7))
@@ -181,7 +180,7 @@ class DualPoseEstimator:
     def _extract_eye_boxes_from_kp_data(
         self, kp_data: np.ndarray, h: int, w: int
     ) -> List[Tuple[int, int, int, int]]:
-        """从 Ultralytics 姿态输出中提取人脸眼睛隐私遮挡区域。"""
+        """从 Ultralytics 姿态输出中提取人脸眼睛隐私遮挡区域（区域判断：仅针对下半部真实人脸）。"""
         boxes: List[Tuple[int, int, int, int]] = []
         for p in kp_data:
             conf_th = self.conf_threshold
@@ -193,32 +192,30 @@ class DualPoseEstimator:
             le = (float(p[1, 0]), float(p[1, 1])) if has_le else None
             re = (float(p[2, 0]), float(p[2, 1])) if has_re else None
 
-            is_face = False
-            if le is not None and re is not None:
-                is_face = True
-            elif (le is not None or re is not None) and nose is not None:
-                pts = [pt for pt in (le, re, nose) if pt is not None]
-                avg_y = sum(pt[1] for pt in pts) / len(pts)
-                if avg_y > 0.60 * h:
-                    is_face = True
-
-            if not is_face:
-                continue
-
-            pts = [pt for pt in (le, re) if pt is not None]
+            pts = [pt for pt in (le, re, nose) if pt is not None]
             if not pts:
                 continue
-            xs = [pt[0] for pt in pts]
-            ys = [pt[1] for pt in pts]
-            cx = int(sum(xs) / len(xs))
-            cy = int(sum(ys) / len(ys))
 
-            if le is not None and re is not None:
-                dist = float(np.hypot(le[0] - re[0], le[1] - re[1]))
-            elif nose is not None:
-                dist = float(np.hypot(pts[0][0] - nose[0], pts[0][1] - nose[1])) * 1.1
-            else:
+            # 区域判断：背面视口中，真实人脸仅出现在画面下部前景闯入区 (y > 0.55 * h)
+            avg_y = sum(pt[1] for pt in pts) / len(pts)
+            if avg_y <= 0.55 * h:
+                continue
+
+            eye_pts = [pt for pt in (le, re) if pt is not None]
+            if not eye_pts:
+                cx, cy = int(nose[0]), int(nose[1] - 25)
                 dist = 32.0
+            else:
+                xs = [pt[0] for pt in eye_pts]
+                ys = [pt[1] for pt in eye_pts]
+                cx = int(sum(xs) / len(xs))
+                cy = int(sum(ys) / len(ys))
+                if le is not None and re is not None:
+                    dist = float(np.hypot(le[0] - re[0], le[1] - re[1]))
+                elif nose is not None:
+                    dist = float(np.hypot(eye_pts[0][0] - nose[0], eye_pts[0][1] - nose[1])) * 1.1
+                else:
+                    dist = 32.0
 
             bar_w = int(max(60.0, dist * 2.2))
             bar_h = int(max(16.0, dist * 0.7))
@@ -248,7 +245,7 @@ class DualPoseEstimator:
             if len(kp_data) == 0:
                 return {}
 
-            # 背面镜面机位：提取人脸眼睛遮挡区域并过滤底部前景人体
+            # 背面镜面机位：提取人脸眼睛遮挡区域并通过区域与朝向优先选择镜中背影
             best_person = None
             if is_back_view:
                 self._last_back_eyes = self._extract_eye_boxes_from_kp_data(kp_data, h, w)
@@ -257,8 +254,20 @@ class DualPoseEstimator:
                     ls_y = p[5, 1] if p.shape[0] > 5 and (p.shape[1] <= 2 or p[5, 2] >= self.conf_threshold) else None
                     rs_y = p[6, 1] if p.shape[0] > 6 and (p.shape[1] <= 2 or p[6, 2] >= self.conf_threshold) else None
                     sh_ys = [y for y in (ls_y, rs_y) if y is not None]
-                    if sh_ys and min(sh_ys) <= h * 0.65:
-                        candidates.append((min(sh_ys), p))
+
+                    has_le = p.shape[0] > 1 and (p.shape[1] <= 2 or p[1, 2] >= self.conf_threshold)
+                    has_re = p.shape[0] > 2 and (p.shape[1] <= 2 or p[2, 2] >= self.conf_threshold)
+                    has_frontal_face = (has_le and has_re)
+
+                    if sh_ys:
+                        # 物理打分：优先选择无正面人脸、位于镜面区域（y 较小）的背影
+                        score = min(sh_ys) + (1000.0 if has_frontal_face else 0.0)
+                        candidates.append((score, p))
+                    elif not has_frontal_face:
+                        valid_ys = [p[i, 1] for i in range(len(p)) if p.shape[1] <= 2 or p[i, 2] >= self.conf_threshold]
+                        if valid_ys:
+                            candidates.append((min(valid_ys) + 50.0, p))
+
                 if candidates:
                     candidates.sort(key=lambda x: x[0])
                     best_person = candidates[0][1]
@@ -286,16 +295,28 @@ class DualPoseEstimator:
 
                 best = None
                 if is_back_view:
-                    # 背面机位提取人脸眼睛遮挡区域
+                    # 背面机位提取人脸眼睛遮挡区域（区域判断：仅针对下部真实人脸）
                     self._last_back_eyes = self._extract_eye_boxes_from_kpts_list(kpts_list, h, w)
-                    # 背面镜面机位：镜中人像位于镜像区中上部，过滤底部前景人体
+                    # 背面镜面机位：通过物理区域与朝向优先选择镜中背影，去除真实 face 干扰
                     candidates = []
                     for p in kpts_list:
                         ls = p.get("left_shoulder")
                         rs = p.get("right_shoulder")
                         sh_ys = [pt[1] for pt in (ls, rs) if pt is not None]
-                        if sh_ys and min(sh_ys) <= h * 0.65:
-                            candidates.append((min(sh_ys), p))
+
+                        has_le = p.get("left_eye") is not None
+                        has_re = p.get("right_eye") is not None
+                        has_frontal_face = (has_le and has_re)
+
+                        if sh_ys:
+                            # 物理打分：优先选择无正面人脸、位于镜面区域（y 较小）的背影
+                            score = min(sh_ys) + (1000.0 if has_frontal_face else 0.0)
+                            candidates.append((score, p))
+                        elif not has_frontal_face:
+                            valid_ys = [pt[1] for pt in p.values() if pt is not None]
+                            if valid_ys:
+                                candidates.append((min(valid_ys) + 50.0, p))
+
                     if candidates:
                         candidates.sort(key=lambda x: x[0])
                         best = candidates[0][1]

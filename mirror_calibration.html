@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>算法 2.0 · 镜面边界描点与标定控制台</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090d14;
+      --panel: #121824;
+      --panel-2: #182030;
+      --line: #273449;
+      --text: #eef4fb;
+      --muted: #8d9caf;
+      --cyan: #00f0ff;
+      --yellow: #f5d04c;
+      --green: #40d68b;
+      --red: #ff6e73;
+      --shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: rgba(18, 24, 36, 0.95);
+      border-bottom: 1px solid var(--line);
+      padding: 12px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(10px);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .badge {
+      background: rgba(0, 240, 255, 0.15);
+      color: var(--cyan);
+      border: 1px solid var(--cyan);
+      border-radius: 6px;
+      font-size: 11px;
+      padding: 2px 8px;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .btn {
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 16px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .btn:hover {
+      background: #202b3f;
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+    .btn-primary {
+      background: #007799;
+      border-color: var(--cyan);
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: var(--cyan);
+      color: #000;
+    }
+    .btn-success {
+      background: #1c5234;
+      border-color: var(--green);
+      color: #e6fff1;
+    }
+    .btn-success:hover {
+      background: var(--green);
+      color: #052615;
+    }
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 20px;
+      padding: 20px;
+      max-width: 1920px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .canvas-panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .toolbar {
+      padding: 10px 16px;
+      background: var(--panel-2);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .frame-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .frame-slider {
+      width: 220px;
+      accent-color: var(--cyan);
+    }
+    .frame-number {
+      font-family: monospace;
+      font-size: 14px;
+      width: 50px;
+      text-align: center;
+      background: var(--bg);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: var(--text);
+      padding: 2px 4px;
+    }
+    .canvas-container {
+      flex: 1;
+      position: relative;
+      background: #05070a;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 520px;
+    }
+    canvas#mainCanvas {
+      max-width: 100%;
+      max-height: 100%;
+      cursor: crosshair;
+      display: block;
+    }
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--cyan);
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .preview-box {
+      width: 100%;
+      aspect-ratio: 540 / 720;
+      background: #000;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+    }
+    .preview-box canvas {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .points-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .point-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--panel-2);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      border: 1px solid var(--line);
+    }
+    .point-item.active {
+      border-color: var(--cyan);
+      background: rgba(0, 240, 255, 0.08);
+    }
+    .point-coord {
+      font-family: monospace;
+      color: var(--yellow);
+    }
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 12px 20px;
+      border-radius: 8px;
+      background: var(--panel-2);
+      border: 1px solid var(--cyan);
+      box-shadow: var(--shadow);
+      color: #fff;
+      display: none;
+      z-index: 1000;
+      font-size: 14px;
+    }
+    .toast.show { display: block; animation: fadeIn 0.2s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span>🪞 算法 2.0 · 镜面边界描点标定</span>
+      <span class="badge" id="videoNameBadge">视频加载中...</span>
+    </div>
+    <div class="header-actions">
+      <button class="btn" id="btnReset" title="重新从配置文件加载">🔄 重载已保存</button>
+      <button class="btn" id="btnPreset" title="重置为默认镜面区域">🎯 恢复默认预设</button>
+      <button class="btn btn-success" id="btnSave">💾 保存配置到 dual_view_config.yaml</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="canvas-panel">
+      <div class="toolbar">
+        <div class="frame-controls">
+          <button class="btn" id="btnPrevFrame">◀ 上一帧</button>
+          <input type="range" class="frame-slider" id="frameSlider" min="0" max="249" value="0">
+          <input type="number" class="frame-number" id="frameInput" min="0" max="249" value="0">
+          <span style="color:var(--muted);font-size:12px;" id="frameTotalText">/ 250</span>
+          <button class="btn" id="btnNextFrame">下一帧 ▶</button>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn" onclick="jumpTo(36)">击球1 (36)</button>
+          <button class="btn" onclick="jumpTo(100)">准备 (100)</button>
+          <button class="btn" onclick="jumpTo(132)">击球2 (132)</button>
+          <button class="btn" onclick="jumpTo(197)">待机 (197)</button>
+        </div>
+      </div>
+      <div class="canvas-container" id="canvasContainer">
+        <canvas id="mainCanvas"></canvas>
+      </div>
+    </section>
+
+    <aside class="side-panel">
+      <div class="card">
+        <div class="card-title">
+          <span>Backview 实时翻转预览</span>
+          <span class="badge">540x720</span>
+        </div>
+        <div class="preview-box">
+          <canvas id="previewCanvas"></canvas>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin-top:8px;">
+          💡 拖动左侧标点时，右侧将实时渲染经水平翻转 (Mirror Flip) 的 Backview 画面。
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span>标定顶点坐标 (归一化 0~1)</span>
+          <button class="btn" style="padding:2px 8px;font-size:11px;" id="btnClearPoints">清空重描</button>
+        </div>
+        <div class="points-list" id="pointsListContainer">
+          <!-- 动态生成 -->
+        </div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6;">
+          <div><b>快捷操作提示：</b></div>
+          <div>• <b>鼠标左键拖拽</b>：拖动顶点微调位置</div>
+          <div>• <b>点击空白处</b>：重新指定当前激活顶点的坐标</div>
+          <div>• <b>S 键</b>：快捷保存当前配置</div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <div class="toast" id="toastBox"></div>
+
+  <script>
+    const state = {
+      videoPath: '',
+      width: 2560,
+      height: 1440,
+      totalFrames: 250,
+      currentFrameIndex: 0,
+      currentImage: null,
+      points: [
+        { x: 0.36, y: 0.11, label: 'P1 (左上)' },
+        { x: 0.54, y: 0.11, label: 'P2 (右上)' },
+        { x: 0.54, y: 0.44, label: 'P3 (右下)' },
+        { x: 0.36, y: 0.44, label: 'P4 (左下)' }
+      ],
+      draggingPointIdx: -1,
+      hoverPointIdx: -1,
+      scale: 1,
+      offsetX: 0,
+      offsetY: 0
+    };
+
+    const mainCanvas = document.getElementById('mainCanvas');
+    const mctx = mainCanvas.getContext('2d');
+    const previewCanvas = document.getElementById('previewCanvas');
+    const pctx = previewCanvas.getContext('2d');
+    const toastBox = document.getElementById('toastBox');
+
+    function showToast(msg, isSuccess = true) {
+      toastBox.innerText = msg;
+      toastBox.style.borderColor = isSuccess ? 'var(--green)' : 'var(--red)';
+      toastBox.classList.add('show');
+      setTimeout(() => toastBox.classList.remove('show'), 3000);
+    }
+
+    async function init() {
+      try {
+        const res = await fetch('/api/info');
+        const data = await res.json();
+        state.width = data.width || 2560;
+        state.height = data.height || 1440;
+        state.totalFrames = data.total_frames || 250;
+        state.videoPath = data.video_path || '';
+        document.getElementById('videoNameBadge').innerText = state.videoPath.split('/').pop() || '40.26.mp4';
+        
+        document.getElementById('frameSlider').max = state.totalFrames - 1;
+        document.getElementById('frameInput').max = state.totalFrames - 1;
+        document.getElementById('frameTotalText').innerText = `/ ${state.totalFrames}`;
+
+        // 从现有配置恢复点位
+        if (data.current_config && data.current_config.polygon && data.current_config.polygon.length >= 4) {
+          state.points = data.current_config.polygon.slice(0, 4).map((pt, i) => ({
+            x: pt[0], y: pt[1], label: `P${i+1}`
+          }));
+        } else if (data.current_config && data.current_config.reflection_roi) {
+          const [rx1, ry1, rx2, ry2] = data.current_config.reflection_roi;
+          state.points = [
+            { x: rx1, y: ry1, label: 'P1 (左上)' },
+            { x: rx2, y: ry1, label: 'P2 (右上)' },
+            { x: rx2, y: ry2, label: 'P3 (右下)' },
+            { x: rx1, y: ry2, label: 'P4 (左下)' }
+          ];
+        }
+
+        renderPointsList();
+        loadFrame(0);
+      } catch (err) {
+        console.error('Init error:', err);
+        showToast('加载视频信息失败，请检查服务状态', false);
+      }
+    }
+
+    function jumpTo(idx) {
+      idx = Math.max(0, Math.min(state.totalFrames - 1, idx));
+      document.getElementById('frameSlider').value = idx;
+      document.getElementById('frameInput').value = idx;
+      loadFrame(idx);
+    }
+
+    async function loadFrame(index) {
+      state.currentFrameIndex = index;
+      document.getElementById('frameInput').value = index;
+      document.getElementById('frameSlider').value = index;
+      const img = new Image();
+      img.src = `/api/frame?index=${index}&t=${Date.now()}`;
+      img.onload = () => {
+        state.currentImage = img;
+        resizeCanvas();
+        drawMain();
+        drawPreview();
+      };
+    }
+
+    function resizeCanvas() {
+      const container = document.getElementById('canvasContainer');
+      const cw = container.clientWidth - 20;
+      const ch = container.clientHeight - 20;
+      const aspect = state.width / state.height;
+
+      let drawW = cw;
+      let drawH = cw / aspect;
+      if (drawH > ch) {
+        drawH = ch;
+        drawW = ch * aspect;
+      }
+      mainCanvas.width = state.width;
+      mainCanvas.height = state.height;
+      mainCanvas.style.width = `${drawW}px`;
+      mainCanvas.style.height = `${drawH}px`;
+    }
+
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      drawMain();
+    });
+
+    function drawMain() {
+      if (!state.currentImage) return;
+      mctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
+      mctx.drawImage(state.currentImage, 0, 0, mainCanvas.width, mainCanvas.height);
+
+      if (state.points.length === 0) return;
+
+      // 绘制多边形选区
+      mctx.beginPath();
+      const p0 = toCanvasCoord(state.points[0]);
+      mctx.moveTo(p0.x, p0.y);
+      for (let i = 1; i < state.points.length; i++) {
+        const p = toCanvasCoord(state.points[i]);
+        mctx.lineTo(p.x, p.y);
+      }
+      mctx.closePath();
+      mctx.fillStyle = 'rgba(0, 240, 255, 0.18)';
+      mctx.fill();
+      mctx.strokeStyle = '#00f0ff';
+      mctx.lineWidth = 4;
+      mctx.stroke();
+
+      // 绘制顶点与手柄
+      state.points.forEach((pt, idx) => {
+        const cp = toCanvasCoord(pt);
+        const isHover = state.hoverPointIdx === idx;
+        const isDrag = state.draggingPointIdx === idx;
+
+        mctx.beginPath();
+        mctx.arc(cp.x, cp.y, isHover || isDrag ? 14 : 10, 0, Math.PI * 2);
+        mctx.fillStyle = isDrag ? '#ff6e73' : (isHover ? '#f5d04c' : '#00f0ff');
+        mctx.fill();
+        mctx.strokeStyle = '#ffffff';
+        mctx.lineWidth = 3;
+        mctx.stroke();
+
+        // 标签文字
+        mctx.fillStyle = '#ffffff';
+        mctx.font = 'bold 20px sans-serif';
+        mctx.shadowColor = 'rgba(0,0,0,0.8)';
+        mctx.shadowBlur = 6;
+        mctx.fillText(`P${idx+1}`, cp.x + 14, cp.y - 12);
+        mctx.shadowBlur = 0;
+      });
+    }
+
+    function toCanvasCoord(normPt) {
+      return { x: normPt.x * mainCanvas.width, y: normPt.y * mainCanvas.height };
+    }
+    function toNormCoord(canvasX, canvasY) {
+      return {
+        x: Math.max(0, Math.min(1, canvasX / mainCanvas.width)),
+        y: Math.max(0, Math.min(1, canvasY / mainCanvas.height))
+      };
+    }
+
+    function drawPreview() {
+      if (!state.currentImage || state.points.length < 4) return;
+      previewCanvas.width = 540;
+      previewCanvas.height = 720;
+      pctx.clearRect(0, 0, 540, 720);
+
+      // 计算包围盒
+      const xs = state.points.map(p => p.x * state.width);
+      const ys = state.points.map(p => p.y * state.height);
+      const minX = Math.max(0, Math.min(...xs));
+      const maxX = Math.min(state.width, Math.max(...xs));
+      const minY = Math.max(0, Math.min(...ys));
+      const maxY = Math.min(state.height, Math.max(...ys));
+      const cropW = Math.max(1, maxX - minX);
+      const cropH = Math.max(1, maxY - minY);
+
+      // 离屏裁剪并水平镜像
+      const off = document.createElement('canvas');
+      off.width = cropW;
+      off.height = cropH;
+      const offCtx = off.getContext('2d');
+      offCtx.drawImage(state.currentImage, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
+
+      // 水平翻转绘制到 previewCanvas
+      pctx.save();
+      pctx.translate(540, 0);
+      pctx.scale(-1, 1);
+      pctx.drawImage(off, 0, 0, cropW, cropH, 0, 0, 540, 720);
+      pctx.restore();
+
+      // 水印标注
+      pctx.fillStyle = 'rgba(0, 220, 255, 0.9)';
+      pctx.font = 'bold 16px sans-serif';
+      pctx.fillText('BACK VIEW (FLIPPED)', 20, 32);
+    }
+
+    function renderPointsList() {
+      const container = document.getElementById('pointsListContainer');
+      container.innerHTML = '';
+      state.points.forEach((pt, i) => {
+        const item = document.createElement('div');
+        item.className = `point-item ${state.hoverPointIdx === i ? 'active' : ''}`;
+        item.innerHTML = `
+          <span><b>P${i+1}</b> ${pt.label || ''}</span>
+          <span class="point-coord">[${pt.x.toFixed(4)}, ${pt.y.toFixed(4)}]</span>
+        `;
+        item.onmouseenter = () => { state.hoverPointIdx = i; drawMain(); };
+        item.onmouseleave = () => { state.hoverPointIdx = -1; drawMain(); };
+        container.appendChild(item);
+      });
+    }
+
+    // 交互拖拽
+    mainCanvas.addEventListener('mousedown', (e) => {
+      const rect = mainCanvas.getBoundingClientRect();
+      const scaleX = mainCanvas.width / rect.width;
+      const scaleY = mainCanvas.height / rect.height;
+      const mx = (e.clientX - rect.left) * scaleX;
+      const my = (e.clientY - rect.top) * scaleY;
+
+      let hitIdx = -1;
+      state.points.forEach((pt, i) => {
+        const cp = toCanvasCoord(pt);
+        const dist = Math.hypot(cp.x - mx, cp.y - my);
+        if (dist <= 25) hitIdx = i;
+      });
+
+      if (hitIdx !== -1) {
+        state.draggingPointIdx = hitIdx;
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      const rect = mainCanvas.getBoundingClientRect();
+      if (rect.width === 0) return;
+      const scaleX = mainCanvas.width / rect.width;
+      const scaleY = mainCanvas.height / rect.height;
+      const mx = (e.clientX - rect.left) * scaleX;
+      const my = (e.clientY - rect.top) * scaleY;
+
+      if (state.draggingPointIdx !== -1) {
+        const norm = toNormCoord(mx, my);
+        state.points[state.draggingPointIdx].x = norm.x;
+        state.points[state.draggingPointIdx].y = norm.y;
+        drawMain();
+        drawPreview();
+        renderPointsList();
+      } else {
+        let hoverIdx = -1;
+        state.points.forEach((pt, i) => {
+          const cp = toCanvasCoord(pt);
+          if (Math.hypot(cp.x - mx, cp.y - my) <= 20) hoverIdx = i;
+        });
+        if (state.hoverPointIdx !== hoverIdx) {
+          state.hoverPointIdx = hoverIdx;
+          drawMain();
+        }
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (state.draggingPointIdx !== -1) {
+        state.draggingPointIdx = -1;
+        drawMain();
+        drawPreview();
+      }
+    });
+
+    // 帧导航事件
+    document.getElementById('frameSlider').addEventListener('input', (e) => {
+      loadFrame(parseInt(e.target.value));
+    });
+    document.getElementById('frameInput').addEventListener('change', (e) => {
+      jumpTo(parseInt(e.target.value));
+    });
+    document.getElementById('btnPrevFrame').addEventListener('click', () => {
+      jumpTo(state.currentFrameIndex - 1);
+    });
+    document.getElementById('btnNextFrame').addEventListener('click', () => {
+      jumpTo(state.currentFrameIndex + 1);
+    });
+
+    // 预设与重置
+    document.getElementById('btnPreset').addEventListener('click', () => {
+      state.points = [
+        { x: 0.36, y: 0.11, label: 'P1 (左上)' },
+        { x: 0.54, y: 0.11, label: 'P2 (右上)' },
+        { x: 0.54, y: 0.44, label: 'P3 (右下)' },
+        { x: 0.36, y: 0.44, label: 'P4 (左下)' }
+      ];
+      drawMain();
+      drawPreview();
+      renderPointsList();
+      showToast('已恢复推荐镜面预设坐标');
+    });
+
+    document.getElementById('btnReset').addEventListener('click', () => {
+      init();
+      showToast('已重载当前配置文件');
+    });
+
+    document.getElementById('btnClearPoints').addEventListener('click', () => {
+      state.points = [];
+      drawMain();
+      renderPointsList();
+      showToast('已清空，请在画面上依次点击 4 个镜面角点');
+    });
+
+    // 点击添加新点
+    mainCanvas.addEventListener('click', (e) => {
+      if (state.draggingPointIdx !== -1 || state.points.length >= 4) return;
+      const rect = mainCanvas.getBoundingClientRect();
+      const scaleX = mainCanvas.width / rect.width;
+      const scaleY = mainCanvas.height / rect.height;
+      const norm = toNormCoord((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+      state.points.push({ x: norm.x, y: norm.y, label: `P${state.points.length + 1}` });
+      drawMain();
+      drawPreview();
+      renderPointsList();
+    });
+
+    // 保存配置
+    async function saveConfig() {
+      if (state.points.length < 4) {
+        showToast('请至少标注 4 个镜面边界角点', false);
+        return;
+      }
+      const xs = state.points.map(p => p.x);
+      const ys = state.points.map(p => p.y);
+      const roi = [
+        parseFloat(Math.min(...xs).toFixed(4)),
+        parseFloat(Math.min(...ys).toFixed(4)),
+        parseFloat(Math.max(...xs).toFixed(4)),
+        parseFloat(Math.max(...ys).toFixed(4))
+      ];
+      const polygon = state.points.map(p => [
+        parseFloat(p.x.toFixed(4)),
+        parseFloat(p.y.toFixed(4))
+      ]);
+
+      try {
+        const res = await fetch('/api/save_config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reflection_roi: roi, polygon: polygon })
+        });
+        const ret = await res.json();
+        if (ret.success) {
+          showToast('✅ 镜面标定配置已成功保存！');
+        } else {
+          showToast(`保存失败: ${ret.error || '未知错误'}`, false);
+        }
+      } catch (err) {
+        showToast(`网络或保存异常: ${err}`, false);
+      }
+    }
+
+    document.getElementById('btnSave').addEventListener('click', saveConfig);
+
+    // 快捷键
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 's' || e.key === 'S') {
+        if (!e.ctrlKey && !e.metaKey) {
+          e.preventDefault();
+          saveConfig();
+        }
+      } else if (e.key === 'ArrowLeft') {
+        jumpTo(state.currentFrameIndex - 1);
+      } else if (e.key === 'ArrowRight') {
+        jumpTo(state.currentFrameIndex + 1);
+      }
+    });
+
+    window.onload = init;
+  </script>
+</body>
+</html>
