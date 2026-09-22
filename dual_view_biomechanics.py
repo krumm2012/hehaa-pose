@@ -156,6 +156,37 @@ class DualViewBiomechanicsEngine:
 
         critical_joints = ["right_wrist", "right_elbow", "left_wrist", "left_elbow"]
 
+        # 计算双机位身体基准参考（以双肩中心与跨度为尺度进行解剖归一化对齐）
+        f_l_sh = front_pose.get("left_shoulder")
+        f_r_sh = front_pose.get("right_shoulder")
+        b_l_sh = back_pose.get("left_shoulder")
+        b_r_sh = back_pose.get("right_shoulder")
+
+        has_front_sh = (
+            f_l_sh is not None
+            and f_r_sh is not None
+            and f_l_sh.conf >= self.min_keypoint_conf
+            and f_r_sh.conf >= self.min_keypoint_conf
+        )
+        has_back_sh = (
+            b_l_sh is not None
+            and b_r_sh is not None
+            and b_l_sh.conf >= self.min_keypoint_conf
+            and b_r_sh.conf >= self.min_keypoint_conf
+        )
+
+        if has_front_sh and has_back_sh:
+            f_cx = (f_l_sh.x + f_r_sh.x) / 2.0
+            f_cy = (f_l_sh.y + f_r_sh.y) / 2.0
+            b_cx = (b_l_sh.x + b_r_sh.x) / 2.0
+            b_cy = (b_l_sh.y + b_r_sh.y) / 2.0
+            f_w = math.hypot(f_l_sh.x - f_r_sh.x, f_l_sh.y - f_r_sh.y)
+            b_w = math.hypot(b_l_sh.x - b_r_sh.x, b_l_sh.y - b_r_sh.y)
+            scale = (f_w / max(1.0, b_w)) if b_w > 1.0 else 1.0
+        else:
+            scale = 1.0
+            f_cx, f_cy, b_cx, b_cy = 0.0, 0.0, 0.0, 0.0
+
         for joint in critical_joints:
             f_kp = front_pose.get(joint)
             b_kp = back_pose.get(joint)
@@ -164,11 +195,18 @@ class DualViewBiomechanicsEngine:
             b_valid = b_kp is not None and b_kp.conf >= self.min_keypoint_conf
 
             if not f_valid and b_valid:
-                # 正面丢失但背面有效：自愈补全
+                # 正面丢失但背面有效：以身体解剖尺度进行归一化映射自愈补全
+                if has_front_sh and has_back_sh:
+                    mapped_x = f_cx + (b_kp.x - b_cx) * scale
+                    mapped_y = f_cy + (b_kp.y - b_cy) * scale
+                else:
+                    mapped_x = b_kp.x
+                    mapped_y = b_kp.y
+
                 healed_pose[joint] = Keypoint(
-                    x=b_kp.x,
-                    y=b_kp.y,
-                    conf=b_kp.conf * 0.9,  # 适度衰减置信度作为融合标记
+                    x=round(float(mapped_x), 2),
+                    y=round(float(mapped_y), 2),
+                    conf=round(float(b_kp.conf * 0.9), 3),  # 适度衰减置信度作为融合标记
                     recovered_from_mirror=True,
                 )
                 healed_list.append(joint)

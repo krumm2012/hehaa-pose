@@ -42,10 +42,12 @@ class DualPoseResult:
     front_pose_orig: Dict[str, Keypoint]
     # 背面视角关键点（映射至原始全图坐标，考虑水平翻转逆运算）
     back_pose_orig: Dict[str, Keypoint]
-    # 融合姿态（包含正面遮挡时自愈补全的关键点）
+    # 融合姿态（包含正面遮挡时自愈补全的关键点，局部坐标）
     fused_pose_local: Dict[str, Keypoint]
     # 生物力学分析结果
     biomechanics: DualViewBiomechanicsResult
+    # 融合姿态（映射至原始全图全局坐标）
+    fused_pose_orig: Dict[str, Keypoint] = field(default_factory=dict)
     timestamp_ms: Optional[float] = None
 
 
@@ -127,20 +129,42 @@ class DualPoseEstimator:
         logger.warning("No ML pose model loaded. DualPoseEstimator running in dummy/pass-through mode.")
         self.backend = "mock"
 
-    def _predict_single_view(self, view_frame: np.ndarray) -> Dict[str, Keypoint]:
+    def _predict_single_view(
+        self,
+        view_frame: np.ndarray,
+        is_back_view: bool = False,
+    ) -> Dict[str, Keypoint]:
         """对单路裁剪视角画面进行姿态估计。"""
         if self.model is None or self.backend == "mock":
             return {}
+
+        h, w = view_frame.shape[:2]
 
         if self.backend == "ultralytics":
             results = self.model(view_frame, conf=self.conf_threshold, verbose=False)
             if not results or results[0].keypoints is None or len(results[0].keypoints) == 0:
                 return {}
-            # 取置信度最高的一个人体
-            kp_data = results[0].keypoints.data.cpu().numpy() # [N, 17, 3] or [N, 17, 2]
+            kp_data = results[0].keypoints.data.cpu().numpy()  # [N, 17, 3] or [N, 17, 2]
             if len(kp_data) == 0:
                 return {}
-            best_person = kp_data[0]
+
+            # 背面镜面机位：过滤底部前景闯入人像（双肩位于画面底部 68% 以外）
+            best_person = None
+            if is_back_view:
+                candidates = []
+                for p in kp_data:
+                    ls_y = p[5, 1] if p.shape[0] > 5 and (p.shape[1] <= 2 or p[5, 2] >= self.conf_threshold) else None
+                    rs_y = p[6, 1] if p.shape[0] > 6 and (p.shape[1] <= 2 or p[6, 2] >= self.conf_threshold) else None
+                    sh_ys = [y for y in (ls_y, rs_y) if y is not None]
+                    if sh_ys and min(sh_ys) <= h * 0.68:
+                        candidates.append((min(sh_ys), p))
+                if candidates:
+                    candidates.sort(key=lambda x: x[0])
+                    best_person = candidates[0][1]
+
+            if best_person is None:
+                best_person = kp_data[0]
+
             parsed = {}
             for idx, name in COCO_KEYPOINTS.items():
                 x = float(best_person[idx, 0])
@@ -156,7 +180,24 @@ class DualPoseEstimator:
                 kpts_list = self.model.get_keypoints(view_frame)
                 if not kpts_list:
                     return {}
-                best = kpts_list[0]
+
+                best = None
+                if is_back_view:
+                    # 背面镜面机位：镜中人像位于镜像区中上部，过滤底部前景人体
+                    candidates = []
+                    for p in kpts_list:
+                        ls = p.get("left_shoulder")
+                        rs = p.get("right_shoulder")
+                        sh_ys = [pt[1] for pt in (ls, rs) if pt is not None]
+                        if sh_ys and min(sh_ys) <= h * 0.68:
+                            candidates.append((min(sh_ys), p))
+                    if candidates:
+                        candidates.sort(key=lambda x: x[0])
+                        best = candidates[0][1]
+
+                if best is None:
+                    best = kpts_list[0]
+
                 parsed = {}
                 for name, pt in best.items():
                     if pt is not None:
@@ -198,8 +239,8 @@ class DualPoseEstimator:
         3. 进行生物力学融合、抗侧身塌陷及遮挡自愈
         """
         # 1. 独立估计
-        front_pose_local = self._predict_single_view(dual_frame.front_frame)
-        back_pose_local = self._predict_single_view(dual_frame.back_frame)
+        front_pose_local = self._predict_single_view(dual_frame.front_frame, is_back_view=False)
+        back_pose_local = self._predict_single_view(dual_frame.back_frame, is_back_view=True)
 
         # 2. 映射回原图坐标
         front_pose_orig = self._map_pose_to_original(front_pose_local, dual_frame.front_info)
@@ -218,8 +259,9 @@ class DualPoseEstimator:
             ball_pos=front_ball_pos,
         )
 
-        # 4. 生成自愈后的完整正面姿态
+        # 4. 生成自愈后的完整正面姿态并映射至全局全景坐标
         fused_local, _ = self.biomech_engine.heal_occluded_pose(front_pose_local, back_pose_local)
+        fused_orig = self._map_pose_to_original(fused_local, dual_frame.front_info)
 
         return DualPoseResult(
             frame_id=dual_frame.frame_id,
@@ -228,6 +270,7 @@ class DualPoseEstimator:
             front_pose_orig=front_pose_orig,
             back_pose_orig=back_pose_orig,
             fused_pose_local=fused_local,
+            fused_pose_orig=fused_orig,
             biomechanics=biomech_res,
             timestamp_ms=dual_frame.timestamp_ms,
         )

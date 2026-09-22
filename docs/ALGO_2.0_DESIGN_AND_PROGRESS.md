@@ -110,6 +110,7 @@
 | **TASK-11** | Phase 5 | 双视角生物力学指标聚合 | `swing_biomechanics.py` | 🟢 已完成 | 引入 `dual_view_2d_v1` schema，聚合后背引拍深度、肩胛收紧度与 360° 抗塌陷转肩角 |
 | **TASK-12** | Phase 6 | 智能教练双视角规则扩展 | `local_realtime_coach.py` | 🟢 已完成 | 新增后背引拍与肩胛收缩纠错建议，保持确定性且每条不超过 15 个汉字 |
 | **TASK-13** | Phase 6 | 全管线集成与回归验证 | `test_algo2_pipeline_integration.py`<br>`scripts/process_algo2_dual_view.py` | 🟢 已完成 | 254 项测试全绿通过，在 `49.35.mp4` 上精准输出正手判定与后背引拍分析报告 |
+| **TASK-14** | Phase 7 | 复杂长视频多动作分割与双手反拍自愈 | `dual_view_biomechanics.py`<br>`dual_pose_estimator.py`<br>`swing_event_classifier.py` | 🟢 已完成 | 解剖归一化遮挡自愈、镜像视角前景闯入过滤、多事件动态分割与速度加权判定，在 `40.16.mp4` 实测 40.5 FPS |
 
 **状态图例**：  
 - ⬜ 待开始 (Pending)  
@@ -128,5 +129,13 @@
      - 动作类型精准识别为 `Forehand`（置信度 90.0%，判定规则 `dual_view_transverse_projection`）。
      - 后背引拍深度比 `2.5562`，肩胛骨收缩比率 `1.2673`，抗侧身塌陷转肩角 `35.95°`。
      - 导出视频：`/Users/krum5539/Desktop/Camera/algo2_dual_view_biomechanics.mp4`（双视角同屏骨骼 + HUD 仪表盘，耗时 11.79s，吞吐率 21.2 FPS）。
-2. **基线数据集 2**：`Tennis-Vision` 中的基准测试片段（反手、双手反拍、侧身击球）。
-   - 重点验证：正反手分类准确度、双手握拍识别率、抗侧身塌陷稳定性。全量 254 项自动化单元测试通过。
+2. **基线视频 2**：`/Users/krum5539/Desktop/Camera/test/40.16.mp4`
+   - 规格：2560x1440, 25.14fps, 250帧 (~10秒), 连续两次双手反拍。
+   - 验证结果：
+     - 耗时 6.17 秒完成全流程处理与 H.264 导出，运行速度高达 **40.5 FPS**。
+     - 精准捕获并自动分割出两次击球事件，均正确分类为 **`Two-Handed Backhand`（置信度 92.0%）**。
+     - 事件 #1 (帧 64~130, 击球点 99): 引拍深度比 `1.6874`, 肩胛收紧度 `1.1951`, 转肩角 `41.34°`, 展臂 `82.85°`, 教练建议：`[limited_arm_extension] 挥拍时手臂再舒展`、`[limited_knee_flexion] 准备时适当降低重心`。
+     - 事件 #2 (帧 165~218, 击球点 187): 引拍深度比 `1.4442`, 肩胛收紧度 `1.0972`, 转肩角 `33.24°`, 展臂 `157.63°`, 教练建议：`[limited_knee_flexion] 准备时适当降低重心`、`[short_backswing] 提前准备充分引拍`、`[limited_shoulder_turn] 提前转肩充分引拍`。
+     - 导出视频：`/Users/krum5539/Desktop/Camera/test/algo2_40_16_biomechanics.mp4` (2.7 MB)。
+3. **基线数据集 3**：`Tennis-Vision` 中的基准测试片段（反手、双手反拍、侧身击球）。
+   - 重点验证：正反手分类准确度、双手握拍识别率、抗侧身塌陷稳定性。全量 254 项自动化单元测试全绿通过。

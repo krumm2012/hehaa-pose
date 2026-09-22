@@ -92,7 +92,7 @@ def main():
             "frame_id": frame_idx,
             "timestamp": frame_idx / fps,
             "pose": {k: (kp.x, kp.y) for k, kp in pose_res.front_pose_orig.items()},
-            "healed_pose": {k: (kp.x, kp.y) for k, kp in pose_res.fused_pose_local.items()},
+            "healed_pose": {k: (kp.x, kp.y) for k, kp in pose_res.fused_pose_orig.items()},
             "dual_view_biomechanics": {
                 "shoulder_turn": {
                     "shoulder_turn_deg": b.robust_shoulder_turn_deg,
@@ -150,6 +150,7 @@ def main():
     # 运行算法 2.0 事件级生物力学聚合与教练建议
     if frame_records:
         from swing_motion_features import extract_motion_features
+        from swing_event_segmenter import segment_swing_events
         from swing_event_classifier import classify_swing_event
         from swing_biomechanics import aggregate_event_biomechanics
         from local_realtime_coach import LocalRealtimeCoach
@@ -159,44 +160,56 @@ def main():
         print("=" * 60)
 
         features = extract_motion_features(frame_records, dominant_hand="right")
-        # 击球瞬间在第 32 帧左右，挥拍核心窗口 [15, 55]
-        core_features = features[15:55] if len(features) >= 55 else features
-        classification = classify_swing_event(core_features)
-        
-        event_dict = {
-            "event_id": 1,
-            "start_frame": 15,
-            "contact_frame": 32,
-            "peak_frame": 32,
-            "end_frame": min(len(frames_records_cache) - 1, 55) if 'frames_records_cache' in locals() else 55,
-            "quality_flags": {"pose_frame_ratio": 1.0},
-            "phase_counts": {"backswing": 12, "forward_swing": 8, "follow_through": 15},
-            "confidence": classification["confidence"],
-        }
-        biomech_summary = aggregate_event_biomechanics(event_dict, frame_records, features)
-        event_dict["biomechanics"] = biomech_summary
-
+        res = segment_swing_events(features)
+        events = res.get("events", [])
         coach = LocalRealtimeCoach()
-        advices = coach.advise_all(event_dict)
 
-        print(f"🎾 动作类型: {classification['stroke_type']} (置信度: {classification['confidence'] * 100:.1f}%)")
-        print(f"📋 判定规则: {classification['evidence']['classification_context']['decision_rule']}")
-        
-        metrics = biomech_summary["metrics"]
-        print("\n📊 核心生物力学指标:")
-        tb = metrics.get("takeback_depth") or {}
-        sc = metrics.get("scapular_retraction") or {}
-        st = metrics.get("shoulder_turn") or {}
-        arm = metrics.get("arm_extension") or {}
+        if not events:
+            events = [{
+                "event_id": 1,
+                "start_frame": 0,
+                "end_frame": len(frame_records) - 1,
+                "contact_frame": len(frame_records) // 2,
+                "peak_frame": len(frame_records) // 2,
+                "confidence": 0.85,
+            }]
 
-        print(f"   • 后背引拍深度比 (Takeback Depth): {tb.get('value', 'N/A')} (置信度: {tb.get('confidence', 0)*100:.1f}%)")
-        print(f"   • 肩胛骨收缩比率 (Scapular Pinch): {sc.get('value', 'N/A')} (置信度: {sc.get('confidence', 0)*100:.1f}%)")
-        print(f"   • 抗侧身塌陷转肩角 (Shoulder Turn): {st.get('value', 'N/A')}° (置信度: {st.get('confidence', 0)*100:.1f}%)")
-        print(f"   • 手臂延展角度 (Arm Extension): {arm.get('value', 'N/A')}° (置信度: {arm.get('confidence', 0)*100:.1f}%)")
+        print(f"🎾 共检测到 {len(events)} 次有效挥拍事件：\n")
 
-        print("\n📢 实时教练纠错建议 (≤15字):")
-        for i, adv in enumerate(advices, 1):
-            print(f"   {i}. [{adv['code']}] {adv['message']} (置信度: {adv['confidence']*100:.1f}%)")
+        for idx, event_dict in enumerate(events, 1):
+            s_f = event_dict.get("start_frame", 0)
+            e_f = event_dict.get("end_frame", len(features) - 1)
+            ev_feats = [f for f in features if s_f <= f["frame_id"] <= e_f]
+            classification = classify_swing_event(ev_feats)
+            event_dict["stroke_type"] = classification["stroke_type"]
+            event_dict["confidence"] = classification["confidence"]
+            event_dict["quality_flags"] = {"pose_frame_ratio": 1.0}
+            biomech_summary = aggregate_event_biomechanics(event_dict, frame_records, features)
+            event_dict["biomechanics"] = biomech_summary
+
+            advices = coach.advise_all(event_dict)
+
+            print(f"📍 [事件 #{idx}] 帧区间: [{s_f} -> {e_f}] | 击球点/峰值帧: {event_dict.get('contact_frame')}")
+            print(f"   动作类型: {classification['stroke_type']} (置信度: {classification['confidence'] * 100:.1f}%)")
+            rule = classification.get("evidence", {}).get("classification_context", {}).get("decision_rule", "dual_view_transverse_projection")
+            print(f"   判定规则: {rule}")
+            
+            metrics = biomech_summary["metrics"]
+            print("   📊 核心生物力学指标:")
+            tb = metrics.get("takeback_depth") or {}
+            sc = metrics.get("scapular_retraction") or {}
+            st = metrics.get("shoulder_turn") or {}
+            arm = metrics.get("arm_extension") or {}
+
+            print(f"      • 后背引拍深度比 (Takeback Depth): {tb.get('value', 'N/A')} (置信度: {tb.get('confidence', 0)*100:.1f}%)")
+            print(f"      • 肩胛骨收缩比率 (Scapular Pinch): {sc.get('value', 'N/A')} (置信度: {sc.get('confidence', 0)*100:.1f}%)")
+            print(f"      • 抗侧身塌陷转肩角 (Shoulder Turn): {st.get('value', 'N/A')}° (置信度: {st.get('confidence', 0)*100:.1f}%)")
+            print(f"      • 手臂延展角度 (Arm Extension): {arm.get('value', 'N/A')}° (置信度: {arm.get('confidence', 0)*100:.1f}%)")
+
+            print("   📢 实时教练纠错建议 (≤15字):")
+            for j, adv in enumerate(advices, 1):
+                print(f"      {j}. [{adv['code']}] {adv['message']} (置信度: {adv['confidence']*100:.1f}%)")
+            print("-" * 60)
         print("=" * 60)
 
 

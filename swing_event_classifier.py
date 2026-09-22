@@ -168,26 +168,51 @@ def classify_swing_event(
     label_backhand_ratio = backhand_support_ratio
 
     # Dual-view biomechanics evidence (virtual rear camera + front camera fusion)
-    dv_strokes = [
-        f.get("dual_view_stroke_type")
+    # 结合挥拍动态权重与击球核心窗口双手持续特征
+    dv_stroke_weights = Counter()
+    total_dv_weight = 0.0
+    dv_two_handed_weight = 0.0
+    dv_two_handed_count = 0
+    dv_bh_types = 0
+
+    for f in event_features:
+        st = f.get("dual_view_stroke_type")
+        if st in {"Forehand", "Backhand", "Two-Handed Backhand"}:
+            w = max(1.0, float(f.get("wrist_speed") or 1.0))
+            dv_stroke_weights[st] += w
+            total_dv_weight += w
+            if f.get("dual_view_is_two_handed") is True:
+                dv_two_handed_count += 1
+                dv_two_handed_weight += w
+            if st in {"Backhand", "Two-Handed Backhand"}:
+                dv_bh_types += 1
+
+    dv_evidence_count = sum(
+        1
         for f in event_features
         if f.get("dual_view_stroke_type") in {"Forehand", "Backhand", "Two-Handed Backhand"}
-    ]
-    dv_two_handed_count = sum(
-        1 for f in event_features if f.get("dual_view_is_two_handed") is True
     )
-    dv_evidence_count = len(dv_strokes)
 
     side = swing_side["side"]
     if dv_evidence_count >= 3:
-        dv_counts = Counter(dv_strokes)
-        top_stroke, top_count = dv_counts.most_common(1)[0]
-        dv_ratio = top_count / dv_evidence_count
-        if dv_ratio >= 0.55:
+        top_stroke, top_weight = dv_stroke_weights.most_common(1)[0]
+        dv_ratio = top_weight / max(1.0, total_dv_weight)
+
+        # 核心网球规则：若击球核心区间存在持续双手持拍反拍特征（或双手握拍权重显著），确定为双手反手
+        two_handed_bh_frames = sum(
+            1 for f in event_features if f.get("dual_view_stroke_type") == "Two-Handed Backhand"
+        )
+        if two_handed_bh_frames >= 3 or (
+            dv_bh_types >= 3 and (dv_two_handed_count >= 3 or two_hand_ratio >= 0.30)
+        ):
+            stroke_type = "Two-Handed Backhand"
+            confidence = max(0.92, dv_ratio)
+            decision_rule = "dual_view_two_handed_backhand"
+        elif dv_ratio >= 0.55:
             if top_stroke == "Two-Handed Backhand" or (
                 top_stroke == "Backhand"
                 and (
-                    dv_two_handed_count / dv_evidence_count >= 0.35
+                    dv_two_handed_count / max(1, dv_evidence_count) >= 0.35
                     or two_hand_ratio >= 0.35
                 )
             ):
