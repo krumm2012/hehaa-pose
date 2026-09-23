@@ -439,12 +439,12 @@
                 <select id="max_suggestions">
                   <option value="1">1 条</option>
                   <option value="2">最多 2 条</option>
-                  <option value="3">最多 3 条</option>
+                  <option value="3" selected>最多 3 条 (推荐)</option>
                 </select>
               </div>
               <div class="field">
                 <label for="min_confidence">最低置信度</label>
-                <input id="min_confidence" type="number" min="0" max="1" step="0.05">
+                <input id="min_confidence" type="number" min="0" max="1" step="0.05" placeholder="0.45" title="推荐 0.45；置信度过高（如>0.8）会导致动作纠错被过滤">
               </div>
             </div>
             <div class="switches">

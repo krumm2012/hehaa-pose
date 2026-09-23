@@ -137,10 +137,13 @@ $$\text{Total Score} = 0.25 \times S_{\text{turn}} + 0.25 \times S_{\text{takeba
 
 | 触发子项低分阈值 | 触发条件 | 教练建议编码 | 智能教练纠错播报语 (≤15字) |
 | :--- | :--- | :--- | :--- |
-| **下肢蹬地** $S_{\text{leg\_drive}} < 40$ | $\text{drive\_ratio} < 0.08$ | `limited_knee_flexion` | `准备时适当降低重心` |
+| **动力学链** $S_{\text{seq}} = \text{DISCONNECTED}$ | 拍头与躯干时序断裂 | `disconnected_kinetic_chain` | `用身体核心带动球拍发力` |
+| **下肢蹬地** $S_{\text{leg\_drive}} < 50$ | $\text{drive\_ratio} < 0.15$ | `limited_leg_drive` | `击球瞬间双腿蹬地发力` |
+| **准备屈膝** 重心过高 | $\text{flexion\_deg} < 12.0^\circ$ | `limited_knee_flexion` | `准备时适当降低重心` |
 | **手臂舒展** $S_{\text{arm}} < 75$ | $\text{arm\_deg} < 145^\circ$ | `limited_arm_extension` | `挥拍时手臂再舒展` |
-| **转肩蓄力** $S_{\text{turn}} < 70$ | $\text{turn\_deg} < 30^\circ$ | `limited_shoulder_turn` | `提前转肩充分引拍` |
-| **引拍深度** $S_{\text{takeback}} < 65$ | $\text{takeback\_ratio} < 1.0$ | `limited_takeback_depth` | `后背引拍拉开拍头` |
+| **转肩蓄力** $S_{\text{turn}} < 70$ | $\text{turn\_change\_deg} < 10.0^\circ$ | `limited_shoulder_turn` | `提前转肩充分引拍` |
+| **引拍深度** $S_{\text{takeback}} < 65$ | $\text{takeback\_ratio} < 0.35$ | `limited_takeback_depth` | `充分展开后背引拍` |
+| **拍头下潜** 刷球不足 | $\text{drop\_ratio} < 0.25$ 或 $\text{angle} < 15^\circ$ | `limited_brush_drop` | `击球前拍头下潜刷球` |
 | **空挥/未触球** | `is_shadow_swing = True` | `SHADOW_SWING` | `未触及球，注意盯球击球点` |
 
 ---

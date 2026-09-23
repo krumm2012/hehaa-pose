@@ -15,7 +15,7 @@ class LocalRealtimeCoach:
     DEFAULT_THRESHOLDS = {
         "min_hip_shoulder_separation_deg": 15.0,
         "min_shoulder_turn_deg": 75.0,
-        "min_shoulder_turn_change_deg": 12.0,
+        "min_shoulder_turn_change_deg": 10.0,
         "min_preparation_knee_flexion_deg": 12.0,
         "min_arm_extension_deg": 145.0,
         "min_contact_lateral_body_widths": 0.55,
@@ -23,6 +23,9 @@ class LocalRealtimeCoach:
         "max_balance_drift_body_widths": 0.65,
         "min_takeback_depth_ratio": 0.35,
         "min_scapular_retraction_ratio": 0.20,
+        "min_leg_drive_ratio": 0.15,
+        "min_brush_angle_deg": 15.0,
+        "min_drop_depth_ratio": 0.25,
     }
 
     def __init__(
@@ -62,7 +65,7 @@ class LocalRealtimeCoach:
         warnings = effective_quality_warnings(quality)
         event_confidence = float(event.get("confidence") or 0.0)
         blocker = self._blocking_advice(event, quality, warnings)
-        if blocker is not None:
+        if blocker is not None and blocker.get("code") in ("pose_gaps", "low_confidence"):
             return [blocker]
 
         candidates = self._biomechanical_candidates(event)
@@ -109,6 +112,8 @@ class LocalRealtimeCoach:
             )
             selected = []
             groups = set()
+            if blocker is not None:
+                selected.append(blocker)
             for candidate in candidates:
                 group = candidate.pop("_group")
                 if group in groups:
@@ -118,6 +123,9 @@ class LocalRealtimeCoach:
                 if len(selected) >= self.max_suggestions:
                     break
             return selected
+
+        if blocker is not None:
+            return [blocker]
 
         if "racket_track_gaps" in warnings:
             return [
@@ -280,6 +288,32 @@ class LocalRealtimeCoach:
             "contact_position",
             "contact_position",
         )
+        # 算法2.0: 动力学链传递异常/断裂
+        kseq = metrics.get("kinematic_sequence") or {}
+        kseq_val = str(kseq.get("value") or "").upper()
+        kseq_conf = self._float(kseq.get("confidence"))
+        if (
+            kseq_val in ("DISCONNECTED", "SUBOPTIMAL")
+            and kseq_conf is not None
+            and kseq_conf >= self.min_confidence
+            and kseq.get("coach_eligible") is not False
+        ):
+            candidates.append(
+                self._ranked_advice(
+                    priority=95,
+                    code="disconnected_kinetic_chain",
+                    message="用身体核心带动球拍发力",
+                    category="technique",
+                    confidence=kseq_conf,
+                    focus="kinetics",
+                    group="kinetics",
+                    evidence={
+                        "sequence_quality": kseq_val,
+                        "metric_confidence": kseq_conf,
+                    },
+                    source="local_rules_v1",
+                )
+            )
         add_low(
             "arm_extension",
             "min_arm_extension_deg",
@@ -316,6 +350,49 @@ class LocalRealtimeCoach:
             "balance",
             "gravity",
         )
+        # 算法2.0: 垂直蹬地发力比不足
+        add_low(
+            "leg_drive",
+            "min_leg_drive_ratio",
+            89,
+            "limited_leg_drive",
+            "击球瞬间双腿蹬地发力",
+            "leg_drive",
+            "lower_body",
+        )
+        # 算法2.0: 拍头下潜不足 / 刷球不够
+        brush = metrics.get("brush_angle") or {}
+        brush_val = self._float(brush.get("value"))
+        drop_ratio = self._float(brush.get("drop_depth_ratio"))
+        brush_conf = self._float(brush.get("confidence"))
+        min_brush = float(self.thresholds.get("min_brush_angle_deg", 15.0))
+        min_drop = float(self.thresholds.get("min_drop_depth_ratio", 0.25))
+        if (
+            brush_conf is not None
+            and brush_conf >= self.min_confidence
+            and brush.get("coach_eligible") is not False
+            and (
+                (brush_val is not None and brush_val < min_brush)
+                or (drop_ratio is not None and drop_ratio < min_drop)
+            )
+        ):
+            candidates.append(
+                self._ranked_advice(
+                    priority=87,
+                    code="limited_brush_drop",
+                    message="击球前拍头下潜刷球",
+                    category="technique",
+                    confidence=brush_conf,
+                    focus="brush_angle",
+                    group="racket_path",
+                    evidence={
+                        "brush_angle": brush_val,
+                        "drop_depth_ratio": drop_ratio,
+                        "metric_confidence": brush_conf,
+                    },
+                    source="local_rules_v1",
+                )
+            )
         add_low(
             "weight_transfer",
             "min_weight_transfer_body_widths",
@@ -324,15 +401,6 @@ class LocalRealtimeCoach:
             "击球时带动重心",
             "balance",
             "gravity",
-        )
-        add_low(
-            "shoulder_turn_change",
-            "min_shoulder_turn_change_deg",
-            82,
-            "limited_shoulder_turn",
-            "提前转肩充分引拍",
-            "shoulder_turn",
-            "rotation",
         )
         add_low(
             "takeback_depth",
@@ -350,6 +418,15 @@ class LocalRealtimeCoach:
             "limited_scapular_retraction",
             "转肩蓄力拉开后背",
             "scapular_retraction",
+            "rotation",
+        )
+        add_low(
+            "shoulder_turn_change",
+            "min_shoulder_turn_change_deg",
+            82,
+            "limited_shoulder_turn",
+            "提前转肩充分引拍",
+            "shoulder_turn",
             "rotation",
         )
         return candidates

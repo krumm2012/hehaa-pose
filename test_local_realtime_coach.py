@@ -426,6 +426,105 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         )
         self.assertTrue(all(len(item["message"]) <= 15 for item in advice))
 
+    def test_disconnected_kinetic_chain_produces_advice(self):
+        coach = LocalRealtimeCoach(max_chars=15)
+        event = {
+            "event_id": 30,
+            "confidence": 0.9,
+            "quality_flags": {"warnings": []},
+            "phase_counts": {"backswing": 8, "follow_through": 8},
+            "biomechanics": {
+                "metrics": {
+                    "kinematic_sequence": {
+                        "value": "DISCONNECTED",
+                        "confidence": 0.85,
+                        "coach_eligible": True,
+                    }
+                }
+            },
+        }
+        advice = coach.advise(event)
+        self.assertEqual(advice["code"], "disconnected_kinetic_chain")
+        self.assertEqual(advice["message"], "用身体核心带动球拍发力")
+        self.assertEqual(advice["category"], "technique")
+
+    def test_limited_leg_drive_produces_advice(self):
+        coach = LocalRealtimeCoach(max_chars=15)
+        event = {
+            "event_id": 31,
+            "confidence": 0.9,
+            "quality_flags": {"warnings": []},
+            "phase_counts": {"backswing": 8, "follow_through": 8},
+            "biomechanics": {
+                "metrics": {
+                    "leg_drive": {
+                        "value": 0.04,
+                        "confidence": 0.85,
+                        "coach_eligible": True,
+                    }
+                }
+            },
+        }
+        advice = coach.advise(event)
+        self.assertEqual(advice["code"], "limited_leg_drive")
+        self.assertEqual(advice["message"], "击球瞬间双腿蹬地发力")
+        self.assertEqual(advice["category"], "technique")
+
+    def test_limited_brush_drop_produces_advice(self):
+        coach = LocalRealtimeCoach(max_chars=15)
+        event = {
+            "event_id": 32,
+            "confidence": 0.9,
+            "quality_flags": {"warnings": []},
+            "phase_counts": {"backswing": 8, "follow_through": 8},
+            "biomechanics": {
+                "metrics": {
+                    "brush_angle": {
+                        "value": 5.0,
+                        "drop_depth_ratio": 0.05,
+                        "confidence": 0.85,
+                        "coach_eligible": True,
+                    }
+                }
+            },
+        }
+        advice = coach.advise(event)
+        self.assertEqual(advice["code"], "limited_brush_drop")
+        self.assertEqual(advice["message"], "击球前拍头下潜刷球")
+        self.assertEqual(advice["category"], "technique")
+
+    def test_capture_warning_does_not_suppress_technique_when_max_suggestions_gt_1(self):
+        coach = LocalRealtimeCoach(max_chars=15, max_suggestions=3)
+        event = {
+            "event_id": 33,
+            "confidence": 0.91,
+            "quality_flags": {
+                "warnings": ["ball_track_gaps"],
+                "ball_frame_ratio": 0.1,
+                "ball_contact_window_ratio": 0.0,
+            },
+            "phase_counts": {"backswing": 8, "follow_through": 8},
+            "biomechanics": {
+                "metrics": {
+                    "preparation_knee_flexion": {
+                        "value": 5.0,
+                        "confidence": 0.82,
+                        "coach_eligible": True,
+                    },
+                    "kinematic_sequence": {
+                        "value": "DISCONNECTED",
+                        "confidence": 0.85,
+                        "coach_eligible": True,
+                    },
+                }
+            },
+        }
+        advices = coach.advise_all(event)
+        self.assertGreaterEqual(len(advices), 2)
+        self.assertEqual(advices[0]["code"], "ball_track_gaps")
+        self.assertEqual(advices[0]["category"], "capture")
+        self.assertTrue(any(a["category"] == "technique" for a in advices[1:]))
+
 
 if __name__ == "__main__":
     unittest.main()
