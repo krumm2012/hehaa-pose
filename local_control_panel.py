@@ -40,6 +40,7 @@ from manual_review_workflow import (
     process_manual_review,
 )
 from roi_stream_config import sanitize_stream_source
+from swing_session_summary import build_session_coaching_summary
 
 
 SESSION_NAME_PATTERN = re.compile(r"[^A-Za-z0-9_-]+")
@@ -683,6 +684,95 @@ class LocalPipelineController:
     ) -> Dict[str, Any]:
         return load_review_state(self.manual_review_paths(report_path))
 
+    def session_events(self) -> Dict[str, Any]:
+        with self._lock:
+            event_json_rel = self._artifacts.get("event_json")
+            session_dir_rel = self._artifacts.get("session_dir")
+            session_id = self._artifacts.get("session_id")
+
+        target_file = None
+        session_dir = None
+        if event_json_rel:
+            candidate = self.workspace / event_json_rel
+            if candidate.exists():
+                target_file = candidate
+                session_dir = (self.workspace / session_dir_rel) if session_dir_rel else candidate.parent
+
+        if target_file is None:
+            base_dir = self.workspace / "data" / "analysis_results" / "control_panel"
+            if base_dir.exists():
+                sessions = sorted(
+                    [d for d in base_dir.iterdir() if d.is_dir() and not d.name.startswith(".")],
+                    key=lambda d: d.stat().st_mtime,
+                    reverse=True,
+                )
+                for s in sessions:
+                    json_candidates = list(s.glob("*_swing_events.json"))
+                    if json_candidates:
+                        target_file = json_candidates[0]
+                        session_dir = s
+                        session_id = s.name
+                        break
+
+        if target_file is None or not target_file.exists():
+            return {
+                "session_id": session_id,
+                "events": [],
+                "total_events": 0,
+                "summary": build_session_coaching_summary([]),
+            }
+
+        try:
+            with target_file.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return {
+                "session_id": session_id,
+                "events": [],
+                "total_events": 0,
+                "summary": build_session_coaching_summary([]),
+            }
+
+        raw_events = data.get("events", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+        processed_events = []
+        for ev in raw_events:
+            event_item = dict(ev)
+            clip_rel = ev.get("clip_path")
+            if clip_rel and session_dir:
+                clip_path = (session_dir / clip_rel) if not Path(clip_rel).is_absolute() else Path(clip_rel)
+                if clip_path.exists():
+                    try:
+                        event_item["clip_url"] = f"/artifacts/{quote(str(clip_path.resolve().relative_to(self.workspace)))}"
+                    except ValueError:
+                        pass
+            
+            freeze_rel = ev.get("impact_freeze_path")
+            if freeze_rel and session_dir:
+                freeze_path = (session_dir / freeze_rel) if not Path(freeze_rel).is_absolute() else Path(freeze_rel)
+                if freeze_path.exists():
+                    try:
+                        event_item["impact_freeze_url"] = f"/artifacts/{quote(str(freeze_path.resolve().relative_to(self.workspace)))}"
+                    except ValueError:
+                        pass
+
+            processed_events.append(event_item)
+
+        summary = build_session_coaching_summary(processed_events)
+        return {
+            "session_id": session_id or (session_dir.name if session_dir else None),
+            "events": processed_events,
+            "total_events": len(processed_events),
+            "summary": summary,
+        }
+
+    def session_summary(self) -> Dict[str, Any]:
+        events_res = self.session_events()
+        return {
+            "session_id": events_res.get("session_id"),
+            "summary": events_res.get("summary") or {},
+        }
+
+
     def evaluate_manual_review(
         self,
         payload: Dict[str, Any],
@@ -1135,19 +1225,25 @@ def create_handler(controller: LocalPipelineController):
                 + "\n"
             )
 
+        def do_HEAD(self):
+            self._do_request(head_only=True)
+
         def do_GET(self):
+            self._do_request(head_only=False)
+
+        def _do_request(self, head_only: bool = False):
             path = self.path.split("?", 1)[0]
             try:
                 if path == "/":
-                    self._send_file(controller.frontend_path, "text/html")
+                    self._send_file(controller.frontend_path, "text/html", head_only=head_only)
                 elif path in ("/mirror-calibration", "/mirror_calibration.html"):
                     calib_html = controller.workspace / "mirror_calibration.html"
                     if calib_html.exists():
-                        self._send_file(calib_html, "text/html")
+                        self._send_file(calib_html, "text/html", head_only=head_only)
                     else:
                         self.send_error(HTTPStatus.NOT_FOUND, "mirror_calibration.html not found")
                 elif path in ("/api/mirror/info", "/api/info"):
-                    self._send_json(controller.mirror_info())
+                    self._send_json(controller.mirror_info(), head_only=head_only)
                 elif path in ("/api/mirror/frame", "/api/frame"):
                     from urllib.parse import parse_qs, urlsplit
                     query = parse_qs(urlsplit(self.path).query)
@@ -1158,16 +1254,22 @@ def create_handler(controller: LocalPipelineController):
                     self.send_header("Content-Length", str(len(jpeg_bytes)))
                     self.send_header("Cache-Control", "public, max-age=60")
                     self.end_headers()
-                    self.wfile.write(jpeg_bytes)
+                    if not head_only:
+                        self.wfile.write(jpeg_bytes)
                 elif path == "/api/config":
-                    self._send_json(controller.public_config())
+                    self._send_json(controller.public_config(), head_only=head_only)
                 elif path == "/api/status":
-                    self._send_json(controller.status())
+                    self._send_json(controller.status(), head_only=head_only)
+                elif path == "/api/session/events":
+                    self._send_json(controller.session_events(), head_only=head_only)
+                elif path == "/api/session/summary":
+                    self._send_json(controller.session_summary(), head_only=head_only)
                 elif path == "/api/manual-review/state":
                     self._send_json(
                         controller.manual_review_state(
                             self.headers.get("X-Manual-Review-Report")
-                        )
+                        ),
+                        head_only=head_only,
                     )
                 elif path == "/api/live-preview":
                     preview = controller.live_preview_path()
@@ -1177,18 +1279,19 @@ def create_handler(controller: LocalPipelineController):
                             "Live preview not ready",
                         )
                     else:
-                        self._send_file(preview, "image/jpeg", no_cache=True)
+                        self._send_file(preview, "image/jpeg", no_cache=True, head_only=head_only)
                 elif path.startswith("/artifacts/"):
                     artifact = controller.artifact_path(
                         path[len("/artifacts/") :]
                     )
-                    self._send_file(artifact)
+                    self._send_file(artifact, head_only=head_only)
                 else:
                     self.send_error(HTTPStatus.NOT_FOUND)
             except (ValueError, RuntimeError, OSError) as exc:
                 self._send_json(
                     {"error": str(exc)},
                     status=HTTPStatus.BAD_REQUEST,
+                    head_only=head_only,
                 )
 
         def do_POST(self):
@@ -1314,6 +1417,7 @@ def create_handler(controller: LocalPipelineController):
             self,
             payload: Dict[str, Any],
             status: HTTPStatus = HTTPStatus.OK,
+            head_only: bool = False,
         ):
             self._send_bytes(
                 json.dumps(
@@ -1324,6 +1428,7 @@ def create_handler(controller: LocalPipelineController):
                 "application/json; charset=utf-8",
                 status=status,
                 no_cache=True,
+                head_only=head_only,
             )
 
         def _send_file(
@@ -1331,6 +1436,7 @@ def create_handler(controller: LocalPipelineController):
             path: Path,
             content_type: Optional[str] = None,
             no_cache: bool = False,
+            head_only: bool = False,
         ):
             if not path.exists() or not path.is_file():
                 self.send_error(HTTPStatus.NOT_FOUND)
@@ -1340,11 +1446,56 @@ def create_handler(controller: LocalPipelineController):
                 or mimetypes.guess_type(str(path))[0]
                 or "application/octet-stream"
             )
-            self._send_bytes(
-                path.read_bytes(),
-                resolved_type,
-                no_cache=no_cache,
-            )
+            file_size = path.stat().st_size
+            range_header = self.headers.get("Range")
+            if range_header and range_header.startswith("bytes="):
+                try:
+                    ranges = range_header[6:].split("-", 1)
+                    start = int(ranges[0]) if ranges[0] else 0
+                    end = int(ranges[1]) if ranges[1] else file_size - 1
+                    end = min(end, file_size - 1)
+                    if start > end or start >= file_size:
+                        self.send_response(int(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE))
+                        self.send_header("Content-Range", f"bytes */{file_size}")
+                        self.end_headers()
+                        return
+                    length = end - start + 1
+                    chunk = b""
+                    if not head_only:
+                        with path.open("rb") as f:
+                            f.seek(start)
+                            chunk = f.read(length)
+                    self.send_response(int(HTTPStatus.PARTIAL_CONTENT))
+                    self.send_header("Content-Type", resolved_type)
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+                    self.send_header("Content-Length", str(length))
+                    self.send_header("Accept-Ranges", "bytes")
+                    self.send_header("X-Content-Type-Options", "nosniff")
+                    if no_cache:
+                        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+                    self.end_headers()
+                    if not head_only:
+                        self.wfile.write(chunk)
+                    return
+                except Exception:
+                    pass
+
+            self.send_response(int(HTTPStatus.OK))
+            self.send_header("Content-Type", resolved_type)
+            self.send_header("Content-Length", str(file_size))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "SAMEORIGIN")
+            if no_cache:
+                self.send_header(
+                    "Cache-Control",
+                    "no-store, no-cache, must-revalidate",
+                )
+            self.end_headers()
+            if not head_only:
+                with path.open("rb") as f:
+                    shutil.copyfileobj(f, self.wfile)
+
 
         def _send_bytes(
             self,
@@ -1352,6 +1503,7 @@ def create_handler(controller: LocalPipelineController):
             content_type: str,
             status: HTTPStatus = HTTPStatus.OK,
             no_cache: bool = False,
+            head_only: bool = False,
         ):
             self.send_response(int(status))
             self.send_header("Content-Type", content_type)
@@ -1364,7 +1516,8 @@ def create_handler(controller: LocalPipelineController):
                     "no-store, no-cache, must-revalidate",
                 )
             self.end_headers()
-            self.wfile.write(data)
+            if not head_only:
+                self.wfile.write(data)
 
     return ControlPanelHandler
 

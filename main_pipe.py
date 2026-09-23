@@ -734,7 +734,7 @@ class MultiprocessPipeline:
                             continue
                         if wrist_kp is not None:
                             dist = ((rx_c - wrist_kp.x) ** 2 + (ry_c - wrist_kp.y) ** 2) ** 0.5
-                            if dist <= 220.0:
+                            if dist <= 320.0:
                                 valid_rackets.append((dist, r))
                         else:
                             valid_rackets.append((0.0, r))

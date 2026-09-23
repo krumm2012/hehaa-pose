@@ -523,8 +523,21 @@ def _event_quality_flags(features: List[Dict], start_idx: int, end_idx: int, cla
         warnings.append("mirror_ball_rejection_in_event")
     if continuity_disabled > 0:
         warnings.append("ball_continuity_disabled")
-    if contact_frame == int(features[start_idx + max(0, min(end_idx - start_idx, (end_idx - start_idx) // 2))]["frame_id"]):
+    midpoint_frame = int(features[start_idx + max(0, min(end_idx - start_idx, (end_idx - start_idx) // 2))]["frame_id"])
+    contact_feature = next((f for f in event_features if int(f.get("frame_id", -1)) == contact_frame), None)
+    has_contact_evidence = (
+        (contact_feature is not None and float(contact_feature.get("contact_score") or 0.0) > 0.0)
+        or contact_window_ball_frames >= 2
+    )
+    classification_context = evidence.get("classification_context") or {}
+    contact_analysis = classification_context.get("contact_analysis") or {}
+    if contact_analysis.get("is_valid_contact"):
+        has_contact_evidence = True
+
+    if contact_frame == midpoint_frame and not has_contact_evidence:
         warnings.append("contact_frame_needs_review")
+
+
 
     return {
         "pose_frame_ratio": round(pose_ratio, 4),
@@ -763,6 +776,7 @@ def _segment_by_peaks(
                 "peak_energy": round(float(peak_energy), 4),
                 "stroke_type": classification["stroke_type"],
                 "confidence": classification["confidence"],
+                "is_shadow_swing": bool(classification.get("is_shadow_swing", False)),
                 "evidence": classification["evidence"],
                 "quality_flags": quality_flags,
                 "phase_counts": dict(sorted(phase_counts.items())),
@@ -918,6 +932,7 @@ def segment_swing_events(
                 "peak_energy": round(float(peak_energy), 4),
                 "stroke_type": classification["stroke_type"],
                 "confidence": classification["confidence"],
+                "is_shadow_swing": bool(classification.get("is_shadow_swing", False)),
                 "evidence": classification["evidence"],
                 "quality_flags": quality_flags,
                 "phase_counts": dict(sorted(phase_counts.items())),

@@ -47,6 +47,30 @@ def calibrate_coaching_event(event: Dict, min_confidence: float = 0.45) -> Dict:
     intentionally separate from stroke classification confidence and from
     capture-quality scores.
     """
+    is_shadow_swing = bool(
+        event.get("is_shadow_swing")
+        or (event.get("evidence") or {})
+        .get("classification_context", {})
+        .get("contact_analysis", {})
+        .get("is_shadow_swing")
+    )
+    if is_shadow_swing:
+        return {
+            "policy_version": CALIBRATION_POLICY_VERSION,
+            "status": "skipped_shadow_swing",
+            "visible_technique_score": None,
+            "visible_technique_score_9": None,
+            "uncertainty_9": None,
+            "confidence": 0.0,
+            "metrics_used": [],
+            "assessments": {},
+            "excluded_metrics": [{"metric": "all", "reason": "shadow_swing_skipped"}],
+            "limitations": [
+                "single_view_visible_technique_only",
+                "shadow_swing_calibration_skipped",
+            ],
+        }
+
     biomechanics = event.get("biomechanics") or {}
     metrics = biomechanics.get("metrics") or {}
     assessments = {}

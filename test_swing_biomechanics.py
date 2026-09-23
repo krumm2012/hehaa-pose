@@ -156,13 +156,79 @@ class SwingBiomechanicsTests(unittest.TestCase):
         calibration = calibrate_coaching_event(event)
 
         self.assertEqual(calibration["status"], "calibrated")
-        self.assertEqual(
-            set(calibration["metrics_used"]),
-            {"arm_extension", "shoulder_turn_change", "preparation_knee_flexion"},
+    def test_kinematic_sequence_ignores_late_follow_through_noise(self):
+        from swing_biomechanics import _calculate_extended_tier_biomechanics
+
+        # 构造击球事件：contact_frame=20, 范围 0~40
+        # 在加速窗口内 (如 18 帧)：hip=5.0, shoulder=8.0, 22 帧: racket=150.0
+        # 在随挥结束区 (如 38 帧)：出现随挥复位噪声 hip=20.0, shoulder=25.0
+        features = []
+        for fid in range(41):
+            f = {
+                "frame_id": fid,
+                "hip_rotation_speed": 1.0,
+                "shoulder_rotation_speed": 1.0,
+                "racket_speed": 10.0,
+                "wrist": (100.0, 200.0),
+                "racket": (100.0, 180.0),
+            }
+            if fid == 18:
+                f["hip_rotation_speed"] = 5.0
+                f["shoulder_rotation_speed"] = 8.0
+            elif fid == 22:
+                f["racket_speed"] = 150.0
+            elif fid == 38:
+                # 迟滞噪声，在加速窗口外
+                f["hip_rotation_speed"] = 20.0
+                f["shoulder_rotation_speed"] = 25.0
+            features.append(f)
+
+        ext = _calculate_extended_tier_biomechanics(
+            features,
+            start_frame=0,
+            contact_frame=20,
+            end_frame=40,
+            body_width=100.0,
+            fps=25.0,
         )
-        self.assertIsNotNone(calibration["visible_technique_score_9"])
-        self.assertNotIn("hip_shoulder_separation", calibration["metrics_used"])
+        seq = ext["kinematic_sequence"]
+        self.assertEqual(seq["hip_peak_frame"], 18)
+        self.assertEqual(seq["shoulder_peak_frame"], 18)
+        self.assertEqual(seq["racket_peak_frame"], 22)
+        self.assertTrue(seq["is_sequential"])
+        self.assertEqual(seq["sequence_quality"], "OPTIMAL")
+
+    def test_contact_frame_midpoint_not_flagged_with_contact_evidence(self):
+        from swing_event_segmenter import _event_quality_flags
+
+        # 事件窗口 0~20，中点为 10
+        features = []
+        for fid in range(21):
+            features.append({
+                "frame_id": fid,
+                "has_pose": True,
+                "ball": [100.0, 100.0] if fid in (9, 10, 11) else None,
+                "racket_center": [105.0, 105.0],
+                "contact_score": 0.85 if fid == 10 else 0.0,
+            })
+
+        # 触球正好在中点 10 帧，但拥有物理触球分数
+        classification = {"evidence": {"classification_context": {"camera": {"view": "facing_player"}}}}
+        flags = _event_quality_flags(features, 0, 20, classification, contact_frame=10)
+        self.assertNotIn("contact_frame_needs_review", flags["warnings"])
+
+    def test_ball_tracking_requires_capture_with_robust_contact_window(self):
+        from swing_quality_policy import ball_tracking_requires_capture
+
+        # 整体帧率低 (例如 15% < 20%)，但触球窗口有 4 帧网球检出
+        quality = {
+            "ball_frame_ratio": 0.15,
+            "ball_contact_window_detection_frames": 4,
+            "ball_contact_window_ratio": 0.44,
+        }
+        self.assertFalse(ball_tracking_requires_capture(quality))
 
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -144,7 +144,7 @@ $$\text{Total Score} = 0.25 \times S_{\text{turn}} + 0.25 \times S_{\text{takeba
 | **转肩蓄力** $S_{\text{turn}} < 70$ | $\text{turn\_change\_deg} < 10.0^\circ$ | `limited_shoulder_turn` | `提前转肩充分引拍` |
 | **引拍深度** $S_{\text{takeback}} < 65$ | $\text{takeback\_ratio} < 0.35$ | `limited_takeback_depth` | `充分展开后背引拍` |
 | **拍头下潜** 刷球不足 | $\text{drop\_ratio} < 0.25$ 或 $\text{angle} < 15^\circ$ | `limited_brush_drop` | `击球前拍头下潜刷球` |
-| **空挥/未触球** | `is_shadow_swing = True` | `SHADOW_SWING` | `未触及球，注意盯球击球点` |
+| **空挥/未触球** | `is_shadow_swing = True` | `SHADOW_SWING` | （静默处理，不派发纠错建议，跳过技术校准） |
 
 ---
 

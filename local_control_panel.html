@@ -305,6 +305,427 @@
     .toast.visible { opacity: 1; transform: translateY(0); }
     .toast.error { border-color: #783943; background: #3a1c22; }
 
+    /* Live Swing Feed & Video Player Styles */
+    .swing-item-card {
+      background: #0b111a;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: border-color .2s ease, box-shadow .2s ease;
+    }
+    .swing-item-card:hover {
+      border-color: rgba(0, 240, 255, 0.4);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+    .swing-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .swing-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+    }
+    .badge-grade {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 20px;
+      letter-spacing: .02em;
+    }
+    .badge-pro { color: #d066ff; background: rgba(191,90,242,0.15); border: 1px solid rgba(191,90,242,0.4); }
+    .badge-advanced { color: #00f0ff; background: rgba(0,240,255,0.15); border: 1px solid rgba(0,240,255,0.4); }
+    .badge-intermediate { color: #30d158; background: rgba(48,209,88,0.15); border: 1px solid rgba(48,209,88,0.4); }
+    .badge-developing { color: #ffd60a; background: rgba(255,214,10,0.15); border: 1px solid rgba(255,214,10,0.4); }
+    .badge-shadow { color: #8e8e93; background: rgba(142,142,147,0.15); border: 1px solid rgba(142,142,147,0.4); }
+    .swing-frames { font-size: 12px; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
+
+    .swing-telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 8px;
+    }
+    .telemetry-cell {
+      background: #060a10;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .telemetry-cell .t-label { font-size: 10px; color: var(--muted); text-transform: uppercase; font-weight: 600; }
+    .telemetry-cell .t-val { font-size: 13px; font-weight: 700; color: #fff; }
+    .telemetry-cell .t-val small { font-size: 11px; font-weight: 400; color: #8899aa; }
+    .badge-seq {
+      display: inline-block;
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+    .badge-seq.optimal { background: rgba(48,209,88,0.2); color: #30d158; }
+    .badge-seq.disconnected { background: rgba(255,69,58,0.2); color: #ff453a; }
+
+    .swing-coach-box {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      background: rgba(255, 234, 0, 0.05);
+      border: 1px solid rgba(255, 234, 0, 0.2);
+      border-radius: 8px;
+      padding: 8px 12px;
+    }
+    .coach-label { font-size: 11px; font-weight: 700; color: #ffd60a; text-transform: uppercase; margin-right: 4px; }
+    .coach-pill {
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 3px 8px;
+      border-radius: 12px;
+    }
+
+    .swing-media-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .media-thumb-box {
+      position: relative;
+      cursor: pointer;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      height: 64px;
+      width: 112px;
+      flex-shrink: 0;
+      background: #000;
+      transition: transform .15s ease, border-color .15s ease;
+    }
+    .media-thumb-box:hover {
+      border-color: var(--blue);
+      transform: scale(1.02);
+    }
+    .freeze-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .thumb-tag {
+      position: absolute;
+      bottom: 2px;
+      right: 3px;
+      background: rgba(0,0,0,0.75);
+      color: #fff;
+      font-size: 9px;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+    .play-clip-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0, 240, 255, 0.12);
+      border: 1px solid var(--blue);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      transition: background .2s ease;
+    }
+    .play-clip-btn:hover { background: rgba(0, 240, 255, 0.25); }
+
+    .inline-clip-player {
+      margin-top: 4px;
+      padding: 12px;
+      background: #05080e;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 240, 255, 0.25);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .clip-video-el {
+      width: 100%;
+      max-height: 440px;
+      border-radius: 6px;
+      background: #000;
+      outline: none;
+    }
+    .player-controls-bar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .btn-speed, .btn-frame {
+      background: #141c28;
+      border: 1px solid var(--line);
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all .15s ease;
+    }
+    .btn-speed.active {
+      background: var(--blue);
+      color: #000;
+      border-color: var(--blue);
+    }
+    .btn-speed:hover, .btn-frame:hover {
+      border-color: var(--blue);
+    }
+
+    /* Session Summary Dashboard Styles */
+    .session-summary-box {
+      background: linear-gradient(145deg, rgba(16, 25, 42, 0.95), rgba(10, 16, 26, 0.98));
+      border: 1px solid rgba(0, 240, 255, 0.25);
+      border-radius: 12px;
+      padding: 16px 18px;
+      margin-bottom: 16px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .summary-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding-bottom: 12px;
+    }
+    .summary-title-group h3 {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+    }
+    .summary-title-group p {
+      font-size: 12px;
+      color: var(--muted);
+      margin: 2px 0 0 0;
+    }
+    .summary-stats-pills {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .stat-pill {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--text);
+    }
+    .stat-pill.highlight {
+      background: rgba(0, 240, 255, 0.12);
+      border-color: rgba(0, 240, 255, 0.4);
+      color: var(--blue);
+    }
+    .stat-pill.success {
+      background: rgba(0, 230, 118, 0.12);
+      border-color: rgba(0, 230, 118, 0.4);
+      color: #00e676;
+    }
+    .dist-bar-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .dist-bar-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .dist-stacked-bar {
+      height: 8px;
+      width: 100%;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+    }
+    .dist-segment {
+      height: 100%;
+      transition: width 0.3s ease;
+    }
+    .dist-segment.forehand { background: var(--blue); }
+    .dist-segment.backhand { background: #9d4edd; }
+    .dist-segment.shadow { background: #64748b; }
+
+    .summary-body-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) {
+      .summary-body-grid { grid-template-columns: 1fr; }
+    }
+    .trend-chart-box {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .score-trend-svg {
+      width: 100%;
+      height: 120px;
+      overflow: visible;
+    }
+    .macro-diagnosis-box {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .macro-deficiencies-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .deficiency-pill {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 500;
+    }
+    .deficiency-pill.severity-high {
+      background: rgba(255, 82, 82, 0.15);
+      border: 1px solid rgba(255, 82, 82, 0.4);
+      color: #ff5252;
+    }
+    .deficiency-pill.severity-medium {
+      background: rgba(255, 179, 0, 0.15);
+      border: 1px solid rgba(255, 179, 0, 0.4);
+      color: #ffb300;
+    }
+    .deficiency-pill.severity-low {
+      background: rgba(0, 240, 255, 0.1);
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      color: var(--blue);
+    }
+    .macro-narrative-text {
+      font-size: 12px;
+      line-height: 1.55;
+      color: #cbd5e1;
+      background: rgba(255, 255, 255, 0.02);
+      border-left: 3px solid var(--blue);
+      padding: 6px 10px;
+      border-radius: 0 4px 4px 0;
+    }
+
+    /* Radar and Telemetry integration */
+    .swing-telemetry-container {
+      display: grid;
+      grid-template-columns: 1fr 140px;
+      gap: 12px;
+      align-items: center;
+    }
+    @media (max-width: 680px) {
+      .swing-telemetry-container { grid-template-columns: 1fr; }
+    }
+    .radar-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 6px;
+      padding: 4px;
+    }
+    .radar-svg {
+      width: 130px;
+      height: 130px;
+    }
+
+    /* Large Clip Modal */
+    .clip-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.88);
+      z-index: 1001;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      backdrop-filter: blur(8px);
+    }
+    .clip-modal-content {
+      position: relative;
+      background: #0d1522;
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      border-radius: 12px;
+      box-shadow: 0 16px 50px rgba(0, 0, 0, 0.8);
+      max-width: 90vw;
+      width: 860px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .clip-modal-header {
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .clip-modal-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      align-items: center;
+      background: #000;
+    }
+    .modal-video-el {
+      width: 100%;
+      max-height: 62vh;
+      border-radius: 6px;
+      outline: none;
+    }
+
+
     @media (max-width: 1040px) {
       .layout { grid-template-columns: 1fr; }
       .preview-stage { min-height: 360px; }
@@ -341,30 +762,53 @@
     </header>
 
     <div class="layout">
-      <main class="card">
-        <div class="card-heading">
-          <div>
-            <h2>ROI 画面预览</h2>
-            <p>黄色区域参与目标检测，P1–P4 来自当前球场配置</p>
+      <div class="main-column" style="display: flex; flex-direction: column; gap: 18px; min-width: 0;">
+        <main class="card">
+          <div class="card-heading">
+            <div>
+              <h2>ROI 画面预览</h2>
+              <p>黄色区域参与目标检测，P1–P4 来自当前球场配置</p>
+            </div>
+            <button id="preview-button" class="button">刷新预览</button>
           </div>
-          <button id="preview-button" class="button">刷新预览</button>
-        </div>
-        <div class="preview-stage">
-          <div id="preview-empty" class="preview-empty">
-            <strong>选择球场后刷新预览</strong>
-            摄像头凭据仅用于本机 RTSP 连接，不会写入页面状态。
+          <div class="preview-stage">
+            <div id="preview-empty" class="preview-empty">
+              <strong>选择球场后刷新预览</strong>
+              摄像头凭据仅用于本机 RTSP 连接，不会写入页面状态。
+            </div>
+            <img id="preview-image" alt="ROI preview" hidden>
+            <div id="preview-loading" class="preview-loading">正在连接码流并提取画面…</div>
           </div>
-          <img id="preview-image" alt="ROI preview" hidden>
-          <div id="preview-loading" class="preview-loading">正在连接码流并提取画面…</div>
-        </div>
-        <div class="preview-footer">
-          <div id="stream-meta" class="stream-meta">
-            <strong>尚未加载球场</strong>
-            <span>—</span>
+          <div class="preview-footer">
+            <div id="stream-meta" class="stream-meta">
+              <strong>尚未加载球场</strong>
+              <span>—</span>
+            </div>
+            <div id="point-list" class="point-list"></div>
           </div>
-          <div id="point-list" class="point-list"></div>
-        </div>
-      </main>
+        </main>
+
+        <section class="card" id="live-swings-card">
+          <div class="card-heading">
+            <div>
+              <h2>实时击球动态流 (Live Swing Feed)</h2>
+              <p id="swings-summary-text">AI 实时检测击球动作、高级生物力学遥测与慢动作切片复盘</p>
+            </div>
+            <div class="actions">
+              <span id="swings-count-badge" class="status-pill" style="border-color: var(--blue); color: var(--blue);">0 次击球</span>
+              <button id="refresh-swings-btn" class="button" type="button">刷新</button>
+            </div>
+          </div>
+          <!-- Session Coaching Summary Dashboard -->
+          <div id="session-summary-box" class="session-summary-box" hidden></div>
+
+          <div id="swings-empty" class="preview-empty" style="min-height: 110px;">
+            <strong>暂无挥拍击球事件</strong>
+            <span>启动流水线分析后，检测到的击球动作、高级遥测卡片与慢动作视频切片将在此处实时显示。</span>
+          </div>
+          <div id="swings-feed-list" class="swings-feed-list" style="display: flex; flex-direction: column; gap: 14px;"></div>
+        </section>
+      </div>
 
       <aside class="side">
         <form id="settings-form" class="card" autocomplete="off">
@@ -796,10 +1240,488 @@
       }
     }
 
+    const activeVideoPlayers = new Set();
+    let lastEventsJson = "";
+
+    function toggleClipPlayer(eventId, clipUrl) {
+      const container = document.getElementById(`clip-player-${eventId}`);
+      if (!container) return;
+      if (container.hidden) {
+        container.hidden = false;
+        const video = container.querySelector(".clip-video-el");
+        if (video && !video.src) {
+          video.src = clipUrl;
+        }
+        activeVideoPlayers.add(eventId);
+        if (video) video.play().catch(() => {});
+      } else {
+        container.hidden = true;
+        const video = container.querySelector(".clip-video-el");
+        if (video) video.pause();
+        activeVideoPlayers.delete(eventId);
+      }
+    }
+
+    function setSpeed(button, eventId, rate) {
+      const container = document.getElementById(`clip-player-${eventId}`);
+      if (!container) return;
+      const video = container.querySelector(".clip-video-el");
+      if (video) video.playbackRate = rate;
+      const bar = container.querySelector(".player-controls-bar");
+      if (bar) {
+        bar.querySelectorAll(".btn-speed").forEach(b => b.classList.remove("active"));
+        button.classList.add("active");
+      }
+    }
+
+    function stepFrame(eventId, deltaSec) {
+      const container = document.getElementById(`clip-player-${eventId}`);
+      if (!container) return;
+      const video = container.querySelector(".clip-video-el");
+      if (video) {
+        video.pause();
+        video.currentTime = Math.max(0, video.currentTime + deltaSec);
+      }
+    }
+
+    function showFreezeModal(imgUrl) {
+      const modal = document.getElementById("freeze-modal");
+      const img = document.getElementById("freeze-modal-img");
+      if (modal && img) {
+        img.src = imgUrl;
+        modal.hidden = false;
+      }
+    }
+
+    function openClipModal(eventId, clipUrl, strokeText, score) {
+      const modal = document.getElementById("clip-modal");
+      const video = document.getElementById("modal-clip-video");
+      const title = document.getElementById("modal-clip-title");
+      if (modal && video) {
+        if (title) title.textContent = `Event #${eventId} · ${strokeText} (质量评分: ${score}分)`;
+        video.src = clipUrl;
+        video.playbackRate = 0.5;
+        modal.hidden = false;
+        video.play().catch(() => {});
+      }
+    }
+
+    function closeClipModal() {
+      const modal = document.getElementById("clip-modal");
+      const video = document.getElementById("modal-clip-video");
+      if (modal) {
+        modal.hidden = true;
+        if (video) {
+          video.pause();
+          video.src = "";
+        }
+      }
+    }
+
+    function setModalSpeed(rate) {
+      const video = document.getElementById("modal-clip-video");
+      if (video) video.playbackRate = rate;
+      document.querySelectorAll(".btn-modal-speed").forEach(b => {
+        b.classList.toggle("active", parseFloat(b.dataset.speed) === rate);
+      });
+    }
+
+    function stepModalFrame(deltaSec) {
+      const video = document.getElementById("modal-clip-video");
+      if (video) {
+        video.pause();
+        video.currentTime = Math.max(0, video.currentTime + deltaSec);
+      }
+    }
+
+    window.addEventListener("keydown", (e) => {
+      const clipModal = document.getElementById("clip-modal");
+      if (clipModal && !clipModal.hidden) {
+        if (e.key === "Escape") {
+          closeClipModal();
+        } else if (e.key === " ") {
+          e.preventDefault();
+          const video = document.getElementById("modal-clip-video");
+          if (video) video.paused ? video.play() : video.pause();
+        } else if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          stepModalFrame(e.shiftKey ? -0.2 : -0.04);
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          stepModalFrame(e.shiftKey ? 0.2 : 0.04);
+        } else if (e.key === "1") {
+          setModalSpeed(1.0);
+        } else if (e.key === "2") {
+          setModalSpeed(0.5);
+        } else if (e.key === "3") {
+          setModalSpeed(0.25);
+        }
+      }
+    });
+
+    function generateRadarSvg(ev) {
+      const isShadow = ev.is_shadow_swing || (ev.evidence?.contact_analysis?.is_shadow_swing);
+      if (isShadow) {
+        return `
+          <div class="radar-box" style="opacity: 0.35;">
+            <svg class="radar-svg" viewBox="0 0 130 130">
+              <circle cx="65" cy="65" r="40" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1" stroke-dasharray="2,2" />
+              <text x="65" y="69" text-anchor="middle" fill="var(--muted)" font-size="10">空挥练习</text>
+            </svg>
+          </div>
+        `;
+      }
+
+      const ext = ev.extended_biomechanics || (ev.biomechanics?.extended_biomechanics || {});
+      const speedKmh = parseFloat(ext.racket_head_speed?.contact_kmh || ext.racket_head_speed?.max_kmh || 0);
+      const dimSpeed = Math.min(100, Math.max(20, (speedKmh / 85.0) * 100));
+
+      const angle = parseFloat(ext.brush_angle?.low_to_high_angle_deg || 0);
+      const drop = parseFloat(ext.brush_angle?.drop_depth_ratio || 0);
+      const dimBrush = Math.min(100, Math.max(20, (Math.min(angle, 60) / 60 * 60) + (Math.min(drop, 0.4) / 0.4 * 40)));
+
+      const seqQual = ext.kinematic_sequence?.sequence_quality;
+      const dimSeq = seqQual === "OPTIMAL" ? 92 : (seqQual === "ACCEPTABLE" ? 75 : 45);
+
+      const legRatio = parseFloat(ext.leg_drive?.drive_ratio || 1.0);
+      const dimLeg = Math.min(100, Math.max(25, (legRatio / 1.6) * 85));
+
+      const rawScore = parseFloat(ev.swing_score ?? (ev.biomechanics?.swing_score ?? 60));
+      const dimPrep = Math.min(100, Math.max(20, rawScore * 0.95));
+
+      const values = [dimSpeed, dimBrush, dimSeq, dimLeg, dimPrep];
+      const labels = ["拍速", "刷球", "动链", "蹬地", "准备"];
+      const cx = 65, cy = 65, maxR = 40;
+
+      const getCoord = (idx, ratio) => {
+        const rad = -Math.PI / 2 + idx * (2 * Math.PI / 5);
+        const r = ratio * maxR;
+        return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+      };
+
+      const ring50 = [0,1,2,3,4].map(i => getCoord(i, 0.5)).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const ring100 = [0,1,2,3,4].map(i => getCoord(i, 1.0)).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const spokes = [0,1,2,3,4].map(i => {
+        const outer = getCoord(i, 1.0);
+        return `<line x1="${cx}" y1="${cy}" x2="${outer.x.toFixed(1)}" y2="${outer.y.toFixed(1)}" stroke="rgba(255,255,255,0.12)" stroke-width="1" />`;
+      }).join("");
+
+      const valPoints = values.map((val, i) => getCoord(i, val / 100));
+      const valPoly = valPoints.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const labelEls = labels.map((lbl, i) => {
+        const pos = getCoord(i, 1.25);
+        return `<text x="${pos.x.toFixed(1)}" y="${(pos.y + 3).toFixed(1)}" text-anchor="middle" fill="var(--muted)" font-size="8.5">${lbl}</text>`;
+      }).join("");
+
+      return `
+        <div class="radar-box" title="五维技术雷达图: 拍速 ${dimSpeed.toFixed(0)} | 刷球 ${dimBrush.toFixed(0)} | 动链 ${dimSeq.toFixed(0)} | 蹬地 ${dimLeg.toFixed(0)} | 准备 ${dimPrep.toFixed(0)}">
+          <svg class="radar-svg" viewBox="0 0 130 130">
+            <polygon points="${ring100}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+            <polygon points="${ring50}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="2,2" />
+            ${spokes}
+            <polygon points="${valPoly}" fill="rgba(0, 240, 255, 0.25)" stroke="#00f0ff" stroke-width="1.8" />
+            ${valPoints.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5" fill="#00f0ff" />`).join("")}
+            ${labelEls}
+          </svg>
+        </div>
+      `;
+    }
+
+    function renderSessionSummary(summary, events) {
+      const box = $("session-summary-box");
+      if (!box) return;
+      if (!summary || !summary.total_swings || summary.total_swings === 0) {
+        box.hidden = true;
+        box.innerHTML = "";
+        return;
+      }
+      box.hidden = false;
+
+      const total = summary.total_swings || 0;
+      const valid = summary.valid_shots_count || 0;
+      const dist = summary.distribution || {};
+      const qm = summary.quality_metrics || {};
+      const defs = summary.common_deficiencies || [];
+      const trends = summary.score_trends || [];
+
+      // Generate SVG trendline
+      const validTrends = trends.filter(t => !t.is_shadow && t.score != null);
+      let trendSvgHtml = "";
+      if (validTrends.length >= 1) {
+        const svgW = 420;
+        const svgH = 110;
+        const padX = 35;
+        const padY = 20;
+        const minS = 40;
+        const maxS = 100;
+        const rangeS = maxS - minS;
+
+        const getY = (s) => svgH - padY - ((s - minS) / rangeS) * (svgH - 2 * padY);
+        const getX = (idx, totalPts) => totalPts <= 1 ? svgW / 2 : padX + (idx / (totalPts - 1)) * (svgW - 2 * padX);
+
+        const avgY = qm.average_score != null ? getY(qm.average_score) : null;
+        const avgLine = avgY != null ? `<line x1="${padX}" y1="${avgY}" x2="${svgW - padX}" y2="${avgY}" stroke="rgba(0, 240, 255, 0.45)" stroke-dasharray="4,4" stroke-width="1.5" /><text x="${svgW - padX + 4}" y="${avgY + 3}" fill="#00f0ff" font-size="9">均分 ${qm.average_score}</text>` : "";
+
+        let gridLines = [60, 80, 100].map(val => {
+          const y = getY(val);
+          return `<line x1="${padX}" y1="${y}" x2="${svgW - padX}" y2="${y}" stroke="rgba(255,255,255,0.06)" stroke-width="1" /><text x="${padX - 22}" y="${y + 3}" fill="rgba(255,255,255,0.3)" font-size="9">${val}</text>`;
+        }).join("");
+
+        const points = validTrends.map((t, idx) => ({
+          x: getX(idx, validTrends.length),
+          y: getY(t.score),
+          score: t.score,
+          eid: t.event_id,
+          speed: t.speed_kmh,
+          stroke: t.stroke_type,
+        }));
+
+        const polylineD = points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+        const polylineArea = `${points[0].x.toFixed(1)},${svgH - padY} ` + polylineD + ` ${points[points.length - 1].x.toFixed(1)},${svgH - padY}`;
+
+        const dots = points.map(p => `
+          <g class="trend-point" data-eid="${p.eid}">
+            <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="#00f0ff" stroke="#0a101a" stroke-width="2" />
+            <title>Event #${p.eid} · ${p.stroke}: ${p.score}分 (${p.speed || '—'} km/h)</title>
+          </g>
+        `).join("");
+
+        trendSvgHtml = `
+          <svg viewBox="0 0 ${svgW} ${svgH}" class="score-trend-svg" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.25" />
+                <stop offset="100%" stop-color="#00f0ff" stop-opacity="0.0" />
+              </linearGradient>
+            </defs>
+            ${gridLines}
+            ${avgLine}
+            <polygon points="${polylineArea}" fill="url(#trendGrad)" />
+            <polyline points="${polylineD}" fill="none" stroke="#00f0ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+            ${dots}
+          </svg>
+        `;
+      } else {
+        trendSvgHtml = `<div style="text-align:center; padding: 30px; color: var(--muted); font-size:12px;">暂无足够的有效击球评分数据</div>`;
+      }
+
+      const defPills = defs.length > 0 ? defs.map(d => {
+        const cls = d.severity === "HIGH" ? "severity-high" : (d.severity === "MEDIUM" ? "severity-medium" : "severity-low");
+        return `<span class="deficiency-pill ${cls}">⚠️ ${escapeHtml(d.message)} · <strong>${d.occurrence_rate_percent}%</strong> (${d.count}次)</span>`;
+      }).join("") : `<span style="font-size:12px; color: #00e676;">🌟 表现优异 · 未发现共性技术短板</span>`;
+
+      box.innerHTML = `
+        <div class="summary-top-row">
+          <div class="summary-title-group">
+            <h3>📊 训练会话全景宏观诊断 <span>(Session Coaching Summary)</span></h3>
+            <p>基于当前会话所有击球动作的聚合统计、质量稳定性评估与共性短板处方</p>
+          </div>
+          <div class="summary-stats-pills">
+            <span class="stat-pill highlight">总挥拍: ${total}次</span>
+            <span class="stat-pill">击球: ${valid}次 (空挥${dist.shadow_count || 0})</span>
+            <span class="stat-pill highlight">均分: ${qm.average_score != null ? qm.average_score + "分" : "—"}</span>
+            <span class="stat-pill success">${escapeHtml(qm.stability_label || "—")}</span>
+          </div>
+        </div>
+
+        <div class="dist-bar-wrapper">
+          <div class="dist-bar-labels">
+            <span>正手: ${dist.forehand_count || 0}球 (${dist.forehand_ratio || 0}%)</span>
+            <span>反手: ${dist.backhand_count || 0}球 (${dist.backhand_ratio || 0}%)</span>
+            <span>空挥: ${dist.shadow_count || 0}次 (${dist.shadow_ratio || 0}%)</span>
+          </div>
+          <div class="dist-stacked-bar">
+            <div class="dist-segment forehand" style="width: ${dist.forehand_ratio || 0}%;" title="正手 ${dist.forehand_ratio || 0}%"></div>
+            <div class="dist-segment backhand" style="width: ${dist.backhand_ratio || 0}%;" title="反手 ${dist.backhand_ratio || 0}%"></div>
+            <div class="dist-segment shadow" style="width: ${dist.shadow_ratio || 0}%;" title="空挥 ${dist.shadow_ratio || 0}%"></div>
+          </div>
+        </div>
+
+        <div class="summary-body-grid">
+          <div class="trend-chart-box">
+            <div class="chart-header">
+              <strong>📈 击球质量得分稳定性趋势 (Score Stability)</strong>
+              <span>Std: ±${qm.score_std != null ? qm.score_std : '—'}分</span>
+            </div>
+            ${trendSvgHtml}
+          </div>
+
+          <div class="macro-diagnosis-box">
+            <div class="chart-header">
+              <strong>🎯 学员共性技术短板归纳 (Common Weaknesses)</strong>
+            </div>
+            <div class="macro-deficiencies-list">
+              ${defPills}
+            </div>
+            <div class="macro-narrative-text">
+              ${escapeHtml(summary.macro_diagnosis || "")}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    async function pollSwings() {
+      try {
+        const response = await api("/api/session/events");
+        if (!response.ok) return;
+        const data = await response.json();
+        const events = data.events || [];
+        const summary = data.summary || {};
+        const currentHash = JSON.stringify(events.map(e => e.event_id + "_" + (e.coach_advices?.length || 0)) + "_" + (summary.total_swings || 0));
+        if (currentHash === lastEventsJson) return;
+        lastEventsJson = currentHash;
+        renderSessionSummary(summary, events);
+        renderSwingsFeed(events);
+      } catch (err) {}
+    }
+
+    function renderSwingsFeed(events) {
+      const emptyEl = $("swings-empty");
+      const listEl = $("swings-feed-list");
+      const badgeEl = $("swings-count-badge");
+      if (!listEl) return;
+      
+      if (!events || events.length === 0) {
+        if (emptyEl) emptyEl.hidden = false;
+        listEl.innerHTML = "";
+        if (badgeEl) badgeEl.textContent = "0 次击球";
+        return;
+      }
+
+      if (emptyEl) emptyEl.hidden = true;
+      if (badgeEl) badgeEl.textContent = `${events.length} 次击球`;
+
+      const reversed = [...events].reverse();
+      listEl.innerHTML = reversed.map(ev => {
+        const eid = ev.event_id;
+        const isShadow = ev.is_shadow_swing || (ev.evidence?.contact_analysis?.is_shadow_swing);
+        const strokeType = ev.stroke_type || "Swing";
+        const strokeText = strokeType === "Forehand" ? "正手 (Forehand)" : (strokeType === "Backhand" ? "反手 (Backhand)" : strokeType);
+        const score = ev.swing_score ?? (ev.biomechanics?.swing_score ?? "—");
+        const grade = ev.swing_grade || (ev.biomechanics?.swing_grade || "DEVELOPING");
+        const badgeClass = isShadow ? "badge-shadow" : `badge-${grade.toLowerCase()}`;
+        const badgeText = isShadow ? "空挥练习 · 无来球" : `${grade} · ${score}分`;
+
+        const ext = ev.extended_biomechanics || (ev.biomechanics?.extended_biomechanics || {});
+        const speed = ext.racket_head_speed || {};
+        const speedContact = speed.contact_kmh ? `${speed.contact_kmh} <small>km/h (峰值 ${speed.max_kmh || speed.contact_kmh})</small>` : "—";
+        
+        const brush = ext.brush_angle || {};
+        const brushText = brush.low_to_high_angle_deg != null ? `+${brush.low_to_high_angle_deg}° <small>(下潜 ${brush.drop_depth_ratio ?? 0}x)</small>` : "—";
+
+        const seq = ext.kinematic_sequence || {};
+        const isOptimal = seq.sequence_quality === "OPTIMAL";
+        const seqClass = isOptimal ? "optimal" : "disconnected";
+        const seqQuality = seq.sequence_quality || "—";
+        const seqLatency = seq.latency_shoulder_to_racket_ms != null ? `Δt ${seq.latency_shoulder_to_racket_ms > 0 ? "+" : ""}${seq.latency_shoulder_to_racket_ms}ms` : "";
+
+        const leg = ext.leg_drive || {};
+        const legText = leg.drive_ratio != null ? `${leg.drive_ratio}x` : "—";
+
+        const advices = ev.coach_advices || (ev.coach_advice ? [ev.coach_advice] : []);
+        const coachHtml = advices.length > 0 ? `
+          <div class="swing-coach-box">
+            <span class="coach-label">AI 教练建议</span>
+            ${advices.map(a => `<span class="coach-pill">🎯 ${escapeHtml(a.message || a.code)}</span>`).join("")}
+          </div>
+        ` : (isShadow ? `
+          <div class="swing-coach-box" style="background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08);">
+            <span class="coach-label" style="color: var(--muted);">提示</span>
+            <span class="coach-pill" style="color: var(--muted);">无来球击打 · 不派发纠错建议</span>
+          </div>
+        ` : "");
+
+        const freezeUrl = ev.impact_freeze_url || "";
+        const clipUrl = ev.clip_url || "";
+        const isPlayerOpen = activeVideoPlayers.has(eid);
+
+        return `
+          <div class="swing-item-card" id="swing-card-${eid}">
+            <div class="swing-header">
+              <div class="swing-title">
+                <strong>Event #${eid} · ${strokeText}</strong>
+                <span class="badge-grade ${badgeClass}">${badgeText}</span>
+              </div>
+              <div class="swing-frames">
+                第 ${ev.start_frame || 0}–${ev.end_frame || 0} 帧 (触球 ${ev.contact_frame || "—"}F)
+              </div>
+            </div>
+
+            <div class="swing-telemetry-container">
+              <div class="swing-telemetry-grid">
+                <div class="telemetry-cell">
+                  <span class="t-label">拍头挥速</span>
+                  <span class="t-val">${speedContact}</span>
+                </div>
+                <div class="telemetry-cell">
+                  <span class="t-label">刷球仰角 / 下潜</span>
+                  <span class="t-val">${brushText}</span>
+                </div>
+                <div class="telemetry-cell">
+                  <span class="t-label">动力学链时序</span>
+                  <span class="t-val">
+                    <span class="badge-seq ${seqClass}">${seqQuality}</span>
+                    <small>${seqLatency}</small>
+                  </span>
+                </div>
+                <div class="telemetry-cell">
+                  <span class="t-label">垂直蹬地发力</span>
+                  <span class="t-val">${legText}</span>
+                </div>
+              </div>
+              ${generateRadarSvg(ev)}
+            </div>
+
+            ${coachHtml}
+
+            <div class="swing-media-row">
+              ${freezeUrl ? `
+                <div class="media-thumb-box" title="点击放大触球定格" onclick="showFreezeModal('${freezeUrl}')">
+                  <img src="${freezeUrl}" class="freeze-thumb" alt="触球定格">
+                  <span class="thumb-tag">触球定格 🔍</span>
+                </div>
+              ` : ""}
+              ${clipUrl ? `
+                <button class="button play-clip-btn" type="button" onclick="toggleClipPlayer(${eid}, '${clipUrl}')">
+                  ▶ 行内慢放
+                </button>
+                <button class="button" style="font-size: 11px; padding: 6px 12px; background: rgba(0, 240, 255, 0.12); border: 1px solid var(--blue); color: var(--text); cursor: pointer;" type="button" onclick="openClipModal(${eid}, '${clipUrl}', '${escapeHtml(strokeText)}', '${score}')">
+                  ⛶ 全屏弹窗复盘
+                </button>
+              ` : ""}
+            </div>
+
+            <div class="inline-clip-player" id="clip-player-${eid}" ${isPlayerOpen ? "" : "hidden"}>
+              <video controls loop playsinline class="clip-video-el" src="${isPlayerOpen ? clipUrl : ""}"></video>
+              <div class="player-controls-bar">
+                <span>慢放倍速：</span>
+                <button class="btn-speed active" type="button" onclick="setSpeed(this, ${eid}, 1.0)">1.0x 正常</button>
+                <button class="btn-speed" type="button" onclick="setSpeed(this, ${eid}, 0.5)">0.5x 慢放</button>
+                <button class="btn-speed" type="button" onclick="setSpeed(this, ${eid}, 0.25)">0.25x 极慢</button>
+                <span style="margin: 0 4px;">|</span>
+                <button class="btn-frame" type="button" onclick="stepFrame(${eid}, -0.04)">⏮ -1帧</button>
+                <button class="btn-frame" type="button" onclick="stepFrame(${eid}, +0.04)">+1帧 ⏭</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      activeVideoPlayers.forEach(eid => {
+        const c = document.getElementById(`clip-player-${eid}`);
+        if (c) {
+          const v = c.querySelector(".clip-video-el");
+          if (v && v.paused) v.play().catch(() => {});
+        }
+      });
+    }
+
     async function pollStatus() {
       try {
         const response = await api("/api/status");
         updateStatus(await response.json());
+        await pollSwings();
       } catch (error) {
         showToast(`状态连接失败：${error.message}`, true);
       }
@@ -825,7 +1747,12 @@
           }
         } catch (_) {}
         updateStreamMeta();
+        const refreshSwingsBtn = $("refresh-swings-btn");
+        if (refreshSwingsBtn) {
+          refreshSwingsBtn.addEventListener("click", pollSwings);
+        }
         await pollStatus();
+        await pollSwings();
       } catch (error) {
         showToast(`页面初始化失败：${error.message}`, true);
       }
@@ -866,5 +1793,46 @@
     setInterval(pollStatus, 1000);
     initialize();
   </script>
+
+  <!-- Impact Freeze Zoom Modal -->
+  <div id="freeze-modal" class="modal" hidden style="position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 20px;" onclick="if(event.target===this)this.hidden=true">
+    <div style="position: relative; max-width: 90vw; max-height: 90vh;">
+      <button type="button" onclick="document.getElementById('freeze-modal').hidden = true" style="position: absolute; top: -36px; right: 0; background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; display: flex; align-items: center; gap: 4px;">✕ 关闭</button>
+      <img id="freeze-modal-img" src="" alt="击球定格放大预览" style="max-width: 90vw; max-height: 85vh; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.2); object-fit: contain;">
+    </div>
+  </div>
+
+  <!-- Large Slow-Motion Clip Modal -->
+  <div id="clip-modal" class="clip-modal" hidden onclick="if(event.target===this)closeClipModal()">
+    <div class="clip-modal-content">
+      <div class="clip-modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <strong id="modal-clip-title" style="color:#fff; font-size:14px;">慢动作高清切片复盘</strong>
+        </div>
+        <button type="button" class="button" style="padding: 4px 10px;" onclick="closeClipModal()">✕ 关闭</button>
+      </div>
+      <div class="clip-modal-body">
+        <video id="modal-clip-video" class="modal-video-el" controls loop playsinline></video>
+        <div class="player-controls-bar" style="width: 100%; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span>慢放倍速：</span>
+            <button class="btn-speed btn-modal-speed" data-speed="1.0" type="button" onclick="setModalSpeed(1.0)">1.0x (1)</button>
+            <button class="btn-speed btn-modal-speed active" data-speed="0.5" type="button" onclick="setModalSpeed(0.5)">0.5x (2)</button>
+            <button class="btn-speed btn-modal-speed" data-speed="0.25" type="button" onclick="setModalSpeed(0.25)">0.25x (3)</button>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <button class="btn-frame" type="button" onclick="stepModalFrame(-0.2)">⏪ -5帧</button>
+            <button class="btn-frame" type="button" onclick="stepModalFrame(-0.04)">⏮ -1帧 (←)</button>
+            <button class="btn-frame" type="button" onclick="stepModalFrame(0.04)">+1帧 (→) ⏭</button>
+            <button class="btn-frame" type="button" onclick="stepModalFrame(0.2)">+5帧 ⏩</button>
+          </div>
+        </div>
+        <div style="font-size: 11px; color: var(--muted); width: 100%; text-align: left; padding: 0 4px;">
+          ⌨️ 键盘快捷键：<code>空格</code> 播放/暂停 · <code>← / →</code> 单帧逐帧步进 · <code>Shift + ← / →</code> 5帧步进 · <code>1 / 2 / 3</code> 切换倍速 · <code>Esc</code> 退出复盘
+        </div>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
+

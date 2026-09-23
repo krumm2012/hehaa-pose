@@ -525,6 +525,40 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         self.assertEqual(advices[0]["category"], "capture")
         self.assertTrue(any(a["category"] == "technique" for a in advices[1:]))
 
+    def test_shadow_swing_silenced_no_advice(self):
+        coach = LocalRealtimeCoach(max_chars=15, max_suggestions=3)
+        event = {
+            "event_id": 99,
+            "confidence": 0.88,
+            "is_shadow_swing": True,
+            "quality_flags": {
+                "warnings": ["ball_track_gaps"],
+                "ball_frame_ratio": 0.05,
+            },
+            "phase_counts": {"backswing": 8, "follow_through": 8},
+        }
+        advices = coach.advise_all(event)
+        self.assertEqual(advices, [])
+        self.assertIsNone(coach.advise(event))
+
+    def test_shadow_swing_skips_calibration(self):
+        from swing_coach_calibration import calibrate_coaching_event
+        event = {
+            "event_id": 100,
+            "confidence": 0.88,
+            "is_shadow_swing": True,
+            "biomechanics": {
+                "metrics": {
+                    "arm_extension": {"value": 160.0, "confidence": 0.9, "coach_eligible": True},
+                    "shoulder_turn_change": {"value": 20.0, "confidence": 0.85, "coach_eligible": True},
+                }
+            },
+        }
+        result = calibrate_coaching_event(event)
+        self.assertEqual(result["status"], "skipped_shadow_swing")
+        self.assertIsNone(result["visible_technique_score_9"])
+
 
 if __name__ == "__main__":
     unittest.main()
+

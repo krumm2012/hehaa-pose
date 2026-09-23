@@ -77,6 +77,41 @@ def _metric(metrics: Dict, category: str, key: str) -> Optional[float]:
     return _parse_number((metrics.get(category) or {}).get(key))
 
 
+def _heal_short_racket_gaps(
+    raw_rackets: List[Optional[Point]],
+    max_gap: int = 2,
+    max_step_distance: float = 200.0,
+) -> List[Tuple[Optional[Point], str]]:
+    """Linearly interpolate short missing gaps in racket detections (<= max_gap frames)."""
+    n = len(raw_rackets)
+    result = [(p, "detected" if p is not None else "missing") for p in raw_rackets]
+    i = 0
+    while i < n:
+        if result[i][0] is not None:
+            i += 1
+            continue
+        gap_start = i
+        while i < n and result[i][0] is None:
+            i += 1
+        gap_end = i
+        gap_len = gap_end - gap_start
+        if gap_len <= max_gap and gap_start > 0 and gap_end < n:
+            p_prev = result[gap_start - 1][0]
+            p_next = result[gap_end][0]
+            if p_prev is not None and p_next is not None:
+                dist = _distance(p_prev, p_next)
+                if dist is not None and dist <= max_step_distance * (gap_len + 1):
+                    for k in range(gap_len):
+                        alpha = (k + 1) / float(gap_len + 1)
+                        interp_x = p_prev[0] + alpha * (p_next[0] - p_prev[0])
+                        interp_y = p_prev[1] + alpha * (p_next[1] - p_prev[1])
+                        result[gap_start + k] = (
+                            (round(interp_x, 2), round(interp_y, 2)),
+                            "interpolated",
+                        )
+    return result
+
+
 def extract_motion_features(
     frames: List[Dict],
     dominant_hand: str = "right",
@@ -94,7 +129,16 @@ def extract_motion_features(
     shoulder_key = "right_shoulder" if dominant_hand == "right" else "left_shoulder"
     elbow_key = "right_elbow" if dominant_hand == "right" else "left_elbow"
 
+    raw_rackets: List[Optional[Point]] = []
     for frame in frames:
+        rkt = _point(frame.get("racket"))
+        if rkt is None:
+            rkt = _racket_center(frame.get("rackets") or [])
+        raw_rackets.append(rkt)
+
+    healed_rackets = _heal_short_racket_gaps(raw_rackets, max_gap=2)
+
+    for idx, frame in enumerate(frames):
         pose = frame.get("healed_pose") or frame.get("pose") or {}
         metrics = frame.get("metrics") or {}
         frame_id = int(frame.get("frame_id", len(features)))
@@ -113,9 +157,7 @@ def extract_motion_features(
         left_ankle = _point(pose.get("left_ankle"))
         right_ankle = _point(pose.get("right_ankle"))
         ball = _point(frame.get("ball"))
-        racket = _point(frame.get("racket"))
-        if racket is None:
-            racket = _racket_center(frame.get("rackets") or [])
+        racket, racket_source = healed_rackets[idx]
 
         wrist_speed = _distance(wrist, prev.get("wrist")) or 0.0
         racket_speed = _distance(racket, prev.get("racket")) or 0.0
@@ -221,6 +263,7 @@ def extract_motion_features(
             "wrist": wrist,
             "off_wrist": off_wrist,
             "racket_center": racket,
+            "racket_center_source": racket_source,
             "ball": ball,
             "detection_diagnostics": frame.get("detection_diagnostics") or {},
             "wrist_speed": round(wrist_speed, 4),

@@ -17,6 +17,10 @@ def ball_tracking_requires_capture(quality: Dict) -> bool:
     contact_ratio = quality.get("ball_contact_window_ratio")
     if event_ratio is None and contact_detections is None and contact_ratio is None:
         return True
+    if contact_detections is not None and int(contact_detections) >= 4:
+        return False
+    if contact_ratio is not None and float(contact_ratio) >= 0.5 and (contact_detections or 0) >= BALL_MIN_CONTACT_DETECTIONS:
+        return False
     if event_ratio is not None and float(event_ratio) < BALL_MIN_EVENT_RATIO:
         return True
     if contact_detections is not None:

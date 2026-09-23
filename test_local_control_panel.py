@@ -608,6 +608,88 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
             self.assertIn("--no-dual-view", cmd_off)
             self.assertNotIn("--algo2-dual-view", cmd_off)
 
+    def test_session_events_discovery_and_url_resolution(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = self.make_controller(root)
+            session_dir = root / "data" / "analysis_results" / "control_panel" / "test_session_123"
+            clips_dir = session_dir / "test_session_swing_clips"
+            clips_dir.mkdir(parents=True)
+            clip_file = clips_dir / "event_0001.mp4"
+            clip_file.write_bytes(b"dummy_mp4_bytes")
+            freeze_file = clips_dir / "event_0001_freeze.jpg"
+            freeze_file.write_bytes(b"dummy_jpg_bytes")
+            events_data = {
+                "events": [
+                    {
+                        "event_id": 1,
+                        "stroke_type": "Forehand",
+                        "clip_path": "test_session_swing_clips/event_0001.mp4",
+                        "impact_freeze_path": "test_session_swing_clips/event_0001_freeze.jpg",
+                    }
+                ]
+            }
+            events_json = session_dir / "test_session_swing_events.json"
+            events_json.write_text(json.dumps(events_data), encoding="utf-8")
+
+            res = controller.session_events()
+            self.assertEqual(res["session_id"], "test_session_123")
+            self.assertEqual(len(res["events"]), 1)
+            event = res["events"][0]
+            self.assertEqual(event["event_id"], 1)
+            self.assertIn("clip_url", event)
+            self.assertIn("impact_freeze_url", event)
+            self.assertTrue(event["clip_url"].startswith("/artifacts/"))
+            self.assertTrue(event["impact_freeze_url"].startswith("/artifacts/"))
+
+    def test_http_session_events_and_range_requests(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = self.make_controller(root)
+            artifact_file = root / "sample.mp4"
+            test_bytes = b"0123456789abcdefghijklmnopqrstuvwxyz"
+            artifact_file.write_bytes(test_bytes)
+            
+            server = ThreadingHTTPServer(("127.0.0.1", 0), create_handler(controller))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base_url = f"http://127.0.0.1:{server.server_port}"
+                # Test /api/session/events
+                req = urllib.request.Request(f"{base_url}/api/session/events")
+                with urllib.request.urlopen(req) as resp:
+                    self.assertEqual(resp.status, 200)
+                    data = json.load(resp)
+                    self.assertIn("events", data)
+                    self.assertIn("summary", data)
+
+                # Test /api/session/summary
+                sum_req = urllib.request.Request(f"{base_url}/api/session/summary")
+                with urllib.request.urlopen(sum_req) as resp:
+                    self.assertEqual(resp.status, 200)
+                    sum_data = json.load(resp)
+                    self.assertIn("summary", sum_data)
+
+                # Test HEAD request
+                head_req = urllib.request.Request(f"{base_url}/artifacts/sample.mp4", method="HEAD")
+                with urllib.request.urlopen(head_req) as resp:
+                    self.assertEqual(resp.status, 200)
+                    self.assertEqual(resp.headers.get("Accept-Ranges"), "bytes")
+                    self.assertEqual(resp.headers.get("Content-Length"), str(len(test_bytes)))
+
+                # Test Range request
+                range_req = urllib.request.Request(f"{base_url}/artifacts/sample.mp4")
+                range_req.add_header("Range", "bytes=5-15")
+                with urllib.request.urlopen(range_req) as resp:
+                    self.assertEqual(resp.status, 206)
+                    self.assertEqual(resp.headers.get("Content-Range"), f"bytes 5-15/{len(test_bytes)}")
+                    content = resp.read()
+                    self.assertEqual(content, b"56789abcdef")
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,1118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Live Swing Events</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0a0f1a; --panel:#151d2b; --line:#2b3a51; --accent:#f4c95d; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:#edf3fb; font:15px/1.5 system-ui,sans-serif; }
+    header,main { width:min(1180px,calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0 18px; display:flex; justify-content:space-between; gap:20px; align-items:end; }
+    h1,h2,p { margin:0; }
+    .summary { color:#aab8cc; }
+    .header-tools { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:10px; }
+    #report-summary { white-space:nowrap; }
+    .refresh-controls { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+    .refresh-status { border:1px solid #46643c; border-radius:999px; background:#182317; color:#baf1c8; padding:5px 10px; white-space:nowrap; }
+    .refresh-status[data-state="paused"] { border-color:#725f2d; background:#1e1b13; color:#f4d995; }
+    .refresh-button { border:1px solid var(--line); border-radius:8px; background:#17253a; color:#dceaff; padding:7px 11px; font:inherit; font-weight:700; cursor:pointer; }
+    .refresh-button:hover:not(:disabled),.refresh-button:focus-visible { border-color:#6f8fb6; outline:none; }
+    .refresh-button-stop { background:#2a2112; border-color:#725f2d; color:#f4d995; }
+    .refresh-button:disabled { opacity:.42; cursor:not-allowed; }
+    main { display:grid; gap:18px; padding-bottom:40px; }
+    .session-monitor { border:1px solid #365d8c; border-radius:14px; background:#111d2d; padding:16px; }
+    .session-monitor-head { display:flex; justify-content:space-between; gap:16px; align-items:start; }
+    .session-monitor-head p { margin-top:4px; color:#93a4bb; }
+    .session-monitor-head > strong { border-radius:999px; background:#27364c; color:#b8c8dc; padding:5px 10px; }
+    .session-monitor-head > strong[data-state="stable"],.session-monitor-head > strong[data-state="improving"] { background:#23432f; color:#baf1c8; }
+    .session-monitor-head > strong[data-state="attention"],.session-monitor-head > strong[data-state="integrity_blocked"] { background:#512c2c; color:#ffb3b3; }
+    .session-monitor-kpis { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin-top:14px; }
+    .session-monitor-kpis div { display:grid; gap:2px; border:1px solid var(--line); border-radius:8px; padding:9px 11px; }
+    .session-monitor-kpis span { color:#93a4bb; font-size:12px; }
+    .session-monitor-kpis strong { font-size:20px; }
+    .live-trends { display:grid; gap:6px; margin-top:14px; }
+    .live-trend-row { display:grid; grid-template-columns:32px minmax(100px,1fr) 58px; gap:8px; align-items:center; font-size:12px; }
+    .live-trend-bars { position:relative; height:17px; border-radius:5px; background:#243247; overflow:hidden; }
+    .live-trend-bars i { position:absolute; left:0; height:8px; }
+    .live-trend-bars .technique { top:0; background:#9b86ff; }
+    .live-trend-bars .evidence { bottom:0; background:#44c4a1; }
+    .session-monitor-alerts { margin-top:12px; color:#ffbf91; }
+    .session-monitor-alerts ul { margin:0; padding-left:20px; }
+    .stream-card { border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }
+    .stream-heading { display:flex; justify-content:space-between; gap:20px; align-items:center; margin-bottom:12px; }
+    .stream-heading p,.stream-note { color:#93a4bb; overflow-wrap:anywhere; }
+    .stream-heading strong { color:#0a0f1a; background:var(--accent); border-radius:999px; padding:5px 10px; white-space:nowrap; }
+    #roi-preview { display:block; width:100%; max-height:680px; object-fit:contain; background:#000; border-radius:9px; }
+    .stream-note { margin-top:10px; }
+    .live-coach-feed { border:1px solid #46643c; border-radius:14px; background:#182317; padding:16px; }
+    .live-coach-feed h2 { color:#dff7d4; }
+    .live-coach-feed p { margin-top:6px; color:#a9c99e; }
+    .live-coach-feed ol { margin:12px 0 0; padding-left:22px; display:grid; gap:6px; }
+    .live-coach-feed strong { color:#e8ffd8; font-size:18px; }
+    .event-card { border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }
+    .event-heading { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+    .event-heading span { color:var(--accent); font-weight:700; }
+    video { display:block; width:100%; max-height:620px; background:#000; border-radius:9px; }
+    .clip-state { padding:48px 20px; text-align:center; color:#93a4bb; border:1px dashed var(--line); border-radius:9px; }
+    .clip-failed { color:#ff9d9d; }
+    .clip-partial { margin-top:8px; padding:10px; color:#ffd28a; }
+    .coach-advice { margin-top:14px; padding:14px 16px; border-radius:9px; background:#202b1d; border:1px solid #46643c; }
+    .coach-title { display:flex; justify-content:space-between; color:#a9c99e; }
+    .coach-title small { color:#78906f; }
+    .coach-advice ol { list-style:none; display:grid; gap:8px; margin:10px 0 0; padding:0; }
+    .coach-advice li { display:grid; grid-template-columns:28px 1fr auto; align-items:center; gap:10px; }
+    .coach-advice li span { display:grid; place-items:center; width:24px; height:24px; border-radius:50%; background:#46643c; color:#fff; }
+    .coach-advice li strong { color:#e8ffd8; font-size:18px; }
+    .coach-advice li small { color:#b9dcae; font-variant-numeric:tabular-nums; }
+    .biomechanics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:10px; }
+    .bio-metric { display:grid; grid-template-columns:1fr auto; gap:2px 8px; padding:9px 11px; border:1px solid var(--line); border-radius:8px; }
+    .bio-metric span { color:#93a4bb; font-size:12px; } .bio-metric strong { grid-column:1; } .bio-metric small { grid-column:2; grid-row:1/3; align-self:center; color:#7890ad; }
+    .deepseek-advice { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:10px; padding:12px 16px; border-radius:9px; background:#17253a; border:1px solid #365d8c; }
+    .deepseek-advice span,.deepseek-advice small { color:#9bbce2; } .deepseek-advice strong { color:#e3f1ff; font-size:18px; }
+    .deepseek-advice.pending,.deepseek-advice.unavailable { opacity:.72; }
+    .coach-tts { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:10px; padding:12px 16px; border-radius:9px; background:#1e2933; border:1px solid #3e7181; }
+    .coach-tts span { color:#a9e3f2; font-weight:700; } .coach-tts small { display:block; margin-top:3px; color:#aab8bf; } .coach-tts audio { height:30px; max-width:260px; }
+    .coach-tts.pending,.coach-tts.unavailable { opacity:.72; }
+    .annotation-workspace { border:1px solid #725f2d; border-radius:14px; background:#1e1b13; padding:16px; }
+    .annotation-workspace h2 { color:#ffe39a; }
+    .annotation-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:12px; }
+    .annotation-actions button { border:1px solid var(--accent); border-radius:8px; background:var(--accent); color:#17130a; padding:8px 12px; font-weight:700; cursor:pointer; }
+    .timeline-review { display:block; margin-top:10px; color:#d8c99f; }
+    .annotation-readiness { margin-top:8px; color:#ffb68c; }
+    .annotation-readiness[data-state="ready"] { color:#a9e99a; }
+    .annotation-box { display:grid; gap:9px; margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }
+    .annotation-box label { color:#c6d2e2; font-size:13px; }
+    .annotation-box input[type="number"],.annotation-box select,.annotation-box textarea { width:100%; margin-top:4px; border:1px solid var(--line); border-radius:7px; background:#0e1521; color:#edf3fb; padding:8px; }
+    .annotation-frames { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .annotation-checks { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+    .manual-events { display:grid; gap:10px; margin-top:12px; }
+    .manual-event-card { border:1px solid #927438; border-radius:10px; background:#272115; padding:12px; }
+    .manual-event-heading { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .manual-event-heading button { border:1px solid #d98c8c; border-radius:7px; background:transparent; color:#ffb1b1; padding:5px 8px; cursor:pointer; }
+    .review-workflow { border:1px solid #8a6d2f; border-radius:14px; background:#17170f; padding:16px; }
+    .review-workflow-head { display:flex; justify-content:space-between; align-items:start; gap:18px; }
+    .review-workflow-head h2 { color:#f4d995; }
+    .review-workflow-head p { margin-top:5px; color:#b9ad8d; }
+    .review-workflow-state { border:1px solid #5d5134; border-radius:999px; padding:5px 10px; color:#d8c99f; white-space:nowrap; }
+    .review-workflow-state[data-state="finalized"] { border-color:#507a49; color:#bce7b2; background:#1b2a18; }
+    .review-workflow-state[data-state="error"],.review-workflow-state[data-state="needs_review"] { border-color:#9a5b43; color:#ffc0a8; background:#2b1913; }
+    .workflow-track { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; margin-top:14px; counter-reset:stage; }
+    .workflow-track span { counter-increment:stage; border-top:3px solid #4a4534; padding:7px 2px 0; color:#887f68; font-size:12px; }
+    .workflow-track span::before { content:counter(stage) '. '; }
+    .workflow-track span[data-active="true"] { border-color:#f4c76b; color:#f4d995; }
+    .review-actions { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:15px; }
+    .review-file { position:relative; overflow:hidden; display:inline-flex; border:1px solid #8a6d2f; border-radius:8px; padding:8px 12px; color:#f4d995; cursor:pointer; }
+    .review-file input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+    .review-actions button { border:1px solid #f4c76b; border-radius:8px; background:#f4c76b; color:#17130a; padding:8px 12px; font-weight:700; cursor:pointer; }
+    .review-actions button.secondary { background:transparent; color:#f4d995; }
+    .review-actions button:disabled { opacity:.45; cursor:not-allowed; }
+    .review-message { margin-top:10px; color:#d5c9a9; }
+    .review-message[data-state="error"] { color:#f6a487; }
+    .review-metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin-top:14px; }
+    .review-metrics div { border:1px solid #4a4534; border-radius:8px; padding:9px 11px; }
+    .review-metrics span { display:block; color:#9e957d; font-size:12px; }
+    .review-metrics strong { font-size:20px; }
+    .coach-comparisons { display:grid; gap:10px; margin-top:14px; }
+    .coach-comparison { border:1px solid #4a4534; border-radius:10px; padding:12px; }
+    .coach-comparison-head { display:flex; justify-content:space-between; gap:12px; color:#d8c99f; }
+    .coach-columns { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+    .coach-column { border:1px solid #3c4d3a; border-radius:8px; background:#172017; padding:10px; }
+    .coach-column.manual { border-color:#8a6d2f; background:#241f12; }
+    .coach-column h3 { margin:0; color:#a8d5a2; font-size:13px; }
+    .coach-column.manual h3 { color:#f4c76b; }
+    .coach-column ol { margin:7px 0 0; padding-left:20px; }
+    .coach-column small { color:#9e957d; }
+    dl { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:14px 0 0; }
+    dl div { border:1px solid var(--line); border-radius:8px; padding:9px 11px; }
+    dt { color:#93a4bb; font-size:12px; text-transform:uppercase; } dd { margin:2px 0 0; }
+    .waiting { padding:50px; text-align:center; border:1px dashed var(--line); border-radius:14px; color:#93a4bb; }
+    /* 算法2.0 / 生物力学与动作质量视觉组件 */
+    .tier-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      border: 1px solid var(--line);
+    }
+    .tier-pro {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.28), rgba(0, 240, 255, 0.32));
+      border-color: #f59e0b;
+      color: #ffd875;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
+    }
+    .tier-advanced {
+      background: rgba(16, 185, 129, 0.22);
+      border-color: #10b981;
+      color: #72f7be;
+    }
+    .tier-intermediate {
+      background: rgba(56, 189, 248, 0.22);
+      border-color: #38bdf8;
+      color: #9fe2ff;
+    }
+    .tier-developing {
+      background: rgba(249, 115, 22, 0.22);
+      border-color: #f97316;
+      color: #ffaa7a;
+    }
+    .impact-freeze-container {
+      margin: 12px 0;
+    }
+    .impact-freeze-link {
+      display: block;
+      position: relative;
+      border-radius: 9px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    }
+    .impact-freeze-link:hover {
+      transform: translateY(-2px);
+      border-color: #00f0ff;
+      box-shadow: 0 6px 18px rgba(0, 240, 255, 0.25);
+    }
+    .impact-freeze-img {
+      display: block;
+      width: 100%;
+      max-height: 480px;
+      object-fit: contain;
+      background: #000;
+    }
+    .impact-freeze-badge {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      padding: 4px 9px;
+      border-radius: 5px;
+      background: rgba(10, 15, 26, 0.88);
+      color: #00f0ff;
+      font-size: 11px;
+      font-weight: 600;
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(0, 240, 255, 0.4);
+    }
+    .bio-radar-wrapper {
+      margin: 12px 0 8px;
+      padding: 12px;
+      background: #111a28;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      text-align: center;
+    }
+    .bio-radar-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #93a4bb;
+      margin-bottom: 6px;
+    }
+    .kinematic-box {
+      margin: 10px 0;
+      padding: 12px 14px;
+      background: #111a28;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+    }
+    .kinematic-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .seq-badge {
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .seq-optimal { background: #13392a; color: #72f7be; border: 1px solid #10b981; }
+    .seq-acceptable { background: #112d42; color: #9fe2ff; border: 1px solid #38bdf8; }
+    .seq-suboptimal { background: #3d1c1c; color: #ff9d9d; border: 1px solid #ef4444; }
+    .kinematic-bars { display: grid; gap: 6px; }
+    .kinematic-bar-row {
+      display: grid;
+      grid-template-columns: 160px 65px 1fr;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+    }
+    .k-label { color: #93a4bb; }
+    .k-val { font-weight: 600; text-align: right; color: #edf3fb; }
+    .k-track {
+      height: 6px;
+      background: #233348;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .k-fill {
+      height: 100%;
+      background: #00f0ff;
+      border-radius: 999px;
+    }
+    .k-fill-rkt { background: #a78bfa; }
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      margin: 10px 0;
+    }
+    .telem-item {
+      padding: 8px 10px;
+      background: #111a28;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: grid;
+      gap: 3px;
+    }
+    .telem-label { font-size: 10px; color: #93a4bb; }
+    .telem-val { font-size: 11px; color: #edf3fb; font-weight: 600; word-break: break-word; }
+    @media(max-width:720px) {
+      header { align-items:start; flex-direction:column; }
+      .header-tools { justify-content:flex-start; }
+      .session-monitor-kpis,.review-metrics { grid-template-columns:1fr 1fr; }
+      dl,.biomechanics,.annotation-frames,.annotation-checks,.coach-columns,.telemetry-grid { grid-template-columns:1fr; }
+      .workflow-track { grid-template-columns:1fr 1fr; }
+      .kinematic-bar-row { grid-template-columns: 1fr auto; }
+      .k-track { grid-column: 1 / -1; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>Live Swing Events</h1><p class="summary">Coach 建议每 200 ms 增量更新。</p></div>
+    <div class="header-tools">
+      <strong id="report-summary">3 events · frame 249</strong>
+      <div class="refresh-controls" role="group" aria-label="页面刷新控制">
+        <span id="refresh-status" class="refresh-status" data-state="running" aria-live="polite">自动刷新中</span>
+        <button id="refresh-start" class="refresh-button" type="button" aria-pressed="true">自动刷新</button>
+        <button id="refresh-stop" class="refresh-button refresh-button-stop" type="button" aria-pressed="false">停止刷新</button>
+      </div>
+    </div>
+  </header>
+  <main>
+    
+        <section class="session-monitor">
+          <div class="session-monitor-head"><div><h2>会话质量与漂移</h2><p>至少 6 次挥拍后判断漂移</p></div><strong data-state="warming_up">预热中</strong></div>
+          <div class="session-monitor-kpis"><div><span>证据质量</span><strong>63/100</strong></div><div><span>可见动作</span><strong>5.4/9</strong></div><div><span>校准覆盖</span><strong>67%</strong></div><div><span>触球证据</span><strong>67%</strong></div><div><span>复核比例</span><strong>67%</strong></div></div>
+          <div class="live-trends"><div class="live-trend-row"><b>#1</b><div class="live-trend-bars"><i class="technique" style="width:0.0%"></i><i class="evidence" style="width:50.0%"></i></div><span>-</span></div><div class="live-trend-row"><b>#2</b><div class="live-trend-bars"><i class="technique" style="width:57.9%"></i><i class="evidence" style="width:68.5%"></i></div><span>5.2/9</span></div><div class="live-trend-row"><b>#3</b><div class="live-trend-bars"><i class="technique" style="width:61.2%"></i><i class="evidence" style="width:70.4%"></i></div><span>5.5/9</span></div></div>
+          <div class="session-monitor-alerts"><ul><li>部分动作证据不完整，技术趋势需谨慎解释</li></ul></div>
+        </section>
+        
+    <section id="live-coach-feed" class="live-coach-feed" aria-live="polite"><h2>实时 Coach</h2><p>等待第一条建议…</p></section>
+    <section id="annotation-workspace" class="annotation-workspace">
+      <h2>人工真值标注 V2</h2>
+      <p class="summary">可修正事件边界；系统漏检的挥拍请单独补录。标注会保存在当前浏览器，页面刷新后仍保留。</p>
+      <label class="timeline-review"><input id="timeline-review-complete" type="checkbox"> 已完整检查整段视频（完成后才计算 Precision / Recall / F1）</label>
+      <p id="annotation-readiness" class="annotation-readiness"></p>
+      <div class="annotation-actions">
+        <button id="add-missed-event" type="button">新增漏检挥拍</button>
+        <button id="download-annotations" type="button">下载标注 JSON</button>
+        <span id="annotation-status" class="summary"></span>
+      </div>
+      <div id="manual-events" class="manual-events"></div>
+    </section>
+    <section id="manual-review-workflow" class="review-workflow">
+      <div class="review-workflow-head">
+        <div><h2>人工校准闭环</h2><p>导入人工标注，生成评估，并对比实时 Coach 与人工边界重算结果。</p></div>
+        <strong id="review-workflow-state" class="review-workflow-state" data-state="waiting">等待标注</strong>
+      </div>
+      <div class="workflow-track" aria-label="人工校准流程">
+        <span id="review-stage-import" data-active="true">导入标注</span>
+        <span id="review-stage-validate">完整性校验</span>
+        <span id="review-stage-evaluate">生成评估</span>
+        <span id="review-stage-coach">重算 Coach</span>
+      </div>
+      <div class="review-actions">
+        <label class="review-file">选择人工标注 JSON<input id="manual-review-file" type="file" accept="application/json,.json"></label>
+        <button id="evaluate-imported-review" type="button" disabled>评估导入标注</button>
+        <button id="evaluate-current-review" class="secondary" type="button">评估页面当前标注</button>
+      </div>
+      <p id="manual-review-message" class="review-message">使用本地 workflow 服务打开本页后，可生成持久化评估与人工 Coach。</p>
+      <div id="manual-review-metrics" class="review-metrics" hidden></div>
+      <div id="coach-comparisons" class="coach-comparisons"></div>
+    </section>
+    
+            <section class="stream-card">
+              <div class="stream-heading">
+                <div><h2>Court 01 Main Camera </h2>
+                <p>d19be8b725b24818e41c6fc1ca896b7e.mp4</p></div>
+                <strong>ROI ACTIVE</strong>
+              </div>
+              <img id="roi-preview" src="report_roi_preview.jpg" alt="Live stream ROI preview">
+              <p class="stream-note">实时截图 · 黄色区域为推理 ROI · P1–P4 为配置点</p>
+            </section>
+            
+                <article class="event-card" data-annotation-card data-annotation-id="model-3" data-source-event-id="3" data-predicted-stroke-type="Forehand" data-peak-frame="194">
+                  <div class="event-heading">
+                    <h2>Swing #3 · Forehand</h2>
+                    <span class="tier-pill tier-pro">PRO · 职业级 <strong style="margin-left:4px;">90.2分</strong></span>
+                  </div>
+                  
+                <div class="impact-freeze-container">
+                  <a href="event_0003_impact_freeze.jpg" target="_blank" class="impact-freeze-link" title="点击查看击球瞬间定格特写">
+                    <img src="event_0003_impact_freeze.jpg" alt="击球瞬间定格特写" loading="lazy" class="impact-freeze-img" />
+                    <span class="impact-freeze-badge">⚡ 击球瞬间定格特写 (第 191 帧)</span>
+                  </a>
+                </div>
+                
+                  <video controls preload="metadata" src="verification_session/output_video_swing_clips/event_0003_forehand_f000166-000225.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单机位2D估计</small></div><ol><li><span>1</span><strong>用身体核心带动球拍发力</strong><small>85%</small></li><li><span>2</span><strong>准备时适当降低重心</strong><small>82%</small></li><li><span>3</span><strong>击球前拍头下潜刷球</strong><small>85%</small></li></ol></div>
+                  
+                  
+            <div class="bio-radar-wrapper">
+              <div class="bio-radar-title">5维生物力学质量雷达</div>
+              <svg viewBox="0 0 240 220" width="100%" style="max-width:240px;display:block;margin:auto;" class="radar-svg"><polygon points="120.0,93.5 135.7,104.9 129.7,123.3 110.3,123.3 104.3,104.9" fill="none" stroke="#233348" stroke-width="1" stroke-dasharray="2,2"/><polygon points="120.0,77.0 151.4,99.8 139.4,136.7 100.6,136.7 88.6,99.8" fill="none" stroke="#233348" stroke-width="1" stroke-dasharray="2,2"/><polygon points="120.0,60.5 167.1,94.7 149.1,150.0 90.9,150.0 72.9,94.7" fill="none" stroke="#233348" stroke-width="1" stroke-dasharray="2,2"/><polygon points="120.0,44.0 182.8,89.6 158.8,163.4 81.2,163.4 57.2,89.6" fill="none" stroke="#364c6a" stroke-width="1"/><line x1="120.0" y1="110.0" x2="120.0" y2="44.0" stroke="#233348" stroke-width="1"/><line x1="120.0" y1="110.0" x2="182.8" y2="89.6" stroke="#233348" stroke-width="1"/><line x1="120.0" y1="110.0" x2="158.8" y2="163.4" stroke="#233348" stroke-width="1"/><line x1="120.0" y1="110.0" x2="81.2" y2="163.4" stroke="#233348" stroke-width="1"/><line x1="120.0" y1="110.0" x2="57.2" y2="89.6" stroke="#233348" stroke-width="1"/><polygon points="120.0,44.0 170.2,93.7 156.4,160.1 90.3,150.8 57.2,89.6" fill="rgba(0, 240, 255, 0.22)" stroke="#00f0ff" stroke-width="2.2"/><circle cx="120.0" cy="44.0" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><circle cx="170.2" cy="93.7" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><circle cx="156.4" cy="160.1" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><circle cx="90.3" cy="150.8" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><circle cx="57.2" cy="89.6" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><text x="120.0" y="26.0" text-anchor="middle" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">转肩 100</text><text x="199.9" y="84.0" text-anchor="start" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">引拍 80</text><text x="169.4" y="178.0" text-anchor="start" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">延展 94</text><text x="70.6" y="178.0" text-anchor="end" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">挥速 76</text><text x="40.1" y="84.0" text-anchor="end" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">蹬地 100</text></svg>
+            </div>
+            
+                  
+                <div class="kinematic-box">
+                  <div class="kinematic-header">
+                    <span>动力学链传递: <strong>下肢 ➔ 髋/骨盆 ➔ 肩/躯干 ➔ 球拍</strong></span>
+                    <span class="seq-badge seq-disconnected">DISCONNECTED</span>
+                  </div>
+                  <div class="kinematic-bars">
+                    <div class="kinematic-bar-row">
+                      <span class="k-label">髋-肩时序延时 (Δt_hip_sh):</span>
+                      <span class="k-val">0.0 ms</span>
+                      <div class="k-track"><div class="k-fill" style="width:5%;"></div></div>
+                    </div>
+                    <div class="kinematic-bar-row">
+                      <span class="k-label">肩-拍时序延时 (Δt_sh_rkt):</span>
+                      <span class="k-val">-1160.0 ms</span>
+                      <div class="k-track"><div class="k-fill k-fill-rkt" style="width:5%;"></div></div>
+                    </div>
+                  </div>
+                </div>
+                
+                  
+                <div class="telemetry-grid">
+                  <div class="telem-item"><span class="telem-label">拍头挥速 (击球/峰值)</span><strong class="telem-val">65.0 / 65.0 km/h</strong></div>
+                  <div class="telem-item"><span class="telem-label">刷球仰角与下潜</span><strong class="telem-val">+30.3° (下潜 0.08x)</strong></div>
+                  <div class="telem-item"><span class="telem-label">击球站位与蹬地比</span><strong class="telem-val">Open Stance · 蹬地 0.32x</strong></div>
+                  <div class="telem-item"><span class="telem-label">后背视角动力学</span><strong class="telem-val">转肩 95.5°</strong></div>
+                </div>
+                
+                  <div class="biomechanics"><div class="bio-metric"><span>转肩蓄力</span><strong>16.70°</strong><small>82%</small></div><div class="bio-metric"><span>准备屈膝</span><strong>6.66°</strong><small>82%</small></div><div class="bio-metric"><span>挥拍舒展</span><strong>145.34°</strong><small>92%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>166–225</dd></div>
+                    <div><dt>Contact</dt><dd>191</dd></div>
+                    <div><dt>Peak</dt><dd>194</dd></div>
+                    <div><dt>Start boundary</dt><dd>quiet_onset · medium</dd></div>
+                    <div><dt>球员 / 机位 / 挥拍侧</dt><dd>右手 · 球员面向相机 · 正手侧</dd></div>
+                    <div><dt>可见动作校准</dt><dd>5.5/9 ±0.6</dd></div>
+                    <div><dt>Warnings</dt><dd>none</dd></div>
+                  </dl>
+                  <div class="annotation-box">
+                    <div class="annotation-frames">
+                      <label>人工开始帧<input type="number" min="0" step="1" data-field="start_frame" value="166"></label>
+                      <label>人工触球帧<input type="number" min="0" step="1" data-field="contact_frame" value="191"></label>
+                      <label>人工结束帧<input type="number" min="0" step="1" data-field="end_frame" value="225"></label>
+                    </div>
+                    <label>人工类型
+                      <select data-field="actual_stroke_type">
+                        <option value="Forehand" selected>Forehand</option>
+                        <option value="Backhand">Backhand</option>
+                        <option value="Two-Handed Backhand">Two-Handed Backhand</option>
+                        <option value="Serve">Serve</option>
+                        <option value="Volley">Volley</option>
+                        <option value="Unclear">Unclear</option>
+                      </select>
+                    </label>
+                    <div class="annotation-checks">
+                      <label><input type="checkbox" data-field="valid_hit" checked> 有效击球</label>
+                      <label><input type="checkbox" data-field="count_correct" checked> 计数正确</label>
+                      <label><input type="checkbox" data-field="needs_review" checked> 待人工确认（确认后取消）</label>
+                      <label><input type="checkbox" data-tag="wrong_type"> 类型错误</label>
+                      <label><input type="checkbox" data-tag="contact_timing"> 触球帧偏差</label>
+                      <label><input type="checkbox" data-tag="event_boundary"> 边界偏差</label>
+                    </div>
+                    <label>备注<textarea rows="2" data-field="note"></textarea></label>
+                  </div>
+                </article>
+                
+
+                <article class="event-card" data-annotation-card data-annotation-id="model-2" data-source-event-id="2" data-predicted-stroke-type="Forehand" data-peak-frame="99">
+                  <div class="event-heading">
+                    <h2>Swing #2 · Forehand</h2>
+                    <span class="tier-pill tier-advanced">ADVANCED · 进阶级 <strong style="margin-left:4px;">86.0分</strong></span>
+                  </div>
+                  
+                <div class="impact-freeze-container">
+                  <a href="event_0002_impact_freeze.jpg" target="_blank" class="impact-freeze-link" title="点击查看击球瞬间定格特写">
+                    <img src="event_0002_impact_freeze.jpg" alt="击球瞬间定格特写" loading="lazy" class="impact-freeze-img" />
+                    <span class="impact-freeze-badge">⚡ 击球瞬间定格特写 (第 96 帧)</span>
+                  </a>
+                </div>
+                
+                  <video controls preload="metadata" src="verification_session/output_video_swing_clips/event_0002_forehand_f000062-000130.mp4"></video>
+                  <div class="coach-advice"><div class="coach-title"><span>实时动作纠错</span><small>单机位2D估计</small></div><ol><li><span>1</span><strong>用身体核心带动球拍发力</strong><small>85%</small></li><li><span>2</span><strong>准备时适当降低重心</strong><small>82%</small></li></ol></div>
+                  
+                  
+            <div class="bio-radar-wrapper">
+              <div class="bio-radar-title">5维生物力学质量雷达</div>
+              <svg viewBox="0 0 240 220" width="100%" style="max-width:240px;display:block;margin:auto;" class="radar-svg"><polygon points="120.0,93.5 135.7,104.9 129.7,123.3 110.3,123.3 104.3,104.9" fill="none" stroke="#233348" stroke-width="1" stroke-dasharray="2,2"/><polygon points="120.0,77.0 151.4,99.8 139.4,136.7 100.6,136.7 88.6,99.8" fill="none" stroke="#233348" stroke-width="1" stroke-dasharray="2,2"/><polygon points="120.0,60.5 167.1,94.7 149.1,150.0 90.9,150.0 72.9,94.7" fill="none" stroke="#233348" stroke-width="1" stroke-dasharray="2,2"/><polygon points="120.0,44.0 182.8,89.6 158.8,163.4 81.2,163.4 57.2,89.6" fill="none" stroke="#364c6a" stroke-width="1"/><line x1="120.0" y1="110.0" x2="120.0" y2="44.0" stroke="#233348" stroke-width="1"/><line x1="120.0" y1="110.0" x2="182.8" y2="89.6" stroke="#233348" stroke-width="1"/><line x1="120.0" y1="110.0" x2="158.8" y2="163.4" stroke="#233348" stroke-width="1"/><line x1="120.0" y1="110.0" x2="81.2" y2="163.4" stroke="#233348" stroke-width="1"/><line x1="120.0" y1="110.0" x2="57.2" y2="89.6" stroke="#233348" stroke-width="1"/><polygon points="120.0,44.0 170.2,93.7 149.1,150.0 91.6,149.1 57.2,89.6" fill="rgba(0, 240, 255, 0.22)" stroke="#00f0ff" stroke-width="2.2"/><circle cx="120.0" cy="44.0" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><circle cx="170.2" cy="93.7" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><circle cx="149.1" cy="150.0" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><circle cx="91.6" cy="149.1" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><circle cx="57.2" cy="89.6" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><text x="120.0" y="26.0" text-anchor="middle" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">转肩 100</text><text x="199.9" y="84.0" text-anchor="start" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">引拍 80</text><text x="169.4" y="178.0" text-anchor="start" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">延展 75</text><text x="70.6" y="178.0" text-anchor="end" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">挥速 73</text><text x="40.1" y="84.0" text-anchor="end" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">蹬地 100</text></svg>
+            </div>
+            
+                  
+                <div class="kinematic-box">
+                  <div class="kinematic-header">
+                    <span>动力学链传递: <strong>下肢 ➔ 髋/骨盆 ➔ 肩/躯干 ➔ 球拍</strong></span>
+                    <span class="seq-badge seq-disconnected">DISCONNECTED</span>
+                  </div>
+                  <div class="kinematic-bars">
+                    <div class="kinematic-bar-row">
+                      <span class="k-label">髋-肩时序延时 (Δt_hip_sh):</span>
+                      <span class="k-val">360.0 ms</span>
+                      <div class="k-track"><div class="k-fill" style="width:100%;"></div></div>
+                    </div>
+                    <div class="kinematic-bar-row">
+                      <span class="k-label">肩-拍时序延时 (Δt_sh_rkt):</span>
+                      <span class="k-val">-600.0 ms</span>
+                      <div class="k-track"><div class="k-fill k-fill-rkt" style="width:5%;"></div></div>
+                    </div>
+                  </div>
+                </div>
+                
+                  
+                <div class="telemetry-grid">
+                  <div class="telem-item"><span class="telem-label">拍头挥速 (击球/峰值)</span><strong class="telem-val">59.4 / 62.2 km/h</strong></div>
+                  <div class="telem-item"><span class="telem-label">刷球仰角与下潜</span><strong class="telem-val">+62.0° (下潜 0.34x)</strong></div>
+                  <div class="telem-item"><span class="telem-label">击球站位与蹬地比</span><strong class="telem-val">Open Stance · 蹬地 0.53x</strong></div>
+                  <div class="telem-item"><span class="telem-label">后背视角动力学</span><strong class="telem-val">转肩 96.5°</strong></div>
+                </div>
+                
+                  <div class="biomechanics"><div class="bio-metric"><span>转肩蓄力</span><strong>11.40°</strong><small>82%</small></div><div class="bio-metric"><span>准备屈膝</span><strong>4.36°</strong><small>82%</small></div><div class="bio-metric"><span>挥拍舒展</span><strong>146.26°</strong><small>92%</small></div><div class="bio-metric"><span>击球点距离</span><strong>2.02×身宽</strong><small>74%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>62–130</dd></div>
+                    <div><dt>Contact</dt><dd>96</dd></div>
+                    <div><dt>Peak</dt><dd>99</dd></div>
+                    <div><dt>Start boundary</dt><dd>quiet_onset · medium</dd></div>
+                    <div><dt>球员 / 机位 / 挥拍侧</dt><dd>右手 · 球员面向相机 · 正手侧</dd></div>
+                    <div><dt>可见动作校准</dt><dd>5.2/9 ±0.6</dd></div>
+                    <div><dt>Warnings</dt><dd>contact_frame_needs_review</dd></div>
+                  </dl>
+                  <div class="annotation-box">
+                    <div class="annotation-frames">
+                      <label>人工开始帧<input type="number" min="0" step="1" data-field="start_frame" value="62"></label>
+                      <label>人工触球帧<input type="number" min="0" step="1" data-field="contact_frame" value="96"></label>
+                      <label>人工结束帧<input type="number" min="0" step="1" data-field="end_frame" value="130"></label>
+                    </div>
+                    <label>人工类型
+                      <select data-field="actual_stroke_type">
+                        <option value="Forehand" selected>Forehand</option>
+                        <option value="Backhand">Backhand</option>
+                        <option value="Two-Handed Backhand">Two-Handed Backhand</option>
+                        <option value="Serve">Serve</option>
+                        <option value="Volley">Volley</option>
+                        <option value="Unclear">Unclear</option>
+                      </select>
+                    </label>
+                    <div class="annotation-checks">
+                      <label><input type="checkbox" data-field="valid_hit" checked> 有效击球</label>
+                      <label><input type="checkbox" data-field="count_correct" checked> 计数正确</label>
+                      <label><input type="checkbox" data-field="needs_review" checked> 待人工确认（确认后取消）</label>
+                      <label><input type="checkbox" data-tag="wrong_type"> 类型错误</label>
+                      <label><input type="checkbox" data-tag="contact_timing"> 触球帧偏差</label>
+                      <label><input type="checkbox" data-tag="event_boundary"> 边界偏差</label>
+                    </div>
+                    <label>备注<textarea rows="2" data-field="note"></textarea></label>
+                  </div>
+                </article>
+                
+
+                <article class="event-card" data-annotation-card data-annotation-id="model-1" data-source-event-id="1" data-predicted-stroke-type="Backhand" data-peak-frame="18">
+                  <div class="event-heading">
+                    <h2>Swing #1 · Backhand</h2>
+                    <span class="tier-pill" style="background:#4b5563;color:#e5e7eb;font-weight:600;">空挥练习 · 无来球</span>
+                  </div>
+                  
+                <div class="impact-freeze-container">
+                  <a href="event_0001_impact_freeze.jpg" target="_blank" class="impact-freeze-link" title="点击查看击球瞬间定格特写">
+                    <img src="event_0001_impact_freeze.jpg" alt="击球瞬间定格特写" loading="lazy" class="impact-freeze-img" />
+                    <span class="impact-freeze-badge">⚡ 击球瞬间定格特写 (第 18 帧)</span>
+                  </a>
+                </div>
+                
+                  <video controls preload="metadata" src="verification_session/output_video_swing_clips/event_0001_backhand_f000010-000049.mp4"></video>
+                  <div class="coach-advice" style="opacity: 0.85;"><div class="coach-title"><span>实时动作纠错</span><small>空挥练习</small></div><p style="margin:6px 0 0 0; color:#9ca3af; font-size:13px;">无来球击打 · 不派发纠错建议</p></div>
+                  
+                  
+            <div class="bio-radar-wrapper">
+              <div class="bio-radar-title">5维生物力学质量雷达</div>
+              <svg viewBox="0 0 240 220" width="100%" style="max-width:240px;display:block;margin:auto;" class="radar-svg"><polygon points="120.0,93.5 135.7,104.9 129.7,123.3 110.3,123.3 104.3,104.9" fill="none" stroke="#233348" stroke-width="1" stroke-dasharray="2,2"/><polygon points="120.0,77.0 151.4,99.8 139.4,136.7 100.6,136.7 88.6,99.8" fill="none" stroke="#233348" stroke-width="1" stroke-dasharray="2,2"/><polygon points="120.0,60.5 167.1,94.7 149.1,150.0 90.9,150.0 72.9,94.7" fill="none" stroke="#233348" stroke-width="1" stroke-dasharray="2,2"/><polygon points="120.0,44.0 182.8,89.6 158.8,163.4 81.2,163.4 57.2,89.6" fill="none" stroke="#364c6a" stroke-width="1"/><line x1="120.0" y1="110.0" x2="120.0" y2="44.0" stroke="#233348" stroke-width="1"/><line x1="120.0" y1="110.0" x2="182.8" y2="89.6" stroke="#233348" stroke-width="1"/><line x1="120.0" y1="110.0" x2="158.8" y2="163.4" stroke="#233348" stroke-width="1"/><line x1="120.0" y1="110.0" x2="81.2" y2="163.4" stroke="#233348" stroke-width="1"/><line x1="120.0" y1="110.0" x2="57.2" y2="89.6" stroke="#233348" stroke-width="1"/><polygon points="120.0,44.0 170.2,93.7 132.2,126.8 112.8,119.9 77.2,96.1" fill="rgba(0, 240, 255, 0.22)" stroke="#00f0ff" stroke-width="2.2"/><circle cx="120.0" cy="44.0" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><circle cx="170.2" cy="93.7" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><circle cx="132.2" cy="126.8" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><circle cx="112.8" cy="119.9" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><circle cx="77.2" cy="96.1" r="3.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1.5"/><text x="120.0" y="26.0" text-anchor="middle" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">转肩 100</text><text x="199.9" y="84.0" text-anchor="start" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">引拍 80</text><text x="169.4" y="178.0" text-anchor="start" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">延展 31</text><text x="70.6" y="178.0" text-anchor="end" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">挥速 18</text><text x="40.1" y="84.0" text-anchor="end" dominant-baseline="central" font-size="10" font-weight="600" fill="#93a4bb">蹬地 68</text></svg>
+            </div>
+            
+                  
+                <div class="kinematic-box">
+                  <div class="kinematic-header">
+                    <span>动力学链传递: <strong>下肢 ➔ 髋/骨盆 ➔ 肩/躯干 ➔ 球拍</strong></span>
+                    <span class="seq-badge seq-optimal">OPTIMAL</span>
+                  </div>
+                  <div class="kinematic-bars">
+                    <div class="kinematic-bar-row">
+                      <span class="k-label">髋-肩时序延时 (Δt_hip_sh):</span>
+                      <span class="k-val">-800.0 ms</span>
+                      <div class="k-track"><div class="k-fill" style="width:5%;"></div></div>
+                    </div>
+                    <div class="kinematic-bar-row">
+                      <span class="k-label">肩-拍时序延时 (Δt_sh_rkt):</span>
+                      <span class="k-val">1080.0 ms</span>
+                      <div class="k-track"><div class="k-fill k-fill-rkt" style="width:100%;"></div></div>
+                    </div>
+                  </div>
+                </div>
+                
+                  
+                <div class="telemetry-grid">
+                  <div class="telem-item"><span class="telem-label">拍头挥速 (击球/峰值)</span><strong class="telem-val">15.7 / 15.7 km/h</strong></div>
+                  <div class="telem-item"><span class="telem-label">刷球仰角与下潜</span><strong class="telem-val">- (下潜 0.00x)</strong></div>
+                  <div class="telem-item"><span class="telem-label">击球站位与蹬地比</span><strong class="telem-val">Closed Stance</strong></div>
+                  <div class="telem-item"><span class="telem-label">后背视角动力学</span><strong class="telem-val">转肩 94.1°</strong></div>
+                </div>
+                
+                  <div class="biomechanics"><div class="bio-metric"><span>转肩蓄力</span><strong>4.10°</strong><small>82%</small></div><div class="bio-metric"><span>准备屈膝</span><strong>2.15°</strong><small>82%</small></div><div class="bio-metric"><span>挥拍舒展</span><strong>113.53°</strong><small>92%</small></div></div>
+                  
+                  <dl>
+                    <div><dt>Frames</dt><dd>10–49</dd></div>
+                    <div><dt>Contact</dt><dd>18</dd></div>
+                    <div><dt>Peak</dt><dd>18</dd></div>
+                    <div><dt>Start boundary</dt><dd>quiet_onset · medium</dd></div>
+                    <div><dt>球员 / 机位 / 挥拍侧</dt><dd>右手 · 球员面向相机 · 不确定</dd></div>
+                    <div><dt>可见动作校准</dt><dd>证据不足</dd></div>
+                    <div><dt>Warnings</dt><dd>ball_track_gaps</dd></div>
+                  </dl>
+                  <div class="annotation-box">
+                    <div class="annotation-frames">
+                      <label>人工开始帧<input type="number" min="0" step="1" data-field="start_frame" value="10"></label>
+                      <label>人工触球帧<input type="number" min="0" step="1" data-field="contact_frame" value="18"></label>
+                      <label>人工结束帧<input type="number" min="0" step="1" data-field="end_frame" value="49"></label>
+                    </div>
+                    <label>人工类型
+                      <select data-field="actual_stroke_type">
+                        <option value="Forehand">Forehand</option>
+                        <option value="Backhand" selected>Backhand</option>
+                        <option value="Two-Handed Backhand">Two-Handed Backhand</option>
+                        <option value="Serve">Serve</option>
+                        <option value="Volley">Volley</option>
+                        <option value="Unclear">Unclear</option>
+                      </select>
+                    </label>
+                    <div class="annotation-checks">
+                      <label><input type="checkbox" data-field="valid_hit" checked> 有效击球</label>
+                      <label><input type="checkbox" data-field="count_correct" checked> 计数正确</label>
+                      <label><input type="checkbox" data-field="needs_review" checked> 待人工确认（确认后取消）</label>
+                      <label><input type="checkbox" data-tag="wrong_type"> 类型错误</label>
+                      <label><input type="checkbox" data-tag="contact_timing"> 触球帧偏差</label>
+                      <label><input type="checkbox" data-tag="event_boundary"> 边界偏差</label>
+                    </div>
+                    <label>备注<textarea rows="2" data-field="note"></textarea></label>
+                  </div>
+                </article>
+                
+  </main>
+  <script>
+    const eventJsonUrl = "events.json";
+    const coachFeed = document.getElementById('live-coach-feed');
+    const reportSummary = document.getElementById('report-summary');
+    const refreshStatus = document.getElementById('refresh-status');
+    const refreshStart = document.getElementById('refresh-start');
+    const refreshStop = document.getElementById('refresh-stop');
+    const annotationWorkspace = document.getElementById('annotation-workspace');
+    const manualEvents = document.getElementById('manual-events');
+    const timelineReviewComplete = document.getElementById('timeline-review-complete');
+    const annotationStatus = document.getElementById('annotation-status');
+    const annotationReadiness = document.getElementById('annotation-readiness');
+    const manualReviewWorkspace = document.getElementById('manual-review-workflow');
+    const manualReviewFile = document.getElementById('manual-review-file');
+    const manualReviewMessage = document.getElementById('manual-review-message');
+    const manualReviewState = document.getElementById('review-workflow-state');
+    const manualReviewMetrics = document.getElementById('manual-review-metrics');
+    const coachComparisons = document.getElementById('coach-comparisons');
+    const evaluateImportedReview = document.getElementById('evaluate-imported-review');
+    const evaluateCurrentReview = document.getElementById('evaluate-current-review');
+    const annotationStorageKey = `tennis.swing.annotations.v2:${location.pathname}:${eventJsonUrl}`;
+    const refreshStorageKey = `tennis.swing.auto-refresh.v1:${location.pathname}`;
+    let autoRefreshEnabled = true;
+    let coachFeedPending = false;
+    let manualCounter = 0;
+    let lastAnnotationInteraction = 0;
+    let importedReviewPayload = null;
+
+    try {
+      autoRefreshEnabled = sessionStorage.getItem(refreshStorageKey) !== 'false';
+    } catch (_error) {
+      // Keep auto-refresh enabled when storage is unavailable (for example, restricted file:// pages).
+    }
+
+    function updateRefreshControls() {
+      refreshStatus.dataset.state = autoRefreshEnabled ? 'running' : 'paused';
+      refreshStatus.textContent = autoRefreshEnabled ? '自动刷新中' : '页面刷新已暂停';
+      refreshStart.disabled = autoRefreshEnabled;
+      refreshStop.disabled = !autoRefreshEnabled;
+      refreshStart.setAttribute('aria-pressed', String(autoRefreshEnabled));
+      refreshStop.setAttribute('aria-pressed', String(!autoRefreshEnabled));
+    }
+
+    function setAutoRefreshEnabled(enabled) {
+      autoRefreshEnabled = Boolean(enabled);
+      try {
+        sessionStorage.setItem(refreshStorageKey, String(autoRefreshEnabled));
+      } catch (_error) {
+        // The controls still work for the current document when storage is unavailable.
+      }
+      updateRefreshControls();
+      if (autoRefreshEnabled) {
+        refreshCoachFeed();
+        refreshPreview();
+      }
+    }
+
+    function integerField(card, field) {
+      const input = card.querySelector(`[data-field="${field}"]`);
+      if (!input || input.value.trim() === '') return null;
+      const value = Number(input.value);
+      return Number.isFinite(value) ? Math.round(value) : null;
+    }
+
+    function annotationFromCard(card) {
+      const sourceText = card.dataset.sourceEventId || '';
+      const sourceNumber = Number(sourceText);
+      const sourceEventId = sourceText === '' ? null : (Number.isFinite(sourceNumber) ? sourceNumber : sourceText);
+      const peakNumber = Number(card.dataset.peakFrame);
+      return {
+        annotation_id: card.dataset.annotationId,
+        source_event_id: sourceEventId,
+        predicted_stroke_type: card.dataset.predictedStrokeType || null,
+        actual_stroke_type: card.querySelector('[data-field="actual_stroke_type"]').value,
+        count_correct: card.querySelector('[data-field="count_correct"]').checked,
+        valid_hit: card.querySelector('[data-field="valid_hit"]').checked,
+        needs_review: card.querySelector('[data-field="needs_review"]').checked,
+        issue_tags: [...card.querySelectorAll('[data-tag]:checked')].map(input => input.dataset.tag),
+        note: card.querySelector('[data-field="note"]').value.trim(),
+        frames: {
+          start: integerField(card, 'start_frame'),
+          contact: integerField(card, 'contact_frame'),
+          peak: Number.isFinite(peakNumber) ? peakNumber : null,
+          end: integerField(card, 'end_frame')
+        }
+      };
+    }
+
+    function collectAnnotations() {
+      return {
+        schema_version: 'swing_manual_annotations_v2',
+        timeline_review_complete: timelineReviewComplete.checked,
+        source: { event_json: eventJsonUrl },
+        events: [...document.querySelectorAll('[data-annotation-card]')].map(annotationFromCard)
+      };
+    }
+
+    function updateAnnotationReadiness(payload) {
+      const pending = payload.events.filter(event => event.needs_review).length;
+      if (pending > 0) {
+        annotationReadiness.dataset.state = 'blocked';
+        annotationReadiness.textContent = `还有 ${pending} 条“需要复核”，评估指标将保持 provisional。`;
+      } else if (!payload.timeline_review_complete) {
+        annotationReadiness.dataset.state = 'blocked';
+        annotationReadiness.textContent = '请完整检查整段视频后勾选确认项。';
+      } else {
+        annotationReadiness.dataset.state = 'ready';
+        annotationReadiness.textContent = '已满足正式评估条件，可以下载标注 JSON。';
+      }
+    }
+
+    function saveAnnotations() {
+      lastAnnotationInteraction = Date.now();
+      const payload = collectAnnotations();
+      localStorage.setItem(annotationStorageKey, JSON.stringify(payload));
+      updateAnnotationReadiness(payload);
+      annotationStatus.textContent = `已在浏览器保存 ${payload.events.length} 条`;
+      return payload;
+    }
+
+    function setAnnotationField(card, field, value) {
+      const input = card.querySelector(`[data-field="${field}"]`);
+      if (!input || value === undefined || value === null) return;
+      if (input.type === 'checkbox') input.checked = Boolean(value);
+      else input.value = String(value);
+    }
+
+    function applyAnnotation(card, imported) {
+      setAnnotationField(card, 'actual_stroke_type', imported.actual_stroke_type);
+      setAnnotationField(card, 'count_correct', imported.count_correct);
+      setAnnotationField(card, 'valid_hit', imported.valid_hit);
+      setAnnotationField(card, 'needs_review', imported.needs_review);
+      setAnnotationField(card, 'note', imported.note || '');
+      const frames = imported.frames || {};
+      setAnnotationField(card, 'start_frame', frames.start ?? imported.start_frame);
+      setAnnotationField(card, 'contact_frame', frames.contact ?? imported.contact_frame);
+      setAnnotationField(card, 'end_frame', frames.end ?? imported.end_frame);
+      const tags = new Set(imported.issue_tags || []);
+      card.querySelectorAll('[data-tag]').forEach(input => input.checked = tags.has(input.dataset.tag));
+    }
+
+    function addMissedEvent(imported = null, persist = true) {
+      manualCounter += 1;
+      const card = document.createElement('article');
+      card.className = 'manual-event-card';
+      card.dataset.annotationCard = '';
+      card.dataset.annotationId = String(imported?.annotation_id ?? imported?.event_id ?? `manual-${manualCounter}`);
+      card.dataset.sourceEventId = imported?.source_event_id == null ? '' : String(imported.source_event_id);
+      card.dataset.predictedStrokeType = '';
+      card.dataset.peakFrame = String(imported?.frames?.peak ?? '');
+      card.innerHTML = `
+        <div class="manual-event-heading"><h2>人工补充挥拍</h2><button type="button">删除</button></div>
+        <div class="annotation-box">
+          <div class="annotation-frames">
+            <label>人工开始帧<input type="number" min="0" step="1" data-field="start_frame"></label>
+            <label>人工触球帧<input type="number" min="0" step="1" data-field="contact_frame"></label>
+            <label>人工结束帧<input type="number" min="0" step="1" data-field="end_frame"></label>
+          </div>
+          <label>人工类型<select data-field="actual_stroke_type"><option>Forehand</option><option>Backhand</option><option>Two-Handed Backhand</option><option>Serve</option><option>Volley</option><option selected>Unclear</option></select></label>
+          <div class="annotation-checks">
+            <label><input type="checkbox" data-field="valid_hit" checked> 有效击球</label>
+            <label><input type="checkbox" data-field="count_correct"> 计数正确</label>
+            <label><input type="checkbox" data-field="needs_review"> 需要复核</label>
+            <label><input type="checkbox" data-tag="missed_event" checked> 漏检事件</label>
+            <label><input type="checkbox" data-tag="contact_timing"> 触球帧偏差</label>
+            <label><input type="checkbox" data-tag="event_boundary"> 边界偏差</label>
+          </div>
+          <label>备注<textarea rows="2" data-field="note"></textarea></label>
+        </div>`;
+      card.querySelector('button').addEventListener('click', () => { card.remove(); saveAnnotations(); });
+      if (imported) applyAnnotation(card, imported);
+      manualEvents.append(card);
+      if (persist) saveAnnotations();
+      return card;
+    }
+
+    function restoreAnnotations() {
+      let payload;
+      try { payload = JSON.parse(localStorage.getItem(annotationStorageKey) || 'null'); }
+      catch (_error) { payload = null; }
+      if (!payload || !Array.isArray(payload.events)) return;
+      timelineReviewComplete.checked = Boolean(payload.timeline_review_complete);
+      for (const imported of payload.events) {
+        const sourceId = imported.source_event_id ?? imported.event_id ?? null;
+        const card = sourceId == null ? null : document.querySelector(`[data-annotation-card][data-source-event-id="${String(sourceId)}"]`);
+        if (card) applyAnnotation(card, imported);
+        else addMissedEvent(imported, false);
+      }
+      annotationStatus.textContent = `已恢复 ${payload.events.length} 条浏览器标注`;
+    }
+
+    function downloadAnnotations() {
+      const payload = saveAnnotations();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'swing_manual_annotations_v2.json';
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
+    annotationWorkspace.addEventListener('input', saveAnnotations);
+    annotationWorkspace.addEventListener('change', saveAnnotations);
+    document.getElementById('add-missed-event').addEventListener('click', () => addMissedEvent());
+    document.getElementById('download-annotations').addEventListener('click', downloadAnnotations);
+    restoreAnnotations();
+    updateAnnotationReadiness(collectAnnotations());
+
+    function reviewPercent(value) {
+      return value == null ? '待确认' : `${(Number(value) * 100).toFixed(1)}%`;
+    }
+
+    function setReviewStage(stage) {
+      const order = ['import', 'validate', 'evaluate', 'coach'];
+      const activeIndex = Math.max(0, order.indexOf(stage));
+      order.forEach((name, index) => {
+        document.getElementById(`review-stage-${name}`).dataset.active = String(index <= activeIndex);
+      });
+    }
+
+    function setReviewStatus(label, state, message) {
+      manualReviewState.textContent = label;
+      manualReviewState.dataset.state = state;
+      manualReviewMessage.textContent = message || '';
+      manualReviewMessage.dataset.state = state === 'error' ? 'error' : '';
+    }
+
+    function coachColumn(title, advices, manual = false) {
+      const column = document.createElement('div');
+      column.className = `coach-column${manual ? ' manual' : ''}`;
+      const heading = document.createElement('h3');
+      heading.textContent = title;
+      column.append(heading);
+      const list = document.createElement('ol');
+      for (const advice of advices || []) {
+        const row = document.createElement('li');
+        const message = document.createElement('span');
+        message.textContent = advice.message || advice.code || '无建议';
+        const confidence = document.createElement('small');
+        confidence.textContent = ` ${reviewPercent(advice.confidence)}`;
+        row.append(message, confidence);
+        list.append(row);
+      }
+      if (!list.children.length) {
+        const row = document.createElement('li');
+        row.textContent = '等待正式人工复核';
+        list.append(row);
+      }
+      column.append(list);
+      return column;
+    }
+
+    function renderReviewState(state) {
+      const status = state?.status || 'waiting_for_annotations';
+      const validation = state?.validation || null;
+      const summary = state?.evaluation?.summary || null;
+      if (status === 'finalized') {
+        setReviewStatus('已完成人工校准', 'finalized', '评估已定稿，人工 Coach 已按确认边界重新计算。');
+        setReviewStage('coach');
+      } else if (status === 'needs_review') {
+        const pending = validation?.pending_count ?? 0;
+        setReviewStatus('仍需人工复核', 'needs_review', `已生成 provisional 评估；还有 ${pending} 条需要复核，暂不生成正式人工 Coach。`);
+        setReviewStage('evaluate');
+      } else {
+        setReviewStatus('等待标注', 'waiting', '请选择下载的 swing_manual_annotations_v2.json，或直接评估页面当前标注。');
+        setReviewStage('import');
+      }
+
+      manualReviewMetrics.replaceChildren();
+      if (summary) {
+        const metrics = [
+          ['Precision', reviewPercent(summary.precision)],
+          ['Recall', reviewPercent(summary.recall)],
+          ['F1', reviewPercent(summary.f1)],
+          ['类型准确率', reviewPercent(summary.stroke_type_accuracy)],
+          ['触球准确率', reviewPercent(summary.contact_accuracy)],
+        ];
+        for (const [label, value] of metrics) {
+          const item = document.createElement('div');
+          const caption = document.createElement('span');
+          caption.textContent = label;
+          const number = document.createElement('strong');
+          number.textContent = value;
+          item.append(caption, number);
+          manualReviewMetrics.append(item);
+        }
+        manualReviewMetrics.hidden = false;
+      } else {
+        manualReviewMetrics.hidden = true;
+      }
+
+      coachComparisons.replaceChildren();
+      for (const comparison of state?.comparisons || []) {
+        const card = document.createElement('article');
+        card.className = 'coach-comparison';
+        const head = document.createElement('div');
+        head.className = 'coach-comparison-head';
+        const title = document.createElement('strong');
+        title.textContent = `Swing #${comparison.source_event_id ?? comparison.event_id} · ${comparison.stroke_type || 'Unknown'}`;
+        const changes = document.createElement('span');
+        changes.textContent = comparison.changed_fields?.length
+          ? `变化：${comparison.changed_fields.join('、')}`
+          : '人工边界与 Coach 未变化';
+        head.append(title, changes);
+        const columns = document.createElement('div');
+        columns.className = 'coach-columns';
+        columns.append(
+          coachColumn('实时 Coach（原始）', comparison.original_coach, false),
+          coachColumn('人工校准 Coach', comparison.manual_coach, true),
+        );
+        card.append(head, columns);
+        coachComparisons.append(card);
+      }
+    }
+
+    function applyImportedReviewToEditor(payload) {
+      if (!payload || !Array.isArray(payload.events)) return;
+      timelineReviewComplete.checked = Boolean(payload.timeline_review_complete);
+      for (const imported of payload.events) {
+        const sourceId = imported.source_event_id ?? imported.event_id ?? null;
+        const card = sourceId == null ? null : document.querySelector(`[data-annotation-card][data-source-event-id="${String(sourceId)}"]`);
+        if (card) applyAnnotation(card, imported);
+        else addMissedEvent(imported, false);
+      }
+      saveAnnotations();
+    }
+
+    function manualReviewReportHeaders() {
+      const headers = {};
+      const artifactPrefix = '/artifacts/';
+      if (location.pathname.startsWith(artifactPrefix)) {
+        const reportPath = decodeURIComponent(location.pathname.slice(artifactPrefix.length));
+        if (reportPath) headers['X-Manual-Review-Report'] = reportPath;
+      }
+      return headers;
+    }
+
+    async function manualReviewRequestHeaders() {
+      const headers = manualReviewReportHeaders();
+      headers['Content-Type'] = 'application/json';
+      try {
+        const response = await fetch('/api/config', { cache: 'no-store' });
+        if (!response.ok) return headers;
+        const config = await response.json();
+        if (config && config.token) headers['X-Control-Token'] = String(config.token);
+      } catch (_error) {
+        // The standalone manual-review server does not require a control token.
+      }
+      return headers;
+    }
+
+    async function submitManualReview(payload) {
+      if (location.protocol === 'file:') {
+        setReviewStatus('需要本地服务', 'error', '请运行 manual_review_workflow.py 后从 http://127.0.0.1 打开本页。');
+        return;
+      }
+      setReviewStatus('处理中', 'waiting', '正在校验标注并重新聚合逐帧证据…');
+      setReviewStage('validate');
+      evaluateImportedReview.disabled = true;
+      evaluateCurrentReview.disabled = true;
+      try {
+        const response = await fetch('/api/manual-review/evaluate', {
+          method: 'POST',
+          headers: await manualReviewRequestHeaders(),
+          body: JSON.stringify(payload),
+        });
+        const state = await response.json();
+        if (!response.ok) throw new Error(state.message || state.error || '人工校准失败');
+        renderReviewState(state);
+      } catch (error) {
+        setReviewStatus('校准失败', 'error', error.message || String(error));
+        setReviewStage('validate');
+      } finally {
+        evaluateImportedReview.disabled = !importedReviewPayload;
+        evaluateCurrentReview.disabled = false;
+      }
+    }
+
+    manualReviewFile.addEventListener('change', async event => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      try {
+        const payload = JSON.parse(await file.text());
+        if (payload.schema_version !== 'swing_manual_annotations_v2' || !Array.isArray(payload.events)) {
+          throw new Error('请选择 swing_manual_annotations_v2 JSON');
+        }
+        importedReviewPayload = payload;
+        applyImportedReviewToEditor(payload);
+        const pending = payload.events.filter(item => item.needs_review).length;
+        evaluateImportedReview.disabled = false;
+        setReviewStatus(
+          pending ? '导入完成，仍需复核' : '导入完成',
+          pending ? 'needs_review' : 'waiting',
+          `已读取 ${payload.events.length} 条标注；${pending ? `其中 ${pending} 条仍需复核。` : '可以生成正式评估。'}`,
+        );
+        setReviewStage('import');
+      } catch (error) {
+        importedReviewPayload = null;
+        evaluateImportedReview.disabled = true;
+        setReviewStatus('导入失败', 'error', error.message || String(error));
+      }
+    });
+    evaluateImportedReview.addEventListener('click', () => submitManualReview(importedReviewPayload));
+    evaluateCurrentReview.addEventListener('click', () => submitManualReview(collectAnnotations()));
+
+    async function loadManualReviewState() {
+      if (location.protocol === 'file:') {
+        renderReviewState({ status: 'waiting_for_annotations' });
+        manualReviewMessage.textContent = '当前是 file:// 页面；运行 manual_review_workflow.py 后可生成评估和人工 Coach。';
+        return;
+      }
+      try {
+        const response = await fetch('/api/manual-review/state', {
+          cache: 'no-store',
+          headers: manualReviewReportHeaders(),
+        });
+        const state = await response.json();
+        if (!response.ok) throw new Error(state.message || state.error || '人工校准服务不可用');
+        renderReviewState(state);
+      } catch (error) {
+        setReviewStatus('服务不可用', 'error', error.message || String(error));
+      }
+    }
+    loadManualReviewState();
+
+    function renderCoachFeed(documentPayload) {
+      const events = Array.isArray(documentPayload.events) ? documentPayload.events : [];
+      const summary = documentPayload.summary || {};
+      reportSummary.textContent = `${events.length} events · frame ${summary.latest_frame ?? -1}`;
+      coachFeed.replaceChildren();
+      const title = document.createElement('h2');
+      title.textContent = '实时 Coach';
+      coachFeed.append(title);
+      if (!events.length) {
+        const waiting = document.createElement('p');
+        waiting.textContent = '等待第一条建议…';
+        coachFeed.append(waiting);
+        return;
+      }
+      const latest = events[events.length - 1];
+      const meta = document.createElement('p');
+      meta.textContent = `Swing #${latest.event_id} · ${latest.stroke_type || 'Unknown'}`;
+      coachFeed.append(meta);
+      const advices = Array.isArray(latest.coach_advices) && latest.coach_advices.length
+        ? latest.coach_advices
+        : (latest.coach_advice ? [latest.coach_advice] : []);
+      const list = document.createElement('ol');
+      for (const advice of advices.slice(0, 3)) {
+        if (!advice || !advice.message) continue;
+        const row = document.createElement('li');
+        const message = document.createElement('strong');
+        message.textContent = advice.message;
+        row.append(message);
+        list.append(row);
+      }
+      if (list.children.length) coachFeed.append(list);
+    }
+
+    async function refreshCoachFeed() {
+      if (!autoRefreshEnabled || coachFeedPending) return;
+      coachFeedPending = true;
+      try {
+        const response = await fetch(`${eventJsonUrl}?t=${Date.now()}`, { cache: 'no-store' });
+        if (autoRefreshEnabled && response.ok) renderCoachFeed(await response.json());
+      } catch (_error) {
+        // file:// reports cannot fetch siblings; the slower HTML refresh below remains available.
+      } finally {
+        coachFeedPending = false;
+      }
+    }
+
+    const preview = document.getElementById('roi-preview');
+    const previewSource = preview ? preview.getAttribute('src').split('?')[0] : '';
+    function refreshPreview() {
+      if (autoRefreshEnabled && preview) preview.src = previewSource + '?t=' + Date.now();
+    }
+
+    refreshStart.addEventListener('click', () => setAutoRefreshEnabled(true));
+    refreshStop.addEventListener('click', () => setAutoRefreshEnabled(false));
+    updateRefreshControls();
+    if (autoRefreshEnabled) {
+      refreshCoachFeed();
+      refreshPreview();
+    }
+    setInterval(refreshCoachFeed, 200);
+    setInterval(refreshPreview, 1000);
+    setInterval(() => {
+      if (!autoRefreshEnabled) return;
+      const playing = [...document.querySelectorAll('video')].some(video => !video.paused && !video.ended);
+      const editingAnnotations = Date.now() - lastAnnotationInteraction < 15000;
+      const annotationFocused = annotationWorkspace.contains(document.activeElement);
+      const workflowFocused = manualReviewWorkspace.contains(document.activeElement);
+      if (!playing && !editingAnnotations && !annotationFocused && !workflowFocused) location.reload();
+    }, 3000);
+  </script>
+</body>
+</html>

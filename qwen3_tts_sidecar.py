@@ -35,6 +35,9 @@ class CoachTtsSidecar:
         language: str = DEFAULT_LANGUAGE,
         playback: bool = True,
         max_pending: int = 2,
+        preempt: bool = True,
+        single_core_advice: bool = True,
+        min_interval_seconds: float = 0.5,
         streaming_interval_seconds: float = 0.32,
         streaming_prebuffer_chunks: int = 2,
         audio_path_prefix: str = "",
@@ -50,6 +53,9 @@ class CoachTtsSidecar:
         self.voice = str(voice)
         self.language = str(language)
         self.playback = bool(playback)
+        self.preempt = bool(preempt)
+        self.single_core_advice = bool(single_core_advice)
+        self.min_interval_seconds = max(0.0, float(min_interval_seconds))
         self.audio_path_prefix = str(audio_path_prefix).strip("/")
         self.streaming_interval_seconds = max(0.08, float(streaming_interval_seconds))
         self.streaming_prebuffer_chunks = max(1, int(streaming_prebuffer_chunks))
@@ -68,6 +74,9 @@ class CoachTtsSidecar:
         self._sentinel = object()
         self._closed = False
         self._state_lock = threading.Lock()
+        self._play_lock = threading.Lock()
+        self._active_play_process: Optional[subprocess.Popen] = None
+        self._last_speech_time = 0.0
         self._cancel = threading.Event()
         self._client = SpeechWorkerClient(
             [self.python_executable, str(self.worker_path), "--model", self.model_name,
@@ -88,11 +97,11 @@ class CoachTtsSidecar:
             "engine": "qwen3-tts-mlx",
             "model": self.model_name,
             "voice": self.voice,
-            "message": self._speech_text(event),
+            "message": self._speech_text(event, single_core_advice=self.single_core_advice),
         }
 
     def submit(self, event: Dict, callback: Callable[[Dict], None]) -> None:
-        text = self._speech_text(event)
+        text = self._speech_text(event, single_core_advice=self.single_core_advice)
         if not text:
             callback({"status": "skipped", "engine": "qwen3-tts-mlx", "reason": "no_local_coach_advice"})
             return
@@ -100,6 +109,36 @@ class CoachTtsSidecar:
             with self._state_lock:
                 if self._closed:
                     raise RuntimeError("Cannot submit after speech sidecar closes")
+                if self.preempt:
+                    # 1. Drain pending stale items from queue
+                    while True:
+                        try:
+                            old_item = self._queue.get_nowait()
+                            if old_item is self._sentinel:
+                                self._queue.put(self._sentinel)
+                                break
+                            self._queue.task_done()
+                            old_eid, _, old_cb = old_item
+                            try:
+                                old_cb({
+                                    "status": "preempted",
+                                    "engine": "qwen3-tts-mlx",
+                                    "reason": "superseded_by_newer_swing",
+                                    "event_id": old_eid,
+                                })
+                            except Exception:
+                                pass
+                        except queue.Empty:
+                            break
+                    # 2. Terminate active audio playback if running
+                    with self._play_lock:
+                        if self._active_play_process and self._active_play_process.poll() is None:
+                            try:
+                                self._active_play_process.kill()
+                            except Exception:
+                                pass
+                            self._active_play_process = None
+
                 self._queue.put_nowait((int(event["event_id"]), text, callback))
         except queue.Full:
             callback({"status": "skipped", "engine": "qwen3-tts-mlx", "reason": "tts_backlog"})
@@ -114,6 +153,13 @@ class CoachTtsSidecar:
         while self._queue.unfinished_tasks > 0 and time.monotonic() < deadline:
             time.sleep(0.05)
         self._cancel.set()
+        with self._play_lock:
+            if self._active_play_process and self._active_play_process.poll() is None:
+                try:
+                    self._active_play_process.kill()
+                except Exception:
+                    pass
+                self._active_play_process = None
         while True:
             try:
                 item = self._queue.get_nowait()
@@ -147,6 +193,13 @@ class CoachTtsSidecar:
     def _synthesize(self, event_id: int, text: str, callback: Callable[[Dict], None]) -> None:
         started = time.perf_counter()
         target = self.output_dir / f"swing_{event_id:03d}_coach.wav"
+        now = time.monotonic()
+        if self._last_speech_time > 0 and self.min_interval_seconds > 0:
+            elapsed = now - self._last_speech_time
+            if elapsed < self.min_interval_seconds:
+                time.sleep(self.min_interval_seconds - elapsed)
+        self._last_speech_time = time.monotonic()
+
         try:
             worker_result = (
                 self.synthesizer(event_id, text, target)
@@ -183,13 +236,20 @@ class CoachTtsSidecar:
             "streaming_prebuffer_chunks": self.streaming_prebuffer_chunks,
         })
 
-    @staticmethod
-    def _speech_text(event: Dict) -> str:
+    @classmethod
+    def _speech_text(cls, event: Dict, single_core_advice: bool = True) -> str:
         rows = event.get("coach_advices") or ([] if not event.get("coach_advice") else [event["coach_advice"]])
-        messages = [str(row.get("message") or "").strip() for row in rows[:3] if isinstance(row, dict) and str(row.get("message") or "").strip()]
-        if not messages:
+        valid_rows = [row for row in rows if isinstance(row, dict) and str(row.get("message") or "").strip()]
+        if not valid_rows:
             return ""
-        return f"第{int(event.get('event_id') or 0)}次{str(event.get('stroke_type') or '挥拍')}。" + "。".join(messages)
+        eid = int(event.get('event_id') or 0)
+        stroke = str(event.get('stroke_type') or '挥拍')
+        if single_core_advice:
+            sorted_rows = sorted(valid_rows, key=lambda r: int(r.get("priority", 1)))
+            top_msg = str(sorted_rows[0].get("message") or "").strip()
+            return f"第{eid}次{stroke}：{top_msg}"
+        messages = [str(row.get("message") or "").strip() for row in valid_rows[:3]]
+        return f"第{eid}次{stroke}。" + "。".join(messages)
 
     def _play(self, path: Path) -> tuple:
         player = shutil.which("afplay")
@@ -197,12 +257,22 @@ class CoachTtsSidecar:
             return False, "afplay_not_available"
         try:
             process = subprocess.Popen([player, str(path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            with self._play_lock:
+                self._active_play_process = process
             deadline = time.monotonic() + 30
             while process.poll() is None:
                 if self._cancel.wait(0.05) or time.monotonic() >= deadline:
                     process.kill()
                     process.wait()
+                    with self._play_lock:
+                        if self._active_play_process is process:
+                            self._active_play_process = None
                     return False, "playback_cancelled"
+            with self._play_lock:
+                if self._active_play_process is process:
+                    self._active_play_process = None
             return process.returncode == 0, "" if process.returncode == 0 else "playback_failed"
         except (OSError, subprocess.SubprocessError) as exc:
+            with self._play_lock:
+                self._active_play_process = None
             return False, str(exc)

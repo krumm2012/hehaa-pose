@@ -21,12 +21,12 @@ from realtime_swing_pipeline import (
 )
 
 
-def frame_record(frame_id, wrist_x, label="Forehand"):
+def frame_record(frame_id, wrist_x, label="Forehand", ball=None):
     return {
         "frame_id": frame_id,
         "timestamp": frame_id / 25.0,
         "swing_type": label,
-        "ball": [wrist_x + 300, 100],
+        "ball": ball if ball is not None else [wrist_x + 300, 100],
         "rackets": [{"box": [wrist_x, 90, wrist_x + 12, 112], "confidence": 0.9}],
         "pose": {
             "right_wrist": [wrist_x, 100],
@@ -209,7 +209,8 @@ class RealtimeSwingEventEngineTests(unittest.TestCase):
         emitted = []
 
         for frame_id, wrist_x in enumerate(positions):
-            emitted.extend(engine.push_frame(frame_record(frame_id, wrist_x)))
+            ball = [wrist_x + 5, 100] if frame_id == 8 else [wrist_x + 300, 100]
+            emitted.extend(engine.push_frame(frame_record(frame_id, wrist_x, ball=ball)))
 
         self.assertEqual(len(emitted), 1)
         self.assertIn("coach_advice", emitted[0])
@@ -238,6 +239,31 @@ class RealtimeSwingEventEngineTests(unittest.TestCase):
             engine.snapshot()["events"][0]["coach_advice"],
             emitted[0]["coach_advice"],
         )
+
+    def test_emitted_shadow_swing_has_no_coach_advices(self):
+        engine = RealtimeSwingEventEngine(
+            fps=25.0,
+            analysis_interval_frames=1,
+            settle_frames=3,
+            window_frames=80,
+            min_peak_energy=8.0,
+            active_energy=6.0,
+            min_event_frames=4,
+            max_internal_gap=1,
+            min_event_gap=3,
+            coach=LocalRealtimeCoach(max_chars=15),
+        )
+        positions = [0, 0, 0, 10, 25, 45, 65, 80, 90, 95, 95, 95, 95, 95, 95]
+        emitted = []
+
+        for frame_id, wrist_x in enumerate(positions):
+            # All frames have ball far away (wrist_x + 300) -> shadow swing
+            emitted.extend(engine.push_frame(frame_record(frame_id, wrist_x)))
+
+        self.assertEqual(len(emitted), 1)
+        self.assertTrue(emitted[0].get("is_shadow_swing"))
+        self.assertEqual(emitted[0].get("coach_advices"), [])
+        self.assertIsNone(emitted[0].get("coach_advice"))
 
 
 class RealtimeFrameJournalTests(unittest.TestCase):

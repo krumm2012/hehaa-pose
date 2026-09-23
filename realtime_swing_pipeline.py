@@ -429,11 +429,13 @@ class RealtimeSwingEventEngine:
             )
             if self.coach is not None:
                 if hasattr(self.coach, "advise_all"):
-                    coach_advices = self.coach.advise_all(event)
+                    coach_advices = self.coach.advise_all(event) or []
                 else:
-                    coach_advices = [self.coach.advise(event)]
+                    adv = self.coach.advise(event)
+                    coach_advices = [adv] if adv else []
+                coach_advices = [a for a in coach_advices if a]
                 event["coach_advices"] = coach_advices
-                event["coach_advice"] = coach_advices[0]
+                event["coach_advice"] = coach_advices[0] if coach_advices else None
                 coach_generated_ns = time.time_ns()
                 timing = dict(event.get("timing") or {})
                 timing["coach_generated_at"] = utc_iso_from_ns(coach_generated_ns)
@@ -1219,9 +1221,18 @@ class RealtimeSwingOutputManager:
                 or metrics.get("swing_quality_score")
                 or {}
             )
+            is_shadow_swing = bool(
+                event.get("is_shadow_swing")
+                or (event.get("evidence") or {})
+                .get("classification_context", {})
+                .get("contact_analysis", {})
+                .get("is_shadow_swing")
+            )
             swing_grade = event.get("swing_grade") or bio.get("swing_grade") or (sqs.get("grade") if isinstance(sqs, dict) else None)
             swing_score = event.get("swing_score") or bio.get("swing_score") or (sqs.get("overall_score") if isinstance(sqs, dict) else (sqs.get("value") if isinstance(sqs, dict) else None))
-            if swing_grade:
+            if is_shadow_swing:
+                head_badge_html = '<span class="tier-pill" style="background:#4b5563;color:#e5e7eb;font-weight:600;">空挥练习 · 无来球</span>'
+            elif swing_grade:
                 grade_upper = str(swing_grade).upper()
                 tier_class = f"tier-{grade_upper.lower()}"
                 score_display = f"{float(swing_score):.1f}分" if swing_score is not None else ""
@@ -1270,7 +1281,13 @@ class RealtimeSwingOutputManager:
             schema_ver = str(bio.get("schema_version") or "")
             coach_origin_text = "虚拟双机位解剖自愈动力学" if schema_ver == "dual_view_2d_v1" else "单机位2D估计"
             coach_content = ""
-            if coach_advices:
+            if is_shadow_swing:
+                coach_content = (
+                    '<div class="coach-advice" style="opacity: 0.85;"><div class="coach-title">'
+                    '<span>实时动作纠错</span><small>空挥练习</small></div>'
+                    '<p style="margin:6px 0 0 0; color:#9ca3af; font-size:13px;">无来球击打 · 不派发纠错建议</p></div>'
+                )
+            elif coach_advices:
                 advice_rows = []
                 for index, advice in enumerate(coach_advices[:3], start=1):
                     if not advice.get("message"):

@@ -1,0 +1,3991 @@
+{
+  "schema_version": "tennis.swing-document.v1",
+  "document_type": "swing_events",
+  "session": {
+    "schema_version": "tennis.analysis-session.v1",
+    "session_id": "dir1_verification",
+    "started_at": "2026-09-23T15:35:26.872Z",
+    "started_at_unix_ns": 1790177726872872000,
+    "source": "data/control_uploads/d19be8b725b24818e41c6fc1ca896b7e.mp4",
+    "stream_id": "court01-main",
+    "stream_label": "Court 01 Main Camera ",
+    "config_hash": "e272a32dbfdebfb6",
+    "models": {
+      "detector": "models/detectors/tennis-yolo26n-exp004-960-fp16/model.mlpackage",
+      "pose": "yolo26m-pose.mlpackage"
+    }
+  },
+  "summary": {
+    "total_frames": 250,
+    "latest_frame": 249,
+    "swing_event_count": 3,
+    "swing_event_type_counts": {
+      "Backhand": 1,
+      "Forehand": 2
+    },
+    "thresholds": {
+      "dominant_hand": "right",
+      "min_peak_energy": 9.0,
+      "active_energy": 5.5,
+      "min_event_frames": 8,
+      "max_internal_gap": 3,
+      "min_event_gap": 18
+    },
+    "coach_configuration": {
+      "max_chars": 15,
+      "max_suggestions": 3,
+      "min_confidence": 0.45,
+      "thresholds": {
+        "min_hip_shoulder_separation_deg": 15.0,
+        "min_shoulder_turn_deg": 75.0,
+        "min_shoulder_turn_change_deg": 10.0,
+        "min_preparation_knee_flexion_deg": 12.0,
+        "min_arm_extension_deg": 145.0,
+        "min_contact_lateral_body_widths": 0.55,
+        "min_weight_transfer_body_widths": 0.08,
+        "max_balance_drift_body_widths": 0.65,
+        "min_takeback_depth_ratio": 0.35,
+        "min_scapular_retraction_ratio": 0.2,
+        "min_leg_drive_ratio": 0.15,
+        "min_brush_angle_deg": 15.0,
+        "min_drop_depth_ratio": 0.25
+      }
+    },
+    "realtime": true,
+    "settle_frames": 15,
+    "analysis_interval_frames": 5,
+    "window_frames": 201,
+    "peak_dedup_frames": 40,
+    "session_quality": {
+      "schema_version": "swing_session_quality_v1",
+      "event_count": 3,
+      "monitoring_state": "warming_up",
+      "quality": {
+        "evidence_quality_score_100": 62.97,
+        "grade": "watch",
+        "visible_technique_mean_9": 5.36,
+        "visible_technique_median_9": 5.36,
+        "median_uncertainty_9": 0.6,
+        "calibrated_event_ratio": 0.6667,
+        "contact_supported_ratio": 0.6667,
+        "review_recommended_ratio": 0.3333,
+        "mean_pose_frame_ratio": 1.0,
+        "mean_ball_frame_ratio": 0.1565,
+        "mean_racket_frame_ratio": 1.0
+      },
+      "operations": {
+        "local_coach_latency_p50_ms": 2136.5,
+        "deepseek_ready_ratio": null,
+        "deepseek_latency_p50_ms": null,
+        "deepseek_status_counts": {}
+      },
+      "integrity": {
+        "overlapping_event_pair_count": 0,
+        "overlapping_event_pairs": [],
+        "event_ranges_non_overlapping": true
+      },
+      "drift": {
+        "status": "warming_up",
+        "ready": false,
+        "minimum_event_count": 6,
+        "window_size": 1,
+        "baseline_event_ids": [
+          1
+        ],
+        "recent_event_ids": [
+          3
+        ],
+        "indicators": [
+          {
+            "name": "visible_technique_score",
+            "label": "可见动作分",
+            "baseline": null,
+            "recent": 5.51,
+            "delta": null,
+            "threshold": 0.75,
+            "status": "unavailable"
+          },
+          {
+            "name": "evidence_quality",
+            "label": "证据质量",
+            "baseline": 50.0,
+            "recent": 70.41,
+            "delta": 20.41,
+            "threshold": 10.0,
+            "status": "insufficient_events"
+          },
+          {
+            "name": "pose_coverage",
+            "label": "姿态覆盖",
+            "baseline": 1.0,
+            "recent": 1.0,
+            "delta": 0.0,
+            "threshold": 0.12,
+            "status": "insufficient_events"
+          },
+          {
+            "name": "ball_coverage",
+            "label": "网球覆盖",
+            "baseline": 0.0,
+            "recent": 0.2667,
+            "delta": 0.2667,
+            "threshold": 0.12,
+            "status": "insufficient_events"
+          },
+          {
+            "name": "racket_coverage",
+            "label": "球拍覆盖",
+            "baseline": 1.0,
+            "recent": 1.0,
+            "delta": 0.0,
+            "threshold": 0.12,
+            "status": "insufficient_events"
+          },
+          {
+            "name": "contact_evidence",
+            "label": "触球证据",
+            "baseline": 0.0,
+            "recent": 0.5026,
+            "delta": 0.5026,
+            "threshold": 0.15,
+            "status": "insufficient_events"
+          },
+          {
+            "name": "camera_scale",
+            "label": "人物画面尺度",
+            "baseline": 98.5037,
+            "recent": 86.5515,
+            "relative_delta": -0.1213,
+            "threshold": 0.15,
+            "status": "insufficient_events"
+          }
+        ],
+        "camera_confounded": false
+      },
+      "recurring": {
+        "warnings": [],
+        "warning_counts": {
+          "ball_track_gaps": 1
+        },
+        "advice_counts": {
+          "limited_brush_drop": 1,
+          "limited_knee_flexion": 2,
+          "short_backswing": 1
+        }
+      },
+      "alerts": [
+        {
+          "code": "session_evidence_quality_watch",
+          "domain": "capture",
+          "severity": "medium",
+          "message": "部分动作证据不完整，技术趋势需谨慎解释"
+        }
+      ],
+      "series": [
+        {
+          "event_id": 1,
+          "start_frame": 10,
+          "contact_frame": 18,
+          "end_frame": 49,
+          "stroke_type": "Backhand",
+          "visible_score_9": null,
+          "score_uncertainty_9": null,
+          "calibration_confidence": 0.0,
+          "calibration_status": "skipped_shadow_swing",
+          "evidence_quality_100": 50.0,
+          "pose_frame_ratio": 1.0,
+          "ball_frame_ratio": 0.0,
+          "racket_frame_ratio": 1.0,
+          "contact_evidence_confidence": 0.0,
+          "reference_body_width_px": 98.5037,
+          "camera_view": "facing_player",
+          "review_recommended": true,
+          "warnings": [
+            "ball_track_gaps"
+          ],
+          "advice_codes": [],
+          "arm_extension_deg": 113.5321,
+          "shoulder_turn_change_deg": 4.1,
+          "preparation_knee_flexion_deg": 2.1498,
+          "contact_capture_to_coach_ms": 1856.452,
+          "deepseek_status": null,
+          "deepseek_latency_ms": null
+        },
+        {
+          "event_id": 2,
+          "start_frame": 62,
+          "contact_frame": 96,
+          "end_frame": 130,
+          "stroke_type": "Forehand",
+          "visible_score_9": 5.21,
+          "score_uncertainty_9": 0.6,
+          "calibration_confidence": 0.8533,
+          "calibration_status": "calibrated",
+          "evidence_quality_100": 68.49,
+          "pose_frame_ratio": 1.0,
+          "ball_frame_ratio": 0.2029,
+          "racket_frame_ratio": 1.0,
+          "contact_evidence_confidence": 0.4811,
+          "reference_body_width_px": 93.2966,
+          "camera_view": "facing_player",
+          "review_recommended": false,
+          "warnings": [],
+          "advice_codes": [
+            "limited_knee_flexion"
+          ],
+          "arm_extension_deg": 146.2605,
+          "shoulder_turn_change_deg": 11.4,
+          "preparation_knee_flexion_deg": 4.3584,
+          "contact_capture_to_coach_ms": 2138.114,
+          "deepseek_status": null,
+          "deepseek_latency_ms": null
+        },
+        {
+          "event_id": 3,
+          "start_frame": 166,
+          "contact_frame": 191,
+          "end_frame": 225,
+          "stroke_type": "Forehand",
+          "visible_score_9": 5.51,
+          "score_uncertainty_9": 0.6,
+          "calibration_confidence": 0.8533,
+          "calibration_status": "calibrated",
+          "evidence_quality_100": 70.41,
+          "pose_frame_ratio": 1.0,
+          "ball_frame_ratio": 0.2667,
+          "racket_frame_ratio": 1.0,
+          "contact_evidence_confidence": 0.5026,
+          "reference_body_width_px": 86.5515,
+          "camera_view": "facing_player",
+          "review_recommended": false,
+          "warnings": [],
+          "advice_codes": [
+            "limited_knee_flexion",
+            "limited_brush_drop",
+            "short_backswing"
+          ],
+          "arm_extension_deg": 145.3394,
+          "shoulder_turn_change_deg": 16.7,
+          "preparation_knee_flexion_deg": 6.6562,
+          "contact_capture_to_coach_ms": 2136.499,
+          "deepseek_status": null,
+          "deepseek_latency_ms": null
+        }
+      ],
+      "limitations": [
+        "drift_requires_at_least_six_events",
+        "technique_trend_is_single_view_visible_motion_only",
+        "camera_scale_shift_blocks_technique_drift_conclusions",
+        "compare_sessions_only_after_camera_calibration"
+      ]
+    },
+    "roi": {
+      "enabled": true,
+      "matched": true,
+      "stream_id": "court01-main",
+      "label": "Court 01 Main Camera ",
+      "source": "d19be8b725b24818e41c6fc1ca896b7e.mp4",
+      "points": [
+        [
+          712,
+          434
+        ],
+        [
+          1544,
+          440
+        ],
+        [
+          1818,
+          1198
+        ],
+        [
+          424,
+          1198
+        ]
+      ],
+      "configured_frame_size": [
+        2560,
+        1440
+      ],
+      "frame_size": [
+        2560,
+        1440
+      ],
+      "config_path": "configs/roi_config.yaml",
+      "reason": ""
+    },
+    "clip_buffer_dropped_frames": 0
+  },
+  "events": [
+    {
+      "event_id": 1,
+      "start_frame": 10,
+      "end_frame": 49,
+      "duration_frames": 40,
+      "peak_frame": 18,
+      "contact_frame": 18,
+      "peak_energy": 33.9577,
+      "stroke_type": "Backhand",
+      "confidence": 0.9091,
+      "is_shadow_swing": true,
+      "evidence": {
+        "label_counts": {
+          "Backhand": 10,
+          "Forehand": 1,
+          "Two-Handed Backhand": 0
+        },
+        "two_hand_ratio": 0.3636,
+        "two_hand_evidence_frames": 11,
+        "label_two_hand_ratio": 0.0,
+        "backhand_support_ratio": 0.9091,
+        "backhand_side_frames": 5,
+        "forehand_side_frames": 4,
+        "classification_context": {
+          "policy_version": "player_camera_swing_v1",
+          "player": {
+            "dominant_hand": "right",
+            "source": "configured"
+          },
+          "camera": {
+            "view": "facing_player",
+            "confidence": 0.9942,
+            "evidence_frames": 11,
+            "median_facing_score": -0.9942,
+            "orientation_agreement": 1.0,
+            "right_side_projects_to": "screen_left"
+          },
+          "swing": {
+            "side": "uncertain",
+            "confidence": 0.5556,
+            "evidence_frames": 9,
+            "forehand_side_frames": 4,
+            "backhand_side_frames": 5,
+            "two_hand_ratio": 0.3636,
+            "two_hand_evidence_frames": 11
+          },
+          "dual_view": null,
+          "contact_analysis": {
+            "has_ball": false,
+            "is_shadow_swing": true,
+            "is_valid_contact": false,
+            "min_ball_distance": null,
+            "has_trajectory_rebound": false
+          },
+          "decision_rule": "label_fallback_backhand"
+        },
+        "core_start_frame": 10,
+        "core_end_frame": 21,
+        "classification_anchor_frame": 18,
+        "start_boundary": {
+          "mode": "quiet_onset",
+          "confidence": "medium",
+          "onset_signal": "energy",
+          "search_start_frame": 0,
+          "search_end_frame": 10,
+          "quiet_start_frame": 7,
+          "quiet_end_frame": 10,
+          "onset_frame": 11,
+          "energy_baseline": 6.8157,
+          "energy_mad": 1.4305,
+          "energy_onset_threshold": 9.6767,
+          "shoulder_turn_baseline_deg": 100.9,
+          "shoulder_turn_onset_threshold_deg": 4.0
+        }
+      },
+      "quality_flags": {
+        "pose_frame_ratio": 1.0,
+        "ball_frame_ratio": 0.0,
+        "ball_contact_window_ratio": 0.0,
+        "ball_contact_window_frames": 9,
+        "ball_contact_window_detection_frames": 0,
+        "racket_frame_ratio": 1.0,
+        "diagnostic_rejection_counts": {
+          "implausible_jump": 0,
+          "low_conf_unsupported": 0,
+          "small_mirror_unsupported": 0,
+          "static_hard_mask": 0,
+          "track_became_static": 0,
+          "upper_mirror_unsupported": 0
+        },
+        "continuity_disabled_frames": 0,
+        "warnings": [
+          "ball_track_gaps"
+        ],
+        "review_recommended": true
+      },
+      "phase_counts": {
+        "backswing": 4,
+        "follow_through": 8,
+        "forward_swing": 3,
+        "ready": 25
+      },
+      "biomechanics": {
+        "schema_version": "single_view_2d_v2",
+        "coordinate_space": "image_plane_normalized_by_body_width",
+        "contact_frame": 18,
+        "reference_body_width_px": 98.5037,
+        "limitations": [
+          "single_view_2d_not_3d_kinetics",
+          "camera_perspective_affects_depth_and_weight_transfer",
+          "hip_shoulder_separation_is_image_plane_proxy",
+          "screen_translation_is_not_balance_or_weight_transfer"
+        ],
+        "metrics": {
+          "hip_shoulder_separation": {
+            "value": 3.3584,
+            "unit": "image_plane_deg",
+            "confidence": 0.35,
+            "sample_count": 5,
+            "source_frames": [
+              16,
+              17,
+              18,
+              19,
+              20
+            ],
+            "observability": "image_plane_proxy_only",
+            "coach_eligible": false,
+            "exclusion_reason": "true_3d_separation_not_observable_single_view"
+          },
+          "shoulder_turn": {
+            "value": 94.1,
+            "unit": "image_plane_deg",
+            "confidence": 0.45,
+            "sample_count": 5,
+            "source_frames": [
+              16,
+              17,
+              18,
+              19,
+              20
+            ],
+            "observability": "absolute_image_orientation_only",
+            "coach_eligible": false,
+            "exclusion_reason": "absolute_projection_is_not_turn_magnitude"
+          },
+          "shoulder_turn_change": {
+            "value": 4.1,
+            "unit": "deg_2d",
+            "confidence": 0.82,
+            "sample_count": 9,
+            "source_frames": [
+              10,
+              11,
+              18
+            ],
+            "observability": "image_plane_change",
+            "coach_eligible": true
+          },
+          "preparation_knee_flexion": {
+            "value": 2.1498,
+            "unit": "deg_2d",
+            "confidence": 0.82,
+            "sample_count": 5,
+            "source_frames": [
+              10,
+              11,
+              12,
+              13,
+              14
+            ],
+            "observability": "image_plane_joint_angle",
+            "coach_eligible": true
+          },
+          "arm_extension": {
+            "value": 113.5321,
+            "unit": "deg_2d",
+            "confidence": 0.92,
+            "sample_count": 5,
+            "source_frames": [
+              16,
+              17,
+              18,
+              19,
+              20
+            ],
+            "observability": "swing_peak_window_2d",
+            "coach_eligible": true
+          },
+          "contact_lateral_distance": {
+            "value": null,
+            "unit": "body_width",
+            "confidence": 0.0,
+            "sample_count": 0,
+            "source_frames": [],
+            "observability": "observable_2d",
+            "coach_eligible": false
+          },
+          "weight_transfer": {
+            "value": 0.0655,
+            "unit": "body_width",
+            "confidence": 0.8,
+            "sample_count": 8,
+            "source_frames": [
+              10,
+              11,
+              12,
+              16,
+              17,
+              18,
+              19,
+              20
+            ],
+            "observability": "screen_body_center_displacement",
+            "coach_eligible": false,
+            "exclusion_reason": "screen_translation_is_not_true_weight_transfer"
+          },
+          "balance_drift": {
+            "value": 0.2065,
+            "unit": "body_width",
+            "confidence": 0.8,
+            "sample_count": 10,
+            "source_frames": [
+              16,
+              17,
+              18,
+              19,
+              20,
+              26,
+              27,
+              28,
+              29,
+              30
+            ],
+            "observability": "screen_body_center_displacement",
+            "coach_eligible": false,
+            "exclusion_reason": "body_center_translation_is_not_balance_stability"
+          },
+          "takeback_depth": {
+            "value": null,
+            "unit": "ratio",
+            "confidence": 0.0,
+            "sample_count": 0,
+            "source_frames": [],
+            "observability": "dual_view_mirror_projection",
+            "coach_eligible": false
+          },
+          "scapular_retraction": {
+            "value": null,
+            "unit": "ratio",
+            "confidence": 0.0,
+            "sample_count": 0,
+            "source_frames": [],
+            "observability": "dual_view_mirror_projection",
+            "coach_eligible": false
+          },
+          "racket_head_speed": {
+            "value": 15.7,
+            "confidence": 0.88,
+            "unit": "km/h",
+            "max_kmh": 15.7
+          },
+          "brush_angle": {
+            "value": 0.0,
+            "confidence": 0.85,
+            "unit": "deg",
+            "drop_depth_ratio": 0.0
+          },
+          "stance": {
+            "value": "Closed Stance",
+            "confidence": 0.9
+          },
+          "leg_drive": {
+            "value": 0.0,
+            "confidence": 0.85,
+            "unit": "ratio"
+          },
+          "kinematic_sequence": {
+            "value": "DISCONNECTED",
+            "confidence": 0.85,
+            "details": {
+              "hip_peak_frame": 19,
+              "shoulder_peak_frame": 11,
+              "racket_peak_frame": 17,
+              "latency_hip_to_shoulder_ms": -320.0,
+              "latency_shoulder_to_racket_ms": 240.0,
+              "is_sequential": false,
+              "sequence_quality": "DISCONNECTED"
+            }
+          },
+          "swing_quality_score": {
+            "value": 64.3,
+            "confidence": 0.9,
+            "grade": "INTERMEDIATE",
+            "sub_scores": {
+              "shoulder_turn": 100.0,
+              "takeback": 80.0,
+              "arm_extension": 31.4,
+              "racket_speed": 18.5,
+              "leg_drive": 68.2
+            }
+          }
+        },
+        "extended_biomechanics": {
+          "racket_head_speed": {
+            "max_kmh": 15.7,
+            "contact_kmh": 15.7,
+            "confidence": 0.88
+          },
+          "brush_angle": {
+            "low_to_high_angle_deg": 0.0,
+            "drop_depth_px": 0.0,
+            "drop_depth_ratio": 0.0,
+            "confidence": 0.85
+          },
+          "stance": {
+            "stance_type": "Closed Stance",
+            "confidence": 0.9
+          },
+          "leg_drive": {
+            "drive_px": 0.0,
+            "drive_ratio": 0.0,
+            "confidence": 0.85
+          },
+          "kinematic_sequence": {
+            "hip_peak_frame": 19,
+            "shoulder_peak_frame": 11,
+            "racket_peak_frame": 17,
+            "latency_hip_to_shoulder_ms": -320.0,
+            "latency_shoulder_to_racket_ms": 240.0,
+            "is_sequential": false,
+            "sequence_quality": "DISCONNECTED"
+          },
+          "swing_quality_score": {
+            "overall_score": 64.3,
+            "grade": "INTERMEDIATE",
+            "sub_scores": {
+              "shoulder_turn": 100.0,
+              "takeback": 80.0,
+              "arm_extension": 31.4,
+              "racket_speed": 18.5,
+              "leg_drive": 68.2
+            }
+          }
+        },
+        "swing_score": 64.3,
+        "swing_grade": "INTERMEDIATE",
+        "quality": {
+          "pose_frame_ratio": 1.0,
+          "body_scale_frame_ratio": 1.0,
+          "contact_evidence_confidence": 0.0,
+          "arm_extension_reference_frame": 18,
+          "early_recovery_frame": 28
+        }
+      },
+      "extended_biomechanics": {
+        "racket_head_speed": {
+          "max_kmh": 15.7,
+          "contact_kmh": 15.7,
+          "confidence": 0.88
+        },
+        "brush_angle": {
+          "low_to_high_angle_deg": 0.0,
+          "drop_depth_px": 0.0,
+          "drop_depth_ratio": 0.0,
+          "confidence": 0.85
+        },
+        "stance": {
+          "stance_type": "Closed Stance",
+          "confidence": 0.9
+        },
+        "leg_drive": {
+          "drive_px": 0.0,
+          "drive_ratio": 0.0,
+          "confidence": 0.85
+        },
+        "kinematic_sequence": {
+          "hip_peak_frame": 19,
+          "shoulder_peak_frame": 11,
+          "racket_peak_frame": 17,
+          "latency_hip_to_shoulder_ms": -320.0,
+          "latency_shoulder_to_racket_ms": 240.0,
+          "is_sequential": false,
+          "sequence_quality": "DISCONNECTED"
+        },
+        "swing_quality_score": {
+          "overall_score": 64.3,
+          "grade": "INTERMEDIATE",
+          "sub_scores": {
+            "shoulder_turn": 100.0,
+            "takeback": 80.0,
+            "arm_extension": 31.4,
+            "racket_speed": 18.5,
+            "leg_drive": 68.2
+          }
+        }
+      },
+      "swing_score": 64.3,
+      "swing_grade": "INTERMEDIATE",
+      "coach_calibration": {
+        "policy_version": "single_view_visible_coach_v1",
+        "status": "skipped_shadow_swing",
+        "visible_technique_score": null,
+        "visible_technique_score_9": null,
+        "uncertainty_9": null,
+        "confidence": 0.0,
+        "metrics_used": [],
+        "assessments": {},
+        "excluded_metrics": [
+          {
+            "metric": "all",
+            "reason": "shadow_swing_skipped"
+          }
+        ],
+        "limitations": [
+          "single_view_visible_technique_only",
+          "shadow_swing_calibration_skipped"
+        ]
+      },
+      "schema_version": "tennis.swing-event.v1",
+      "session_id": "dir1_verification",
+      "timing": {
+        "event_emitted_at": "2026-09-23T15:35:34.564Z",
+        "event_emitted_at_unix_ns": 1790177734564236000,
+        "contact_capture_to_event_ms": 1856.436,
+        "coach_generated_at": "2026-09-23T15:35:34.564Z",
+        "coach_generated_at_unix_ns": 1790177734564252000,
+        "event_to_coach_ms": 0.016,
+        "contact_capture_to_coach_ms": 1856.452,
+        "output_queued_at": "2026-09-23T15:35:34.565Z",
+        "output_queued_at_unix_ns": 1790177734565209000,
+        "coach_to_output_queue_ms": 0.957
+      },
+      "emitted_at_frame": 64,
+      "latency_frames": 15,
+      "coach_advices": [],
+      "coach_advice": null,
+      "clip_path": "dir1_verification/output_video_swing_clips/event_0001_backhand_f000010-000049.mp4",
+      "clip_status": "ready",
+      "clip_frame_count": 56,
+      "clip_missing_frame_count": 0,
+      "clip_missing_frames": [],
+      "impact_freeze_path": "event_0001_impact_freeze.jpg",
+      "snapshots": {
+        "impact_freeze": "event_0001_impact_freeze.jpg"
+      }
+    },
+    {
+      "event_id": 2,
+      "start_frame": 62,
+      "end_frame": 130,
+      "duration_frames": 69,
+      "peak_frame": 99,
+      "contact_frame": 96,
+      "peak_energy": 97.2689,
+      "stroke_type": "Forehand",
+      "confidence": 0.9946,
+      "is_shadow_swing": false,
+      "evidence": {
+        "label_counts": {
+          "Backhand": 0,
+          "Forehand": 17,
+          "Two-Handed Backhand": 0
+        },
+        "two_hand_ratio": 0.0,
+        "two_hand_evidence_frames": 17,
+        "label_two_hand_ratio": 0.0,
+        "backhand_support_ratio": 0.0,
+        "backhand_side_frames": 0,
+        "forehand_side_frames": 17,
+        "classification_context": {
+          "policy_version": "player_camera_swing_v1",
+          "player": {
+            "dominant_hand": "right",
+            "source": "configured"
+          },
+          "camera": {
+            "view": "facing_player",
+            "confidence": 0.9729,
+            "evidence_frames": 17,
+            "median_facing_score": -0.9729,
+            "orientation_agreement": 1.0,
+            "right_side_projects_to": "screen_left"
+          },
+          "swing": {
+            "side": "forehand",
+            "confidence": 1.0,
+            "evidence_frames": 17,
+            "forehand_side_frames": 17,
+            "backhand_side_frames": 0,
+            "two_hand_ratio": 0.0,
+            "two_hand_evidence_frames": 17
+          },
+          "dual_view": null,
+          "contact_analysis": {
+            "has_ball": true,
+            "is_shadow_swing": false,
+            "is_valid_contact": true,
+            "min_ball_distance": 93.4,
+            "has_trajectory_rebound": true
+          },
+          "decision_rule": "camera_normalized_forehand_side"
+        },
+        "core_start_frame": 82,
+        "core_end_frame": 99,
+        "classification_anchor_frame": 96,
+        "start_boundary": {
+          "mode": "quiet_onset",
+          "confidence": "medium",
+          "onset_signal": "energy",
+          "search_start_frame": 54,
+          "search_end_frame": 91,
+          "quiet_start_frame": 55,
+          "quiet_end_frame": 60,
+          "onset_frame": 63,
+          "energy_baseline": 1.7162,
+          "energy_mad": 0.7162,
+          "energy_onset_threshold": 4.2162,
+          "shoulder_turn_baseline_deg": 93.3,
+          "shoulder_turn_onset_threshold_deg": 4.0
+        }
+      },
+      "quality_flags": {
+        "pose_frame_ratio": 1.0,
+        "ball_frame_ratio": 0.2029,
+        "ball_contact_window_ratio": 0.8889,
+        "ball_contact_window_frames": 9,
+        "ball_contact_window_detection_frames": 8,
+        "racket_frame_ratio": 1.0,
+        "diagnostic_rejection_counts": {
+          "implausible_jump": 6,
+          "low_conf_unsupported": 0,
+          "small_mirror_unsupported": 0,
+          "static_hard_mask": 0,
+          "track_became_static": 0,
+          "upper_mirror_unsupported": 0
+        },
+        "continuity_disabled_frames": 0,
+        "warnings": [],
+        "review_recommended": false
+      },
+      "phase_counts": {
+        "backswing": 19,
+        "contact_candidate": 1,
+        "follow_through": 31,
+        "ready": 18
+      },
+      "biomechanics": {
+        "schema_version": "single_view_2d_v2",
+        "coordinate_space": "image_plane_normalized_by_body_width",
+        "contact_frame": 96,
+        "reference_body_width_px": 93.2966,
+        "limitations": [
+          "single_view_2d_not_3d_kinetics",
+          "camera_perspective_affects_depth_and_weight_transfer",
+          "hip_shoulder_separation_is_image_plane_proxy",
+          "screen_translation_is_not_balance_or_weight_transfer"
+        ],
+        "metrics": {
+          "hip_shoulder_separation": {
+            "value": 3.9211,
+            "unit": "image_plane_deg",
+            "confidence": 0.35,
+            "sample_count": 5,
+            "source_frames": [
+              94,
+              95,
+              96,
+              97,
+              98
+            ],
+            "observability": "image_plane_proxy_only",
+            "coach_eligible": false,
+            "exclusion_reason": "true_3d_separation_not_observable_single_view"
+          },
+          "shoulder_turn": {
+            "value": 96.5,
+            "unit": "image_plane_deg",
+            "confidence": 0.45,
+            "sample_count": 5,
+            "source_frames": [
+              94,
+              95,
+              96,
+              97,
+              98
+            ],
+            "observability": "absolute_image_orientation_only",
+            "coach_eligible": false,
+            "exclusion_reason": "absolute_projection_is_not_turn_magnitude"
+          },
+          "shoulder_turn_change": {
+            "value": 11.4,
+            "unit": "deg_2d",
+            "confidence": 0.82,
+            "sample_count": 35,
+            "source_frames": [
+              62,
+              63,
+              64,
+              65,
+              66,
+              91
+            ],
+            "observability": "image_plane_change",
+            "coach_eligible": true
+          },
+          "preparation_knee_flexion": {
+            "value": 4.3584,
+            "unit": "deg_2d",
+            "confidence": 0.82,
+            "sample_count": 18,
+            "source_frames": [
+              62,
+              63,
+              64,
+              65,
+              66,
+              67,
+              68,
+              69,
+              70,
+              71,
+              72,
+              73,
+              74,
+              75,
+              76,
+              77,
+              78,
+              79
+            ],
+            "observability": "image_plane_joint_angle",
+            "coach_eligible": true
+          },
+          "arm_extension": {
+            "value": 146.2605,
+            "unit": "deg_2d",
+            "confidence": 0.92,
+            "sample_count": 5,
+            "source_frames": [
+              94,
+              95,
+              96,
+              97,
+              98
+            ],
+            "observability": "contact_window_2d",
+            "coach_eligible": true
+          },
+          "contact_lateral_distance": {
+            "value": 2.0186,
+            "unit": "body_width",
+            "confidence": 0.7406,
+            "sample_count": 1,
+            "source_frames": [
+              96
+            ],
+            "observability": "image_plane_lateral_only",
+            "coach_eligible": true
+          },
+          "weight_transfer": {
+            "value": 1.4548,
+            "unit": "body_width",
+            "confidence": 0.8,
+            "sample_count": 8,
+            "source_frames": [
+              62,
+              63,
+              64,
+              94,
+              95,
+              96,
+              97,
+              98
+            ],
+            "observability": "screen_body_center_displacement",
+            "coach_eligible": false,
+            "exclusion_reason": "screen_translation_is_not_true_weight_transfer"
+          },
+          "balance_drift": {
+            "value": 0.9649,
+            "unit": "body_width",
+            "confidence": 0.8,
+            "sample_count": 10,
+            "source_frames": [
+              94,
+              95,
+              96,
+              97,
+              98,
+              104,
+              105,
+              106,
+              107,
+              108
+            ],
+            "observability": "screen_body_center_displacement",
+            "coach_eligible": false,
+            "exclusion_reason": "body_center_translation_is_not_balance_stability"
+          },
+          "takeback_depth": {
+            "value": null,
+            "unit": "ratio",
+            "confidence": 0.0,
+            "sample_count": 0,
+            "source_frames": [],
+            "observability": "dual_view_mirror_projection",
+            "coach_eligible": false
+          },
+          "scapular_retraction": {
+            "value": null,
+            "unit": "ratio",
+            "confidence": 0.0,
+            "sample_count": 0,
+            "source_frames": [],
+            "observability": "dual_view_mirror_projection",
+            "coach_eligible": false
+          },
+          "racket_head_speed": {
+            "value": 59.4,
+            "confidence": 0.88,
+            "unit": "km/h",
+            "max_kmh": 62.2
+          },
+          "brush_angle": {
+            "value": 62.0,
+            "confidence": 0.85,
+            "unit": "deg",
+            "drop_depth_ratio": 0.34
+          },
+          "stance": {
+            "value": "Open Stance",
+            "confidence": 0.9
+          },
+          "leg_drive": {
+            "value": 0.53,
+            "confidence": 0.85,
+            "unit": "ratio"
+          },
+          "kinematic_sequence": {
+            "value": "OPTIMAL",
+            "confidence": 0.85,
+            "details": {
+              "hip_peak_frame": 96,
+              "shoulder_peak_frame": 95,
+              "racket_peak_frame": 99,
+              "latency_hip_to_shoulder_ms": -40.0,
+              "latency_shoulder_to_racket_ms": 160.0,
+              "is_sequential": true,
+              "sequence_quality": "OPTIMAL"
+            }
+          },
+          "swing_quality_score": {
+            "value": 86.0,
+            "confidence": 0.9,
+            "grade": "ADVANCED",
+            "sub_scores": {
+              "shoulder_turn": 100.0,
+              "takeback": 80.0,
+              "arm_extension": 75.0,
+              "racket_speed": 73.2,
+              "leg_drive": 100.0
+            }
+          }
+        },
+        "extended_biomechanics": {
+          "racket_head_speed": {
+            "max_kmh": 62.2,
+            "contact_kmh": 59.4,
+            "confidence": 0.88
+          },
+          "brush_angle": {
+            "low_to_high_angle_deg": 62.0,
+            "drop_depth_px": 32.0,
+            "drop_depth_ratio": 0.34,
+            "confidence": 0.85
+          },
+          "stance": {
+            "stance_type": "Open Stance",
+            "confidence": 0.9
+          },
+          "leg_drive": {
+            "drive_px": 49.0,
+            "drive_ratio": 0.53,
+            "confidence": 0.85
+          },
+          "kinematic_sequence": {
+            "hip_peak_frame": 96,
+            "shoulder_peak_frame": 95,
+            "racket_peak_frame": 99,
+            "latency_hip_to_shoulder_ms": -40.0,
+            "latency_shoulder_to_racket_ms": 160.0,
+            "is_sequential": true,
+            "sequence_quality": "OPTIMAL"
+          },
+          "swing_quality_score": {
+            "overall_score": 86.0,
+            "grade": "ADVANCED",
+            "sub_scores": {
+              "shoulder_turn": 100.0,
+              "takeback": 80.0,
+              "arm_extension": 75.0,
+              "racket_speed": 73.2,
+              "leg_drive": 100.0
+            }
+          }
+        },
+        "swing_score": 86.0,
+        "swing_grade": "ADVANCED",
+        "quality": {
+          "pose_frame_ratio": 1.0,
+          "body_scale_frame_ratio": 1.0,
+          "contact_evidence_confidence": 0.4811,
+          "arm_extension_reference_frame": 96,
+          "early_recovery_frame": 106
+        }
+      },
+      "extended_biomechanics": {
+        "racket_head_speed": {
+          "max_kmh": 62.2,
+          "contact_kmh": 59.4,
+          "confidence": 0.88
+        },
+        "brush_angle": {
+          "low_to_high_angle_deg": 62.0,
+          "drop_depth_px": 32.0,
+          "drop_depth_ratio": 0.34,
+          "confidence": 0.85
+        },
+        "stance": {
+          "stance_type": "Open Stance",
+          "confidence": 0.9
+        },
+        "leg_drive": {
+          "drive_px": 49.0,
+          "drive_ratio": 0.53,
+          "confidence": 0.85
+        },
+        "kinematic_sequence": {
+          "hip_peak_frame": 96,
+          "shoulder_peak_frame": 95,
+          "racket_peak_frame": 99,
+          "latency_hip_to_shoulder_ms": -40.0,
+          "latency_shoulder_to_racket_ms": 160.0,
+          "is_sequential": true,
+          "sequence_quality": "OPTIMAL"
+        },
+        "swing_quality_score": {
+          "overall_score": 86.0,
+          "grade": "ADVANCED",
+          "sub_scores": {
+            "shoulder_turn": 100.0,
+            "takeback": 80.0,
+            "arm_extension": 75.0,
+            "racket_speed": 73.2,
+            "leg_drive": 100.0
+          }
+        }
+      },
+      "swing_score": 86.0,
+      "swing_grade": "ADVANCED",
+      "coach_calibration": {
+        "policy_version": "single_view_visible_coach_v1",
+        "status": "calibrated",
+        "visible_technique_score": 0.5793,
+        "visible_technique_score_9": 5.21,
+        "uncertainty_9": 0.6,
+        "confidence": 0.8533,
+        "metrics_used": [
+          "arm_extension",
+          "shoulder_turn_change",
+          "preparation_knee_flexion"
+        ],
+        "assessments": {
+          "arm_extension": {
+            "status": "usable",
+            "value": 146.2605,
+            "unit": "deg_2d",
+            "confidence": 0.92,
+            "score_0_1": 0.8126,
+            "source_frames": [
+              94,
+              95,
+              96,
+              97,
+              98
+            ]
+          },
+          "shoulder_turn_change": {
+            "status": "usable",
+            "value": 11.4,
+            "unit": "deg_2d",
+            "confidence": 0.82,
+            "score_0_1": 0.4925,
+            "source_frames": [
+              62,
+              63,
+              64,
+              65,
+              66,
+              91
+            ]
+          },
+          "preparation_knee_flexion": {
+            "status": "usable",
+            "value": 4.3584,
+            "unit": "deg_2d",
+            "confidence": 0.82,
+            "score_0_1": 0.4045,
+            "source_frames": [
+              62,
+              63,
+              64,
+              65,
+              66,
+              67,
+              68,
+              69,
+              70,
+              71,
+              72,
+              73,
+              74,
+              75,
+              76,
+              77,
+              78,
+              79
+            ]
+          }
+        },
+        "excluded_metrics": [],
+        "limitations": [
+          "single_view_visible_technique_only",
+          "not_a_3d_kinetic_or_injury_score",
+          "compare_sessions_only_after_camera_calibration"
+        ]
+      },
+      "schema_version": "tennis.swing-event.v1",
+      "session_id": "dir1_verification",
+      "timing": {
+        "event_emitted_at": "2026-09-23T15:35:37.949Z",
+        "event_emitted_at_unix_ns": 1790177737949016000,
+        "contact_capture_to_event_ms": 2138.077,
+        "coach_generated_at": "2026-09-23T15:35:37.949Z",
+        "coach_generated_at_unix_ns": 1790177737949053000,
+        "event_to_coach_ms": 0.037,
+        "contact_capture_to_coach_ms": 2138.114,
+        "output_queued_at": "2026-09-23T15:35:37.950Z",
+        "output_queued_at_unix_ns": 1790177737950681000,
+        "coach_to_output_queue_ms": 1.628
+      },
+      "emitted_at_frame": 149,
+      "latency_frames": 19,
+      "coach_advices": [
+        {
+          "code": "limited_knee_flexion",
+          "message": "准备时适当降低重心",
+          "category": "technique",
+          "confidence": 0.82,
+          "source": "local_biomechanics_v2",
+          "evidence": {
+            "value": 4.3584,
+            "unit": "deg_2d",
+            "threshold": 12.0,
+            "metric_confidence": 0.82,
+            "source_frames": [
+              62,
+              63,
+              64,
+              65,
+              66,
+              67,
+              68,
+              69,
+              70,
+              71,
+              72,
+              73,
+              74,
+              75,
+              76,
+              77,
+              78,
+              79
+            ],
+            "observability": "image_plane_joint_angle",
+            "calibration_policy": "single_view_visible_coach_v1",
+            "visible_technique_score_9": 5.21
+          },
+          "focus": "knee_flexion"
+        }
+      ],
+      "coach_advice": {
+        "code": "limited_knee_flexion",
+        "message": "准备时适当降低重心",
+        "category": "technique",
+        "confidence": 0.82,
+        "source": "local_biomechanics_v2",
+        "evidence": {
+          "value": 4.3584,
+          "unit": "deg_2d",
+          "threshold": 12.0,
+          "metric_confidence": 0.82,
+          "source_frames": [
+            62,
+            63,
+            64,
+            65,
+            66,
+            67,
+            68,
+            69,
+            70,
+            71,
+            72,
+            73,
+            74,
+            75,
+            76,
+            77,
+            78,
+            79
+          ],
+          "observability": "image_plane_joint_angle",
+          "calibration_policy": "single_view_visible_coach_v1",
+          "visible_technique_score_9": 5.21
+        },
+        "focus": "knee_flexion"
+      },
+      "clip_path": "dir1_verification/output_video_swing_clips/event_0002_forehand_f000062-000130.mp4",
+      "clip_status": "ready",
+      "clip_frame_count": 85,
+      "clip_missing_frame_count": 0,
+      "clip_missing_frames": [],
+      "impact_freeze_path": "event_0002_impact_freeze.jpg",
+      "snapshots": {
+        "impact_freeze": "event_0002_impact_freeze.jpg"
+      }
+    },
+    {
+      "event_id": 3,
+      "start_frame": 166,
+      "end_frame": 225,
+      "duration_frames": 60,
+      "peak_frame": 194,
+      "contact_frame": 191,
+      "peak_energy": 101.0359,
+      "stroke_type": "Forehand",
+      "confidence": 0.9951,
+      "is_shadow_swing": false,
+      "evidence": {
+        "label_counts": {
+          "Backhand": 0,
+          "Forehand": 15,
+          "Two-Handed Backhand": 0
+        },
+        "two_hand_ratio": 0.0,
+        "two_hand_evidence_frames": 15,
+        "label_two_hand_ratio": 0.0,
+        "backhand_support_ratio": 0.0,
+        "backhand_side_frames": 0,
+        "forehand_side_frames": 15,
+        "classification_context": {
+          "policy_version": "player_camera_swing_v1",
+          "player": {
+            "dominant_hand": "right",
+            "source": "configured"
+          },
+          "camera": {
+            "view": "facing_player",
+            "confidence": 0.9755,
+            "evidence_frames": 17,
+            "median_facing_score": -0.9755,
+            "orientation_agreement": 1.0,
+            "right_side_projects_to": "screen_left"
+          },
+          "swing": {
+            "side": "forehand",
+            "confidence": 1.0,
+            "evidence_frames": 15,
+            "forehand_side_frames": 15,
+            "backhand_side_frames": 0,
+            "two_hand_ratio": 0.0,
+            "two_hand_evidence_frames": 15
+          },
+          "dual_view": null,
+          "contact_analysis": {
+            "has_ball": true,
+            "is_shadow_swing": false,
+            "is_valid_contact": true,
+            "min_ball_distance": 89.54,
+            "has_trajectory_rebound": true
+          },
+          "decision_rule": "camera_normalized_forehand_side"
+        },
+        "core_start_frame": 177,
+        "core_end_frame": 194,
+        "classification_anchor_frame": 191,
+        "start_boundary": {
+          "mode": "quiet_onset",
+          "confidence": "medium",
+          "onset_signal": "energy",
+          "search_start_frame": 149,
+          "search_end_frame": 186,
+          "quiet_start_frame": 154,
+          "quiet_end_frame": 159,
+          "onset_frame": 167,
+          "energy_baseline": 3.3716,
+          "energy_mad": 0.6673,
+          "energy_onset_threshold": 5.8716,
+          "shoulder_turn_baseline_deg": 93.8,
+          "shoulder_turn_onset_threshold_deg": 4.0
+        }
+      },
+      "quality_flags": {
+        "pose_frame_ratio": 1.0,
+        "ball_frame_ratio": 0.2667,
+        "ball_contact_window_ratio": 0.8889,
+        "ball_contact_window_frames": 9,
+        "ball_contact_window_detection_frames": 8,
+        "racket_frame_ratio": 1.0,
+        "diagnostic_rejection_counts": {
+          "implausible_jump": 8,
+          "low_conf_unsupported": 0,
+          "small_mirror_unsupported": 0,
+          "static_hard_mask": 0,
+          "track_became_static": 0,
+          "upper_mirror_unsupported": 0
+        },
+        "continuity_disabled_frames": 0,
+        "warnings": [],
+        "review_recommended": false
+      },
+      "phase_counts": {
+        "contact_candidate": 1,
+        "follow_through": 25,
+        "forward_swing": 9,
+        "ready": 25
+      },
+      "biomechanics": {
+        "schema_version": "single_view_2d_v2",
+        "coordinate_space": "image_plane_normalized_by_body_width",
+        "contact_frame": 191,
+        "reference_body_width_px": 86.5515,
+        "limitations": [
+          "single_view_2d_not_3d_kinetics",
+          "camera_perspective_affects_depth_and_weight_transfer",
+          "hip_shoulder_separation_is_image_plane_proxy",
+          "screen_translation_is_not_balance_or_weight_transfer"
+        ],
+        "metrics": {
+          "hip_shoulder_separation": {
+            "value": 1.3736,
+            "unit": "image_plane_deg",
+            "confidence": 0.35,
+            "sample_count": 5,
+            "source_frames": [
+              189,
+              190,
+              191,
+              192,
+              193
+            ],
+            "observability": "image_plane_proxy_only",
+            "coach_eligible": false,
+            "exclusion_reason": "true_3d_separation_not_observable_single_view"
+          },
+          "shoulder_turn": {
+            "value": 95.5,
+            "unit": "image_plane_deg",
+            "confidence": 0.45,
+            "sample_count": 5,
+            "source_frames": [
+              189,
+              190,
+              191,
+              192,
+              193
+            ],
+            "observability": "absolute_image_orientation_only",
+            "coach_eligible": false,
+            "exclusion_reason": "absolute_projection_is_not_turn_magnitude"
+          },
+          "shoulder_turn_change": {
+            "value": 16.7,
+            "unit": "deg_2d",
+            "confidence": 0.82,
+            "sample_count": 26,
+            "source_frames": [
+              166,
+              167,
+              168,
+              169,
+              170,
+              185
+            ],
+            "observability": "image_plane_change",
+            "coach_eligible": true
+          },
+          "preparation_knee_flexion": {
+            "value": 6.6562,
+            "unit": "deg_2d",
+            "confidence": 0.82,
+            "sample_count": 13,
+            "source_frames": [
+              166,
+              167,
+              168,
+              169,
+              170,
+              171,
+              172,
+              173,
+              174,
+              175,
+              176,
+              177,
+              178
+            ],
+            "observability": "image_plane_joint_angle",
+            "coach_eligible": true
+          },
+          "arm_extension": {
+            "value": 145.3394,
+            "unit": "deg_2d",
+            "confidence": 0.92,
+            "sample_count": 5,
+            "source_frames": [
+              189,
+              190,
+              191,
+              192,
+              193
+            ],
+            "observability": "contact_window_2d",
+            "coach_eligible": true
+          },
+          "contact_lateral_distance": {
+            "value": 2.383,
+            "unit": "body_width",
+            "confidence": 0.7513,
+            "sample_count": 1,
+            "source_frames": [
+              191
+            ],
+            "observability": "image_plane_lateral_only",
+            "coach_eligible": false,
+            "exclusion_reason": "contact_geometry_outside_plausible_single_view_range"
+          },
+          "weight_transfer": {
+            "value": 0.3186,
+            "unit": "body_width",
+            "confidence": 0.8,
+            "sample_count": 8,
+            "source_frames": [
+              166,
+              167,
+              168,
+              189,
+              190,
+              191,
+              192,
+              193
+            ],
+            "observability": "screen_body_center_displacement",
+            "coach_eligible": false,
+            "exclusion_reason": "screen_translation_is_not_true_weight_transfer"
+          },
+          "balance_drift": {
+            "value": 1.4066,
+            "unit": "body_width",
+            "confidence": 0.8,
+            "sample_count": 10,
+            "source_frames": [
+              189,
+              190,
+              191,
+              192,
+              193,
+              199,
+              200,
+              201,
+              202,
+              203
+            ],
+            "observability": "screen_body_center_displacement",
+            "coach_eligible": false,
+            "exclusion_reason": "body_center_translation_is_not_balance_stability"
+          },
+          "takeback_depth": {
+            "value": null,
+            "unit": "ratio",
+            "confidence": 0.0,
+            "sample_count": 0,
+            "source_frames": [],
+            "observability": "dual_view_mirror_projection",
+            "coach_eligible": false
+          },
+          "scapular_retraction": {
+            "value": null,
+            "unit": "ratio",
+            "confidence": 0.0,
+            "sample_count": 0,
+            "source_frames": [],
+            "observability": "dual_view_mirror_projection",
+            "coach_eligible": false
+          },
+          "racket_head_speed": {
+            "value": 65.0,
+            "confidence": 0.88,
+            "unit": "km/h",
+            "max_kmh": 65.0
+          },
+          "brush_angle": {
+            "value": 30.3,
+            "confidence": 0.85,
+            "unit": "deg",
+            "drop_depth_ratio": 0.08
+          },
+          "stance": {
+            "value": "Open Stance",
+            "confidence": 0.9
+          },
+          "leg_drive": {
+            "value": 0.32,
+            "confidence": 0.85,
+            "unit": "ratio"
+          },
+          "kinematic_sequence": {
+            "value": "OPTIMAL",
+            "confidence": 0.85,
+            "details": {
+              "hip_peak_frame": 190,
+              "shoulder_peak_frame": 190,
+              "racket_peak_frame": 194,
+              "latency_hip_to_shoulder_ms": 0.0,
+              "latency_shoulder_to_racket_ms": 160.0,
+              "is_sequential": true,
+              "sequence_quality": "OPTIMAL"
+            }
+          },
+          "swing_quality_score": {
+            "value": 90.2,
+            "confidence": 0.9,
+            "grade": "PRO",
+            "sub_scores": {
+              "shoulder_turn": 100.0,
+              "takeback": 80.0,
+              "arm_extension": 93.8,
+              "racket_speed": 76.5,
+              "leg_drive": 100.0
+            }
+          }
+        },
+        "extended_biomechanics": {
+          "racket_head_speed": {
+            "max_kmh": 65.0,
+            "contact_kmh": 65.0,
+            "confidence": 0.88
+          },
+          "brush_angle": {
+            "low_to_high_angle_deg": 30.3,
+            "drop_depth_px": 7.0,
+            "drop_depth_ratio": 0.08,
+            "confidence": 0.85
+          },
+          "stance": {
+            "stance_type": "Open Stance",
+            "confidence": 0.9
+          },
+          "leg_drive": {
+            "drive_px": 28.0,
+            "drive_ratio": 0.32,
+            "confidence": 0.85
+          },
+          "kinematic_sequence": {
+            "hip_peak_frame": 190,
+            "shoulder_peak_frame": 190,
+            "racket_peak_frame": 194,
+            "latency_hip_to_shoulder_ms": 0.0,
+            "latency_shoulder_to_racket_ms": 160.0,
+            "is_sequential": true,
+            "sequence_quality": "OPTIMAL"
+          },
+          "swing_quality_score": {
+            "overall_score": 90.2,
+            "grade": "PRO",
+            "sub_scores": {
+              "shoulder_turn": 100.0,
+              "takeback": 80.0,
+              "arm_extension": 93.8,
+              "racket_speed": 76.5,
+              "leg_drive": 100.0
+            }
+          }
+        },
+        "swing_score": 90.2,
+        "swing_grade": "PRO",
+        "quality": {
+          "pose_frame_ratio": 1.0,
+          "body_scale_frame_ratio": 1.0,
+          "contact_evidence_confidence": 0.5026,
+          "arm_extension_reference_frame": 191,
+          "early_recovery_frame": 201
+        }
+      },
+      "extended_biomechanics": {
+        "racket_head_speed": {
+          "max_kmh": 65.0,
+          "contact_kmh": 65.0,
+          "confidence": 0.88
+        },
+        "brush_angle": {
+          "low_to_high_angle_deg": 30.3,
+          "drop_depth_px": 7.0,
+          "drop_depth_ratio": 0.08,
+          "confidence": 0.85
+        },
+        "stance": {
+          "stance_type": "Open Stance",
+          "confidence": 0.9
+        },
+        "leg_drive": {
+          "drive_px": 28.0,
+          "drive_ratio": 0.32,
+          "confidence": 0.85
+        },
+        "kinematic_sequence": {
+          "hip_peak_frame": 190,
+          "shoulder_peak_frame": 190,
+          "racket_peak_frame": 194,
+          "latency_hip_to_shoulder_ms": 0.0,
+          "latency_shoulder_to_racket_ms": 160.0,
+          "is_sequential": true,
+          "sequence_quality": "OPTIMAL"
+        },
+        "swing_quality_score": {
+          "overall_score": 90.2,
+          "grade": "PRO",
+          "sub_scores": {
+            "shoulder_turn": 100.0,
+            "takeback": 80.0,
+            "arm_extension": 93.8,
+            "racket_speed": 76.5,
+            "leg_drive": 100.0
+          }
+        }
+      },
+      "swing_score": 90.2,
+      "swing_grade": "PRO",
+      "coach_calibration": {
+        "policy_version": "single_view_visible_coach_v1",
+        "status": "calibrated",
+        "visible_technique_score": 0.6127,
+        "visible_technique_score_9": 5.51,
+        "uncertainty_9": 0.6,
+        "confidence": 0.8533,
+        "metrics_used": [
+          "arm_extension",
+          "shoulder_turn_change",
+          "preparation_knee_flexion"
+        ],
+        "assessments": {
+          "arm_extension": {
+            "status": "usable",
+            "value": 145.3394,
+            "unit": "deg_2d",
+            "confidence": 0.92,
+            "score_0_1": 0.8034,
+            "source_frames": [
+              189,
+              190,
+              191,
+              192,
+              193
+            ]
+          },
+          "shoulder_turn_change": {
+            "status": "usable",
+            "value": 16.7,
+            "unit": "deg_2d",
+            "confidence": 0.82,
+            "score_0_1": 0.5783,
+            "source_frames": [
+              166,
+              167,
+              168,
+              169,
+              170,
+              185
+            ]
+          },
+          "preparation_knee_flexion": {
+            "status": "usable",
+            "value": 6.6562,
+            "unit": "deg_2d",
+            "confidence": 0.82,
+            "score_0_1": 0.4332,
+            "source_frames": [
+              166,
+              167,
+              168,
+              169,
+              170,
+              171,
+              172,
+              173,
+              174,
+              175,
+              176,
+              177,
+              178
+            ]
+          }
+        },
+        "excluded_metrics": [],
+        "limitations": [
+          "single_view_visible_technique_only",
+          "not_a_3d_kinetic_or_injury_score",
+          "compare_sessions_only_after_camera_calibration"
+        ]
+      },
+      "schema_version": "tennis.swing-event.v1",
+      "session_id": "dir1_verification",
+      "timing": {
+        "event_emitted_at": "2026-09-23T15:35:41.726Z",
+        "event_emitted_at_unix_ns": 1790177741726748000,
+        "contact_capture_to_event_ms": 2136.457,
+        "coach_generated_at": "2026-09-23T15:35:41.726Z",
+        "coach_generated_at_unix_ns": 1790177741726790000,
+        "event_to_coach_ms": 0.042,
+        "contact_capture_to_coach_ms": 2136.499,
+        "output_queued_at": "2026-09-23T15:35:41.728Z",
+        "output_queued_at_unix_ns": 1790177741728790000,
+        "coach_to_output_queue_ms": 2.0
+      },
+      "emitted_at_frame": 244,
+      "latency_frames": 19,
+      "coach_advices": [
+        {
+          "code": "limited_knee_flexion",
+          "message": "准备时适当降低重心",
+          "category": "technique",
+          "confidence": 0.82,
+          "source": "local_biomechanics_v2",
+          "evidence": {
+            "value": 6.6562,
+            "unit": "deg_2d",
+            "threshold": 12.0,
+            "metric_confidence": 0.82,
+            "source_frames": [
+              166,
+              167,
+              168,
+              169,
+              170,
+              171,
+              172,
+              173,
+              174,
+              175,
+              176,
+              177,
+              178
+            ],
+            "observability": "image_plane_joint_angle",
+            "calibration_policy": "single_view_visible_coach_v1",
+            "visible_technique_score_9": 5.51
+          },
+          "focus": "knee_flexion"
+        },
+        {
+          "code": "limited_brush_drop",
+          "message": "击球前拍头下潜刷球",
+          "category": "technique",
+          "confidence": 0.85,
+          "source": "local_rules_v1",
+          "evidence": {
+            "brush_angle": 30.3,
+            "drop_depth_ratio": 0.08,
+            "metric_confidence": 0.85
+          },
+          "focus": "brush_angle"
+        },
+        {
+          "code": "short_backswing",
+          "message": "提前准备充分引拍",
+          "category": "technique",
+          "confidence": 0.65,
+          "source": "local_rules_v1",
+          "evidence": {
+            "backswing_frames": 0
+          },
+          "focus": "preparation"
+        }
+      ],
+      "coach_advice": {
+        "code": "limited_knee_flexion",
+        "message": "准备时适当降低重心",
+        "category": "technique",
+        "confidence": 0.82,
+        "source": "local_biomechanics_v2",
+        "evidence": {
+          "value": 6.6562,
+          "unit": "deg_2d",
+          "threshold": 12.0,
+          "metric_confidence": 0.82,
+          "source_frames": [
+            166,
+            167,
+            168,
+            169,
+            170,
+            171,
+            172,
+            173,
+            174,
+            175,
+            176,
+            177,
+            178
+          ],
+          "observability": "image_plane_joint_angle",
+          "calibration_policy": "single_view_visible_coach_v1",
+          "visible_technique_score_9": 5.51
+        },
+        "focus": "knee_flexion"
+      },
+      "clip_path": "dir1_verification/output_video_swing_clips/event_0003_forehand_f000166-000225.mp4",
+      "clip_status": "ready",
+      "clip_frame_count": 76,
+      "clip_missing_frame_count": 0,
+      "clip_missing_frames": [],
+      "impact_freeze_path": "event_0003_impact_freeze.jpg",
+      "snapshots": {
+        "impact_freeze": "event_0003_impact_freeze.jpg"
+      }
+    }
+  ],
+  "frame_trace": [
+    {
+      "frame": 10,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 5.3852,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 5.099,
+      "racket_speed": 8.2462,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 110.6436
+    },
+    {
+      "frame": 11,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 6.1846,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 7.6158,
+      "racket_speed": 17.2627,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 100.8415
+    },
+    {
+      "frame": 12,
+      "event_id": 1,
+      "phase": "backswing",
+      "motion_energy": 11.4018,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 11.4018,
+      "racket_speed": 7.0711,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 92.0489
+    },
+    {
+      "frame": 13,
+      "event_id": 1,
+      "phase": "backswing",
+      "motion_energy": 12.947,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 14.1421,
+      "racket_speed": 20.2485,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 84.5931
+    },
+    {
+      "frame": 14,
+      "event_id": 1,
+      "phase": "backswing",
+      "motion_energy": 15.1864,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 14.8661,
+      "racket_speed": 23.7065,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 77.7946
+    },
+    {
+      "frame": 15,
+      "event_id": 1,
+      "phase": "backswing",
+      "motion_energy": 17.7799,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 16.2788,
+      "racket_speed": 31.8904,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 73.2462
+    },
+    {
+      "frame": 16,
+      "event_id": 1,
+      "phase": "forward_swing",
+      "motion_energy": 23.9178,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 18.4391,
+      "racket_speed": 36.2491,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 74.3303
+    },
+    {
+      "frame": 17,
+      "event_id": 1,
+      "phase": "forward_swing",
+      "motion_energy": 27.1868,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 20.5913,
+      "racket_speed": 44.2041,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 84.0952
+    },
+    {
+      "frame": 18,
+      "event_id": 1,
+      "phase": "forward_swing",
+      "motion_energy": 28.1125,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 18.868,
+      "racket_speed": 37.4833,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 98.0816
+    },
+    {
+      "frame": 19,
+      "event_id": 1,
+      "phase": "follow_through",
+      "motion_energy": 28.1125,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 18.6011,
+      "racket_speed": 25.4951,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 113.6002
+    },
+    {
+      "frame": 20,
+      "event_id": 1,
+      "phase": "follow_through",
+      "motion_energy": 19.6866,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 15.2643,
+      "racket_speed": 26.2488,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 126.6689
+    },
+    {
+      "frame": 21,
+      "event_id": 1,
+      "phase": "follow_through",
+      "motion_energy": 19.6866,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 15.6525,
+      "racket_speed": 39.2173,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 141.1737
+    },
+    {
+      "frame": 22,
+      "event_id": 1,
+      "phase": "follow_through",
+      "motion_energy": 29.413,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 11.7047,
+      "racket_speed": 43.1856,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 152.0822
+    },
+    {
+      "frame": 23,
+      "event_id": 1,
+      "phase": "follow_through",
+      "motion_energy": 32.3892,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 10.4403,
+      "racket_speed": 45.2769,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 163.0276
+    },
+    {
+      "frame": 24,
+      "event_id": 1,
+      "phase": "follow_through",
+      "motion_energy": 32.3892,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 8.544,
+      "racket_speed": 0.0,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 172.0116
+    },
+    {
+      "frame": 25,
+      "event_id": 1,
+      "phase": "follow_through",
+      "motion_energy": 8.544,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 5.3852,
+      "racket_speed": 0.0,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 178.0253
+    },
+    {
+      "frame": 26,
+      "event_id": 1,
+      "phase": "follow_through",
+      "motion_energy": 8.544,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.0,
+      "racket_speed": 21.3776,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 182.044
+    },
+    {
+      "frame": 27,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 6.75,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 2.0,
+      "racket_speed": 9.0,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 184.0679
+    },
+    {
+      "frame": 28,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 6.75,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 0.0,
+      "racket_speed": 3.6056,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 184.0978
+    },
+    {
+      "frame": 29,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 3.75,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 1.0,
+      "racket_speed": 5.0,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 183.1748
+    },
+    {
+      "frame": 30,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 3.6056,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 3.6056,
+      "racket_speed": 2.2361,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 182.1346
+    },
+    {
+      "frame": 31,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 3.75,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 5.0,
+      "racket_speed": 6.0828,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 181.1767
+    },
+    {
+      "frame": 32,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 5.0,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.4721,
+      "racket_speed": 12.53,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 181.2236
+    },
+    {
+      "frame": 33,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 5.0,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.2426,
+      "racket_speed": 0.0,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 181.276
+    },
+    {
+      "frame": 34,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 4.2426,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.2426,
+      "racket_speed": 0.0,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 182.3321
+    },
+    {
+      "frame": 35,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 4.2426,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.0,
+      "racket_speed": 31.1448,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 182.5377
+    },
+    {
+      "frame": 36,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 23.3586,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.1231,
+      "racket_speed": 36.0,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 182.7019
+    },
+    {
+      "frame": 37,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 27.0,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.4721,
+      "racket_speed": 45.2769,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 184.6943
+    },
+    {
+      "frame": 38,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 33.9577,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.0,
+      "racket_speed": 49.0408,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 185.9731
+    },
+    {
+      "frame": 39,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 33.9577,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 5.099,
+      "racket_speed": 24.5153,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 185.0838
+    },
+    {
+      "frame": 40,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 18.3865,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 5.3852,
+      "racket_speed": 16.0312,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 184.0897
+    },
+    {
+      "frame": 41,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 12.0234,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 6.0828,
+      "racket_speed": 15.2971,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 182.2142
+    },
+    {
+      "frame": 42,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 11.4728,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 6.3246,
+      "racket_speed": 10.8167,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 180.2276
+    },
+    {
+      "frame": 43,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 8.1125,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 5.3852,
+      "racket_speed": 8.6023,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 179.2345
+    },
+    {
+      "frame": 44,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 6.4517,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.0,
+      "racket_speed": 7.8102,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 178.362
+    },
+    {
+      "frame": 45,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 6.0467,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.0,
+      "racket_speed": 8.0623,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 178.4881
+    },
+    {
+      "frame": 46,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 6.0467,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 3.1623,
+      "racket_speed": 9.2195,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 178.4881
+    },
+    {
+      "frame": 47,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 6.0467,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 2.2361,
+      "racket_speed": 7.0711,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 179.4798
+    },
+    {
+      "frame": 48,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 5.3033,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 2.8284,
+      "racket_speed": 7.0711,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 179.4798
+    },
+    {
+      "frame": 49,
+      "event_id": 1,
+      "phase": "ready",
+      "motion_energy": 5.3033,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 1.4142,
+      "racket_speed": 6.3246,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 179.4798
+    },
+    {
+      "frame": 62,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 1.6771,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 1.0,
+      "racket_speed": 5.099,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 172.4558
+    },
+    {
+      "frame": 63,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 3.8243,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 2.0,
+      "racket_speed": 6.3246,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 171.0205
+    },
+    {
+      "frame": 64,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 4.7435,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 1.4142,
+      "racket_speed": 6.7082,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 170.4259
+    },
+    {
+      "frame": 65,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 5.0312,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 1.4142,
+      "racket_speed": 7.2111,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 169.6496
+    },
+    {
+      "frame": 66,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 5.0312,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 3.1623,
+      "racket_speed": 6.3246,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 169.8588
+    },
+    {
+      "frame": 67,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 5.25,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.1231,
+      "racket_speed": 7.0,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 169.3192
+    },
+    {
+      "frame": 68,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 5.099,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 5.099,
+      "racket_speed": 5.3852,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 169.5465
+    },
+    {
+      "frame": 69,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 5.099,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 5.099,
+      "racket_speed": 4.4721,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 169.5465
+    },
+    {
+      "frame": 70,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 5.099,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 6.0828,
+      "racket_speed": 4.1231,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 171.7236
+    },
+    {
+      "frame": 71,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 6.0828,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 6.7082,
+      "racket_speed": 5.099,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 173.9023
+    },
+    {
+      "frame": 72,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 6.7082,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 6.7082,
+      "racket_speed": 6.0828,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 176.3236
+    },
+    {
+      "frame": 73,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 6.7082,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 8.0623,
+      "racket_speed": 7.8102,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 178.0449
+    },
+    {
+      "frame": 74,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 8.0623,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 8.0623,
+      "racket_speed": 5.099,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 179.6886
+    },
+    {
+      "frame": 75,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 8.0623,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 7.6158,
+      "racket_speed": 6.3246,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 180.2498
+    },
+    {
+      "frame": 76,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 8.0623,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 7.6158,
+      "racket_speed": 13.0384,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 181.8928
+    },
+    {
+      "frame": 77,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 9.7788,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 7.6158,
+      "racket_speed": 13.6015,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 184.954
+    },
+    {
+      "frame": 78,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 10.2011,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 8.544,
+      "racket_speed": 15.2971,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 187.7711
+    },
+    {
+      "frame": 79,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 11.4728,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 8.2462,
+      "racket_speed": 18.1108,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 187.5367
+    },
+    {
+      "frame": 80,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 12.2091,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 9.2195,
+      "racket_speed": 16.2788,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 187.4086
+    },
+    {
+      "frame": 81,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 13.5831,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 9.8489,
+      "racket_speed": 19.105,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 187.8297
+    },
+    {
+      "frame": 82,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 13.5208,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 9.4868,
+      "racket_speed": 18.0278,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 187.843
+    },
+    {
+      "frame": 83,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 13.5831,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 9.8489,
+      "racket_speed": 18.1108,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 186.5315
+    },
+    {
+      "frame": 84,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 13.5831,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 5.6569,
+      "racket_speed": 18.868,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 181.7278
+    },
+    {
+      "frame": 85,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 13.5831,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 3.1623,
+      "racket_speed": 14.2127,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 176.298
+    },
+    {
+      "frame": 86,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 12.3693,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 5.099,
+      "racket_speed": 16.4924,
+      "ball_racket_distance": 487.0734,
+      "contact_score": 0.0,
+      "two_hand_distance": 173.2801
+    },
+    {
+      "frame": 87,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 12.3693,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 13.8924,
+      "racket_speed": 25.9422,
+      "ball_racket_distance": 440.3699,
+      "contact_score": 0.0,
+      "two_hand_distance": 172.2614
+    },
+    {
+      "frame": 88,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 12.3693,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 12.0416,
+      "racket_speed": 5.099,
+      "ball_racket_distance": 378.1755,
+      "contact_score": 0.0,
+      "two_hand_distance": 168.3627
+    },
+    {
+      "frame": 89,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 12.0416,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 8.9443,
+      "racket_speed": 10.6301,
+      "ball_racket_distance": 328.9412,
+      "contact_score": 0.0,
+      "two_hand_distance": 164.4688
+    },
+    {
+      "frame": 90,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 10.7384,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 5.3852,
+      "racket_speed": 14.3178,
+      "ball_racket_distance": 282.4003,
+      "contact_score": 0.0,
+      "two_hand_distance": 163.9756
+    },
+    {
+      "frame": 91,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 10.7384,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.0,
+      "racket_speed": 18.6815,
+      "ball_racket_distance": 234.9414,
+      "contact_score": 0.0,
+      "two_hand_distance": 169.1626
+    },
+    {
+      "frame": 92,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 14.0111,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 13.6015,
+      "racket_speed": 108.5219,
+      "ball_racket_distance": 306.2354,
+      "contact_score": 0.0,
+      "two_hand_distance": 189.1137
+    },
+    {
+      "frame": 93,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 15.0748,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 8.544,
+      "racket_speed": 20.0998,
+      "ball_racket_distance": 282.1098,
+      "contact_score": 0.0,
+      "two_hand_distance": 193.1321
+    },
+    {
+      "frame": 94,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 23.8354,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 6.4031,
+      "racket_speed": 31.7805,
+      "ball_racket_distance": 279.3705,
+      "contact_score": 0.0,
+      "two_hand_distance": 205.915
+    },
+    {
+      "frame": 95,
+      "event_id": 2,
+      "phase": "backswing",
+      "motion_energy": 23.8354,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 10.0499,
+      "racket_speed": 84.3445,
+      "ball_racket_distance": 180.1184,
+      "contact_score": 0.0,
+      "two_hand_distance": 218.5086
+    },
+    {
+      "frame": 96,
+      "event_id": 2,
+      "phase": "contact_candidate",
+      "motion_energy": 63.2584,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.4721,
+      "racket_speed": 106.0,
+      "ball_racket_distance": 93.3974,
+      "contact_score": 0.4811,
+      "two_hand_distance": 222.036
+    },
+    {
+      "frame": 97,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 63.2584,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 12.7279,
+      "racket_speed": 45.1885,
+      "ball_racket_distance": 125.587,
+      "contact_score": 0.3023,
+      "two_hand_distance": 207.1835
+    },
+    {
+      "frame": 98,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 79.5,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 31.1127,
+      "racket_speed": 129.6919,
+      "ball_racket_distance": 248.3474,
+      "contact_score": 0.0,
+      "two_hand_distance": 179.7248
+    },
+    {
+      "frame": 99,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 97.2689,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 36.3593,
+      "racket_speed": 187.7711,
+      "ball_racket_distance": 538.6622,
+      "contact_score": 0.0,
+      "two_hand_distance": 142.8636
+    },
+    {
+      "frame": 100,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 97.2689,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 40.1622,
+      "racket_speed": 55.6103,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 105.0
+    },
+    {
+      "frame": 101,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 41.7077,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 37.6563,
+      "racket_speed": 55.6103,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 81.4002
+    },
+    {
+      "frame": 102,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 41.7077,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 33.0151,
+      "racket_speed": 18.0278,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 75.71
+    },
+    {
+      "frame": 103,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 33.0151,
+      "raw_swing_type": "Two-Handed Backhand",
+      "wrist_speed": 32.9848,
+      "racket_speed": 29.6985,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 43.0116
+    },
+    {
+      "frame": 104,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 32.9848,
+      "raw_swing_type": "Two-Handed Backhand",
+      "wrist_speed": 26.8328,
+      "racket_speed": 22.2036,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 23.7697
+    },
+    {
+      "frame": 105,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 26.8328,
+      "raw_swing_type": "Two-Handed Backhand",
+      "wrist_speed": 22.6716,
+      "racket_speed": 19.2354,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 26.9258
+    },
+    {
+      "frame": 106,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 22.6716,
+      "raw_swing_type": "Two-Handed Backhand",
+      "wrist_speed": 19.3132,
+      "racket_speed": 18.0,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 34.7851
+    },
+    {
+      "frame": 107,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 21.0238,
+      "raw_swing_type": "Incomplete Pose",
+      "wrist_speed": 21.0238,
+      "racket_speed": 24.0208,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": null
+    },
+    {
+      "frame": 108,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 21.0238,
+      "raw_swing_type": "Incomplete Pose",
+      "wrist_speed": 17.4642,
+      "racket_speed": 35.8469,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": null
+    },
+    {
+      "frame": 109,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 23.2621,
+      "raw_swing_type": "Incomplete Pose",
+      "wrist_speed": 13.1529,
+      "racket_speed": 31.0161,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": null
+    },
+    {
+      "frame": 110,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 26.8852,
+      "raw_swing_type": "Incomplete Pose",
+      "wrist_speed": 10.7703,
+      "racket_speed": 38.1182,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": null
+    },
+    {
+      "frame": 111,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 23.2621,
+      "raw_swing_type": "Incomplete Pose",
+      "wrist_speed": 9.8995,
+      "racket_speed": 30.1496,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": null
+    },
+    {
+      "frame": 112,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 25.654,
+      "raw_swing_type": "Two-Handed Backhand",
+      "wrist_speed": 11.1803,
+      "racket_speed": 34.2053,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 16.1245
+    },
+    {
+      "frame": 113,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 22.6122,
+      "raw_swing_type": "Two-Handed Backhand",
+      "wrist_speed": 12.1655,
+      "racket_speed": 15.2643,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 34.0588
+    },
+    {
+      "frame": 114,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 15.0,
+      "raw_swing_type": "Two-Handed Backhand",
+      "wrist_speed": 15.0,
+      "racket_speed": 12.0,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 59.2115
+    },
+    {
+      "frame": 115,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 15.0,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 16.1245,
+      "racket_speed": 20.0998,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 86.1452
+    },
+    {
+      "frame": 116,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 16.1245,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 19.3132,
+      "racket_speed": 18.0278,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 115.6244
+    },
+    {
+      "frame": 117,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 19.3132,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 18.6815,
+      "racket_speed": 37.1214,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 141.9049
+    },
+    {
+      "frame": 118,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 19.3132,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 16.4924,
+      "racket_speed": 16.0312,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 164.2224
+    },
+    {
+      "frame": 119,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 21.8017,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 16.1245,
+      "racket_speed": 29.0689,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 185.3106
+    },
+    {
+      "frame": 120,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 16.568,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 14.1421,
+      "racket_speed": 22.0907,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 202.3116
+    },
+    {
+      "frame": 121,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 16.568,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 11.0,
+      "racket_speed": 6.3246,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 214.2382
+    },
+    {
+      "frame": 122,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 16.568,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 8.0623,
+      "racket_speed": 25.02,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 222.2993
+    },
+    {
+      "frame": 123,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 18.765,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 6.0,
+      "racket_speed": 31.3209,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 226.1725
+    },
+    {
+      "frame": 124,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 22.3747,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 5.0,
+      "racket_speed": 29.8329,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 228.1622
+    },
+    {
+      "frame": 125,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 22.3747,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 3.0,
+      "racket_speed": 26.6833,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 225.9779
+    },
+    {
+      "frame": 126,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 20.0125,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 1.4142,
+      "racket_speed": 20.3961,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 221.9955
+    },
+    {
+      "frame": 127,
+      "event_id": 2,
+      "phase": "follow_through",
+      "motion_energy": 15.2971,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 1.4142,
+      "racket_speed": 10.198,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 217.8302
+    },
+    {
+      "frame": 128,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 7.6485,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 1.0,
+      "racket_speed": 3.1623,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 211.9457
+    },
+    {
+      "frame": 129,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 2.3717,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 2.0,
+      "racket_speed": 1.4142,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 204.978
+    },
+    {
+      "frame": 130,
+      "event_id": 2,
+      "phase": "ready",
+      "motion_energy": 2.3717,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 3.1623,
+      "racket_speed": 6.0828,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 197.1218
+    },
+    {
+      "frame": 166,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 4.5621,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 5.831,
+      "racket_speed": 5.831,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 161.3103
+    },
+    {
+      "frame": 167,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 5.831,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 7.2801,
+      "racket_speed": 7.6158,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 159.6152
+    },
+    {
+      "frame": 168,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 7.2801,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 7.6158,
+      "racket_speed": 12.083,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 160.0156
+    },
+    {
+      "frame": 169,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 7.5,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 6.7082,
+      "racket_speed": 10.0,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 161.3722
+    },
+    {
+      "frame": 170,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 7.5,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 7.2111,
+      "racket_speed": 5.831,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 163.6246
+    },
+    {
+      "frame": 171,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 7.5,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 8.0623,
+      "racket_speed": 10.8167,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 164.9394
+    },
+    {
+      "frame": 172,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 8.1125,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 7.6158,
+      "racket_speed": 12.8062,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 167.6097
+    },
+    {
+      "frame": 173,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 8.1125,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 8.0623,
+      "racket_speed": 10.8167,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 171.712
+    },
+    {
+      "frame": 174,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 8.5513,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 8.544,
+      "racket_speed": 11.4018,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 175.6844
+    },
+    {
+      "frame": 175,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 8.5513,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 9.0,
+      "racket_speed": 16.8641,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 177.6879
+    },
+    {
+      "frame": 176,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 12.6481,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 7.0,
+      "racket_speed": 16.8781,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 178.8854
+    },
+    {
+      "frame": 177,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 12.6481,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 7.0711,
+      "racket_speed": 16.8641,
+      "ball_racket_distance": 549.3726,
+      "contact_score": 0.0,
+      "two_hand_distance": 178.9413
+    },
+    {
+      "frame": 178,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 12.6481,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 6.0828,
+      "racket_speed": 13.4164,
+      "ball_racket_distance": 558.0809,
+      "contact_score": 0.0,
+      "two_hand_distance": 178.7344
+    },
+    {
+      "frame": 179,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 10.0623,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 5.3852,
+      "racket_speed": 11.6619,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 175.9659
+    },
+    {
+      "frame": 180,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 8.7464,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 8.6023,
+      "racket_speed": 10.8167,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 173.358
+    },
+    {
+      "frame": 181,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 8.7464,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 3.0,
+      "racket_speed": 135.9596,
+      "ball_racket_distance": 645.6504,
+      "contact_score": 0.0,
+      "two_hand_distance": 166.4121
+    },
+    {
+      "frame": 182,
+      "event_id": 3,
+      "phase": "forward_swing",
+      "motion_energy": 92.9758,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 7.2111,
+      "racket_speed": 123.9677,
+      "ball_racket_distance": 455.6392,
+      "contact_score": 0.0,
+      "two_hand_distance": 161.6045
+    },
+    {
+      "frame": 183,
+      "event_id": 3,
+      "phase": "forward_swing",
+      "motion_energy": 92.9758,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 16.1245,
+      "racket_speed": 4.0,
+      "ball_racket_distance": 392.3226,
+      "contact_score": 0.0,
+      "two_hand_distance": 154.2368
+    },
+    {
+      "frame": 184,
+      "event_id": 3,
+      "phase": "forward_swing",
+      "motion_energy": 16.1245,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 0.0,
+      "racket_speed": 8.4853,
+      "ball_racket_distance": 329.3256,
+      "contact_score": 0.0,
+      "two_hand_distance": 158.474
+    },
+    {
+      "frame": 185,
+      "event_id": 3,
+      "phase": "forward_swing",
+      "motion_energy": 9.7788,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 0.0,
+      "racket_speed": 13.0384,
+      "ball_racket_distance": 267.7956,
+      "contact_score": 0.0,
+      "two_hand_distance": 165.605
+    },
+    {
+      "frame": 186,
+      "event_id": 3,
+      "phase": "forward_swing",
+      "motion_energy": 8.7785,
+      "raw_swing_type": "Incomplete Pose",
+      "wrist_speed": 0.0,
+      "racket_speed": 11.7047,
+      "ball_racket_distance": 227.1218,
+      "contact_score": 0.0,
+      "two_hand_distance": null
+    },
+    {
+      "frame": 187,
+      "event_id": 3,
+      "phase": "forward_swing",
+      "motion_energy": 9.7788,
+      "raw_swing_type": "Incomplete Pose",
+      "wrist_speed": 0.0,
+      "racket_speed": 91.7824,
+      "ball_racket_distance": 280.0348,
+      "contact_score": 0.0,
+      "two_hand_distance": null
+    },
+    {
+      "frame": 188,
+      "event_id": 3,
+      "phase": "forward_swing",
+      "motion_energy": 18.0312,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 0.0,
+      "racket_speed": 24.0416,
+      "ball_racket_distance": 258.4441,
+      "contact_score": 0.0,
+      "two_hand_distance": 192.9249
+    },
+    {
+      "frame": 189,
+      "event_id": 3,
+      "phase": "forward_swing",
+      "motion_energy": 34.5082,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 7.0711,
+      "racket_speed": 46.0109,
+      "ball_racket_distance": 275.3318,
+      "contact_score": 0.0,
+      "two_hand_distance": 210.2784
+    },
+    {
+      "frame": 190,
+      "event_id": 3,
+      "phase": "forward_swing",
+      "motion_energy": 34.5082,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 10.0,
+      "racket_speed": 84.9603,
+      "ball_racket_distance": 176.4933,
+      "contact_score": 0.0195,
+      "two_hand_distance": 225.3996
+    },
+    {
+      "frame": 191,
+      "event_id": 3,
+      "phase": "contact_candidate",
+      "motion_energy": 63.7202,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 0.0,
+      "racket_speed": 84.9603,
+      "ball_racket_distance": 89.5403,
+      "contact_score": 0.5026,
+      "two_hand_distance": 225.7432
+    },
+    {
+      "frame": 192,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 63.7202,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 18.7883,
+      "racket_speed": 32.0624,
+      "ball_racket_distance": 114.6552,
+      "contact_score": 0.363,
+      "two_hand_distance": 201.8143
+    },
+    {
+      "frame": 193,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 63.7202,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 36.0555,
+      "racket_speed": 134.7145,
+      "ball_racket_distance": 256.5859,
+      "contact_score": 0.0,
+      "two_hand_distance": 157.2895
+    },
+    {
+      "frame": 194,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 101.0359,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 40.8044,
+      "racket_speed": 206.0218,
+      "ball_racket_distance": 551.2319,
+      "contact_score": 0.0,
+      "two_hand_distance": 98.27
+    },
+    {
+      "frame": 195,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 101.0359,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 40.7922,
+      "racket_speed": 45.924,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 63.0635
+    },
+    {
+      "frame": 196,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 40.7922,
+      "raw_swing_type": "Two-Handed Backhand",
+      "wrist_speed": 40.0,
+      "racket_speed": 45.9198,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 34.4384
+    },
+    {
+      "frame": 197,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 40.4475,
+      "raw_swing_type": "Two-Handed Backhand",
+      "wrist_speed": 40.4475,
+      "racket_speed": 45.924,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 17.4929
+    },
+    {
+      "frame": 198,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 40.4475,
+      "raw_swing_type": "Two-Handed Backhand",
+      "wrist_speed": 38.6264,
+      "racket_speed": 57.4543,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 6.7082
+    },
+    {
+      "frame": 199,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 40.4475,
+      "raw_swing_type": "Two-Handed Backhand",
+      "wrist_speed": 27.6586,
+      "racket_speed": 52.0865,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 12.0416
+    },
+    {
+      "frame": 200,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 39.0649,
+      "raw_swing_type": "Two-Handed Backhand",
+      "wrist_speed": 32.6956,
+      "racket_speed": 46.0977,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 24.3311
+    },
+    {
+      "frame": 201,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 35.2201,
+      "raw_swing_type": "Two-Handed Backhand",
+      "wrist_speed": 32.0,
+      "racket_speed": 46.9601,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 43.2666
+    },
+    {
+      "frame": 202,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 35.2201,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 25.0799,
+      "racket_speed": 46.9601,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 64.846
+    },
+    {
+      "frame": 203,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 35.2201,
+      "raw_swing_type": "Incomplete Pose",
+      "wrist_speed": 22.3607,
+      "racket_speed": 39.0512,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": null
+    },
+    {
+      "frame": 204,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 33.9825,
+      "raw_swing_type": "Incomplete Pose",
+      "wrist_speed": 16.1555,
+      "racket_speed": 45.31,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": null
+    },
+    {
+      "frame": 205,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 29.2884,
+      "raw_swing_type": "Incomplete Pose",
+      "wrist_speed": 13.4536,
+      "racket_speed": 37.1214,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": null
+    },
+    {
+      "frame": 206,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 27.8411,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 15.1327,
+      "racket_speed": 7.0711,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 24.7386
+    },
+    {
+      "frame": 207,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 24.9311,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 17.2627,
+      "racket_speed": 33.2415,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 35.3553
+    },
+    {
+      "frame": 208,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 24.9311,
+      "raw_swing_type": "Backhand",
+      "wrist_speed": 40.7922,
+      "racket_speed": 28.4429,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 33.9411
+    },
+    {
+      "frame": 209,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 30.8596,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 21.3776,
+      "racket_speed": 41.1461,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 61.7171
+    },
+    {
+      "frame": 210,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 40.7922,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 18.2483,
+      "racket_speed": 62.0081,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 83.863
+    },
+    {
+      "frame": 211,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 46.5061,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 14.5602,
+      "racket_speed": 65.3911,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 106.0047
+    },
+    {
+      "frame": 212,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 46.5061,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 13.6015,
+      "racket_speed": 55.3263,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 126.321
+    },
+    {
+      "frame": 213,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 41.4947,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 13.9284,
+      "racket_speed": 41.4849,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 144.8862
+    },
+    {
+      "frame": 214,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 31.1137,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 12.6491,
+      "racket_speed": 34.6699,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 161.2452
+    },
+    {
+      "frame": 215,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 26.0024,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 11.1803,
+      "racket_speed": 24.3516,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 174.797
+    },
+    {
+      "frame": 216,
+      "event_id": 3,
+      "phase": "follow_through",
+      "motion_energy": 18.2637,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 9.8489,
+      "racket_speed": 6.4031,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 184.9811
+    },
+    {
+      "frame": 217,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 9.8489,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 7.2801,
+      "racket_speed": 8.9443,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 191.9088
+    },
+    {
+      "frame": 218,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 7.2801,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 6.0828,
+      "racket_speed": 8.9443,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 196.8604
+    },
+    {
+      "frame": 219,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 7.2801,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.0,
+      "racket_speed": 13.0,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 198.7083
+    },
+    {
+      "frame": 220,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 6.7082,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.4721,
+      "racket_speed": 0.0,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 199.1105
+    },
+    {
+      "frame": 221,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 4.4721,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 2.0,
+      "racket_speed": 0.0,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 196.8248
+    },
+    {
+      "frame": 222,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 4.4721,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 3.0,
+      "racket_speed": 25.632,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 191.8463
+    },
+    {
+      "frame": 223,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 17.3961,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 1.0,
+      "racket_speed": 23.1948,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 187.6006
+    },
+    {
+      "frame": 224,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 19.224,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 4.4721,
+      "racket_speed": 29.2746,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 181.4663
+    },
+    {
+      "frame": 225,
+      "event_id": 3,
+      "phase": "ready",
+      "motion_energy": 21.956,
+      "raw_swing_type": "Forehand",
+      "wrist_speed": 6.4031,
+      "racket_speed": 30.8707,
+      "ball_racket_distance": null,
+      "contact_score": 0.0,
+      "two_hand_distance": 171.4934
+    }
+  ]
+}

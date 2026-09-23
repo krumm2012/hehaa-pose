@@ -55,15 +55,26 @@ class LocalRealtimeCoach:
             "thresholds": dict(self.thresholds),
         }
 
-    def advise(self, event: Dict) -> Dict:
+    def advise(self, event: Dict) -> Optional[Dict]:
         """Return the primary recommendation for backward compatibility."""
-        return self.advise_all(event)[0]
+        advices = self.advise_all(event)
+        return advices[0] if advices else None
 
     def advise_all(self, event: Dict) -> List[Dict]:
         """Return one to three recommendations, each with its own confidence."""
+        is_shadow_swing = bool(
+            event.get("is_shadow_swing")
+            or (event.get("evidence") or {})
+            .get("classification_context", {})
+            .get("contact_analysis", {})
+            .get("is_shadow_swing")
+        )
+        if is_shadow_swing:
+            return []
+
+        event_confidence = float(event.get("confidence") or 0.0)
         quality = event.get("quality_flags") or {}
         warnings = effective_quality_warnings(quality)
-        event_confidence = float(event.get("confidence") or 0.0)
         blocker = self._blocking_advice(event, quality, warnings)
         if blocker is not None and blocker.get("code") in ("pose_gaps", "low_confidence"):
             return [blocker]

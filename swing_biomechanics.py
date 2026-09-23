@@ -487,13 +487,24 @@ def _calculate_extended_tier_biomechanics(
     leg_drive_ratio = round(leg_drive_px / ref_scale, 2)
 
     # 5. 第三梯队：动力学链时序时差 (Kinematic Sequence Latency: 腿➔髋➔肩➔拍)
-    hip_peak_f = max(features_in_event, key=lambda f: float(f.get("hip_rotation_speed") or 0.0)).get("frame_id", contact_frame)
-    sh_peak_f = max(features_in_event, key=lambda f: float(f.get("shoulder_rotation_speed") or 0.0)).get("frame_id", contact_frame)
-    rkt_peak_f = max(features_in_event, key=lambda f: float(f.get("racket_speed") or 0.0)).get("frame_id", contact_frame)
+    # 限制在向前加速至击球瞬间窗口（触球前15帧至触球后4帧），避免随挥制动期干扰
+    accel_features = [
+        f for f in features_in_event
+        if (contact_frame - 15) <= f.get("frame_id", contact_frame) <= (contact_frame + 4)
+    ]
+    if not accel_features:
+        accel_features = features_in_event
+
+    hip_peak_f = max(accel_features, key=lambda f: float(f.get("hip_rotation_speed") or 0.0)).get("frame_id", contact_frame)
+    sh_peak_f = max(accel_features, key=lambda f: float(f.get("shoulder_rotation_speed") or 0.0)).get("frame_id", contact_frame)
+    rkt_peak_f = max(accel_features, key=lambda f: float(f.get("racket_speed") or 0.0)).get("frame_id", contact_frame)
 
     dt_hip_sh = round((sh_peak_f - hip_peak_f) / fps * 1000.0, 1)
     dt_sh_rkt = round((rkt_peak_f - sh_peak_f) / fps * 1000.0, 1)
-    is_sequential = (hip_peak_f <= sh_peak_f <= rkt_peak_f) or (hip_peak_f <= rkt_peak_f)
+    is_sequential = (hip_peak_f <= sh_peak_f <= rkt_peak_f) or (
+        hip_peak_f <= rkt_peak_f and sh_peak_f <= rkt_peak_f and abs(sh_peak_f - hip_peak_f) <= 1
+    )
+
 
     # 6. 第二梯队：单拍综合技术评分 (Swing Quality Score: 0~100)
     turn_val = float(contact_f.get("robust_shoulder_turn_deg") or contact_f.get("shoulder_turn_deg") or 30.0)
