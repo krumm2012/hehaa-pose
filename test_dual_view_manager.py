@@ -97,20 +97,30 @@ class DualViewManagerTests(unittest.TestCase):
         sbs = self.mgr.render_side_by_side(dual, draw_labels=True)
         self.assertEqual(sbs.shape, (720, 1080, 3))  # 540 + 540 = 1080 width
 
-    def test_real_video_execution(self):
-        video_path = "/Users/krum5539/Desktop/Camera/49.35.mp4"
-        if not Path(video_path).exists():
-            self.skipTest("Sample video 49.35.mp4 not found")
+    def test_mask_polygon_application(self):
+        # Create a white dummy frame
+        white_frame = np.ones((1440, 2560, 3), dtype=np.uint8) * 255
+        
+        # Test without mask
+        self.mgr.mask_polygon_norm = None
+        dual_no_mask = self.mgr.split_frame(white_frame)
+        self.assertEqual(np.mean(dual_no_mask.back_frame), 255.0)
 
-        cap = cv2.VideoCapture(video_path)
-        for i in range(10):
-            ret, frame = cap.read()
-            self.assertTrue(ret)
-            dual = self.mgr.split_frame(frame, frame_id=i)
-            self.assertEqual(dual.front_frame.shape, (720, 540, 3))
-            self.assertEqual(dual.back_frame.shape, (720, 540, 3))
+        # Test with mask covering reflection region
+        # Mirror polygon in default config is roughly [0.08, 0.15] to [0.35, 0.85]
+        self.mgr.mask_polygon_norm = [
+            [0.10, 0.20],
+            [0.30, 0.20],
+            [0.30, 0.80],
+            [0.10, 0.80],
+        ]
+        dual_masked = self.mgr.split_frame(white_frame)
+        # Masked area should darken the back_frame pixels
+        mean_masked = np.mean(dual_masked.back_frame)
+        self.assertLess(mean_masked, 250.0)
 
-        cap.release()
+        # Ensure front frame is untouched (remains pure white)
+        self.assertEqual(np.mean(dual_masked.front_frame), 255.0)
 
 
 if __name__ == "__main__":

@@ -66,7 +66,19 @@ def _norm_label(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
     text = str(value).strip()
-    return text or None
+    if not text:
+        return None
+    cleaned = text.lower().replace("-", " ").replace("_", " ")
+    mapping = {
+        "forehand": "Forehand",
+        "backhand": "Backhand",
+        "two handed backhand": "Two-Handed Backhand",
+        "serve": "Serve",
+        "volley": "Volley",
+        "no swing": "No Swing",
+        "unclear": "Unclear",
+    }
+    return mapping.get(cleaned, text)
 
 
 def _is_valid_manual_event(annotation: Dict) -> bool:

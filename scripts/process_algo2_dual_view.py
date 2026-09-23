@@ -121,7 +121,7 @@ def main():
             if balls:
                 ball_pos = balls[0].get("position")
 
-            # 球拍优选：关联前景选手手腕，杜绝后墙镜面虚像球拍抢占
+            # 球拍优选：关联前景选手手腕，严格过滤后墙镜面区域 (x ∈ [680, 1580] 且 y < 620)
             wrist_kp = pose_res.front_pose_orig.get("right_wrist")
             valid_rackets = []
             for r in rackets:
@@ -130,10 +130,13 @@ def main():
                     continue
                 rx_c = (r_box[0] + r_box[2]) / 2.0
                 ry_c = (r_box[1] + r_box[3]) / 2.0
-                # 若手腕已知，过滤距离手腕 > 220px 或侵入上半镜面区域 (y < 600) 的镜像候选
-                if wrist_kp is not None and wrist_kp.y > 650:
+                # 1. 严格过滤后墙镜面区域候选（杜绝坐标单帧瞬移 200px 造成动能暴增）
+                if 680 <= rx_c <= 1580 and ry_c < 620:
+                    continue
+                # 2. 真实球拍必须靠近手腕 (<= 220px)
+                if wrist_kp is not None:
                     dist_to_wrist = ((rx_c - wrist_kp.x) ** 2 + (ry_c - wrist_kp.y) ** 2) ** 0.5
-                    if ry_c < 600 or dist_to_wrist > 220.0:
+                    if dist_to_wrist > 220.0:
                         continue
                     valid_rackets.append((dist_to_wrist, r))
                 else:
@@ -143,9 +146,9 @@ def main():
                 valid_rackets.sort(key=lambda item: item[0])
                 racket_box = valid_rackets[0][1].get("box")
                 rackets_list = [item[1] for item in valid_rackets]
-            elif rackets and wrist_kp is None:
-                racket_box = rackets[0].get("box")
-                rackets_list = rackets
+            else:
+                racket_box = None
+                rackets_list = []
 
         frame_detections.append({
             "ball": ball_pos,
@@ -213,7 +216,8 @@ def main():
         raw_events = res.get("events", [])
         coach = LocalRealtimeCoach()
 
-        # 基于生物力学蓄力特征的有效挥拍门控（过滤选手站立、微晃动等非挥拍误检）
+        # 基于生物力学蓄力特征与网球物理参与的有效挥拍门控（过滤走动提拍、静止微动等非挥拍误检）
+        total_video_balls = sum(1 for f in frame_records if f.get("ball") is not None)
         events = []
         for ev in raw_events:
             s_f = ev.get("start_frame", 0)
@@ -223,10 +227,30 @@ def main():
             peak_feats = [f for f in features if max(0, peak_f - 10) <= f["frame_id"] <= min(len(features) - 1, peak_f + 5)]
             turn_at_peak = max([float(f.get("robust_shoulder_turn_deg") or 0.0) for f in peak_feats], default=0.0)
             tb_at_peak = max([float(f.get("takeback_depth_ratio") or 0.0) for f in peak_feats], default=0.0)
-            # 网球真实挥拍在击球/峰值瞬间必有身体转动蓄力（转肩角 >= 18° 或 后背引拍深度 >= 0.25）
+
+            # 统计事件内检出的有效网球帧数
+            ball_frames = sum(1 for f in frame_records[s_f:e_f+1] if f.get("ball") is not None)
+
+            # 臂部伸展角与速度特征
+            min_arm_ext = min([float(f.get("arm_extension_deg") or 180.0) for f in peak_feats], default=180.0)
+            max_wrist_spd = max([float(f.get("wrist_speed") or 0.0) for f in peak_feats], default=0.0)
+            max_rkt_spd = max([float(f.get("racket_speed") or 0.0) for f in peak_feats], default=0.0)
+
+            # 1. 在有球击球训练场景下 (视频全检出球数 >= 5)，严格过滤无球参与的随挥走动/非击球事件
+            if total_video_balls >= 5 and ball_frames == 0:
+                print(f"   🚫 过滤非击球事件: 帧 [{s_f} -> {e_f}] (有球训练场景下全程无球，手腕峰速仅 {max_wrist_spd:.1f}px)")
+                continue
+
+            # 2. 网球真实挥拍在击球/峰值瞬间必有身体转动蓄力（转肩角 >= 18° 或 后背引拍深度 >= 0.25）
             if turn_at_peak < 18.0 and tb_at_peak < 0.25:
                 print(f"   🚫 过滤静止微动误检事件: 帧 [{s_f} -> {e_f}] (峰值帧 {peak_f} 处无转肩引拍蓄力: 转肩={turn_at_peak:.1f}°, 引拍={tb_at_peak:.2f})")
                 continue
+
+            # 3. 若全程无球且低速微动/走动（手腕无蓄力挥出），过滤此类移动误检
+            if ball_frames == 0 and (max_wrist_spd < 30.0 or (min_arm_ext > 160.0 and max_rkt_spd < 50.0)):
+                print(f"   🚫 过滤提拍走动误检事件: 帧 [{s_f} -> {e_f}] (无球且手臂伸展角={min_arm_ext:.1f}°，手腕峰速={max_wrist_spd:.1f}px)")
+                continue
+
             events.append(ev)
 
         if not events:

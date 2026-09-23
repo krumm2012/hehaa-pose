@@ -119,6 +119,9 @@ def extract_motion_features(
 
         wrist_speed = _distance(wrist, prev.get("wrist")) or 0.0
         racket_speed = _distance(racket, prev.get("racket")) or 0.0
+        # 异常跳变抑制：防止单帧误检瞬移造成虚假超高速
+        if racket_speed > 250.0:
+            racket_speed = 0.0
         ball_speed = _distance(ball, prev.get("ball")) or 0.0
         wrist_accel = wrist_speed - float(prev.get("wrist_speed", 0.0))
         racket_accel = racket_speed - float(prev.get("racket_speed", 0.0))

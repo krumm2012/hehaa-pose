@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>算法 2.0 · 镜面边界描点与标定控制台</title>
+  <title>算法 2.0 · 镜面边界与人像屏蔽描点标定</title>
   <style>
     :root {
       color-scheme: dark;
@@ -58,14 +58,14 @@
     .header-actions {
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 12px;
     }
     .btn {
       background: var(--panel-2);
       color: var(--text);
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 7px 16px;
+      padding: 7px 15px;
       font-size: 13px;
       font-weight: 500;
       cursor: pointer;
@@ -73,6 +73,7 @@
       align-items: center;
       gap: 6px;
       transition: all 0.15s ease;
+      text-decoration: none;
     }
     .btn:hover {
       background: #202b3f;
@@ -100,19 +101,19 @@
     main {
       flex: 1;
       display: grid;
-      grid-template-columns: 1fr 380px;
-      gap: 20px;
-      padding: 20px;
-      max-width: 1920px;
+      grid-template-columns: 1fr 340px;
+      gap: 18px;
+      padding: 16px 24px;
+      max-width: 1720px;
       margin: 0 auto;
       width: 100%;
     }
     .canvas-panel {
+      display: flex;
+      flex-direction: column;
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 12px;
-      display: flex;
-      flex-direction: column;
       overflow: hidden;
       box-shadow: var(--shadow);
     }
@@ -123,44 +124,44 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      flex-wrap: wrap;
       gap: 12px;
+      flex-wrap: wrap;
     }
     .frame-controls {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
     }
     .frame-slider {
-      width: 220px;
+      width: 180px;
       accent-color: var(--cyan);
     }
     .frame-number {
-      font-family: monospace;
-      font-size: 14px;
-      width: 50px;
-      text-align: center;
+      width: 56px;
+      padding: 4px 6px;
       background: var(--bg);
       border: 1px solid var(--line);
-      border-radius: 4px;
+      border-radius: 6px;
       color: var(--text);
-      padding: 2px 4px;
+      text-align: center;
+      font-size: 13px;
     }
     .canvas-container {
       flex: 1;
+      min-height: 540px;
       position: relative;
       background: #05070a;
-      overflow: hidden;
       display: flex;
       justify-content: center;
       align-items: center;
-      min-height: 520px;
+      overflow: hidden;
+      padding: 10px;
     }
-    canvas#mainCanvas {
-      max-width: 100%;
-      max-height: 100%;
-      cursor: crosshair;
+    canvas {
       display: block;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.6);
+      border-radius: 4px;
+      cursor: crosshair;
     }
     .side-panel {
       display: flex;
@@ -177,11 +178,45 @@
     .card-title {
       font-size: 14px;
       font-weight: 600;
-      color: var(--cyan);
       margin-bottom: 12px;
       display: flex;
       justify-content: space-between;
       align-items: center;
+    }
+    .mode-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      background: var(--bg);
+      padding: 4px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      margin-bottom: 12px;
+    }
+    .mode-btn {
+      padding: 7px 10px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .mode-btn.active.mirror {
+      background: rgba(0, 240, 255, 0.2);
+      color: var(--cyan);
+      box-shadow: 0 2px 8px rgba(0, 240, 255, 0.2);
+    }
+    .mode-btn.active.mask {
+      background: rgba(255, 110, 115, 0.2);
+      color: var(--red);
+      box-shadow: 0 2px 8px rgba(255, 110, 115, 0.2);
     }
     .preview-box {
       width: 100%;
@@ -203,22 +238,27 @@
     .points-list {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
       margin-bottom: 12px;
     }
     .point-item {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      padding: 6px 10px;
       background: var(--panel-2);
-      padding: 8px 12px;
+      border: 1px solid var(--line);
       border-radius: 6px;
       font-size: 12px;
-      border: 1px solid var(--line);
+      transition: all 0.15s;
     }
     .point-item.active {
       border-color: var(--cyan);
-      background: rgba(0, 240, 255, 0.08);
+      background: #1c273a;
+    }
+    .point-item.active-mask {
+      border-color: var(--red);
+      background: #2b181b;
     }
     .point-coord {
       font-family: monospace;
@@ -228,15 +268,14 @@
       position: fixed;
       bottom: 24px;
       right: 24px;
-      padding: 12px 20px;
-      border-radius: 8px;
-      background: var(--panel-2);
+      background: rgba(18, 24, 36, 0.95);
       border: 1px solid var(--cyan);
-      box-shadow: var(--shadow);
-      color: #fff;
-      display: none;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-weight: 500;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
       z-index: 1000;
-      font-size: 14px;
+      display: none;
     }
     .toast.show { display: block; animation: fadeIn 0.2s ease; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -245,12 +284,13 @@
 <body>
   <header>
     <div class="brand">
-      <span>🪞 算法 2.0 · 镜面边界描点标定</span>
+      <a href="/" class="btn" style="padding: 5px 10px; font-size: 12px;">⬅ 控制台</a>
+      <span>🪞 算法 2.0 · 镜面边界与正面人像屏蔽描点标定</span>
       <span class="badge" id="videoNameBadge">视频加载中...</span>
     </div>
     <div class="header-actions">
       <button class="btn" id="btnReset" title="重新从配置文件加载">🔄 重载已保存</button>
-      <button class="btn" id="btnPreset" title="重置为默认镜面区域">🎯 恢复默认预设</button>
+      <button class="btn" id="btnPreset" title="重置为默认镜面区域">🎯 恢复推荐预设</button>
       <button class="btn btn-success" id="btnSave">💾 保存配置到 dual_view_config.yaml</button>
     </div>
   </header>
@@ -278,6 +318,27 @@
     </section>
 
     <aside class="side-panel">
+      <!-- 标定图层模式选择 -->
+      <div class="card">
+        <div class="card-title">
+          <span>当前标定图层</span>
+          <label style="font-size:12px;font-weight:normal;display:flex;align-items:center;gap:4px;cursor:pointer;">
+            <input type="checkbox" id="chkMaskEnabled" checked> 启用人像屏蔽
+          </label>
+        </div>
+        <div class="mode-toggle">
+          <button class="mode-btn active mirror" id="btnModeMirror">
+            <span>🪞 镜面边界 (青)</span>
+          </button>
+          <button class="mode-btn mask" id="btnModeMask">
+            <span>👤 人像屏蔽区 (红)</span>
+          </button>
+        </div>
+        <p style="font-size:12px;color:var(--muted);" id="modeDesc">
+          当前正在调整：<b>后墙全景镜面边界多边形</b> (P1~P4)。
+        </p>
+      </div>
+
       <div class="card">
         <div class="card-title">
           <span>Backview 实时翻转预览</span>
@@ -287,13 +348,13 @@
           <canvas id="previewCanvas"></canvas>
         </div>
         <p style="font-size:12px;color:var(--muted);margin-top:8px;">
-          💡 拖动左侧标点时，右侧将实时渲染经水平翻转 (Mirror Flip) 的 Backview 画面。
+          💡 拖动左侧标点时，右侧将实时渲染经水平翻转 (Mirror Flip) 的 Backview 画面，屏蔽区域将呈现暗色覆盖遮罩。
         </p>
       </div>
 
       <div class="card">
         <div class="card-title">
-          <span>标定顶点坐标 (归一化 0~1)</span>
+          <span id="pointsListTitle">镜面顶点坐标 (归一化 0~1)</span>
           <button class="btn" style="padding:2px 8px;font-size:11px;" id="btnClearPoints">清空重描</button>
         </div>
         <div class="points-list" id="pointsListContainer">
@@ -301,7 +362,7 @@
         </div>
         <div style="font-size:12px;color:var(--muted);line-height:1.6;">
           <div><b>快捷操作提示：</b></div>
-          <div>• <b>鼠标左键拖拽</b>：拖动顶点微调位置</div>
+          <div>• <b>鼠标左键拖拽</b>：拖动当前图层的顶点微调位置</div>
           <div>• <b>点击空白处</b>：重新指定当前激活顶点的坐标</div>
           <div>• <b>S 键</b>：快捷保存当前配置</div>
         </div>
@@ -319,17 +380,22 @@
       totalFrames: 250,
       currentFrameIndex: 0,
       currentImage: null,
-      points: [
-        { x: 0.36, y: 0.11, label: 'P1 (左上)' },
-        { x: 0.54, y: 0.11, label: 'P2 (右上)' },
-        { x: 0.54, y: 0.44, label: 'P3 (右下)' },
-        { x: 0.36, y: 0.44, label: 'P4 (左下)' }
+      activeMode: 'mirror', // 'mirror' | 'mask'
+      maskEnabled: true,
+      mirrorPoints: [
+        { x: 0.2708, y: 0.4593, label: 'P1 (左下)' },
+        { x: 0.2742, y: 0.1018, label: 'P2 (左上)' },
+        { x: 0.6139, y: 0.1214, label: 'P3 (右上)' },
+        { x: 0.5961, y: 0.4642, label: 'P4 (右下)' }
+      ],
+      maskPoints: [
+        { x: 0.3800, y: 0.2600, label: 'M1 (左上)' },
+        { x: 0.4800, y: 0.2600, label: 'M2 (右上)' },
+        { x: 0.4800, y: 0.4500, label: 'M3 (右下)' },
+        { x: 0.3800, y: 0.4500, label: 'M4 (左下)' }
       ],
       draggingPointIdx: -1,
       hoverPointIdx: -1,
-      scale: 1,
-      offsetX: 0,
-      offsetY: 0
     };
 
     const mainCanvas = document.getElementById('mainCanvas');
@@ -359,26 +425,30 @@
         document.getElementById('frameInput').max = state.totalFrames - 1;
         document.getElementById('frameTotalText').innerText = `/ ${state.totalFrames}`;
 
-        // 从现有配置恢复点位
-        if (data.current_config && data.current_config.polygon && data.current_config.polygon.length >= 4) {
-          state.points = data.current_config.polygon.slice(0, 4).map((pt, i) => ({
+        // 恢复镜面多边形点位
+        const mcfg = data.current_config || {};
+        if (mcfg.polygon && mcfg.polygon.length >= 4) {
+          state.mirrorPoints = mcfg.polygon.slice(0, 4).map((pt, i) => ({
             x: pt[0], y: pt[1], label: `P${i+1}`
           }));
-        } else if (data.current_config && data.current_config.reflection_roi) {
-          const [rx1, ry1, rx2, ry2] = data.current_config.reflection_roi;
-          state.points = [
-            { x: rx1, y: ry1, label: 'P1 (左上)' },
-            { x: rx2, y: ry1, label: 'P2 (右上)' },
-            { x: rx2, y: ry2, label: 'P3 (右下)' },
-            { x: rx1, y: ry2, label: 'P4 (左下)' }
-          ];
         }
+        // 恢复正面人像屏蔽点位
+        if (mcfg.mask_polygon && mcfg.mask_polygon.length >= 4) {
+          state.maskPoints = mcfg.mask_polygon.slice(0, 4).map((pt, i) => ({
+            x: pt[0], y: pt[1], label: `M${i+1}`
+          }));
+          state.maskEnabled = true;
+        } else {
+          state.maskEnabled = false;
+        }
+        document.getElementById('chkMaskEnabled').checked = state.maskEnabled;
 
         renderPointsList();
         loadFrame(0);
       } catch (err) {
         console.error('Init error:', err);
-        showToast('加载视频信息失败，请检查服务状态', false);
+        showToast('加载配置失败，使用默认标定坐标', false);
+        loadFrame(0);
       }
     }
 
@@ -431,45 +501,81 @@
       mctx.clearRect(0, 0, mainCanvas.width, mainCanvas.height);
       mctx.drawImage(state.currentImage, 0, 0, mainCanvas.width, mainCanvas.height);
 
-      if (state.points.length === 0) return;
-
-      // 绘制多边形选区
-      mctx.beginPath();
-      const p0 = toCanvasCoord(state.points[0]);
-      mctx.moveTo(p0.x, p0.y);
-      for (let i = 1; i < state.points.length; i++) {
-        const p = toCanvasCoord(state.points[i]);
-        mctx.lineTo(p.x, p.y);
-      }
-      mctx.closePath();
-      mctx.fillStyle = 'rgba(0, 240, 255, 0.18)';
-      mctx.fill();
-      mctx.strokeStyle = '#00f0ff';
-      mctx.lineWidth = 4;
-      mctx.stroke();
-
-      // 绘制顶点与手柄
-      state.points.forEach((pt, idx) => {
-        const cp = toCanvasCoord(pt);
-        const isHover = state.hoverPointIdx === idx;
-        const isDrag = state.draggingPointIdx === idx;
-
+      // 1. 绘制镜面边界 (Cyan)
+      if (state.mirrorPoints.length >= 3) {
         mctx.beginPath();
-        mctx.arc(cp.x, cp.y, isHover || isDrag ? 14 : 10, 0, Math.PI * 2);
-        mctx.fillStyle = isDrag ? '#ff6e73' : (isHover ? '#f5d04c' : '#00f0ff');
+        const p0 = toCanvasCoord(state.mirrorPoints[0]);
+        mctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < state.mirrorPoints.length; i++) {
+          const p = toCanvasCoord(state.mirrorPoints[i]);
+          mctx.lineTo(p.x, p.y);
+        }
+        mctx.closePath();
+        mctx.fillStyle = 'rgba(0, 240, 255, 0.16)';
         mctx.fill();
-        mctx.strokeStyle = '#ffffff';
-        mctx.lineWidth = 3;
+        mctx.strokeStyle = '#00f0ff';
+        mctx.lineWidth = state.activeMode === 'mirror' ? 4 : 2;
         mctx.stroke();
 
-        // 标签文字
-        mctx.fillStyle = '#ffffff';
-        mctx.font = 'bold 20px sans-serif';
-        mctx.shadowColor = 'rgba(0,0,0,0.8)';
-        mctx.shadowBlur = 6;
-        mctx.fillText(`P${idx+1}`, cp.x + 14, cp.y - 12);
-        mctx.shadowBlur = 0;
-      });
+        state.mirrorPoints.forEach((pt, idx) => {
+          const cp = toCanvasCoord(pt);
+          const isHover = state.activeMode === 'mirror' && state.hoverPointIdx === idx;
+          const isDrag = state.activeMode === 'mirror' && state.draggingPointIdx === idx;
+
+          mctx.beginPath();
+          mctx.arc(cp.x, cp.y, isHover || isDrag ? 14 : 10, 0, Math.PI * 2);
+          mctx.fillStyle = isDrag ? '#ff6e73' : (isHover ? '#f5d04c' : '#00f0ff');
+          mctx.fill();
+          mctx.strokeStyle = '#ffffff';
+          mctx.lineWidth = 3;
+          mctx.stroke();
+
+          mctx.fillStyle = '#ffffff';
+          mctx.font = 'bold 20px sans-serif';
+          mctx.shadowColor = 'rgba(0,0,0,0.8)';
+          mctx.shadowBlur = 6;
+          mctx.fillText(`P${idx+1}`, cp.x + 14, cp.y - 12);
+          mctx.shadowBlur = 0;
+        });
+      }
+
+      // 2. 绘制正面人像屏蔽区 (Red / Coral)
+      if (state.maskEnabled && state.maskPoints.length >= 3) {
+        mctx.beginPath();
+        const m0 = toCanvasCoord(state.maskPoints[0]);
+        mctx.moveTo(m0.x, m0.y);
+        for (let i = 1; i < state.maskPoints.length; i++) {
+          const p = toCanvasCoord(state.maskPoints[i]);
+          mctx.lineTo(p.x, p.y);
+        }
+        mctx.closePath();
+        mctx.fillStyle = 'rgba(255, 110, 115, 0.28)';
+        mctx.fill();
+        mctx.strokeStyle = '#ff6e73';
+        mctx.lineWidth = state.activeMode === 'mask' ? 4 : 2;
+        mctx.stroke();
+
+        state.maskPoints.forEach((pt, idx) => {
+          const cp = toCanvasCoord(pt);
+          const isHover = state.activeMode === 'mask' && state.hoverPointIdx === idx;
+          const isDrag = state.activeMode === 'mask' && state.draggingPointIdx === idx;
+
+          mctx.beginPath();
+          mctx.arc(cp.x, cp.y, isHover || isDrag ? 14 : 10, 0, Math.PI * 2);
+          mctx.fillStyle = isDrag ? '#00f0ff' : (isHover ? '#f5d04c' : '#ff6e73');
+          mctx.fill();
+          mctx.strokeStyle = '#ffffff';
+          mctx.lineWidth = 3;
+          mctx.stroke();
+
+          mctx.fillStyle = '#ff6e73';
+          mctx.font = 'bold 20px sans-serif';
+          mctx.shadowColor = 'rgba(0,0,0,0.9)';
+          mctx.shadowBlur = 6;
+          mctx.fillText(`M${idx+1}`, cp.x + 14, cp.y - 12);
+          mctx.shadowBlur = 0;
+        });
+      }
     }
 
     function toCanvasCoord(normPt) {
@@ -483,14 +589,14 @@
     }
 
     function drawPreview() {
-      if (!state.currentImage || state.points.length < 4) return;
+      if (!state.currentImage || state.mirrorPoints.length < 4) return;
       previewCanvas.width = 540;
       previewCanvas.height = 720;
       pctx.clearRect(0, 0, 540, 720);
 
-      // 计算包围盒
-      const xs = state.points.map(p => p.x * state.width);
-      const ys = state.points.map(p => p.y * state.height);
+      // 计算镜面包围盒
+      const xs = state.mirrorPoints.map(p => p.x * state.width);
+      const ys = state.mirrorPoints.map(p => p.y * state.height);
       const minX = Math.max(0, Math.min(...xs));
       const maxX = Math.min(state.width, Math.max(...xs));
       const minY = Math.max(0, Math.min(...ys));
@@ -512,20 +618,62 @@
       pctx.drawImage(off, 0, 0, cropW, cropH, 0, 0, 540, 720);
       pctx.restore();
 
+      // 实时应用正面人像遮罩 (Mask Zone)
+      if (state.maskEnabled && state.maskPoints.length >= 3) {
+        pctx.beginPath();
+        state.maskPoints.forEach((pt, i) => {
+          // 映射到裁剪区域并水平镜像
+          const x_crop = pt.x * state.width - minX;
+          const y_crop = pt.y * state.height - minY;
+          const x_flip = (cropW - 1) - x_crop;
+          const vx = (x_flip / cropW) * 540;
+          const vy = (y_crop / cropH) * 720;
+          if (i === 0) pctx.moveTo(vx, vy);
+          else pctx.lineTo(vx, vy);
+        });
+        pctx.closePath();
+        pctx.fillStyle = 'rgba(12, 16, 24, 0.90)';
+        pctx.fill();
+        pctx.strokeStyle = '#3c506e';
+        pctx.lineWidth = 2;
+        pctx.stroke();
+
+        // 遮罩提示
+        pctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        pctx.font = 'bold 12px sans-serif';
+        const center = state.maskPoints.reduce((acc, p) => ({ x: acc.x + p.x/4, y: acc.y + p.y/4 }), {x:0, y:0});
+        const cx_flip = (cropW - 1) - (center.x * state.width - minX);
+        const cvx = (cx_flip / cropW) * 540;
+        const cvy = ((center.y * state.height - minY) / cropH) * 720;
+        pctx.fillText('👤 屏蔽区 (MASKED)', Math.max(10, cvx - 55), cvy);
+      }
+
       // 水印标注
       pctx.fillStyle = 'rgba(0, 220, 255, 0.9)';
-      pctx.font = 'bold 16px sans-serif';
-      pctx.fillText('BACK VIEW (FLIPPED)', 20, 32);
+      pctx.font = 'bold 15px sans-serif';
+      pctx.fillText('BACK VIEW (FLIPPED)', 16, 28);
+    }
+
+    function getActivePoints() {
+      return state.activeMode === 'mirror' ? state.mirrorPoints : state.maskPoints;
     }
 
     function renderPointsList() {
       const container = document.getElementById('pointsListContainer');
+      const title = document.getElementById('pointsListTitle');
+      const pts = getActivePoints();
+      const isMirror = state.activeMode === 'mirror';
+
+      title.innerText = isMirror ? '镜面顶点 (P1~P4)' : '人像屏蔽区顶点 (M1~M4)';
       container.innerHTML = '';
-      state.points.forEach((pt, i) => {
+
+      pts.forEach((pt, i) => {
         const item = document.createElement('div');
-        item.className = `point-item ${state.hoverPointIdx === i ? 'active' : ''}`;
+        const activeClass = isMirror ? 'active' : 'active-mask';
+        item.className = `point-item ${state.hoverPointIdx === i ? activeClass : ''}`;
+        const pLabel = isMirror ? `P${i+1}` : `M${i+1}`;
         item.innerHTML = `
-          <span><b>P${i+1}</b> ${pt.label || ''}</span>
+          <span><b>${pLabel}</b> ${pt.label || ''}</span>
           <span class="point-coord">[${pt.x.toFixed(4)}, ${pt.y.toFixed(4)}]</span>
         `;
         item.onmouseenter = () => { state.hoverPointIdx = i; drawMain(); };
@@ -533,6 +681,31 @@
         container.appendChild(item);
       });
     }
+
+    // 模式切换
+    document.getElementById('btnModeMirror').addEventListener('click', () => {
+      state.activeMode = 'mirror';
+      document.getElementById('btnModeMirror').classList.add('active');
+      document.getElementById('btnModeMask').classList.remove('active');
+      document.getElementById('modeDesc').innerHTML = '当前正在调整：<b>后墙全景镜面边界多边形</b> (P1~P4)。';
+      renderPointsList();
+      drawMain();
+    });
+
+    document.getElementById('btnModeMask').addEventListener('click', () => {
+      state.activeMode = 'mask';
+      document.getElementById('btnModeMask').classList.add('active');
+      document.getElementById('btnModeMirror').classList.remove('active');
+      document.getElementById('modeDesc').innerHTML = '当前正在调整：<b>正面人像/重影屏蔽多边形</b> (M1~M4)。';
+      renderPointsList();
+      drawMain();
+    });
+
+    document.getElementById('chkMaskEnabled').addEventListener('change', (e) => {
+      state.maskEnabled = e.target.checked;
+      drawMain();
+      drawPreview();
+    });
 
     // 交互拖拽
     mainCanvas.addEventListener('mousedown', (e) => {
@@ -543,10 +716,11 @@
       const my = (e.clientY - rect.top) * scaleY;
 
       let hitIdx = -1;
-      state.points.forEach((pt, i) => {
+      const pts = getActivePoints();
+      pts.forEach((pt, i) => {
         const cp = toCanvasCoord(pt);
         const dist = Math.hypot(cp.x - mx, cp.y - my);
-        if (dist <= 25) hitIdx = i;
+        if (dist <= 26) hitIdx = i;
       });
 
       if (hitIdx !== -1) {
@@ -561,19 +735,20 @@
       const scaleY = mainCanvas.height / rect.height;
       const mx = (e.clientX - rect.left) * scaleX;
       const my = (e.clientY - rect.top) * scaleY;
+      const pts = getActivePoints();
 
       if (state.draggingPointIdx !== -1) {
         const norm = toNormCoord(mx, my);
-        state.points[state.draggingPointIdx].x = norm.x;
-        state.points[state.draggingPointIdx].y = norm.y;
+        pts[state.draggingPointIdx].x = norm.x;
+        pts[state.draggingPointIdx].y = norm.y;
         drawMain();
         drawPreview();
         renderPointsList();
       } else {
         let hoverIdx = -1;
-        state.points.forEach((pt, i) => {
+        pts.forEach((pt, i) => {
           const cp = toCanvasCoord(pt);
-          if (Math.hypot(cp.x - mx, cp.y - my) <= 20) hoverIdx = i;
+          if (Math.hypot(cp.x - mx, cp.y - my) <= 22) hoverIdx = i;
         });
         if (state.hoverPointIdx !== hoverIdx) {
           state.hoverPointIdx = hoverIdx;
@@ -606,16 +781,22 @@
 
     // 预设与重置
     document.getElementById('btnPreset').addEventListener('click', () => {
-      state.points = [
-        { x: 0.36, y: 0.11, label: 'P1 (左上)' },
-        { x: 0.54, y: 0.11, label: 'P2 (右上)' },
-        { x: 0.54, y: 0.44, label: 'P3 (右下)' },
-        { x: 0.36, y: 0.44, label: 'P4 (左下)' }
+      state.mirrorPoints = [
+        { x: 0.2708, y: 0.4593, label: 'P1 (左下)' },
+        { x: 0.2742, y: 0.1018, label: 'P2 (左上)' },
+        { x: 0.6139, y: 0.1214, label: 'P3 (右上)' },
+        { x: 0.5961, y: 0.4642, label: 'P4 (右下)' }
+      ];
+      state.maskPoints = [
+        { x: 0.3800, y: 0.2600, label: 'M1 (左上)' },
+        { x: 0.4800, y: 0.2600, label: 'M2 (右上)' },
+        { x: 0.4800, y: 0.4500, label: 'M3 (右下)' },
+        { x: 0.3800, y: 0.4500, label: 'M4 (左下)' }
       ];
       drawMain();
       drawPreview();
       renderPointsList();
-      showToast('已恢复推荐镜面预设坐标');
+      showToast('已恢复推荐镜面与屏蔽区预设');
     });
 
     document.getElementById('btnReset').addEventListener('click', () => {
@@ -624,20 +805,27 @@
     });
 
     document.getElementById('btnClearPoints').addEventListener('click', () => {
-      state.points = [];
+      if (state.activeMode === 'mirror') {
+        state.mirrorPoints = [];
+        showToast('已清空镜面角点，请在画面上依次点击 4 个点');
+      } else {
+        state.maskPoints = [];
+        showToast('已清空人像屏蔽区角点，请在画面上依次点击 4 个点');
+      }
       drawMain();
       renderPointsList();
-      showToast('已清空，请在画面上依次点击 4 个镜面角点');
     });
 
     // 点击添加新点
     mainCanvas.addEventListener('click', (e) => {
-      if (state.draggingPointIdx !== -1 || state.points.length >= 4) return;
+      const pts = getActivePoints();
+      if (state.draggingPointIdx !== -1 || pts.length >= 4) return;
       const rect = mainCanvas.getBoundingClientRect();
       const scaleX = mainCanvas.width / rect.width;
       const scaleY = mainCanvas.height / rect.height;
       const norm = toNormCoord((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
-      state.points.push({ x: norm.x, y: norm.y, label: `P${state.points.length + 1}` });
+      const prefix = state.activeMode === 'mirror' ? 'P' : 'M';
+      pts.push({ x: norm.x, y: norm.y, label: `${prefix}${pts.length + 1}` });
       drawMain();
       drawPreview();
       renderPointsList();
@@ -645,32 +833,39 @@
 
     // 保存配置
     async function saveConfig() {
-      if (state.points.length < 4) {
-        showToast('请至少标注 4 个镜面边界角点', false);
+      if (state.mirrorPoints.length < 4) {
+        showToast('请至少标注 4 个镜面边界角点 (P1~P4)', false);
         return;
       }
-      const xs = state.points.map(p => p.x);
-      const ys = state.points.map(p => p.y);
+      const xs = state.mirrorPoints.map(p => p.x);
+      const ys = state.mirrorPoints.map(p => p.y);
       const roi = [
         parseFloat(Math.min(...xs).toFixed(4)),
         parseFloat(Math.min(...ys).toFixed(4)),
         parseFloat(Math.max(...xs).toFixed(4)),
         parseFloat(Math.max(...ys).toFixed(4))
       ];
-      const polygon = state.points.map(p => [
+      const polygon = state.mirrorPoints.map(p => [
         parseFloat(p.x.toFixed(4)),
         parseFloat(p.y.toFixed(4))
       ]);
+      const maskPolygon = (state.maskEnabled && state.maskPoints.length >= 3)
+        ? state.maskPoints.map(p => [parseFloat(p.x.toFixed(4)), parseFloat(p.y.toFixed(4))])
+        : [];
 
       try {
         const res = await fetch('/api/save_config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reflection_roi: roi, polygon: polygon })
+          body: JSON.stringify({
+            reflection_roi: roi,
+            polygon: polygon,
+            mask_polygon: maskPolygon
+          })
         });
         const ret = await res.json();
         if (ret.success) {
-          showToast('✅ 镜面标定配置已成功保存！');
+          showToast('✅ 镜面与人像屏蔽标定配置已成功保存！');
         } else {
           showToast(`保存失败: ${ret.error || '未知错误'}`, false);
         }

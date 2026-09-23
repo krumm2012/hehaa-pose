@@ -134,6 +134,13 @@ class DualViewManager:
         self.mirror_target_size = tuple(m_cfg.get("target_size", [540, 720]))
         self.mirror_padding = float(m_cfg.get("padding", 0.10))
 
+        # 解析正面人像屏蔽区配置 (Mask Polygon)
+        mask_poly = m_cfg.get("mask_polygon")
+        if mask_poly and len(mask_poly) >= 3:
+            self.mirror_mask_polygon_norm = np.array(mask_poly, dtype=np.float32)
+        else:
+            self.mirror_mask_polygon_norm = None
+
         # 解析正面机位配置
         f_cfg = self.config.get("front_view", {})
         self.front_default_roi_norm = tuple(f_cfg.get("default_roi", [0.34, 0.30, 0.58, 0.85]))
@@ -144,6 +151,17 @@ class DualViewManager:
         v_cfg = self.config.get("visualization", {})
         self.front_label = v_cfg.get("front_label", "FRONT VIEW")
         self.back_label = v_cfg.get("back_label", "BACK VIEW (MIRROR FLIPPED)")
+
+    @property
+    def mask_polygon_norm(self) -> Optional[np.ndarray]:
+        return self.mirror_mask_polygon_norm
+
+    @mask_polygon_norm.setter
+    def mask_polygon_norm(self, value):
+        if value is not None and len(value) >= 3:
+            self.mirror_mask_polygon_norm = np.array(value, dtype=np.float32)
+        else:
+            self.mirror_mask_polygon_norm = None
 
     def _load_yaml(self, path: str) -> Dict[str, Any]:
         p = Path(path)
@@ -283,6 +301,10 @@ class DualViewManager:
             is_horizontally_flipped=self.mirror_flip,
         )
 
+        # 3. 若配置了正面人像屏蔽区域 (mask_polygon)，对背面视角应用隐私暗色遮罩
+        if self.mirror_mask_polygon_norm is not None:
+            b_view = self.apply_mask_to_view(b_view, back_info, fw, fh)
+
         return DualViewFrame(
             frame_id=frame_id,
             original_frame=frame,
@@ -292,6 +314,30 @@ class DualViewManager:
             back_info=back_info,
             timestamp_ms=timestamp_ms,
         )
+
+    def apply_mask_to_view(
+        self,
+        b_view: np.ndarray,
+        back_info: DualViewCropInfo,
+        frame_w: int,
+        frame_h: int,
+    ) -> np.ndarray:
+        """在背面视角上对正面人像屏蔽多边形应用遮罩。"""
+        if self.mirror_mask_polygon_norm is None or len(self.mirror_mask_polygon_norm) < 3:
+            return b_view
+
+        canvas = b_view.copy()
+        pts = []
+        for nx, ny in self.mirror_mask_polygon_norm:
+            vx, vy = back_info.map_from_original(nx * frame_w, ny * frame_h)
+            pts.append([int(round(vx)), int(round(vy))])
+
+        pts_arr = np.array([pts], dtype=np.int32)
+        overlay = canvas.copy()
+        cv2.fillPoly(overlay, pts_arr, (12, 16, 24))
+        cv2.addWeighted(overlay, 0.88, canvas, 0.12, 0, canvas)
+        cv2.polylines(canvas, pts_arr, isClosed=True, color=(60, 80, 110), thickness=1, lineType=cv2.LINE_AA)
+        return canvas
 
     def render_side_by_side(
         self,

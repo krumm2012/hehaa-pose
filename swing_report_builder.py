@@ -6,11 +6,87 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import math
 import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from swing_session_quality import build_session_quality_dashboard
+
+RADAR_AXES = [
+    ("shoulder_turn", "转肩"),
+    ("takeback", "引拍"),
+    ("arm_extension", "延展"),
+    ("racket_speed", "挥速"),
+    ("leg_drive", "蹬地"),
+]
+
+
+def _build_radar_svg(sub_scores: Dict[str, float], width: int = 240, height: int = 220) -> str:
+    """Build a standalone inline SVG 5-axis biomechanical quality radar chart."""
+    if not sub_scores:
+        return ""
+    cx, cy = width / 2.0, height / 2.0
+    r_max = 66.0
+    rings = [0.25, 0.5, 0.75, 1.0]
+    n = len(RADAR_AXES)
+
+    svg_parts = [
+        f'<svg viewBox="0 0 {width} {height}" width="100%" style="max-width:{width}px;display:block;margin:auto;" class="radar-svg">'
+    ]
+    # Web rings
+    for lvl in rings:
+        pts = []
+        for i in range(n):
+            ang = -math.pi / 2.0 + i * (2.0 * math.pi / n)
+            x = cx + r_max * lvl * math.cos(ang)
+            y = cy + r_max * lvl * math.sin(ang)
+            pts.append(f"{x:.1f},{y:.1f}")
+        dash = ' stroke-dasharray="2,2"' if lvl < 1.0 else ""
+        stroke_color = "#d8d0c0" if lvl < 1.0 else "#b0a898"
+        svg_parts.append(
+            f'<polygon points="{" ".join(pts)}" fill="none" stroke="{stroke_color}" stroke-width="1"{dash}/>'
+        )
+
+    # Spokes and data points
+    data_pts = []
+    vertex_circles = []
+    labels_svg = []
+    for i, (key, label) in enumerate(RADAR_AXES):
+        ang = -math.pi / 2.0 + i * (2.0 * math.pi / n)
+        cos_a = math.cos(ang)
+        sin_a = math.sin(ang)
+        ox = cx + r_max * cos_a
+        oy = cy + r_max * sin_a
+        svg_parts.append(
+            f'<line x1="{cx:.1f}" y1="{cy:.1f}" x2="{ox:.1f}" y2="{oy:.1f}" stroke="#d8d0c0" stroke-width="1"/>'
+        )
+
+        score = float(sub_scores.get(key, 0.0) or 0.0)
+        clamped = max(0.0, min(100.0, score))
+        r_val = max(6.0, r_max * (clamped / 100.0))
+        dx = cx + r_val * cos_a
+        dy = cy + r_val * sin_a
+        data_pts.append(f"{dx:.1f},{dy:.1f}")
+        vertex_circles.append(
+            f'<circle cx="{dx:.1f}" cy="{dy:.1f}" r="3.5" fill="#0f7b6c" stroke="#fff" stroke-width="1.5"/>'
+        )
+
+        # Label placement
+        lx = cx + (r_max + 18.0) * cos_a
+        ly = cy + (r_max + 18.0) * sin_a
+        anchor = "middle" if abs(cos_a) < 0.15 else ("start" if cos_a > 0 else "end")
+        labels_svg.append(
+            f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="{anchor}" dominant-baseline="central" font-size="10" font-weight="600" fill="#334155">{label} {score:.0f}</text>'
+        )
+
+    svg_parts.append(
+        f'<polygon points="{" ".join(data_pts)}" fill="rgba(15,123,108,0.22)" stroke="#0f7b6c" stroke-width="2.2"/>'
+    )
+    svg_parts.extend(vertex_circles)
+    svg_parts.extend(labels_svg)
+    svg_parts.append("</svg>")
+    return "".join(svg_parts)
 
 
 def load_json(path: str) -> Dict:
@@ -112,6 +188,84 @@ def build_report_payload(
         quality_flags = coach_event.get("quality_flags") or event.get("quality_flags") or {}
         start_boundary = (event.get("evidence") or {}).get("start_boundary") or {}
         classification_context = (event.get("evidence") or {}).get("classification_context") or {}
+
+        bio = event.get("biomechanics") or coach_event.get("biomechanics") or {}
+        ext = event.get("extended_biomechanics") or bio.get("extended_biomechanics") or {}
+        metrics = bio.get("metrics") or {}
+        sqs = (
+            metrics.get("swing_quality_score")
+            or ext.get("swing_quality_score")
+            or event.get("swing_quality_score")
+            or {}
+        )
+        if isinstance(sqs, dict) and "value" in sqs and "overall_score" not in sqs:
+            sqs = dict(sqs)
+            sqs["overall_score"] = sqs.get("value")
+
+        seq = (
+            metrics.get("kinematic_sequence")
+            or ext.get("kinematic_sequence")
+            or event.get("kinematic_sequence")
+            or {}
+        )
+        rkt = (
+            metrics.get("racket_speed")
+            or ext.get("racket_head_speed")
+            or event.get("racket_speed")
+            or {}
+        )
+        brush = (
+            metrics.get("brush_angle")
+            or ext.get("brush_angle")
+            or event.get("brush_angle")
+            or {}
+        )
+        stc = (
+            metrics.get("stance")
+            or ext.get("stance")
+            or event.get("stance")
+            or {}
+        )
+        leg = (
+            metrics.get("leg_drive")
+            or ext.get("leg_drive")
+            or event.get("leg_drive")
+            or {}
+        )
+        advices = event.get("coach_advice") or coach_event.get("coach_advice") or []
+
+        has_bio = bool(bio or ext or sqs or event.get("swing_score") or event.get("swing_grade"))
+        raw_score = (
+            event.get("swing_score")
+            or bio.get("swing_score")
+            or (sqs.get("overall_score") if isinstance(sqs, dict) else None)
+        )
+        if raw_score is None and has_bio:
+            raw_score = scores.get("overall_score") or event.get("overall_score")
+
+        if raw_score is not None:
+            try:
+                raw_score = float(raw_score)
+                if 0.0 < raw_score <= 1.0:
+                    raw_score = raw_score * 100.0
+            except (ValueError, TypeError):
+                pass
+
+        raw_grade = (
+            event.get("swing_grade")
+            or bio.get("swing_grade")
+            or (sqs.get("grade") if isinstance(sqs, dict) else None)
+        )
+        if has_bio and not raw_grade and raw_score is not None and isinstance(raw_score, (int, float)):
+            if raw_score >= 85.0:
+                raw_grade = "PRO"
+            elif raw_score >= 70.0:
+                raw_grade = "ADVANCED"
+            elif raw_score >= 55.0:
+                raw_grade = "INTERMEDIATE"
+            else:
+                raw_grade = "DEVELOPING"
+
         merged_events.append(
             {
                 "event_id": event.get("event_id"),
@@ -126,7 +280,7 @@ def build_report_payload(
                 "classification_context": classification_context,
                 "quality_flags": quality_flags,
                 "diagnosis_tags": coach_event.get("diagnosis_tags") or list(quality_flags.get("warnings") or []),
-                "overall_score": scores.get("overall_score"),
+                "overall_score": scores.get("overall_score") if scores.get("overall_score") is not None else event.get("overall_score"),
                 "overall_score_9": scores.get("overall_score_9") or (event.get("coach_calibration") or {}).get("visible_technique_score_9"),
                 "score_uncertainty_9": scores.get("uncertainty_9") or (event.get("coach_calibration") or {}).get("uncertainty_9"),
                 "score_confidence": scores.get("confidence") or (event.get("coach_calibration") or {}).get("confidence"),
@@ -136,6 +290,18 @@ def build_report_payload(
                 "follow_through_score": scores.get("follow_through_score"),
                 "data_quality": coach_event.get("data_quality") or {},
                 "coach": coach_event,
+                "biomechanics": bio,
+                "extended_biomechanics": ext,
+                "swing_quality_score": sqs,
+                "swing_score": raw_score,
+                "swing_grade": raw_grade,
+                "kinematic_sequence": seq,
+                "racket_speed": rkt,
+                "brush_angle": brush,
+                "stance": stc,
+                "leg_drive": leg,
+                "advice_list": advices,
+                "impact_freeze_path": event.get("impact_freeze_path") or (event.get("snapshots") or {}).get("impact_freeze"),
             }
         )
 
@@ -390,21 +556,183 @@ def render_report_html(payload: Dict, output_path: str) -> str:
             if score_9 is not None
             else "可见动作评分：证据不足"
         )
+
+        # 1. 综合技术评级与100分制仪表
+        swing_grade = event.get("swing_grade")
+        swing_score = event.get("swing_score")
+        if swing_grade:
+            grade_upper = str(swing_grade).upper()
+            tier_class = f"tier-{grade_upper.lower()}"
+            score_display = f"{float(swing_score):.1f}分" if swing_score is not None else ""
+            grade_labels = {
+                "PRO": "PRO · 职业级",
+                "ADVANCED": "ADVANCED · 进阶级",
+                "INTERMEDIATE": "INTERMEDIATE · 中级",
+                "DEVELOPING": "DEVELOPING · 基础级",
+            }
+            grade_label = grade_labels.get(grade_upper, grade_upper)
+            head_badge_html = f'<span class="tier-pill {tier_class}">{html.escape(grade_label)} <strong style="margin-left:4px;">{score_display}</strong></span>'
+        else:
+            head_badge_html = f"<span>score {_score_text(event.get('overall_score'))}</span>"
+
+        meter_pct = f"{float(swing_score):.0f}" if swing_score is not None else _score_text(event.get('overall_score'))
+
+        # 2. 5维生物力学技术雷达图
+        sqs = event.get("swing_quality_score") or {}
+        sub_scores = sqs.get("sub_scores") if isinstance(sqs, dict) else {}
+        radar_svg = _build_radar_svg(sub_scores) if sub_scores else ""
+        radar_html = f"""
+        <div class="bio-radar-wrapper">
+          <div class="bio-radar-title">5维生物力学质量雷达</div>
+          {radar_svg}
+        </div>
+        """ if radar_svg else ""
+
+        # 3. 动力学链时序时延条
+        seq = event.get("kinematic_sequence") or {}
+        details = seq.get("details") if isinstance(seq, dict) and isinstance(seq.get("details"), dict) else seq
+        seq_quality = (seq.get("value") or details.get("sequence_quality") or "OPTIMAL") if isinstance(seq, dict) else "OPTIMAL"
+        dt_hip_sh = details.get("latency_hip_to_shoulder_ms") if isinstance(details, dict) else None
+        dt_sh_rkt = details.get("latency_shoulder_to_racket_ms") if isinstance(details, dict) else None
+
+        kinematic_html = ""
+        if dt_hip_sh is not None or dt_sh_rkt is not None:
+            dt_hip_sh_val = float(dt_hip_sh or 0.0)
+            dt_sh_rkt_val = float(dt_sh_rkt or 0.0)
+            dt_hip_sh_pct = min(100.0, max(5.0, (dt_hip_sh_val / 80.0) * 100.0))
+            dt_sh_rkt_pct = min(100.0, max(5.0, (dt_sh_rkt_val / 90.0) * 100.0))
+            kinematic_html = f"""
+            <div class="kinematic-box">
+              <div class="kinematic-header">
+                <span>动力学链传递: <strong>下肢 ➔ 髋/骨盆 ➔ 肩/躯干 ➔ 球拍</strong></span>
+                <span class="seq-badge seq-{html.escape(str(seq_quality).lower())}">{html.escape(str(seq_quality))}</span>
+              </div>
+              <div class="kinematic-bars">
+                <div class="kinematic-bar-row">
+                  <span class="k-label">髋-肩时序延时 (Δt_hip_sh):</span>
+                  <span class="k-val">{dt_hip_sh_val:.1f} ms</span>
+                  <div class="k-track"><div class="k-fill" style="width:{dt_hip_sh_pct:.0f}%;"></div></div>
+                </div>
+                <div class="kinematic-bar-row">
+                  <span class="k-label">肩-拍时序延时 (Δt_sh_rkt):</span>
+                  <span class="k-val">{dt_sh_rkt_val:.1f} ms</span>
+                  <div class="k-track"><div class="k-fill k-fill-rkt" style="width:{dt_sh_rkt_pct:.0f}%;"></div></div>
+                </div>
+              </div>
+            </div>
+            """
+
+        # 4. 击球遥测指标网格
+        rkt = event.get("racket_speed") or {}
+        brush = event.get("brush_angle") or {}
+        stc = event.get("stance") or {}
+        leg = event.get("leg_drive") or {}
+
+        contact_kmh = rkt.get("contact_kmh") or rkt.get("contact_speed_kmh")
+        max_kmh = rkt.get("max_kmh") or rkt.get("max_speed_kmh")
+        brush_angle = brush.get("low_to_high_angle_deg") or brush.get("angle_deg")
+        drop_ratio = brush.get("drop_depth_ratio")
+        stance_type = stc.get("stance_type") or stc.get("value")
+        leg_ratio = leg.get("drive_ratio") or leg.get("value")
+
+        has_telemetry = any(v is not None for v in [contact_kmh, max_kmh, brush_angle, drop_ratio, stance_type, leg_ratio])
+        telemetry_html = ""
+        if has_telemetry:
+            kmh_text = f"{float(contact_kmh):.1f} / {float(max_kmh):.1f} km/h" if contact_kmh is not None and max_kmh is not None else "-"
+            brush_text = f"{float(brush_angle):+.1f}°" if brush_angle is not None else "-"
+            if drop_ratio is not None:
+                try:
+                    brush_text += f" (下潜 {float(drop_ratio):.2f}x)"
+                except (ValueError, TypeError):
+                    brush_text += f" (下潜 {drop_ratio})"
+            stance_text = str(stance_type or "-")
+            if leg_ratio is not None:
+                try:
+                    stance_text += f" · 蹬地 {float(leg_ratio):.2f}x"
+                except (ValueError, TypeError):
+                    stance_text += f" · 蹬地 {leg_ratio}"
+            telemetry_html = f"""
+            <div class="telemetry-grid">
+              <div class="telem-item"><span class="telem-label">拍头挥速 (击球/峰值)</span><strong class="telem-val">{html.escape(kmh_text)}</strong></div>
+              <div class="telem-item"><span class="telem-label">刷球仰角与下潜</span><strong class="telem-val">{html.escape(brush_text)}</strong></div>
+              <div class="telem-item"><span class="telem-label">击球站位与蹬地比</span><strong class="telem-val">{html.escape(stance_text)}</strong></div>
+            </div>
+            """
+
+        # 5. 击球定格快照特写查找
+        snap_rel = None
+        c_frame = event.get("contact_frame")
+        ev_id = event.get("event_id")
+        candidates = []
+        if event.get("impact_freeze_path"):
+            candidates.append(Path(event["impact_freeze_path"]))
+
+        search_dirs = [output_dir, output_dir / "snapshots"]
+        if payload.get("paths", {}).get("video"):
+            search_dirs.append(Path(payload["paths"]["video"]).parent)
+        if payload.get("paths", {}).get("frame_json"):
+            search_dirs.append(Path(payload["paths"]["frame_json"]).parent)
+        scratch_dir = Path("/Users/krum5539/.gemini/antigravity/brain/853db2fd-bbb9-45de-8209-c65d2189b516/scratch")
+        if scratch_dir.exists():
+            search_dirs.append(scratch_dir)
+
+        for s_dir in search_dirs:
+            if s_dir.exists() and c_frame is not None:
+                candidates.extend(list(s_dir.glob(f"*{c_frame}*impact_freeze.jpg")))
+                candidates.extend(list(s_dir.glob(f"*{c_frame}*.jpg")))
+            if s_dir.exists() and ev_id is not None:
+                candidates.extend(list(s_dir.glob(f"*event_{ev_id}*.jpg")))
+
+        for cand in candidates:
+            if cand.exists() and cand.is_file():
+                snap_rel = _rel(str(cand), output_dir)
+                break
+
+        snapshot_html = ""
+        if snap_rel:
+            snapshot_html = f"""
+            <div class="impact-freeze-container">
+              <a href="{html.escape(snap_rel)}" target="_blank" class="impact-freeze-link" title="点击查看击球瞬间定格特写">
+                <img src="{html.escape(snap_rel)}" alt="击球瞬间定格特写" loading="lazy" class="impact-freeze-img" />
+                <span class="impact-freeze-badge">⚡ 击球瞬间定格特写 (第 {c_frame} 帧)</span>
+              </a>
+            </div>
+            """
+
+        # 6. 教练纠错建议
+        advices = event.get("advice_list") or []
+        advices_html = ""
+        if advices:
+            items = []
+            for adv in advices:
+                msg = adv.get("message") if isinstance(adv, dict) else str(adv)
+                code = adv.get("code") if isinstance(adv, dict) else ""
+                conf = f" ({adv['confidence']*100:.0f}%)" if isinstance(adv, dict) and "confidence" in adv else ""
+                items.append(
+                    f'<li class="coach-advice-item"><span class="advice-bullet">💡</span><strong>{html.escape(str(code))}:</strong> {html.escape(str(msg))}{html.escape(conf)}</li>'
+                )
+            advices_html = f'<div class="coach-advices-box"><ul class="coach-advice-list">{"".join(items)}</ul></div>'
+
         event_cards.append(
             f"""
             <article class="event-card" data-annotation-card data-annotation-id="model-{html.escape(str(event.get('event_id')))}" data-source-event-id="{html.escape(str(event.get('event_id')))}" data-event-id="{html.escape(str(event.get('event_id')))}">
               <div class="event-head">
                 <strong>Event {html.escape(str(event.get('event_id')))} · {html.escape(str(event.get('stroke_type')))}</strong>
-                <span>score {_score_text(event.get('overall_score'))}</span>
+                {head_badge_html}
               </div>
               <div class="frames">start {event.get('start_frame')} · contact {event.get('contact_frame')} · peak {event.get('peak_frame')} · end {event.get('end_frame')}</div>
               <div class="frames">start boundary {html.escape(boundary_text)}</div>
               <div class="frames">{html.escape(_classification_text(classification_context))}</div>
               <div class="frames">{html.escape(calibrated_score_text)}</div>
               <button class="event-jump" type="button" data-event-id="{html.escape(str(event.get('event_id')))}">定位到事件</button>
-              <div class="meter"><i style="width:{_score_text(event.get('overall_score'))}%"></i></div>
+              <div class="meter"><i style="width:{meter_pct}%"></i></div>
               <p>confidence {_score_text(event.get('confidence'))} · contact {_score_text(event.get('contact_score'))} · prep {_score_text(event.get('preparation_score'))} · follow {_score_text(event.get('follow_through_score'))}</p>
               <p class="tags">{html.escape(', '.join(tags + warnings) or 'no quality warnings')}</p>
+              {radar_html}
+              {kinematic_html}
+              {telemetry_html}
+              {snapshot_html}
+              {advices_html}
               <div class="annotation-box">
                 <div class="annotation-frame-grid">
                   <label>人工开始帧
@@ -570,8 +898,172 @@ def render_report_html(payload: Dict, output_path: str) -> str:
     .import-status {{ color: var(--muted); font-size: 13px; align-self: center; }}
     .meter {{ height: 8px; background: #e4dccd; border-radius: 999px; overflow: hidden; margin: 10px 0; }}
     .meter i {{ display: block; height: 100%; background: var(--accent); }}
+    /* 算法2.0 / 生物力学扩展样式 */
+    .tier-pill {{
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      border: 1px solid var(--line);
+    }}
+    .tier-pro {{
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.18), rgba(0, 240, 255, 0.22));
+      border-color: #f59e0b;
+      color: #92400e;
+    }}
+    .tier-advanced {{
+      background: rgba(16, 185, 129, 0.15);
+      border-color: #10b981;
+      color: #065f46;
+    }}
+    .tier-intermediate {{
+      background: rgba(56, 189, 248, 0.15);
+      border-color: #38bdf8;
+      color: #0369a1;
+    }}
+    .tier-developing {{
+      background: rgba(249, 115, 22, 0.15);
+      border-color: #f97316;
+      color: #9a3412;
+    }}
+    .bio-radar-wrapper {{
+      margin: 12px 0 8px;
+      padding: 10px;
+      background: rgba(245, 242, 234, 0.6);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      text-align: center;
+    }}
+    .bio-radar-title {{
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }}
+    .kinematic-box {{
+      margin: 10px 0;
+      padding: 10px 12px;
+      background: #fdfaf3;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }}
+    .kinematic-header {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }}
+    .seq-badge {{
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }}
+    .seq-optimal {{ background: #d1fae5; color: #065f46; }}
+    .seq-acceptable {{ background: #e0f2fe; color: #0369a1; }}
+    .seq-suboptimal {{ background: #fee2e2; color: #991b1b; }}
+    .kinematic-bars {{ display: grid; gap: 6px; }}
+    .kinematic-bar-row {{
+      display: grid;
+      grid-template-columns: 140px 55px 1fr;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+    }}
+    .k-label {{ color: var(--muted); }}
+    .k-val {{ font-weight: 600; text-align: right; }}
+    .k-track {{
+      height: 6px;
+      background: #e8dfd0;
+      border-radius: 999px;
+      overflow: hidden;
+    }}
+    .k-fill {{
+      height: 100%;
+      background: var(--accent);
+      border-radius: 999px;
+    }}
+    .k-fill-rkt {{ background: #5346a3; }}
+    .telemetry-grid {{
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin: 10px 0;
+    }}
+    .telem-item {{
+      padding: 6px 8px;
+      background: #f7f3ea;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      display: grid;
+      gap: 2px;
+    }}
+    .telem-label {{ font-size: 10px; color: var(--muted); }}
+    .telem-val {{ font-size: 11px; color: var(--ink); font-weight: 600; }}
+    .impact-freeze-container {{
+      margin: 10px 0;
+    }}
+    .impact-freeze-link {{
+      display: block;
+      position: relative;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      transition: transform .15s ease, box-shadow .15s ease;
+    }}
+    .impact-freeze-link:hover {{
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    }}
+    .impact-freeze-img {{
+      display: block;
+      width: 100%;
+      height: auto;
+      object-fit: cover;
+    }}
+    .impact-freeze-badge {{
+      position: absolute;
+      bottom: 6px;
+      right: 6px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(15, 23, 42, 0.82);
+      color: #00f0ff;
+      font-size: 11px;
+      font-weight: 600;
+      backdrop-filter: blur(4px);
+    }}
+    .coach-advices-box {{
+      margin: 10px 0;
+      padding: 8px 10px;
+      background: #eff6f4;
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+    }}
+    .coach-advice-list {{
+      margin: 0;
+      padding-left: 0;
+      list-style: none;
+      display: grid;
+      gap: 4px;
+    }}
+    .coach-advice-item {{
+      font-size: 12px;
+      line-height: 1.4;
+      color: #17211f;
+      display: flex;
+      gap: 6px;
+      align-items: baseline;
+    }}
+    .advice-bullet {{ font-size: 11px; }}
     pre {{ white-space: pre-wrap; word-break: break-word; background: #17211f; color: #eaf5ef; padding: 14px; border-radius: 8px; max-height: 360px; overflow: auto; }}
-    @media (max-width: 900px) {{ .layout {{ grid-template-columns: 1fr; }} header {{ display:block; }} .session-kpis {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} .session-dashboard-grid {{ grid-template-columns:1fr; }} .timeline-ruler, .timeline-lane {{ grid-template-columns: 54px minmax(0, 1fr); }} .timeline-label {{ font-size: 11px; }} .annotation-frame-grid {{ grid-template-columns: 1fr; }} }}
+    @media (max-width: 900px) {{ .layout {{ grid-template-columns: 1fr; }} header {{ display:block; }} .session-kpis {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} .session-dashboard-grid {{ grid-template-columns:1fr; }} .timeline-ruler, .timeline-lane {{ grid-template-columns: 54px minmax(0, 1fr); }} .timeline-label {{ font-size: 11px; }} .annotation-frame-grid {{ grid-template-columns: 1fr; }} .telemetry-grid {{ grid-template-columns: 1fr; }} }}
   </style>
 </head>
 <body>

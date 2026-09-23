@@ -69,22 +69,23 @@ class MirrorCalibrationServer:
         # 缓存抽取的关键帧以加速交互
         self._frame_cache: Dict[int, bytes] = {}
 
-    def get_frame_jpeg(self, index: int) -> bytes:
-        if index in self._frame_cache:
-            return self._frame_cache[index]
-
+    def get_frame_raw(self, index: int) -> np.ndarray:
         cap = cv2.VideoCapture(str(self.video_path))
         cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, min(self.total_frames - 1, index)))
         ret, frame = cap.read()
         cap.release()
 
         if not ret or frame is None:
-            # 返回空帧或纯黑
             frame = cv2.imread(str(self.video_path)) if self.total_frames == 1 else None
             if frame is None:
                 raise ValueError(f"无法读取视频第 {index} 帧")
+        return frame
 
-        # 压缩为 JPEG
+    def get_frame_jpeg(self, index: int) -> bytes:
+        if index in self._frame_cache:
+            return self._frame_cache[index]
+
+        frame = self.get_frame_raw(index)
         ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
         if not ok:
             raise RuntimeError("JPEG 编码失败")
@@ -103,13 +104,52 @@ class MirrorCalibrationServer:
             logger.error(f"读取配置异常: {e}")
             return {}
 
-    def save_config(self, reflection_roi: List[float], polygon: List[List[float]]) -> Dict[str, Any]:
+    def render_backview_preview(
+        self,
+        frame_idx: int,
+        reflection_roi: List[float],
+        polygon: List[List[float]],
+        mask_polygon: Optional[List[List[float]]] = None,
+    ) -> bytes:
+        """根据动态调整的多边形和屏蔽区，实时合成背面视角 JPEG 预览。"""
+        frame = self.get_frame_raw(frame_idx)
+        cfg_dict = {
+            "mirror_view": {
+                "reflection_roi": reflection_roi,
+                "polygon": polygon,
+                "mask_polygon": mask_polygon or [],
+                "horizontal_flip": True,
+                "target_size": [540, 720],
+                "padding": 0.0,
+            },
+            "front_view": {
+                "default_roi": [0.34, 0.3, 0.58, 0.85],
+                "target_size": [540, 720],
+            },
+        }
+        from dual_view_manager import DualViewManager
+        mgr = DualViewManager(config_dict=cfg_dict)
+        dual = mgr.split_frame(frame, frame_id=frame_idx)
+        ok, buf = cv2.imencode(".jpg", dual.back_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if not ok:
+            raise RuntimeError("Backview preview encode failed")
+        return buf.tobytes()
+
+    def save_config(
+        self,
+        reflection_roi: List[float],
+        polygon: List[List[float]],
+        mask_polygon: Optional[List[List[float]]] = None,
+    ) -> Dict[str, Any]:
         """将标定好的镜面参数持久化写入 dual_view_config.yaml 并创建备份。"""
         # 1. 校验点位合法性
         if not (len(reflection_roi) == 4 and all(0.0 <= v <= 1.0 for v in reflection_roi)):
             raise ValueError("reflection_roi 必须是 4 个介于 0.0~1.0 的浮点数 [x1, y1, x2, y2]")
         if not (len(polygon) >= 3 and all(len(p) == 2 and 0.0 <= p[0] <= 1.0 and 0.0 <= p[1] <= 1.0 for p in polygon)):
             raise ValueError("polygon 必须包含至少 3 个归一化坐标点 [[x, y], ...]")
+        if mask_polygon is not None and len(mask_polygon) > 0:
+            if not (len(mask_polygon) >= 3 and all(len(p) == 2 and 0.0 <= p[0] <= 1.0 and 0.0 <= p[1] <= 1.0 for p in mask_polygon)):
+                raise ValueError("mask_polygon 若存在必须包含至少 3 个归一化坐标点 [[x, y], ...]")
 
         # 2. 读取现有配置完整文档
         with open(self.config_path, "r", encoding="utf-8") as f:
@@ -127,17 +167,22 @@ class MirrorCalibrationServer:
 
         full_cfg["mirror_view"]["reflection_roi"] = [float(f"{v:.4f}") for v in reflection_roi]
         full_cfg["mirror_view"]["polygon"] = [[float(f"{p[0]:.4f}"), float(f"{p[1]:.4f}")] for p in polygon]
+        if mask_polygon and len(mask_polygon) >= 3:
+            full_cfg["mirror_view"]["mask_polygon"] = [[float(f"{p[0]:.4f}"), float(f"{p[1]:.4f}")] for p in mask_polygon]
+        elif "mask_polygon" in full_cfg["mirror_view"]:
+            del full_cfg["mirror_view"]["mask_polygon"]
 
         # 5. 写回文件
         with open(self.config_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(full_cfg, f, allow_unicode=True, sort_keys=False)
 
-        logger.info(f"✅ 镜面标定配置已成功更新: {self.config_path}")
+        logger.info(f"✅ 镜面与人像屏蔽标定配置已成功更新: {self.config_path}")
         return {
             "success": True,
             "backup": str(backup_path.name),
             "reflection_roi": full_cfg["mirror_view"]["reflection_roi"],
             "polygon": full_cfg["mirror_view"]["polygon"],
+            "mask_polygon": full_cfg["mirror_view"].get("mask_polygon", []),
         }
 
 
@@ -202,6 +247,26 @@ def make_handler(server_instance: MirrorCalibrationServer):
             parsed = urlsplit(self.path)
             path = parsed.path
 
+            if path == "/api/preview_backview":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    raw = self.rfile.read(length)
+                    data = json.loads(raw.decode("utf-8"))
+                    f_idx = int(data.get("frame_index", 0))
+                    roi = data.get("reflection_roi", [0.27, 0.10, 0.61, 0.46])
+                    poly = data.get("polygon", [])
+                    mask_poly = data.get("mask_polygon", [])
+                    jpeg_bytes = server_instance.render_backview_preview(f_idx, roi, poly, mask_poly)
+                    self.send_response(HTTPStatus.OK)
+                    self.send_header("Content-Type", "image/jpeg")
+                    self.send_header("Content-Length", str(len(jpeg_bytes)))
+                    self.end_headers()
+                    self.wfile.write(jpeg_bytes)
+                except Exception as e:
+                    logger.error(f"生成背面预览失败: {e}")
+                    self._send_json({"success": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
+                return
+
             if path == "/api/save_config":
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
@@ -209,7 +274,8 @@ def make_handler(server_instance: MirrorCalibrationServer):
                     data = json.loads(raw.decode("utf-8"))
                     roi = data.get("reflection_roi", [])
                     poly = data.get("polygon", [])
-                    res = server_instance.save_config(roi, poly)
+                    mask_poly = data.get("mask_polygon", [])
+                    res = server_instance.save_config(roi, poly, mask_poly)
                     self._send_json(res)
                 except Exception as e:
                     logger.error(f"保存配置失败: {e}")

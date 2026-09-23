@@ -732,10 +732,62 @@ class LocalPipelineController:
                     raise ValueError("无法解码视频，请选择可播放的视频文件")
             finally:
                 capture.release()
+            self._last_uploaded_video = target
         except Exception:
             target.unlink(missing_ok=True)
             raise
         return {"video_id": video_id, "size": length}
+
+    def _get_mirror_calibrator(self) -> Any:
+        from calibrate_mirror import MirrorCalibrationServer
+        video_to_use = getattr(self, "_last_uploaded_video", None)
+        if video_to_use is None or not video_to_use.exists():
+            candidates = [
+                Path("/Users/krum5539/Desktop/Camera/test/40.26.mp4"),
+                Path("/Users/krum5539/Desktop/Camera/49.35.mp4"),
+            ]
+            for c in candidates:
+                if c.exists():
+                    video_to_use = c
+                    break
+        if video_to_use is None or not video_to_use.exists():
+            video_to_use = Path("/Users/krum5539/Desktop/Camera/test/40.26.mp4")
+
+        return MirrorCalibrationServer(
+            video_path=video_to_use,
+            config_path=self.workspace / "configs/dual_view_config.yaml",
+            html_path=self.workspace / "mirror_calibration.html",
+        )
+
+    def mirror_info(self) -> Dict[str, Any]:
+        calib = self._get_mirror_calibrator()
+        return {
+            "video_path": str(calib.video_path),
+            "width": calib.width,
+            "height": calib.height,
+            "total_frames": calib.total_frames,
+            "fps": calib.fps,
+            "current_config": calib.get_current_config(),
+        }
+
+    def mirror_frame(self, index: int) -> bytes:
+        calib = self._get_mirror_calibrator()
+        return calib.get_frame_jpeg(index)
+
+    def mirror_save_config(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        calib = self._get_mirror_calibrator()
+        roi = payload.get("reflection_roi", [])
+        poly = payload.get("polygon", [])
+        mask_poly = payload.get("mask_polygon", [])
+        return calib.save_config(roi, poly, mask_poly)
+
+    def mirror_preview_backview(self, payload: Dict[str, Any]) -> bytes:
+        calib = self._get_mirror_calibrator()
+        f_idx = int(payload.get("frame_index", 0))
+        roi = payload.get("reflection_roi", [0.27, 0.10, 0.61, 0.46])
+        poly = payload.get("polygon", [])
+        mask_poly = payload.get("mask_polygon", [])
+        return calib.render_backview_preview(f_idx, roi, poly, mask_poly)
 
     def _stream_from_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         stream_id = str(payload.get("stream_id") or "").strip()
@@ -1083,6 +1135,25 @@ def create_handler(controller: LocalPipelineController):
             try:
                 if path == "/":
                     self._send_file(controller.frontend_path, "text/html")
+                elif path in ("/mirror-calibration", "/mirror_calibration.html"):
+                    calib_html = controller.workspace / "mirror_calibration.html"
+                    if calib_html.exists():
+                        self._send_file(calib_html, "text/html")
+                    else:
+                        self.send_error(HTTPStatus.NOT_FOUND, "mirror_calibration.html not found")
+                elif path in ("/api/mirror/info", "/api/info"):
+                    self._send_json(controller.mirror_info())
+                elif path in ("/api/mirror/frame", "/api/frame"):
+                    from urllib.parse import parse_qs, urlsplit
+                    query = parse_qs(urlsplit(self.path).query)
+                    f_idx = int(query.get("index", ["0"])[0])
+                    jpeg_bytes = controller.mirror_frame(f_idx)
+                    self.send_response(HTTPStatus.OK)
+                    self.send_header("Content-Type", "image/jpeg")
+                    self.send_header("Content-Length", str(len(jpeg_bytes)))
+                    self.send_header("Cache-Control", "public, max-age=60")
+                    self.end_headers()
+                    self.wfile.write(jpeg_bytes)
                 elif path == "/api/config":
                     self._send_json(controller.public_config())
                 elif path == "/api/status":
@@ -1117,6 +1188,22 @@ def create_handler(controller: LocalPipelineController):
 
         def do_POST(self):
             path = self.path.split("?", 1)[0]
+            if path in ("/api/save_config", "/api/mirror/save_config"):
+                try:
+                    payload = self._read_json(max_bytes=MAX_REQUEST_BYTES)
+                    self._send_json(controller.mirror_save_config(payload))
+                except Exception as exc:
+                    self._send_json({"success": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+            if path in ("/api/preview_backview", "/api/mirror/preview_backview"):
+                try:
+                    payload = self._read_json(max_bytes=MAX_REQUEST_BYTES)
+                    jpeg_bytes = controller.mirror_preview_backview(payload)
+                    self._send_bytes(jpeg_bytes, "image/jpeg", no_cache=True)
+                except Exception as exc:
+                    self._send_json({"success": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+                return
+
             allowed_paths = {
                 "/api/preview",
                 "/api/start",

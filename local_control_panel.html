@@ -331,6 +331,9 @@
         </div>
       </div>
       <div class="header-actions">
+        <a href="/mirror-calibration" target="_blank" class="button" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;background:rgba(0,240,255,0.12);border:1px solid var(--blue);color:var(--text);font-weight:600;">
+          🪞 镜面与人像遮挡标定
+        </a>
         <span id="status-pill" class="status-pill">已停止</span>
         <button id="start-button" class="button primary">启动分析</button>
         <button id="stop-button" class="button danger" disabled>停止</button>
@@ -476,6 +479,16 @@
               <label class="switch"><input id="save_video" type="checkbox">保存完整视频</label>
               <label class="switch"><input id="hdmi_output" type="checkbox">HDMI 全屏输出</label>
             </div>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><h3>算法 2.0 虚拟双机位</h3><span>镜面与人像隐私标定</span></div>
+            <p style="margin: 0 0 10px 0; font-size: 12px; color: var(--muted); line-height: 1.5;">
+              使用单摄像头与镜子反射生成 Side-by-Side 虚实双视角。通过标定工具精细化设定镜面反射区域与人像隐私屏蔽多边形。
+            </p>
+            <a href="/mirror-calibration" target="_blank" class="button" style="text-decoration:none;display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(0,240,255,0.12);border:1px solid var(--blue);color:var(--text);font-weight:600;padding:10px;">
+              🪞 打开镜面与人像遮挡标定工具 ↗
+            </a>
           </div>
 
           <div class="section">

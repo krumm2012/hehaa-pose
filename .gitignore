@@ -49,6 +49,7 @@ data/**
 !data/analysis_results/**
 !data/.gitkeep
 data/analysis_results/.DS_Store
+data/analysis_results/09.43-out*
 
 # Videos and frames (large)
 *.mp4
@@ -77,9 +78,16 @@ run_*.log
 adjusted_params_analysis.csv
 
 # Models (ignore binaries)
+*.pt
+*.pth
+*.onnx
 models/*.pt
 models/*.pth
 models/*.onnx
+
+# Config backups and control panel outputs
+configs/*.bak_*
+data/analysis_results/control_panel/
 
 # Large images (keep assets and selected analysis frames)
 *.jpg

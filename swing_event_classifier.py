@@ -308,6 +308,10 @@ def classify_swing_event(
         elif has_trajectory_rebound or (min_ball_distance is not None and min_ball_distance <= 180.0):
             is_shadow_swing = False
             is_valid_contact = True
+    else:
+        # 全程无球检测：定性为空挥，禁止判定为真实触球
+        is_shadow_swing = True
+        is_valid_contact = False
 
     return {
         "stroke_type": stroke_type,
