@@ -486,6 +486,9 @@
             <p style="margin: 0 0 10px 0; font-size: 12px; color: var(--muted); line-height: 1.5;">
               使用单摄像头与镜子反射生成 Side-by-Side 虚实双视角。通过标定工具精细化设定镜面反射区域与人像隐私屏蔽多边形。
             </p>
+            <div class="switches" style="margin-bottom: 10px;">
+              <label class="switch"><input id="algo2_dual_view" type="checkbox">启用算法 2.0 虚拟双机位 (Side-by-Side)</label>
+            </div>
             <a href="/mirror-calibration" target="_blank" class="button" style="text-decoration:none;display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(0,240,255,0.12);border:1px solid var(--blue);color:var(--text);font-weight:600;padding:10px;">
               🪞 打开镜面与人像遮挡标定工具 ↗
             </a>
@@ -537,13 +540,13 @@
       "analysis_interval", "settle_frames", "max_suggestions", "min_confidence",
       "realtime_swing_events", "realtime_coach", "coach_tts", "coach_tts_playback", "deepseek_coach",
       "realtime_frame_output", "evidence_bundle", "inference_workers", "display_origin_x",
-      "display_origin_y", "live_mode", "save_video", "hdmi_output",
+      "display_origin_y", "live_mode", "save_video", "hdmi_output", "algo2_dual_view",
       "output_dir", "session_name"
     ];
     const checkboxIds = new Set([
       "roi_enabled", "show_roi_boundary", "show_roi_fill", "show_roi_points",
       "realtime_swing_events", "realtime_coach", "coach_tts", "coach_tts_playback", "deepseek_coach",
-      "realtime_frame_output", "evidence_bundle", "live_mode", "save_video", "hdmi_output"
+      "realtime_frame_output", "evidence_bundle", "live_mode", "save_video", "hdmi_output", "algo2_dual_view"
     ]);
     const CUSTOM_STREAM_ID = "custom";
     const state = { token: "", streams: [], status: "stopped", previewUrl: null };

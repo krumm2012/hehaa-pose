@@ -197,6 +197,7 @@ class ControlSettings:
     hdmi_output: bool
     display_origin_x: int
     display_origin_y: int
+    algo2_dual_view: bool = False
 
     @classmethod
     def from_payload(cls, payload: Dict[str, Any]) -> "ControlSettings":
@@ -307,6 +308,7 @@ class ControlSettings:
                 10000,
                 integer=True,
             ),
+            algo2_dual_view=_bool(payload, "algo2_dual_view", False),
         )
 
 
@@ -912,8 +914,11 @@ class LocalPipelineController:
             str(settings.output_fps),
             "--inference-workers",
             str(settings.inference_workers),
-            "--no-dual-view",
         ]
+        if settings.algo2_dual_view:
+            command.append("--algo2-dual-view")
+        else:
+            command.append("--no-dual-view")
         if settings.live_mode:
             command.extend(["--live-mode", "--drop-stale-frames"])
         if not settings.save_video:

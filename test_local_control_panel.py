@@ -575,6 +575,39 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
             "\n".join(final["logs"]),
         )
 
+    def test_command_includes_algo2_dual_view_when_requested(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = self.make_controller(root)
+            settings_on = ControlSettings.from_payload(
+                {
+                    "stream_id": "court01-main",
+                    "output_dir": "outputs",
+                    "session_name": "court01",
+                    "algo2_dual_view": True,
+                }
+            )
+            settings_off = ControlSettings.from_payload(
+                {
+                    "stream_id": "court01-main",
+                    "output_dir": "outputs",
+                    "session_name": "court01",
+                    "algo2_dual_view": False,
+                }
+            )
+            runtime_config = root / "runtime.yaml"
+            runtime_config.write_text("video_input_path: rtsp://127.0.0.1/camera", encoding="utf-8")
+            output = root / "outputs"
+            output.mkdir()
+
+            cmd_on, _ = controller._build_command(settings_on, runtime_config, output)
+            cmd_off, _ = controller._build_command(settings_off, runtime_config, output)
+
+            self.assertIn("--algo2-dual-view", cmd_on)
+            self.assertNotIn("--no-dual-view", cmd_on)
+            self.assertIn("--no-dual-view", cmd_off)
+            self.assertNotIn("--algo2-dual-view", cmd_off)
+
 
 if __name__ == "__main__":
     unittest.main()
