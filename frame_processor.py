@@ -128,8 +128,11 @@ class FrameProcessor:
         racket_detections: List[Dict],
         poses: List[Dict],
         phase_metrics: Dict,
+        healed_pose: Optional[Dict] = None,
+        dual_view_biomechanics: Optional[Dict] = None,
+        racket: Optional[Tuple[float, float, float, float]] = None,
     ) -> Dict:
-        return {
+        record = {
             "frame_id": frame_id,
             "timestamp": round(frame_id / self.fps, 3) if self.fps else 0.0,
             "swing_type": swing_type,
@@ -138,3 +141,10 @@ class FrameProcessor:
             "pose": poses[0] if poses else None,
             "metrics": phase_metrics,
         }
+        if racket is not None:
+            record["racket"] = list(racket)
+        if healed_pose is not None:
+            record["healed_pose"] = healed_pose
+        if dual_view_biomechanics is not None:
+            record["dual_view_biomechanics"] = dual_view_biomechanics
+        return record

@@ -109,10 +109,11 @@ class CoachTtsSidecar:
             if self._closed:
                 return
             self._closed = True
-        # Keep shutdown shorter than the pipeline supervisor's grace period.
-        self._thread.join(timeout=0.2)
+        # Gracefully wait up to 2.5s for in-flight task to finish
+        deadline = time.monotonic() + 2.5
+        while self._queue.unfinished_tasks > 0 and time.monotonic() < deadline:
+            time.sleep(0.05)
         self._cancel.set()
-        self._client.close()
         while True:
             try:
                 item = self._queue.get_nowait()
@@ -125,7 +126,8 @@ class CoachTtsSidecar:
             finally:
                 self._queue.task_done()
         self._queue.put(self._sentinel)
-        self._thread.join(timeout=2)
+        self._thread.join(timeout=2.0)
+        self._client.close()
         if self._thread.is_alive():
             raise RuntimeError("Speech sidecar did not stop within deadline")
 

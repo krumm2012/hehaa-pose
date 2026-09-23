@@ -97,6 +97,8 @@ class MultiprocessPipeline:
         session_id=None,
         session_output_root=None,
         evidence_manifest=None,
+        algo2_dual_view=False,
+        algo2_config=None,
     ):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
@@ -132,6 +134,22 @@ class MultiprocessPipeline:
         perf_cfg = self.config.setdefault('pipeline_perf', {})
         self.live_mode = bool(live_mode or perf_cfg.get('live_mode', False))
         self.drop_stale_frames = bool(drop_stale_frames or perf_cfg.get('drop_stale_frames', False))
+
+        self.algo2_dual_view = bool(
+            algo2_dual_view
+            or self.config.get('algo2_dual_view', {}).get('enabled', False)
+            or perf_cfg.get('algo2_dual_view', False)
+        )
+        self.algo2_config_path = (
+            algo2_config
+            or self.config.get('algo2_dual_view', {}).get('config_path')
+            or "configs/dual_view_config.yaml"
+        )
+        if self.algo2_dual_view:
+            perf_cfg['dual_view_enabled'] = False
+            realtime_swing_events = True
+            realtime_coach = True
+
         if self.live_mode:
             self.drop_stale_frames = True
             perf_cfg['dual_view_enabled'] = False
@@ -612,11 +630,27 @@ class MultiprocessPipeline:
                 self.config['unified_detection'],
                 roi_manager=roi_manager,
             )
-            pose_estimator = PoseEstimatorYOLO26(
-                self.config['yolo_pose_model_path'],
-                self.config,
-                roi_manager=roi_manager,
-            )
+            pose_estimator = None
+            dual_view_mgr = None
+            dual_pose_estimator = None
+
+            if self.algo2_dual_view:
+                from dual_view_manager import DualViewManager
+                from dual_pose_estimator import DualPoseEstimator
+
+                dual_view_mgr = DualViewManager(config_path=self.algo2_config_path)
+                dual_pose_estimator = DualPoseEstimator(
+                    model_path=self.config.get('yolo_pose_model_path'),
+                    dominant_hand=self.swing_analysis_options.get('dominant_hand', 'right'),
+                    backend='auto',
+                )
+                print("🚀 [Inference] 算法 2.0 虚拟双机位 CoreML ANE 姿态自愈引擎已就绪")
+            else:
+                pose_estimator = PoseEstimatorYOLO26(
+                    self.config['yolo_pose_model_path'],
+                    self.config,
+                    roi_manager=roi_manager,
+                )
 
             shms = [shared_memory.SharedMemory(name=name) for name in self.shm_names]
             shared_frames = [
@@ -670,41 +704,140 @@ class MultiprocessPipeline:
                     detection_frame = frame_context.detection_frame
                     pose_detection_frame = frame_context.pose_detection_frame
 
-                # 使用 ThreadPool 同时驱动检测和姿态模型。
-                f1 = executor.submit(
-                    detector.detect_unified,
-                    detection_frame,
-                    frame_context.roi_offset if frame_context is not None else (0, 0),
-                    (self.width, self.height),
-                )
-                f2 = executor.submit(pose_estimator.get_keypoints, pose_detection_frame)
-
-                ball, racket, _ = f1.result()
-                ball_diagnostics = detector.get_last_ball_diagnostics()
-                racket_diagnostics = detector.get_last_racket_diagnostics()
-                pose = f2.result()
-                if frame_context is not None:
-                    pose, ball, racket = frame_context.adjust_detections(
-                        pose,
-                        ball,
-                        racket,
-                        object_coordinates_are_full_frame=True,
+                if self.algo2_dual_view and dual_view_mgr is not None and dual_pose_estimator is not None:
+                    dual_frame = dual_view_mgr.split_frame(frame_ptr, frame_id=task['idx'])
+                    f1 = executor.submit(
+                        detector.detect_unified,
+                        detection_frame,
+                        frame_context.roi_offset if frame_context is not None else (0, 0),
+                        (self.width, self.height),
                     )
-                inference_completed_at_unix_ns = time.time_ns()
+                    f2 = executor.submit(dual_pose_estimator.estimate_dual_pose, dual_frame)
 
-                self.q_analyzer.put({
-                    'id': task['idx'],
-                    'slot': slot,
-                    'ball': ball,
-                    'racket': racket,
-                    'pose': pose,
-                    'ball_diagnostics': ball_diagnostics,
-                    'racket_diagnostics': racket_diagnostics,
-                    'captured_at': task.get('captured_at'),
-                    'captured_at_unix_ns': task.get('captured_at_unix_ns'),
-                    'inference_started_at_unix_ns': inference_started_at_unix_ns,
-                    'inference_completed_at_unix_ns': inference_completed_at_unix_ns,
-                })
+                    ball, raw_rackets, _ = f1.result()
+                    ball_diagnostics = detector.get_last_ball_diagnostics()
+                    racket_diagnostics = detector.get_last_racket_diagnostics()
+                    pose_res = f2.result()
+
+                    # 关联手腕位置并过滤后墙镜面区域 (x ∈ [680, 1580] 且 y < 620)
+                    dominant = self.swing_analysis_options.get('dominant_hand', 'right')
+                    wrist_key = "right_wrist" if dominant == "right" else "left_wrist"
+                    wrist_kp = pose_res.front_pose_orig.get(wrist_key)
+                    valid_rackets = []
+                    for r in (raw_rackets or []):
+                        r_box = r.get("box")
+                        if not r_box:
+                            continue
+                        rx_c = (r_box[0] + r_box[2]) / 2.0
+                        ry_c = (r_box[1] + r_box[3]) / 2.0
+                        if 680 <= rx_c <= 1580 and ry_c < 620:
+                            continue
+                        if wrist_kp is not None:
+                            dist = ((rx_c - wrist_kp.x) ** 2 + (ry_c - wrist_kp.y) ** 2) ** 0.5
+                            if dist <= 220.0:
+                                valid_rackets.append((dist, r))
+                        else:
+                            valid_rackets.append((0.0, r))
+
+                    if valid_rackets:
+                        valid_rackets.sort(key=lambda x: x[0])
+                        racket = [item[1] for item in valid_rackets]
+                        racket_box = valid_rackets[0][1].get("box")
+                    else:
+                        racket = []
+                        racket_box = None
+
+                    front_pose_dict = {
+                        k: (int(round(kp.x)), int(round(kp.y)))
+                        for k, kp in pose_res.front_pose_orig.items()
+                        if kp.conf > 0.25
+                    }
+                    healed_pose_dict = {
+                        k: (int(round(kp.x)), int(round(kp.y)))
+                        for k, kp in pose_res.fused_pose_orig.items()
+                        if kp.conf > 0.25
+                    }
+                    pose = [front_pose_dict] if front_pose_dict else []
+
+                    b = pose_res.biomechanics
+                    dual_view_biomech = {
+                        "shoulder_turn": {
+                            "shoulder_turn_deg": b.robust_shoulder_turn_deg,
+                            "confidence": 0.88,
+                        },
+                        "takeback_depth": {
+                            "takeback_depth_ratio": b.takeback_depth_ratio,
+                            "confidence": 0.85,
+                        },
+                        "scapular_retraction": {
+                            "scapular_retraction_ratio": b.scapular_retraction_ratio,
+                            "confidence": 0.85,
+                        },
+                        "shot_classification": {
+                            "stroke_type": b.shot_classification.shot_type,
+                            "is_two_handed": b.shot_classification.is_two_handed,
+                            "confidence": b.shot_classification.confidence,
+                        },
+                        "contact_distance_gate": {
+                            "is_valid_contact": b.shot_classification.is_valid_contact,
+                        },
+                    }
+                    inference_completed_at_unix_ns = time.time_ns()
+
+                    self.q_analyzer.put({
+                        'id': task['idx'],
+                        'slot': slot,
+                        'ball': ball,
+                        'racket': racket,
+                        'racket_box': racket_box,
+                        'pose': pose,
+                        'healed_pose': healed_pose_dict,
+                        'dual_pose_res': pose_res,
+                        'dual_view_biomechanics': dual_view_biomech,
+                        'ball_diagnostics': ball_diagnostics,
+                        'racket_diagnostics': racket_diagnostics,
+                        'captured_at': task.get('captured_at'),
+                        'captured_at_unix_ns': task.get('captured_at_unix_ns'),
+                        'inference_started_at_unix_ns': inference_started_at_unix_ns,
+                        'inference_completed_at_unix_ns': inference_completed_at_unix_ns,
+                    })
+                else:
+                    # 使用 ThreadPool 同时驱动检测和姿态模型。
+                    f1 = executor.submit(
+                        detector.detect_unified,
+                        detection_frame,
+                        frame_context.roi_offset if frame_context is not None else (0, 0),
+                        (self.width, self.height),
+                    )
+                    f2 = executor.submit(pose_estimator.get_keypoints, pose_detection_frame)
+
+                    ball, racket, _ = f1.result()
+                    ball_diagnostics = detector.get_last_ball_diagnostics()
+                    racket_diagnostics = detector.get_last_racket_diagnostics()
+                    pose = f2.result()
+                    if frame_context is not None:
+                        pose, ball, racket = frame_context.adjust_detections(
+                            pose,
+                            ball,
+                            racket,
+                            object_coordinates_are_full_frame=True,
+                        )
+                    inference_completed_at_unix_ns = time.time_ns()
+
+                    self.q_analyzer.put({
+                        'id': task['idx'],
+                        'slot': slot,
+                        'ball': ball,
+                        'racket': racket,
+                        'racket_box': racket[0]['box'] if racket and racket[0].get('box') else None,
+                        'pose': pose,
+                        'ball_diagnostics': ball_diagnostics,
+                        'racket_diagnostics': racket_diagnostics,
+                        'captured_at': task.get('captured_at'),
+                        'captured_at_unix_ns': task.get('captured_at_unix_ns'),
+                        'inference_started_at_unix_ns': inference_started_at_unix_ns,
+                        'inference_completed_at_unix_ns': inference_completed_at_unix_ns,
+                    })
         except Exception as exc:
             print(f"❌ [Inference] 初始化或推理失败: {exc}")
             self.stop_event.set()
@@ -728,16 +861,37 @@ class MultiprocessPipeline:
         from video_writer_backend import create_video_writer
 
         perf_cfg = self.config.get('pipeline_perf', {})
+        dual_view_mgr = None
+        dual_view_renderer = None
+        sbs_width = self.width
+        sbs_height = self.height
+        ball_trail = []
+
+        if self.algo2_dual_view:
+            from dual_view_manager import DualViewManager
+            from dual_view_renderer import DualViewRenderer
+
+            dual_view_mgr = DualViewManager(config_path=self.algo2_config_path)
+            dual_view_renderer = DualViewRenderer(show_hud=True, show_skeleton=True)
+            fw = dual_view_mgr.front_target_size[0] if dual_view_mgr.front_target_size else 540
+            bw = dual_view_mgr.mirror_target_size[0] if dual_view_mgr.mirror_target_size else 540
+            fh = dual_view_mgr.front_target_size[1] if dual_view_mgr.front_target_size else 720
+            sbs_width = fw + bw
+            sbs_height = fh
+            print(f"🚀 [Analyzer] 算法 2.0 虚拟双机位 Side-by-Side 实时渲染引擎就绪: {sbs_width}x{sbs_height}")
+
         # 视频录制
         save_video = self.config.get('save_video', True)
         out_writer = None
         out_file = None
         if save_video:
             out_file = create_output_directory(self.config['video_output_path'])
+            writer_w = sbs_width if self.algo2_dual_view else self.width
+            writer_h = sbs_height if self.algo2_dual_view else self.height
             out_writer = create_video_writer(
                 output_path=out_file,
-                width=self.width,
-                height=self.height,
+                width=writer_w,
+                height=writer_h,
                 fps=self.output_fps,
                 backend=perf_cfg.get('video_encoder_backend', 'auto'),
                 bitrate=perf_cfg.get('video_encoder_bitrate', '12M'),
@@ -928,12 +1082,15 @@ class MultiprocessPipeline:
                 session_metadata=self.session_metadata,
                 **self.swing_analysis_options,
             )
+            effective_output_size = (
+                (sbs_width, sbs_height) if self.algo2_dual_view else (self.width, self.height)
+            )
             realtime_output = RealtimeSwingOutputManager(
                 output_json=realtime_json,
                 output_html=realtime_html,
                 clips_dir=realtime_clips_dir,
                 fps=self.output_fps,
-                frame_size=(self.width, self.height),
+                frame_size=effective_output_size,
                 buffer_frames=(
                     effective_window_frames
                     + effective_settle_frames
@@ -1024,6 +1181,11 @@ class MultiprocessPipeline:
             detailed_data = frame_analysis["phase_metrics"]
             norm_ball_pos = frame_analysis["ball_position"]
 
+            healed_pose = data.get('healed_pose')
+            dv_biomech = data.get('dual_view_biomechanics')
+            racket_box = data.get('racket_box')
+            pose_res = data.get('dual_pose_res')
+
             # --- 保存每帧数据 ---
             frame_record = None
             if (
@@ -1038,6 +1200,9 @@ class MultiprocessPipeline:
                     racket_detections=racket_list,
                     poses=poses,
                     phase_metrics=detailed_data,
+                    healed_pose=healed_pose,
+                    dual_view_biomechanics=dv_biomech,
+                    racket=racket_box,
                 )
                 frame_record["detection_diagnostics"] = data.get("ball_diagnostics") or {}
                 frame_record["racket_detection_diagnostics"] = (
@@ -1075,61 +1240,83 @@ class MultiprocessPipeline:
                     "ball_diagnostics": data.get("ball_diagnostics") or {},
                 })
 
-            # --- 2. 视觉渲染流程 (原生 OpenCV 绘制，性能极大提升) ---
-            # 背景半透明面板
-            mask = canvas.copy()
-            cv2.rectangle(mask, (20, 20), (420, 620), (0, 0, 0), -1)
-            cv2.addWeighted(mask, 0.75, canvas, 0.25, 0, canvas)
+            # --- 2. 视觉渲染流程 ---
+            if self.algo2_dual_view and dual_view_mgr is not None and dual_view_renderer is not None and pose_res is not None:
+                if norm_ball_pos:
+                    ball_trail.append(norm_ball_pos)
+                if len(ball_trail) > 8:
+                    ball_trail.pop(0)
 
-            # A. 核心文本显示 (English Only)
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(canvas, f"Action: {swing_label}", (40, 65), font, 0.8, (0, 255, 255), 2)
-            cv2.putText(canvas, f"Frame: {fid:04d}", (40, 100), font, 0.5, (200, 200, 200), 1)
+                disp = realtime_runtime.get_active_display_state(fid) if realtime_runtime is not None else {}
+                ev_label = disp.get("event_label") or swing_label or "READY STANCE"
+                ev_coach = disp.get("coaching_text") or ""
+                telemetry_card = disp.get("telemetry_card")
 
-            # B. 绘制详细肢体指标
-            if draw_metrics_text:
-                y_ptr = 140
-                for phase, metrics in detailed_data.items():
-                    for k, v in metrics.items():
-                        # k 已经是英文 (如 shoulder_turn)，颜色区分保持
-                        color = (0, 255, 0) if "angle" in k or "ext" in k else (220, 220, 220)
-                        cv2.putText(canvas, f"{k}: {v}", (40, y_ptr), font, 0.5, color, 1)
-                        y_ptr += 26
-                        if y_ptr > 600:
-                            break
+                dual_frame = dual_view_mgr.split_frame(canvas, frame_id=fid)
+                rendered_canvas = dual_view_renderer.render_dual_frame(
+                    dual_frame,
+                    pose_res,
+                    event_label=ev_label,
+                    coaching_text=ev_coach,
+                    ball_trail=list(ball_trail),
+                    racket_box=racket_box,
+                    telemetry_card=telemetry_card,
+                )
+            else:
+                # 背景半透明面板
+                mask = canvas.copy()
+                cv2.rectangle(mask, (20, 20), (420, 620), (0, 0, 0), -1)
+                cv2.addWeighted(mask, 0.75, canvas, 0.25, 0, canvas)
 
-            # C. 绘制视觉元素 (骨架、球、球拍)
-            canvas = draw_pose_keypoints(canvas, poses)
-            if norm_ball_pos:
-                draw_ball_outline(canvas, norm_ball_pos)
+                # A. 核心文本显示 (English Only)
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                cv2.putText(canvas, f"Action: {swing_label}", (40, 65), font, 0.8, (0, 255, 255), 2)
+                cv2.putText(canvas, f"Frame: {fid:04d}", (40, 100), font, 0.5, (200, 200, 200), 1)
 
-            for ra in racket_list:
-                x1, y1, x2, y2 = ra['box']
-                cv2.rectangle(canvas, (x1, y1), (x2, y2), (255, 128, 0), 2)
+                # B. 绘制详细肢体指标
+                if draw_metrics_text:
+                    y_ptr = 140
+                    for phase, metrics in detailed_data.items():
+                        for k, v in metrics.items():
+                            color = (0, 255, 0) if "angle" in k or "ext" in k else (220, 220, 220)
+                            cv2.putText(canvas, f"{k}: {v}", (40, y_ptr), font, 0.5, color, 1)
+                            y_ptr += 26
+                            if y_ptr > 600:
+                                break
+
+                # C. 绘制视觉元素 (骨架、球、球拍)
+                canvas = draw_pose_keypoints(canvas, poses)
+                if norm_ball_pos:
+                    draw_ball_outline(canvas, norm_ball_pos)
+
+                for ra in racket_list:
+                    x1, y1, x2, y2 = ra['box']
+                    cv2.rectangle(canvas, (x1, y1), (x2, y2), (255, 128, 0), 2)
+                rendered_canvas = canvas
 
             # --- 3. 提交并释放 ---
             if realtime_runtime is not None and frame_record is not None:
                 realtime_runtime.submit_frame(frame_record)
-                # Swing/Coach data is latency-sensitive; enqueue it before the
-                # 1440p rendered-frame copy used only for previews and clips.
-                realtime_runtime.record_rendered_frame(fid, canvas)
-            if out_writer: out_writer.write(canvas)
+                realtime_runtime.record_rendered_frame(fid, rendered_canvas)
+            if out_writer: out_writer.write(rendered_canvas)
 
-            # HDMI 单路输出与双窗口对比显示互斥。
+            # HDMI 单路输出、双视角全屏输出与双窗口对比显示
             if processed_display is not None:
-                if processed_display.show(canvas):
+                if processed_display.show(rendered_canvas):
+                    self.stop_event.set()
+            elif self.algo2_dual_view:
+                cv2.imshow("Tennis AI Analyzer - Algo 2.0 Dual View (ESC to Quit)", rendered_canvas)
+                key = cv2.waitKey(1) & 0xFF
+                if key == 27 or key == ord('q'):
                     self.stop_event.set()
             elif dual_view_enabled:
+                font = cv2.FONT_HERSHEY_SIMPLEX
                 h, w = canvas.shape[:2]
-                # 缩放原始图和处理图
                 scaled_size = (int(w * dual_view_scale), int(h * dual_view_scale))
                 orig_small = cv2.resize(shared_frames[slot], scaled_size)
                 proc_small = cv2.resize(canvas, scaled_size)
 
-                # 水平堆叠
                 dual_view = np.hstack((orig_small, proc_small))
-
-                # 为双视角增加文字标识
                 cv2.putText(dual_view, "ORIGINAL", (20, 30), font, 1.0, (255, 255, 255), 2)
                 cv2.putText(
                     dual_view,
@@ -1143,7 +1330,7 @@ class MultiprocessPipeline:
 
                 cv2.imshow("Tennis AI Analyer - Dual Comparison (ESC to Quit)", dual_view)
                 key = cv2.waitKey(1) & 0xFF
-                if key == 27: # ESC 键退出
+                if key == 27:
                     self.stop_event.set()
 
             self.q_free.put(slot) # 释放回池子
@@ -1700,6 +1887,17 @@ def build_argument_parser():
                         help='只生成报告内可播放 WAV，不通过本机扬声器播报')
     parser.add_argument('--realtime-open-report', action='store_true',
                         help='启动实时 Swing 输出时在系统浏览器打开 HTML 页面')
+    parser.add_argument(
+        '--algo2-dual-view', '--dual-view',
+        dest='algo2_dual_view',
+        action='store_true',
+        help='启用算法2.0虚拟双机位实时解耦、自愈姿态推理、3梯队生物力学与Side-by-Side渲染',
+    )
+    parser.add_argument(
+        '--algo2-config',
+        default='configs/dual_view_config.yaml',
+        help='算法2.0双机位配置文件路径，默认 configs/dual_view_config.yaml',
+    )
     return parser
 
 
@@ -1776,6 +1974,8 @@ def main_cli(argv=None):
         session_id=args.session_id,
         session_output_root=args.session_output_root,
         evidence_manifest=args.evidence_manifest,
+        algo2_dual_view=args.algo2_dual_view,
+        algo2_config=args.algo2_config,
     ).run()
 
 

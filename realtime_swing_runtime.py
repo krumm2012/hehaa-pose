@@ -12,6 +12,30 @@ import threading
 from typing import Callable, Dict, Optional
 
 
+def build_impact_telemetry_card(event_dict: Dict) -> Dict:
+    """Build telemetry card dictionary for DualViewRenderer overlay."""
+    bio = event_dict.get("biomechanics") or {}
+    ext = bio.get("extended_biomechanics") or event_dict.get("extended_biomechanics") or {}
+    score = ext.get("swing_quality_score") or {}
+    rkt = ext.get("racket_head_speed") or {}
+    brush = ext.get("brush_angle") or {}
+    stc = ext.get("stance") or {}
+    leg = ext.get("leg_drive") or {}
+    seq = ext.get("kinematic_sequence") or {}
+    return {
+        "stroke_type": event_dict.get("stroke_type", "FOREHAND"),
+        "swing_score": score.get("overall_score", 0.0),
+        "swing_grade": score.get("grade", "N/A"),
+        "racket_speed_kmh": rkt.get("contact_kmh", 0.0),
+        "racket_max_speed_kmh": rkt.get("max_kmh", 0.0),
+        "brush_angle_deg": brush.get("low_to_high_angle_deg", 0.0),
+        "drop_depth_ratio": brush.get("drop_depth_ratio"),
+        "stance_type": stc.get("stance_type", "Semi-Open Stance"),
+        "leg_drive_ratio": leg.get("drive_ratio"),
+        "kinematic_sequence_text": f"腿 -> 髋 -> 肩 -> 拍 ({seq.get('sequence_quality', 'OPTIMAL')})",
+    }
+
+
 class RealtimeSwingRuntime:
     """Run the non-visual realtime data path independently from OSD rendering."""
 
@@ -38,6 +62,16 @@ class RealtimeSwingRuntime:
         self._sentinel = object()
         self._closed = False
         self._worker_error: Optional[BaseException] = None
+        self._active_display_lock = threading.Lock()
+        fps_val = float(getattr(engine, "fps", 25.0) or 25.0)
+        self._active_hold_frames = max(10, int(round(fps_val * 1.0)))
+        self._active_display = {
+            "event_label": "READY STANCE",
+            "coaching_text": "",
+            "telemetry_card": None,
+            "expire_at_frame": -1,
+            "event_id": -1,
+        }
         self._thread = threading.Thread(
             target=self._run,
             name="realtime-swing-analysis",
@@ -143,20 +177,42 @@ class RealtimeSwingRuntime:
                 f" | {event['stroke_type']}"
                 f" | frames {event['start_frame']}-{event['end_frame']}"
                 f" | contact {event['contact_frame']}"
-                f" | latency {event['latency_frames']}F"
+                f" | latency {event.get('latency_frames', 0)}F"
             )
             advices = event.get("coach_advices") or []
             if not advices and event.get("coach_advice"):
                 advices = [event["coach_advice"]]
+            coach_msg = ""
             for index, advice in enumerate(advices[:3], start=1):
                 if not advice.get("message"):
                     continue
+                if not coach_msg:
+                    coach_msg = advice["message"]
                 self.logger(
                     f"🎯 [Coach] Swing #{event['event_id']}"
                     f" | {index}/{len(advices[:3])}"
                     f" | {advice['message']}"
                     f" | {float(advice.get('confidence') or 0.0):.0%}"
                 )
+
+            # 更新用于实时双视角渲染的 Active Display 状态
+            conf_val = float(event.get("confidence", 0.9) or 0.9)
+            stroke_name = str(event.get("stroke_type", "SWING")).upper()
+            display_label = f"{stroke_name} ({conf_val * 100:.0f}%)"
+            card_info = build_impact_telemetry_card(event)
+            contact_f = int(event.get("contact_frame", 0))
+            emitted_at = int(event.get("emitted_at_frame", contact_f))
+            expire_f = max(contact_f, emitted_at) + self._active_hold_frames
+
+            with self._active_display_lock:
+                self._active_display = {
+                    "event_label": display_label,
+                    "coaching_text": coach_msg,
+                    "telemetry_card": card_info,
+                    "expire_at_frame": expire_f,
+                    "event_id": int(event.get("event_id", -1)),
+                }
+
             if self.deepseek_sidecar is not None:
                 event_id = int(event["event_id"])
                 frame_records = self.engine.frame_records_for_event(event)
@@ -177,6 +233,25 @@ class RealtimeSwingRuntime:
                         result,
                     ),
                 )
+
+    def get_active_display_state(self, current_frame_id: int) -> Dict:
+        """Return real-time display HUD information (event label, coaching advice, telemetry card)."""
+        with self._active_display_lock:
+            if current_frame_id <= self._active_display.get("expire_at_frame", -1):
+                return {
+                    "event_label": self._active_display.get("event_label", "READY STANCE"),
+                    "coaching_text": self._active_display.get("coaching_text", ""),
+                    "telemetry_card": self._active_display.get("telemetry_card"),
+                    "event_id": self._active_display.get("event_id", -1),
+                    "active": True,
+                }
+            return {
+                "event_label": "READY STANCE",
+                "coaching_text": "",
+                "telemetry_card": None,
+                "event_id": -1,
+                "active": False,
+            }
 
     def _publish_deepseek(self, event_id: int, result: Dict) -> None:
         self.output.update_event(event_id, {"deepseek_advice": result})
