@@ -832,10 +832,17 @@ def enrich_events_with_biomechanics(
     enriched = []
     for source in events:
         event = deepcopy(source)
-        event["biomechanics"] = aggregate_event_biomechanics(
+        bio = aggregate_event_biomechanics(
             event,
             frame_rows,
             feature_rows,
         )
+        event["biomechanics"] = bio
+        if "extended_biomechanics" in bio:
+            event["extended_biomechanics"] = bio["extended_biomechanics"]
+        if "swing_score" in bio:
+            event["swing_score"] = bio["swing_score"]
+        if "swing_grade" in bio:
+            event["swing_grade"] = bio["swing_grade"]
         enriched.append(event)
     return enriched

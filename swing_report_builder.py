@@ -22,7 +22,7 @@ RADAR_AXES = [
 ]
 
 
-def _build_radar_svg(sub_scores: Dict[str, float], width: int = 240, height: int = 220) -> str:
+def _build_radar_svg(sub_scores: Dict[str, float], width: int = 240, height: int = 220, dark_theme: bool = False) -> str:
     """Build a standalone inline SVG 5-axis biomechanical quality radar chart."""
     if not sub_scores:
         return ""
@@ -43,7 +43,10 @@ def _build_radar_svg(sub_scores: Dict[str, float], width: int = 240, height: int
             y = cy + r_max * lvl * math.sin(ang)
             pts.append(f"{x:.1f},{y:.1f}")
         dash = ' stroke-dasharray="2,2"' if lvl < 1.0 else ""
-        stroke_color = "#d8d0c0" if lvl < 1.0 else "#b0a898"
+        if dark_theme:
+            stroke_color = "#233348" if lvl < 1.0 else "#364c6a"
+        else:
+            stroke_color = "#d8d0c0" if lvl < 1.0 else "#b0a898"
         svg_parts.append(
             f'<polygon points="{" ".join(pts)}" fill="none" stroke="{stroke_color}" stroke-width="1"{dash}/>'
         )
@@ -58,8 +61,9 @@ def _build_radar_svg(sub_scores: Dict[str, float], width: int = 240, height: int
         sin_a = math.sin(ang)
         ox = cx + r_max * cos_a
         oy = cy + r_max * sin_a
+        spoke_stroke = "#233348" if dark_theme else "#d8d0c0"
         svg_parts.append(
-            f'<line x1="{cx:.1f}" y1="{cy:.1f}" x2="{ox:.1f}" y2="{oy:.1f}" stroke="#d8d0c0" stroke-width="1"/>'
+            f'<line x1="{cx:.1f}" y1="{cy:.1f}" x2="{ox:.1f}" y2="{oy:.1f}" stroke="{spoke_stroke}" stroke-width="1"/>'
         )
 
         score = float(sub_scores.get(key, 0.0) or 0.0)
@@ -68,20 +72,25 @@ def _build_radar_svg(sub_scores: Dict[str, float], width: int = 240, height: int
         dx = cx + r_val * cos_a
         dy = cy + r_val * sin_a
         data_pts.append(f"{dx:.1f},{dy:.1f}")
+        dot_fill = "#00f0ff" if dark_theme else "#0f7b6c"
+        dot_stroke = "#0a0f1a" if dark_theme else "#fff"
         vertex_circles.append(
-            f'<circle cx="{dx:.1f}" cy="{dy:.1f}" r="3.5" fill="#0f7b6c" stroke="#fff" stroke-width="1.5"/>'
+            f'<circle cx="{dx:.1f}" cy="{dy:.1f}" r="3.5" fill="{dot_fill}" stroke="{dot_stroke}" stroke-width="1.5"/>'
         )
 
         # Label placement
         lx = cx + (r_max + 18.0) * cos_a
         ly = cy + (r_max + 18.0) * sin_a
         anchor = "middle" if abs(cos_a) < 0.15 else ("start" if cos_a > 0 else "end")
+        text_color = "#93a4bb" if dark_theme else "#334155"
         labels_svg.append(
-            f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="{anchor}" dominant-baseline="central" font-size="10" font-weight="600" fill="#334155">{label} {score:.0f}</text>'
+            f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="{anchor}" dominant-baseline="central" font-size="10" font-weight="600" fill="{text_color}">{label} {score:.0f}</text>'
         )
 
+    poly_fill = "rgba(0, 240, 255, 0.22)" if dark_theme else "rgba(15,123,108,0.22)"
+    poly_stroke = "#00f0ff" if dark_theme else "#0f7b6c"
     svg_parts.append(
-        f'<polygon points="{" ".join(data_pts)}" fill="rgba(15,123,108,0.22)" stroke="#0f7b6c" stroke-width="2.2"/>'
+        f'<polygon points="{" ".join(data_pts)}" fill="{poly_fill}" stroke="{poly_stroke}" stroke-width="2.2"/>'
     )
     svg_parts.extend(vertex_circles)
     svg_parts.extend(labels_svg)

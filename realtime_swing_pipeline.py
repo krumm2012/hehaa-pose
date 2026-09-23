@@ -25,6 +25,7 @@ from analysis_data_contracts import (
     utc_iso_from_ns,
 )
 from swing_event_analyzer import analyze_frame_records
+from swing_report_builder import _build_radar_svg
 from swing_session_quality import build_session_quality_dashboard
 from video_writer_backend import create_video_writer
 
@@ -874,6 +875,27 @@ class RealtimeSwingOutputManager:
                 writer.write(frame)
         finally:
             writer.release()
+
+        # Extract and save contact frame freeze snapshot if available
+        contact_fid = int(event.get("contact_frame") or event.get("start_frame") or 0)
+        target_bytes = None
+        for fid, fbytes in frames:
+            if fid == contact_fid:
+                target_bytes = fbytes
+                break
+        if target_bytes is None and frames:
+            target_bytes = min(frames, key=lambda x: abs(x[0] - contact_fid))[1]
+
+        freeze_rel = None
+        if target_bytes:
+            freeze_filename = f"event_{int(event['event_id']):04d}_impact_freeze.jpg"
+            freeze_path = output_path.parent / freeze_filename
+            try:
+                freeze_path.write_bytes(target_bytes)
+                freeze_rel = str(freeze_path.relative_to(self.output_json.parent)).replace(os.sep, "/")
+            except Exception:
+                freeze_rel = freeze_filename
+
         buffered_frame_ids = {int(frame_id) for frame_id, _ in frames}
         missing_frame_ids = sorted(
             frame_id
@@ -884,6 +906,7 @@ class RealtimeSwingOutputManager:
             "status": "partial" if missing_frame_ids else "ready",
             "frame_count": len(frames),
             "missing_frames": missing_frame_ids,
+            "impact_freeze_path": freeze_rel,
         }
 
     def _finish_clip(self, event_id: int, future: Future) -> None:
@@ -896,6 +919,9 @@ class RealtimeSwingOutputManager:
                 "clip_missing_frame_count": len(missing_frames),
                 "clip_missing_frames": missing_frames,
             }
+            if result.get("impact_freeze_path"):
+                updates["impact_freeze_path"] = result["impact_freeze_path"]
+                updates["snapshots"] = {"impact_freeze": result["impact_freeze_path"]}
         except Exception as exc:
             updates = {
                 "clip_status": "failed",
@@ -1184,9 +1210,65 @@ class RealtimeSwingOutputManager:
                 clip_content = (
                     '<p class="clip-state">Encoding this Swing clip in the background…</p>'
                 )
+            bio = event.get("biomechanics") or {}
+            ext = event.get("extended_biomechanics") or bio.get("extended_biomechanics") or {}
+            metrics = bio.get("metrics") or {}
+            sqs = (
+                event.get("swing_quality_score")
+                or ext.get("swing_quality_score")
+                or metrics.get("swing_quality_score")
+                or {}
+            )
+            swing_grade = event.get("swing_grade") or bio.get("swing_grade") or (sqs.get("grade") if isinstance(sqs, dict) else None)
+            swing_score = event.get("swing_score") or bio.get("swing_score") or (sqs.get("overall_score") if isinstance(sqs, dict) else (sqs.get("value") if isinstance(sqs, dict) else None))
+            if swing_grade:
+                grade_upper = str(swing_grade).upper()
+                tier_class = f"tier-{grade_upper.lower()}"
+                score_display = f"{float(swing_score):.1f}分" if swing_score is not None else ""
+                grade_labels = {
+                    "PRO": "PRO · 职业级",
+                    "ADVANCED": "ADVANCED · 进阶级",
+                    "INTERMEDIATE": "INTERMEDIATE · 中级",
+                    "DEVELOPING": "DEVELOPING · 基础级",
+                }
+                grade_label = grade_labels.get(grade_upper, grade_upper)
+                head_badge_html = f'<span class="tier-pill {tier_class}">{html.escape(grade_label)} <strong style="margin-left:4px;">{score_display}</strong></span>'
+            else:
+                conf_val = float(event.get('confidence') or 0.0)
+                head_badge_html = f'<span>{conf_val:.1%}</span>'
+
+            snapshot_html = ""
+            c_frame = event.get("contact_frame")
+            snap_path = event.get("impact_freeze_path") or (event.get("snapshots") or {}).get("impact_freeze")
+            if not snap_path and c_frame is not None:
+                cand_files = list(self.output_json.parent.glob(f"*{c_frame}*.jpg"))
+                if cand_files:
+                    try:
+                        snap_path = os.path.relpath(cand_files[0], self.output_html.parent).replace(os.sep, "/")
+                    except ValueError:
+                        snap_path = cand_files[0].name
+            elif snap_path:
+                try:
+                    full_p = self.output_json.parent / snap_path
+                    if full_p.exists():
+                        snap_path = os.path.relpath(full_p, self.output_html.parent).replace(os.sep, "/")
+                except ValueError:
+                    pass
+            if snap_path:
+                snapshot_html = f"""
+                <div class="impact-freeze-container">
+                  <a href="{html.escape(snap_path)}" target="_blank" class="impact-freeze-link" title="点击查看击球瞬间定格特写">
+                    <img src="{html.escape(snap_path)}" alt="击球瞬间定格特写" loading="lazy" class="impact-freeze-img" />
+                    <span class="impact-freeze-badge">⚡ 击球瞬间定格特写 (第 {c_frame} 帧)</span>
+                  </a>
+                </div>
+                """
+
             coach_advices = event.get("coach_advices") or []
             if not coach_advices and event.get("coach_advice"):
                 coach_advices = [event["coach_advice"]]
+            schema_ver = str(bio.get("schema_version") or "")
+            coach_origin_text = "虚拟双机位解剖自愈动力学" if schema_ver == "dual_view_2d_v1" else "单机位2D估计"
             coach_content = ""
             if coach_advices:
                 advice_rows = []
@@ -1207,7 +1289,7 @@ class RealtimeSwingOutputManager:
                 if advice_rows:
                     coach_content = (
                         '<div class="coach-advice"><div class="coach-title">'
-                        '<span>实时动作纠错</span><small>单摄像头2D估计</small></div>'
+                        f'<span>实时动作纠错</span><small>{html.escape(coach_origin_text)}</small></div>'
                         f'<ol>{"".join(advice_rows)}</ol></div>'
                     )
             coach_tts = event.get("coach_tts") or {}
@@ -1238,8 +1320,136 @@ class RealtimeSwingOutputManager:
                     '<div class="coach-tts unavailable"><span>本地语音 Coach</span>'
                     '<small>文字建议继续生效</small></div>'
                 )
+
+            # 5维生物力学技术雷达图
+            sub_scores = sqs.get("sub_scores") if isinstance(sqs, dict) and isinstance(sqs.get("sub_scores"), dict) else {}
+            radar_svg = _build_radar_svg(sub_scores, dark_theme=True) if sub_scores else ""
+            radar_html = f"""
+            <div class="bio-radar-wrapper">
+              <div class="bio-radar-title">5维生物力学质量雷达</div>
+              {radar_svg}
+            </div>
+            """ if radar_svg else ""
+
+            # 动力学链时序传递延时条
+            seq = (
+                event.get("kinematic_sequence")
+                or ext.get("kinematic_sequence")
+                or metrics.get("kinematic_sequence")
+                or {}
+            )
+            details = seq.get("details") if isinstance(seq, dict) and isinstance(seq.get("details"), dict) else (seq if isinstance(seq, dict) else {})
+            seq_quality = (seq.get("value") or details.get("sequence_quality") or "OPTIMAL") if isinstance(seq, dict) else "OPTIMAL"
+            dt_hip_sh = details.get("latency_hip_to_shoulder_ms") if isinstance(details, dict) else None
+            dt_sh_rkt = details.get("latency_shoulder_to_racket_ms") if isinstance(details, dict) else None
+
+            kinematic_html = ""
+            if dt_hip_sh is not None or dt_sh_rkt is not None:
+                dt_hip_sh_val = float(dt_hip_sh or 0.0)
+                dt_sh_rkt_val = float(dt_sh_rkt or 0.0)
+                dt_hip_sh_pct = min(100.0, max(5.0, (dt_hip_sh_val / 80.0) * 100.0))
+                dt_sh_rkt_pct = min(100.0, max(5.0, (dt_sh_rkt_val / 90.0) * 100.0))
+                kinematic_html = f"""
+                <div class="kinematic-box">
+                  <div class="kinematic-header">
+                    <span>动力学链传递: <strong>下肢 ➔ 髋/骨盆 ➔ 肩/躯干 ➔ 球拍</strong></span>
+                    <span class="seq-badge seq-{html.escape(str(seq_quality).lower())}">{html.escape(str(seq_quality))}</span>
+                  </div>
+                  <div class="kinematic-bars">
+                    <div class="kinematic-bar-row">
+                      <span class="k-label">髋-肩时序延时 (Δt_hip_sh):</span>
+                      <span class="k-val">{dt_hip_sh_val:.1f} ms</span>
+                      <div class="k-track"><div class="k-fill" style="width:{dt_hip_sh_pct:.0f}%;"></div></div>
+                    </div>
+                    <div class="kinematic-bar-row">
+                      <span class="k-label">肩-拍时序延时 (Δt_sh_rkt):</span>
+                      <span class="k-val">{dt_sh_rkt_val:.1f} ms</span>
+                      <div class="k-track"><div class="k-fill k-fill-rkt" style="width:{dt_sh_rkt_pct:.0f}%;"></div></div>
+                    </div>
+                  </div>
+                </div>
+                """
+
+            # 击球遥测指标网格
+            rkt = (
+                event.get("racket_speed")
+                or ext.get("racket_head_speed")
+                or metrics.get("racket_head_speed")
+                or {}
+            )
+            brush = (
+                event.get("brush_angle")
+                or ext.get("brush_angle")
+                or metrics.get("brush_angle")
+                or {}
+            )
+            stc = (
+                event.get("stance")
+                or ext.get("stance")
+                or metrics.get("stance")
+                or {}
+            )
+            leg = (
+                event.get("leg_drive")
+                or ext.get("leg_drive")
+                or metrics.get("leg_drive")
+                or {}
+            )
+            tb = metrics.get("takeback_depth") or {}
+            scap = metrics.get("scapular_retraction") or {}
+            sh_turn = metrics.get("shoulder_turn") or {}
+
+            contact_kmh = rkt.get("contact_kmh") or rkt.get("contact_speed_kmh") or (rkt.get("value") if isinstance(rkt, dict) else None)
+            max_kmh = rkt.get("max_kmh") or rkt.get("max_speed_kmh")
+            brush_angle = brush.get("low_to_high_angle_deg") or brush.get("angle_deg") or (brush.get("value") if isinstance(brush, dict) else None)
+            drop_ratio = brush.get("drop_depth_ratio") if isinstance(brush, dict) else None
+            stance_type = stc.get("stance_type") or (stc.get("value") if isinstance(stc, dict) else None)
+            leg_ratio = leg.get("drive_ratio") or (leg.get("value") if isinstance(leg, dict) else None)
+            tb_val = tb.get("value") if isinstance(tb, dict) else None
+            scap_val = scap.get("value") if isinstance(scap, dict) else None
+            turn_val = sh_turn.get("value") if isinstance(sh_turn, dict) else None
+
+            has_telemetry = any(v is not None for v in [contact_kmh, max_kmh, brush_angle, drop_ratio, stance_type, leg_ratio, tb_val, scap_val, turn_val])
+            telemetry_html = ""
+            if has_telemetry:
+                kmh_text = f"{float(contact_kmh):.1f} / {float(max_kmh):.1f} km/h" if contact_kmh is not None and max_kmh is not None else (f"{float(contact_kmh):.1f} km/h" if contact_kmh is not None else "-")
+                brush_text = f"{float(brush_angle):+.1f}°" if brush_angle is not None else "-"
+                if drop_ratio is not None:
+                    try:
+                        brush_text += f" (下潜 {float(drop_ratio):.2f}x)"
+                    except (ValueError, TypeError):
+                        brush_text += f" (下潜 {drop_ratio})"
+                stance_text = str(stance_type or "-")
+                if leg_ratio is not None:
+                    try:
+                        stance_text += f" · 蹬地 {float(leg_ratio):.2f}x"
+                    except (ValueError, TypeError):
+                        stance_text += f" · 蹬地 {leg_ratio}"
+                dual_back_text = ""
+                if tb_val is not None or scap_val is not None or turn_val is not None:
+                    parts = []
+                    if turn_val is not None:
+                        parts.append(f"转肩 {float(turn_val):.1f}°")
+                    if tb_val is not None:
+                        parts.append(f"引拍 {float(tb_val):.2f}x")
+                    if scap_val is not None:
+                        parts.append(f"肩胛 {float(scap_val):.2f}x")
+                    dual_back_text = " · ".join(parts)
+
+                telemetry_html = f"""
+                <div class="telemetry-grid">
+                  <div class="telem-item"><span class="telem-label">拍头挥速 (击球/峰值)</span><strong class="telem-val">{html.escape(kmh_text)}</strong></div>
+                  <div class="telem-item"><span class="telem-label">刷球仰角与下潜</span><strong class="telem-val">{html.escape(brush_text)}</strong></div>
+                  <div class="telem-item"><span class="telem-label">击球站位与蹬地比</span><strong class="telem-val">{html.escape(stance_text)}</strong></div>
+                  {f'<div class="telem-item"><span class="telem-label">后背视角动力学</span><strong class="telem-val">{html.escape(dual_back_text)}</strong></div>' if dual_back_text else ''}
+                </div>
+                """
+
             metric_labels = {
-                "shoulder_turn_change": "转肩变化",
+                "shoulder_turn": "抗塌陷转肩",
+                "shoulder_turn_change": "转肩蓄力",
+                "takeback_depth": "后背引拍",
+                "scapular_retraction": "肩胛收紧",
                 "preparation_knee_flexion": "准备屈膝",
                 "arm_extension": "挥拍舒展",
                 "contact_lateral_distance": "击球点距离",
@@ -1260,6 +1470,8 @@ class RealtimeSwingOutputManager:
                     unit = "°"
                 elif raw_unit == "body_width":
                     unit = "×身宽"
+                elif raw_unit == "ratio":
+                    unit = "x"
                 else:
                     unit = raw_unit
                 metric_rows.append(
@@ -1346,11 +1558,15 @@ class RealtimeSwingOutputManager:
                 <article class="event-card" data-annotation-card data-annotation-id="model-{int(event['event_id'])}" data-source-event-id="{int(event['event_id'])}" data-predicted-stroke-type="{html.escape(str(event.get('stroke_type') or 'Unknown'))}" data-peak-frame="{html.escape(str('' if event.get('peak_frame') is None else event.get('peak_frame')))}">
                   <div class="event-heading">
                     <h2>Swing #{int(event['event_id'])} · {html.escape(str(event.get('stroke_type') or 'Unknown'))}</h2>
-                    <span>{float(event.get('confidence') or 0.0):.1%}</span>
+                    {head_badge_html}
                   </div>
+                  {snapshot_html}
                   {clip_content}
                   {coach_content}
                   {coach_tts_content}
+                  {radar_html}
+                  {kinematic_html}
+                  {telemetry_html}
                   {biomechanics_content}
                   {deepseek_content}
                   <dl>
@@ -1526,7 +1742,160 @@ class RealtimeSwingOutputManager:
     dl div {{ border:1px solid var(--line); border-radius:8px; padding:9px 11px; }}
     dt {{ color:#93a4bb; font-size:12px; text-transform:uppercase; }} dd {{ margin:2px 0 0; }}
     .waiting {{ padding:50px; text-align:center; border:1px dashed var(--line); border-radius:14px; color:#93a4bb; }}
-    @media(max-width:720px) {{ header {{ align-items:start; flex-direction:column; }} .header-tools {{ justify-content:flex-start; }} .session-monitor-kpis,.review-metrics {{ grid-template-columns:1fr 1fr; }} dl,.biomechanics,.annotation-frames,.annotation-checks,.coach-columns {{ grid-template-columns:1fr; }} .workflow-track {{ grid-template-columns:1fr 1fr; }} }}
+    /* 算法2.0 / 生物力学与动作质量视觉组件 */
+    .tier-pill {{
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      border: 1px solid var(--line);
+    }}
+    .tier-pro {{
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.28), rgba(0, 240, 255, 0.32));
+      border-color: #f59e0b;
+      color: #ffd875;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
+    }}
+    .tier-advanced {{
+      background: rgba(16, 185, 129, 0.22);
+      border-color: #10b981;
+      color: #72f7be;
+    }}
+    .tier-intermediate {{
+      background: rgba(56, 189, 248, 0.22);
+      border-color: #38bdf8;
+      color: #9fe2ff;
+    }}
+    .tier-developing {{
+      background: rgba(249, 115, 22, 0.22);
+      border-color: #f97316;
+      color: #ffaa7a;
+    }}
+    .impact-freeze-container {{
+      margin: 12px 0;
+    }}
+    .impact-freeze-link {{
+      display: block;
+      position: relative;
+      border-radius: 9px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    }}
+    .impact-freeze-link:hover {{
+      transform: translateY(-2px);
+      border-color: #00f0ff;
+      box-shadow: 0 6px 18px rgba(0, 240, 255, 0.25);
+    }}
+    .impact-freeze-img {{
+      display: block;
+      width: 100%;
+      max-height: 480px;
+      object-fit: contain;
+      background: #000;
+    }}
+    .impact-freeze-badge {{
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      padding: 4px 9px;
+      border-radius: 5px;
+      background: rgba(10, 15, 26, 0.88);
+      color: #00f0ff;
+      font-size: 11px;
+      font-weight: 600;
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(0, 240, 255, 0.4);
+    }}
+    .bio-radar-wrapper {{
+      margin: 12px 0 8px;
+      padding: 12px;
+      background: #111a28;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      text-align: center;
+    }}
+    .bio-radar-title {{
+      font-size: 12px;
+      font-weight: 700;
+      color: #93a4bb;
+      margin-bottom: 6px;
+    }}
+    .kinematic-box {{
+      margin: 10px 0;
+      padding: 12px 14px;
+      background: #111a28;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+    }}
+    .kinematic-header {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }}
+    .seq-badge {{
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }}
+    .seq-optimal {{ background: #13392a; color: #72f7be; border: 1px solid #10b981; }}
+    .seq-acceptable {{ background: #112d42; color: #9fe2ff; border: 1px solid #38bdf8; }}
+    .seq-suboptimal {{ background: #3d1c1c; color: #ff9d9d; border: 1px solid #ef4444; }}
+    .kinematic-bars {{ display: grid; gap: 6px; }}
+    .kinematic-bar-row {{
+      display: grid;
+      grid-template-columns: 160px 65px 1fr;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+    }}
+    .k-label {{ color: #93a4bb; }}
+    .k-val {{ font-weight: 600; text-align: right; color: #edf3fb; }}
+    .k-track {{
+      height: 6px;
+      background: #233348;
+      border-radius: 999px;
+      overflow: hidden;
+    }}
+    .k-fill {{
+      height: 100%;
+      background: #00f0ff;
+      border-radius: 999px;
+    }}
+    .k-fill-rkt {{ background: #a78bfa; }}
+    .telemetry-grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      margin: 10px 0;
+    }}
+    .telem-item {{
+      padding: 8px 10px;
+      background: #111a28;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: grid;
+      gap: 3px;
+    }}
+    .telem-label {{ font-size: 10px; color: #93a4bb; }}
+    .telem-val {{ font-size: 11px; color: #edf3fb; font-weight: 600; word-break: break-word; }}
+    @media(max-width:720px) {{
+      header {{ align-items:start; flex-direction:column; }}
+      .header-tools {{ justify-content:flex-start; }}
+      .session-monitor-kpis,.review-metrics {{ grid-template-columns:1fr 1fr; }}
+      dl,.biomechanics,.annotation-frames,.annotation-checks,.coach-columns,.telemetry-grid {{ grid-template-columns:1fr; }}
+      .workflow-track {{ grid-template-columns:1fr 1fr; }}
+      .kinematic-bar-row {{ grid-template-columns: 1fr auto; }}
+      .k-track {{ grid-column: 1 / -1; }}
+    }}
   </style>
 </head>
 <body>
