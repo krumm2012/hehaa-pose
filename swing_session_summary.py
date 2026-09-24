@@ -190,11 +190,20 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
             for adv in advices:
                 if not isinstance(adv, dict):
                     continue
+                category = str(adv.get("category") or "").strip().lower()
                 code = str(adv.get("code") or adv.get("focus") or "").strip()
                 msg = str(adv.get("message") or code).strip()
                 if not code and not msg:
                     continue
-                key = code or msg
+                # Common deficiencies must only represent real technique shortcomings!
+                # Exclude praise/maintain form, and exclude vision capture/review operational messages
+                if category in ("review", "capture", "positive") or code == "maintain_form":
+                    continue
+                if "复核" in msg or "保持" in msg or "入镜" in msg or "遮挡" in msg:
+                    continue
+
+                # Group by normalized message so identical messages with different codes don't duplicate
+                key = msg
                 deficiency_counter[key] += 1
                 if key not in advice_info:
                     advice_info[key] = {
@@ -283,14 +292,26 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
                 msg = d["message"]
                 if "knee" in code_lower or "重心" in msg:
                     prescriptions.append("在引拍蓄力期主动屈膝降低重心，建立坚实的下肢支撑")
+                elif "arm" in code_lower or "舒展" in msg:
+                    prescriptions.append("在击球点击球时主动舒展手臂，避免过度屈肘，增大击球力矩")
                 elif "kinematic" in code_lower or "核心" in msg:
                     prescriptions.append("避免手臂过早主动发力，依靠躯干转体带动拍头甩出")
                 elif "brush" in code_lower or "下潜" in msg:
                     prescriptions.append("在击球前让拍头沉于来球下方，向上刷球制造充足过网上旋")
+                elif "leg" in code_lower or "蹬地" in msg:
+                    prescriptions.append("向前挥拍击球瞬间加强双腿垂直蹬地，利用地面反作用力加速发力")
+                elif "separation" in code_lower or "肩髋" in msg:
+                    prescriptions.append("加大引拍期的肩髋扭转分离角，蓄积更充分的核心弹性势能")
+                elif "balance" in code_lower or "稳住" in msg:
+                    prescriptions.append("击球后保持身体核心平衡，避免击球瞬间重心剧烈偏移")
+                elif "takeback" in code_lower or "后背" in msg:
+                    prescriptions.append("在准备期充分向后展开后背引拍，延长挥拍加速做功距离")
                 elif "prep" in code_lower or "引拍" in msg:
                     prescriptions.append("尽早侧身完成引拍架拍，提升击球点击球时效")
+                elif "follow" in code_lower or "随挥" in msg:
+                    prescriptions.append("击球后保持随挥动作完整顺畅，保证出球深度与弧线控制")
                 else:
-                    prescriptions.append(f"专项强化针对 {msg} 的技术微调")
+                    prescriptions.append(f"针对 {msg} 进行专项技术微调强化")
             if prescriptions:
                 parts.append(f"下阶段训练处方建议：{'；'.join(prescriptions)}。")
         else:

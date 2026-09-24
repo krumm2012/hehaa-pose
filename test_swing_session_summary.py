@@ -153,6 +153,45 @@ class SwingSessionSummaryTests(unittest.TestCase):
             self.assertGreaterEqual(dims[k], 0.0)
             self.assertLessEqual(dims[k], 100.0)
 
+    def test_deficiency_filters_out_review_and_maintain_form(self):
+        events = [
+            {
+                "event_id": 1,
+                "stroke_type": "Forehand",
+                "is_shadow_swing": False,
+                "swing_score": 80.0,
+                "coach_advices": [
+                    {"code": "maintain_form", "message": "动作稳定继续保持", "category": "positive"},
+                ],
+            },
+            {
+                "event_id": 2,
+                "stroke_type": "Forehand",
+                "is_shadow_swing": False,
+                "swing_score": 70.0,
+                "coach_advices": [
+                    {"code": "static_ball_mask_in_event", "message": "网球识别需复核", "category": "review"},
+                ],
+            },
+            {
+                "event_id": 3,
+                "stroke_type": "Forehand",
+                "is_shadow_swing": False,
+                "swing_score": 60.0,
+                "coach_advices": [
+                    {"code": "limited_arm_extension", "message": "挥拍时手臂再舒展", "category": "technique"},
+                ],
+            },
+        ]
+        summary = build_session_coaching_summary(events)
+        defs = summary["common_deficiencies"]
+        # Only the genuine technique deficiency should be listed
+        self.assertEqual(len(defs), 1)
+        self.assertEqual(defs[0]["message"], "挥拍时手臂再舒展")
+        self.assertIn("挥拍时手臂再舒展", summary["macro_diagnosis"])
+        self.assertNotIn("网球识别需复核", summary["macro_diagnosis"])
+        self.assertNotIn("动作稳定继续保持", summary["macro_diagnosis"])
+
 
 if __name__ == "__main__":
     unittest.main()

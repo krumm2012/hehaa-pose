@@ -35,6 +35,10 @@ class SpeechWorkerClient:
                 break
             tail.append(data)
 
+    def warmup(self, text="好"):
+        """Ensure worker process is started and warmed up with a silent token."""
+        return self.request({"type": "warmup", "text": text})
+
     def request(self, payload):
         with self.lock:
             if self.closed.is_set():

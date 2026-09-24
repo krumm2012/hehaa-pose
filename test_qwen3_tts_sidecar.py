@@ -77,6 +77,76 @@ class CoachTtsSidecarTests(unittest.TestCase):
         text_multi = CoachTtsSidecar._speech_text(event, single_core_advice=False)
         self.assertIn("准备时适当降低重心。击球前拍头下潜刷球", text_multi)
 
+    def test_concise_speech_cues(self):
+        event_keep = {
+            "event_id": 4,
+            "stroke_type": "Forehand",
+            "coach_advices": [{"message": "动作稳定继续保持", "priority": 1}],
+        }
+        text_concise_keep = CoachTtsSidecar._speech_text(event_keep, single_core_advice=True, concise_speech=True)
+        self.assertEqual(text_concise_keep, "继续保持")
+
+        event_arm = {
+            "event_id": 6,
+            "stroke_type": "Forehand",
+            "coach_advices": [{"message": "挥拍时手臂再舒展", "priority": 1}],
+        }
+        text_concise_arm = CoachTtsSidecar._speech_text(event_arm, single_core_advice=True, concise_speech=True)
+        self.assertEqual(text_concise_arm, "手臂舒展")
+
+        event_racket = {
+            "event_id": 2,
+            "stroke_type": "Forehand",
+            "coach_advices": [{"message": "减少球拍遮挡", "priority": 1}],
+        }
+        text_concise_racket = CoachTtsSidecar._speech_text(event_racket, single_core_advice=True, concise_speech=True)
+        self.assertEqual(text_concise_racket, "减少球拍遮挡")
+
+        event_multi = {
+            "event_id": 8,
+            "stroke_type": "Forehand",
+            "coach_advices": [
+                {"message": "准备时适当降低重心", "priority": 1},
+                {"message": "击球前拍头下潜刷球", "priority": 2},
+            ],
+        }
+        text_multi_concise = CoachTtsSidecar._speech_text(event_multi, single_core_advice=False, concise_speech=True)
+        self.assertEqual(text_multi_concise, "降低重心，拍头下潜")
+
+    def test_sidecar_concise_speech_mode(self):
+        with TemporaryDirectory() as directory:
+            requests = []
+
+            def synthesize(event_id, text, target):
+                requests.append((event_id, text))
+                target.write_bytes(b"RIFFfake-wav")
+                return {"ok": True, "sample_rate": 24000}
+
+            sidecar = CoachTtsSidecar(
+                output_dir=directory,
+                playback=False,
+                concise_speech=True,
+                warmup=True,
+                synthesizer=synthesize,
+                logger=lambda msg: None,
+            )
+            done = threading.Event()
+            results = []
+            sidecar.submit(
+                {
+                    "event_id": 5,
+                    "stroke_type": "Forehand",
+                    "coach_advices": [{"message": "动作稳定继续保持"}],
+                },
+                lambda p: (results.append(p), done.set()),
+            )
+            self.assertTrue(done.wait(1))
+            sidecar.close()
+
+            self.assertEqual(requests[0][1], "继续保持")
+            ready = next(item for item in results if item["status"] == "ready")
+            self.assertEqual(ready["message"], "继续保持")
+
     def test_preemption_cancels_older_queued_task(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

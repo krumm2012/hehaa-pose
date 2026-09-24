@@ -22,6 +22,34 @@ DEFAULT_MODEL = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16"
 DEFAULT_VOICE = "Vivian"
 DEFAULT_LANGUAGE = "Chinese"
 
+DEFAULT_CONCISE_CUE_MAP = {
+    # 动作稳定
+    "动作稳定继续保持": "继续保持",
+    # 核心动力链与挥拍肢体
+    "用身体核心带动球拍发力": "核心发力",
+    "挥拍时手臂再舒展": "手臂舒展",
+    "准备时适当降低重心": "降低重心",
+    "加大肩髋分离": "肩髋分离",
+    "击球后稳住重心": "稳住重心",
+    "击球瞬间双腿蹬地发力": "双腿蹬地",
+    "击球前拍头下潜刷球": "拍头下潜",
+    "击球时带动重心": "带动重心",
+    "提前准备充分引拍": "提前引拍",
+    "充分展开后背引拍": "充分引拍",
+    "转肩蓄力拉开后背": "转肩蓄力",
+    "提前转肩充分引拍": "提前引拍",
+    "击球后完成随挥": "随挥完整",
+    # 视野与拍摄引导
+    "减少球拍遮挡": "减少球拍遮挡",
+    "保持全身清晰入镜": "全身入镜",
+    "确保来球完整入镜": "来球入镜",
+    # 复核类
+    "网球识别需复核": "识别复核",
+    "来球轨迹需复核": "轨迹复核",
+    "触球位置需复核": "触球复核",
+    "本次动作建议复核": "动作复核",
+}
+
 
 class CoachTtsSidecar:
     """Serialize local TTS synthesis and optional macOS speaker playback."""
@@ -37,6 +65,8 @@ class CoachTtsSidecar:
         max_pending: int = 2,
         preempt: bool = True,
         single_core_advice: bool = True,
+        concise_speech: bool = False,
+        warmup: bool = False,
         min_interval_seconds: float = 0.5,
         streaming_interval_seconds: float = 0.32,
         streaming_prebuffer_chunks: int = 2,
@@ -55,6 +85,8 @@ class CoachTtsSidecar:
         self.playback = bool(playback)
         self.preempt = bool(preempt)
         self.single_core_advice = bool(single_core_advice)
+        self.concise_speech = bool(concise_speech)
+        self.warmup = bool(warmup)
         self.min_interval_seconds = max(0.0, float(min_interval_seconds))
         self.audio_path_prefix = str(audio_path_prefix).strip("/")
         self.streaming_interval_seconds = max(0.08, float(streaming_interval_seconds))
@@ -90,6 +122,33 @@ class CoachTtsSidecar:
             daemon=True,
         )
         self._thread.start()
+        if self.warmup and self.synthesizer is None:
+            self._start_warmup()
+
+    def warmup_worker(self) -> Dict:
+        if self.synthesizer is not None:
+            return {"ok": True, "type": "warmup", "mock": True}
+        return self._client.warmup()
+
+    def _start_warmup(self) -> None:
+        def _warmup_task():
+            try:
+                self.logger(f"⏳ [Qwen3-TTS] 正在后台预热模型 ({self.model_name})...")
+                res = self.warmup_worker()
+                if res.get("ok"):
+                    self.logger("⚡ [Qwen3-TTS] 模型预热就绪，首帧已常驻统一内存！")
+                else:
+                    self.logger(f"⚠️ [Qwen3-TTS] 模型预热返回: {res.get('error')}")
+            except Exception as exc:
+                if not self._closed and not self._cancel.is_set():
+                    self.logger(f"⚠️ [Qwen3-TTS] 后台预热异常 (首个击球将重新尝试): {exc}")
+
+        warmup_thread = threading.Thread(
+            target=_warmup_task,
+            name="qwen3-tts-warmup",
+            daemon=True,
+        )
+        warmup_thread.start()
 
     def pending_payload(self, event: Dict) -> Dict:
         return {
@@ -97,11 +156,19 @@ class CoachTtsSidecar:
             "engine": "qwen3-tts-mlx",
             "model": self.model_name,
             "voice": self.voice,
-            "message": self._speech_text(event, single_core_advice=self.single_core_advice),
+            "message": self._speech_text(
+                event,
+                single_core_advice=self.single_core_advice,
+                concise_speech=self.concise_speech,
+            ),
         }
 
     def submit(self, event: Dict, callback: Callable[[Dict], None]) -> None:
-        text = self._speech_text(event, single_core_advice=self.single_core_advice)
+        text = self._speech_text(
+            event,
+            single_core_advice=self.single_core_advice,
+            concise_speech=self.concise_speech,
+        )
         if not text:
             callback({"status": "skipped", "engine": "qwen3-tts-mlx", "reason": "no_local_coach_advice"})
             return
@@ -217,6 +284,7 @@ class CoachTtsSidecar:
                 "latency_ms": latency_ms, "played": False,
                 "first_audio_ms": worker_result.get("first_audio_ms"),
                 "audio_underflows": worker_result.get("audio_underflows", 0),
+                "message": text,
             })
             streamed = bool(worker_result.get("stream_playback"))
             callback({"status": "ready", "played": streamed and not worker_result.get("playback_error"), "playback_error": str(worker_result.get("playback_error") or "")})
@@ -237,7 +305,17 @@ class CoachTtsSidecar:
         })
 
     @classmethod
-    def _speech_text(cls, event: Dict, single_core_advice: bool = True) -> str:
+    def concise_cue(cls, message: str) -> str:
+        msg = str(message or "").strip()
+        return DEFAULT_CONCISE_CUE_MAP.get(msg, msg)
+
+    @classmethod
+    def _speech_text(
+        cls,
+        event: Dict,
+        single_core_advice: bool = True,
+        concise_speech: bool = False,
+    ) -> str:
         rows = event.get("coach_advices") or ([] if not event.get("coach_advice") else [event["coach_advice"]])
         valid_rows = [row for row in rows if isinstance(row, dict) and str(row.get("message") or "").strip()]
         if not valid_rows:
@@ -247,8 +325,15 @@ class CoachTtsSidecar:
         if single_core_advice:
             sorted_rows = sorted(valid_rows, key=lambda r: int(r.get("priority", 1)))
             top_msg = str(sorted_rows[0].get("message") or "").strip()
+            if concise_speech:
+                return cls.concise_cue(top_msg)
             return f"第{eid}次{stroke}：{top_msg}"
-        messages = [str(row.get("message") or "").strip() for row in valid_rows[:3]]
+        messages = [
+            (cls.concise_cue(str(row.get("message") or "").strip()) if concise_speech else str(row.get("message") or "").strip())
+            for row in valid_rows[:3]
+        ]
+        if concise_speech:
+            return "，".join(messages)
         return f"第{eid}次{stroke}。" + "。".join(messages)
 
     def _play(self, path: Path) -> tuple:

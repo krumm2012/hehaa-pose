@@ -353,6 +353,8 @@ class MultiprocessPipeline:
             'language': str(coach_tts_option('language', 'Chinese')),
             'playback': bool(coach_tts_option('playback', True)),
             'max_pending': max(1, int(coach_tts_option('max_pending', 2))),
+            'concise_speech': bool(coach_tts_option('concise_speech', True)),
+            'warmup': bool(coach_tts_option('warmup', True)),
             'startup_timeout_seconds': max(0.1, float(coach_tts_option('startup_timeout_seconds', 120))),
             'request_timeout_seconds': max(0.1, float(coach_tts_option('request_timeout_seconds', 30))),
             'streaming_interval_seconds': max(
@@ -1044,6 +1046,8 @@ class MultiprocessPipeline:
                 language=self.coach_tts_options['language'],
                 playback=self.coach_tts_options['playback'],
                 max_pending=self.coach_tts_options['max_pending'],
+                concise_speech=self.coach_tts_options['concise_speech'],
+                warmup=self.coach_tts_options['warmup'],
                 startup_timeout_seconds=self.coach_tts_options['startup_timeout_seconds'],
                 request_timeout_seconds=self.coach_tts_options['request_timeout_seconds'],
                 streaming_interval_seconds=(
@@ -1058,6 +1062,8 @@ class MultiprocessPipeline:
                 f'🔊 [Qwen3-TTS] 本地语音播报已开启'
                 f' | 模型: {self.coach_tts_options["model"]}'
                 f' | 声音: {self.coach_tts_options["voice"]}'
+                f' | 语态: {"极简短口令" if self.coach_tts_options["concise_speech"] else "完整句式"}'
+                f' | 预热: {"后台自动预热" if self.coach_tts_options["warmup"] else "懒加载"}'
                 f' | 扬声器: {"开启" if self.coach_tts_options["playback"] else "关闭"}'
             )
         if self.realtime_swing_events:
@@ -1897,6 +1903,10 @@ def build_argument_parser():
                         help='Qwen3-TTS 声音，默认 Vivian（中文）')
     parser.add_argument('--realtime-coach-tts-no-playback', action='store_true',
                         help='只生成报告内可播放 WAV，不通过本机扬声器播报')
+    parser.add_argument('--realtime-coach-tts-verbose', action='store_true',
+                        help='禁用极简教练口令，使用完整长句播报（如“第X次Forehand：...”）')
+    parser.add_argument('--realtime-coach-tts-no-warmup', action='store_true',
+                        help='禁用 Qwen3-TTS 启动时后台静默预热')
     parser.add_argument('--realtime-open-report', action='store_true',
                         help='启动实时 Swing 输出时在系统浏览器打开 HTML 页面')
     parser.add_argument(
@@ -1984,6 +1994,8 @@ def main_cli(argv=None):
             'model': args.realtime_coach_tts_model,
             'voice': args.realtime_coach_tts_voice,
             'playback': False if args.realtime_coach_tts_no_playback else None,
+            'concise_speech': False if args.realtime_coach_tts_verbose else None,
+            'warmup': False if args.realtime_coach_tts_no_warmup else None,
         },
         realtime_open_report=args.realtime_open_report,
         session_id=args.session_id,

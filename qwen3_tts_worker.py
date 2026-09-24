@@ -40,6 +40,21 @@ def main() -> None:
         try:
             request = json.loads(line)
             sample_rate = int(getattr(model, "sample_rate", None) or 24000)
+            if request.get("type") == "warmup":
+                with contextlib.redirect_stdout(sys.stderr):
+                    _ = list(model.generate(
+                        text=str(request.get("text") or "好"),
+                        voice=args.voice,
+                        language=args.language,
+                        stream=False,
+                    ))
+                response = {
+                    "ok": True,
+                    "type": "warmup",
+                    "sample_rate": sample_rate,
+                }
+                print(json.dumps(response, ensure_ascii=False), flush=True)
+                continue
             playback_stream = None
             playback_error = ""
             if request.get("stream_playback"):

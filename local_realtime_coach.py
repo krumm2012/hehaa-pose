@@ -72,6 +72,7 @@ class LocalRealtimeCoach:
         if is_shadow_swing:
             return []
 
+        is_valid_contact = bool(ca.get("is_valid_contact"))
         event_confidence = float(event.get("confidence") or 0.0)
         quality = event.get("quality_flags") or {}
         warnings = effective_quality_warnings(quality)
@@ -165,6 +166,8 @@ class LocalRealtimeCoach:
         }
         for warning, message in review_messages.items():
             if warning in warnings:
+                if warning in ("static_ball_mask_in_event", "mirror_ball_rejection_in_event") and is_valid_contact:
+                    continue
                 return [
                     self._advice(
                         code=warning,

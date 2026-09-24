@@ -426,6 +426,33 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         )
         self.assertTrue(all(len(item["message"]) <= 15 for item in advice))
 
+    def test_valid_contact_with_benign_filters_returns_maintain_form(self):
+        coach = LocalRealtimeCoach(max_chars=15)
+        # Event with valid contact where static mask and mirror rejection were benign
+        event = {
+            "event_id": 12,
+            "confidence": 0.95,
+            "quality_flags": {
+                "warnings": ["static_ball_mask_in_event", "mirror_ball_rejection_in_event"],
+                "review_recommended": False,
+            },
+            "evidence": {
+                "classification_context": {
+                    "contact_analysis": {
+                        "has_ball": True,
+                        "is_valid_contact": True,
+                        "has_trajectory_rebound": True,
+                    }
+                }
+            },
+            "phase_counts": {"backswing": 8, "follow_through": 8},
+        }
+        advices = coach.advise_all(event)
+        self.assertEqual(len(advices), 1)
+        self.assertEqual(advices[0]["code"], "maintain_form")
+        self.assertEqual(advices[0]["message"], "动作稳定继续保持")
+        self.assertEqual(advices[0]["category"], "positive")
+
     def test_disconnected_kinetic_chain_produces_advice(self):
         coach = LocalRealtimeCoach(max_chars=15)
         event = {

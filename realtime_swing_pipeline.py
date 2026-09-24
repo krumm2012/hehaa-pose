@@ -1340,9 +1340,12 @@ class RealtimeSwingOutputManager:
                     self.output_html.parent,
                 ).replace(os.sep, "/")
                 playback_text = "已通过本机扬声器播报" if coach_tts.get("played") else "可在页面播放"
+                timing_detail = f'{int(coach_tts.get("latency_ms") or 0)} ms'
+                if coach_tts.get("first_audio_ms"):
+                    timing_detail = f'首包 {int(coach_tts["first_audio_ms"])} ms · 播完 {timing_detail}'
                 coach_tts_content = (
                     '<div class="coach-tts"><div><span>本地语音 Coach</span>'
-                    f'<small>Qwen3-TTS · {int(coach_tts.get("latency_ms") or 0)} ms · '
+                    f'<small>Qwen3-TTS · {timing_detail} · '
                     f'{html.escape(playback_text)}</small></div>'
                     f'<audio controls preload="none" src="{html.escape(audio_href)}"></audio></div>'
                 )
