@@ -62,12 +62,12 @@ class LocalRealtimeCoach:
 
     def advise_all(self, event: Dict) -> List[Dict]:
         """Return one to three recommendations, each with its own confidence."""
+        evidence = event.get("evidence") or {}
+        ca = evidence.get("contact_analysis") or (evidence.get("classification_context") or {}).get("contact_analysis") or {}
         is_shadow_swing = bool(
             event.get("is_shadow_swing")
-            or (event.get("evidence") or {})
-            .get("classification_context", {})
-            .get("contact_analysis", {})
-            .get("is_shadow_swing")
+            or ca.get("is_shadow_swing")
+            or (ca.get("has_ball") is False)
         )
         if is_shadow_swing:
             return []

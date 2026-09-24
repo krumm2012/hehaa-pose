@@ -22,6 +22,18 @@ RADAR_AXES = [
 ]
 
 
+def _is_shadow_swing(ev: Dict) -> bool:
+    if ev.get("is_shadow_swing") is not None:
+        return bool(ev["is_shadow_swing"])
+    evidence = ev.get("evidence") or {}
+    ca = evidence.get("contact_analysis") or (evidence.get("classification_context") or {}).get("contact_analysis") or {}
+    if ca.get("is_shadow_swing") is not None:
+        return bool(ca["is_shadow_swing"])
+    if ca.get("has_ball") is False:
+        return True
+    return False
+
+
 def _build_radar_svg(sub_scores: Dict[str, float], width: int = 240, height: int = 220, dark_theme: bool = False) -> str:
     """Build a standalone inline SVG 5-axis biomechanical quality radar chart."""
     if not sub_scores:
@@ -310,7 +322,7 @@ def build_report_payload(
                 "stance": stc,
                 "leg_drive": leg,
                 "advice_list": advices,
-                "is_shadow_swing": event.get("is_shadow_swing") or ((event.get("evidence") or {}).get("contact_analysis") or {}).get("is_shadow_swing", False),
+                "is_shadow_swing": _is_shadow_swing(event),
                 "impact_freeze_path": event.get("impact_freeze_path") or (event.get("snapshots") or {}).get("impact_freeze"),
             }
         )
@@ -568,7 +580,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         )
 
         # 1. 综合技术评级与100分制仪表
-        is_shadow = event.get("is_shadow_swing") or ((event.get("evidence") or {}).get("contact_analysis") or {}).get("is_shadow_swing", False)
+        is_shadow = _is_shadow_swing(event)
         swing_grade = event.get("swing_grade")
         swing_score = event.get("swing_score")
         if is_shadow:
@@ -728,7 +740,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
 
         event_cards.append(
             f"""
-            <article class="event-card" data-annotation-card data-annotation-id="model-{html.escape(str(event.get('event_id')))}" data-source-event-id="{html.escape(str(event.get('event_id')))}" data-event-id="{html.escape(str(event.get('event_id')))}">
+            <article class="event-card{' is-shadow-event' if is_shadow else ''}" data-is-shadow="{'true' if is_shadow else 'false'}" data-annotation-card data-annotation-id="model-{html.escape(str(event.get('event_id')))}" data-source-event-id="{html.escape(str(event.get('event_id')))}" data-event-id="{html.escape(str(event.get('event_id')))}">
               <div class="event-head">
                 <strong>Event {html.escape(str(event.get('event_id')))} · {html.escape(str(event.get('stroke_type')))}</strong>
                 {head_badge_html}
@@ -882,6 +894,71 @@ def render_report_html(payload: Dict, output_path: str) -> str:
     .timeline-legend .contact-dot {{ background: #bd4e2c; }}
     .timeline-legend .peak-dot {{ background: #5346a3; }}
     .events {{ display: grid; gap: 12px; max-height: 70vh; overflow: auto; }}
+    .events-filter-bar {{
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 12px;
+      background: rgba(255, 250, 240, 0.98);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }}
+    .filter-toggle-group {{
+      display: inline-flex;
+      background: #ede6d8;
+      border-radius: 6px;
+      padding: 2px;
+      gap: 2px;
+    }}
+    .report-filter-btn {{
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all .15s ease;
+    }}
+    .report-filter-btn:hover {{
+      color: var(--ink);
+    }}
+    .report-filter-btn.active {{
+      background: var(--accent);
+      color: white;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    }}
+    .report-events-badge {{
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+    }}
+    .events.filter-only-valid .event-card.is-shadow-event {{
+      display: none !important;
+    }}
+    .event-card.is-shadow-event {{
+      opacity: 0.68;
+      border-style: dashed;
+    }}
+    .event-card.is-shadow-event:hover {{
+      opacity: 0.95;
+    }}
+    .timeline-lane--shadow {{
+      opacity: 0.45;
+    }}
+    #event-timeline.filter-only-valid .timeline-lane--shadow {{
+      display: none;
+    }}
+    .timeline-event--shadow {{
+      background: #7a8c88 !important;
+    }}
     .event-card {{ padding: 14px; }}
     .event-card.is-active {{ border-color: var(--accent); box-shadow: 0 0 0 2px rgba(15,123,108,.16); }}
     .event-head {{ display: flex; justify-content: space-between; gap: 10px; }}
@@ -1124,7 +1201,14 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       <h2>Manual Annotations</h2>
       <pre id="annotation-json"></pre>
     </section>
-    <aside class="events">
+    <aside class="events filter-only-valid">
+      <div class="events-filter-bar">
+        <div class="filter-toggle-group">
+          <button id="report-filter-valid" class="report-filter-btn active" type="button" onclick="setReportFilter(true)">🎯 仅看有效击球</button>
+          <button id="report-filter-all" class="report-filter-btn" type="button" onclick="setReportFilter(false)">全部记录</button>
+        </div>
+        <span id="report-events-count" class="report-events-badge"></span>
+      </div>
       {''.join(event_cards)}
     </aside>
   </main>
@@ -1169,11 +1253,13 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         return `<span style="left:${{ratio * 100}}%">${{frame}}</span>`;
       }}).join('');
       const lanes = data.events.map(event => {{
+        const isShadow = Boolean(event.is_shadow_swing || ((event.evidence || {{}}).contact_analysis || {{}}).is_shadow_swing || (((event.evidence || {{}}).classification_context || {{}}).contact_analysis || {{}}).is_shadow_swing);
         const start = Number(event.start_frame) || 0;
         const end = Math.max(start + 1, Number(event.end_frame) || start + 1);
         const left = percentForFrame(start);
         const width = Math.max(1.5, percentForFrame(end) - left);
-        return `<div class="timeline-lane"><span class="timeline-label">事件 ${{event.event_id}}</span><div class="timeline-track"><button type="button" class="timeline-event" data-event-id="${{event.event_id}}" data-frame="${{start}}" style="left:${{left}}%;width:${{width}}%" title="${{event.stroke_type}} · ${{start}}-${{end}}">${{event.stroke_type}}</button>${{marker('触球候选', event.contact_frame, 'timeline-marker--contact', event.event_id)}}${{marker('动作峰值', event.peak_frame, 'timeline-marker--peak', event.event_id)}}<i class="timeline-playhead" aria-hidden="true"></i></div></div>`;
+        const btnClass = isShadow ? 'timeline-event timeline-event--shadow' : 'timeline-event';
+        return `<div class="timeline-lane${{isShadow ? ' timeline-lane--shadow' : ''}}" data-is-shadow="${{isShadow}}"><span class="timeline-label">事件 ${{event.event_id}}</span><div class="timeline-track"><button type="button" class="${{btnClass}}" data-event-id="${{event.event_id}}" data-frame="${{start}}" style="left:${{left}}%;width:${{width}}%" title="${{event.stroke_type}} · ${{start}}-${{end}}${{isShadow ? ' (空挥试拍)' : ''}}">${{event.stroke_type}}${{isShadow ? ' (试拍)' : ''}}</button>${{marker('触球候选', event.contact_frame, 'timeline-marker--contact', event.event_id)}}${{marker('动作峰值', event.peak_frame, 'timeline-marker--peak', event.event_id)}}<i class="timeline-playhead" aria-hidden="true"></i></div></div>`;
       }}).join('');
       timeline.innerHTML = `<div class="timeline-ruler"><span class="timeline-label">帧号</span><div class="timeline-track timeline-track--ruler">${{ruler}}</div></div>${{lanes || '<p>未检测到挥拍事件。</p>'}}`;
       timeline.querySelectorAll('[data-frame]').forEach(button => button.addEventListener('click', () => {{
@@ -1398,11 +1484,57 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       if (event) seekFrame(event.start_frame, true);
       else video.play();
     }});
+    let filterOnlyValidInReport = true;
+    function setReportFilter(onlyValid) {{
+      filterOnlyValidInReport = onlyValid;
+      const aside = document.querySelector('aside.events');
+      const timelineEl = document.getElementById('event-timeline');
+      const btnValid = document.getElementById('report-filter-valid');
+      const btnAll = document.getElementById('report-filter-all');
+      const badge = document.getElementById('report-events-count');
+
+      if (btnValid && btnAll) {{
+        if (onlyValid) {{
+          btnValid.classList.add('active');
+          btnAll.classList.remove('active');
+          if (aside) aside.classList.add('filter-only-valid');
+          if (timelineEl) timelineEl.classList.add('filter-only-valid');
+        }} else {{
+          btnAll.classList.add('active');
+          btnValid.classList.remove('active');
+          if (aside) aside.classList.remove('filter-only-valid');
+          if (timelineEl) timelineEl.classList.remove('filter-only-valid');
+        }}
+      }}
+
+      const total = (data.events || []).length;
+      const validEvents = (data.events || []).filter(e => !e.is_shadow_swing && !((e.evidence || {{}}).contact_analysis || {{}}).is_shadow_swing && !(((e.evidence || {{}}).classification_context || {{}}).contact_analysis || {{}}).is_shadow_swing);
+      const valid = validEvents.length;
+      const shadow = total - valid;
+
+      if (badge) {{
+        if (onlyValid) {{
+          badge.textContent = `${{valid}} 次有效击球${{shadow > 0 ? ` (已过滤 ${{shadow}} 次空挥试拍)` : ''}}`;
+        }} else {{
+          badge.textContent = `${{total}} 次记录 (含试拍)`;
+        }}
+      }}
+
+      if (onlyValid && activeEventId != null) {{
+        const curr = (data.events || []).find(e => Number(e.event_id) === Number(activeEventId));
+        const isCurrShadow = curr && (curr.is_shadow_swing || ((curr.evidence || {{}}).contact_analysis || {{}}).is_shadow_swing || (((curr.evidence || {{}}).classification_context || {{}}).contact_analysis || {{}}).is_shadow_swing);
+        if (isCurrShadow && validEvents.length > 0) {{
+          selectEvent(validEvents[0].event_id, false);
+        }}
+      }}
+    }}
+
     video.addEventListener('timeupdate', () => updatePlaybackState(Math.round(video.currentTime * fps)));
     bindAnnotationInputs(document);
     renderTimeline();
     updatePlaybackState(0);
     refreshAnnotations();
+    setReportFilter(true);
   </script>
 </body>
 </html>

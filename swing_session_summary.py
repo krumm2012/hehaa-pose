@@ -15,10 +15,13 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 
 def _is_shadow(ev: Dict[str, Any]) -> bool:
-    if ev.get("is_shadow_swing"):
-        return True
-    contact_analysis = (ev.get("evidence") or {}).get("contact_analysis") or {}
-    if contact_analysis.get("is_shadow_swing"):
+    if ev.get("is_shadow_swing") is not None:
+        return bool(ev["is_shadow_swing"])
+    evidence = ev.get("evidence") or {}
+    ca = evidence.get("contact_analysis") or (evidence.get("classification_context") or {}).get("contact_analysis") or {}
+    if ca.get("is_shadow_swing") is not None:
+        return bool(ca["is_shadow_swing"])
+    if ca.get("has_ball") is False:
         return True
     return False
 

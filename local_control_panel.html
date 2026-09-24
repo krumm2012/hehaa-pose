@@ -1403,14 +1403,24 @@
       }
     });
 
+    function isShadowEvent(ev) {
+      if (!ev) return false;
+      if (ev.is_shadow_swing === true) return true;
+      if (ev.is_shadow_swing === false) return false;
+      const ca = ev.evidence?.contact_analysis || ev.evidence?.classification_context?.contact_analysis;
+      if (ca && typeof ca.is_shadow_swing === "boolean") return ca.is_shadow_swing;
+      if (ca && ca.has_ball === false) return true;
+      return false;
+    }
+
     function generateRadarSvg(ev) {
-      const isShadow = ev.is_shadow_swing || (ev.evidence?.contact_analysis?.is_shadow_swing);
+      const isShadow = isShadowEvent(ev);
       if (isShadow) {
         return `
           <div class="radar-box" style="opacity: 0.35;">
             <svg class="radar-svg" viewBox="0 0 130 130">
               <circle cx="65" cy="65" r="40" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1" stroke-dasharray="2,2" />
-              <text x="65" y="69" text-anchor="middle" fill="var(--muted)" font-size="10">空挥练习</text>
+              <text x="65" y="69" text-anchor="middle" fill="var(--muted)" font-size="10">空挥试拍</text>
             </svg>
           </div>
         `;
@@ -1628,7 +1638,7 @@
       if (!listEl) return;
 
       const allEvents = events || [];
-      const validEvents = allEvents.filter(ev => !ev.is_shadow_swing && !(ev.evidence?.contact_analysis?.is_shadow_swing));
+      const validEvents = allEvents.filter(ev => !isShadowEvent(ev));
       const shadowCount = allEvents.length - validEvents.length;
       const displayEvents = filterOnlyValidSwings ? validEvents : allEvents;
 
@@ -1670,7 +1680,7 @@
       const reversed = [...displayEvents].reverse();
       listEl.innerHTML = reversed.map(ev => {
         const eid = ev.event_id;
-        const isShadow = ev.is_shadow_swing || (ev.evidence?.contact_analysis?.is_shadow_swing);
+        const isShadow = isShadowEvent(ev);
         const cardClass = isShadow ? "swing-item-card is-shadow-card" : "swing-item-card";
         const strokeType = ev.stroke_type || "Swing";
         const strokeText = strokeType === "Forehand" ? "正手 (Forehand)" : (strokeType === "Backhand" ? "反手 (Backhand)" : strokeType);

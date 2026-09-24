@@ -216,6 +216,60 @@ class SwingReportBuilderTests(unittest.TestCase):
             self.assertIn("score 65", html)
             self.assertIn('data-field="start_frame"', html)
 
+    def test_pure_hit_mode_filter_and_shadow_distinction(self):
+        with TemporaryDirectory() as tmpdir:
+            tmp_root = Path(tmpdir)
+            frame_json = tmp_root / "test_filter.json"
+            event_json = tmp_root / "test_filter_swing_events.json"
+            report_html = tmp_root / "test_filter_report.html"
+
+            frame_json.write_text('{"video_info": {"fps": 25.0}, "frames": []}', encoding="utf-8")
+            event_data = {
+                "events": [
+                    {
+                        "event_id": 1,
+                        "stroke_type": "Forehand",
+                        "start_frame": 10,
+                        "contact_frame": 25,
+                        "end_frame": 40,
+                        "is_shadow_swing": True,
+                        "swing_score": 42.0,
+                    },
+                    {
+                        "event_id": 2,
+                        "stroke_type": "Forehand",
+                        "start_frame": 50,
+                        "contact_frame": 65,
+                        "end_frame": 80,
+                        "is_shadow_swing": False,
+                        "swing_score": 88.0,
+                        "swing_grade": "PRO",
+                    },
+                ]
+            }
+            import json
+            event_json.write_text(json.dumps(event_data), encoding="utf-8")
+
+            payload = build_report_payload(str(frame_json), str(event_json))
+            write_report_html(payload, str(report_html))
+            html = report_html.read_text(encoding="utf-8")
+
+            # Pure hit mode elements in diagnostic report
+            self.assertIn('class="events filter-only-valid"', html)
+            self.assertIn('id="report-filter-valid"', html)
+            self.assertIn('id="report-filter-all"', html)
+            self.assertIn('🎯 仅看有效击球', html)
+
+            # Shadow event differentiation
+            self.assertIn('data-is-shadow="true"', html)
+            self.assertIn('is-shadow-event', html)
+            self.assertIn('空挥试拍 · 无来球', html)
+
+            # Valid event differentiation
+            self.assertIn('data-is-shadow="false"', html)
+            self.assertIn('PRO · 职业级', html)
+            self.assertIn('setReportFilter(true)', html)
+
 
 if __name__ == "__main__":
     unittest.main()
