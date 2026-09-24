@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import math
 from statistics import median
 from typing import Dict, List, Optional, Tuple
 
@@ -450,6 +451,63 @@ def _phase_counts(
     return phases, frame_phases
 
 
+def _evaluate_swing_kinematic_bounds(
+    features: List[Dict],
+    start_idx: int,
+    end_idx: int,
+    dominant_hand: str = "right",
+) -> Tuple[float, Optional[float]]:
+    """Calculate absolute 2D wrist displacement and arm extension dynamic range.
+
+    Returns:
+        (wrist_sweep_px, arm_extension_range_deg)
+        where arm_extension_range_deg is None if arm extension was not tracked.
+    """
+    wrist_name = f"{dominant_hand}_wrist"
+    shoulder_name = f"{dominant_hand}_shoulder"
+
+    xs, ys = [], []
+    dists = []
+    arm_exts = []
+
+    for idx in range(start_idx, end_idx + 1):
+        f = features[idx]
+        w = f.get("wrist")
+        if w is None:
+            pose = f.get("pose") or {}
+            w = pose.get(wrist_name)
+        if w is not None and len(w) >= 2:
+            xs.append(w[0])
+            ys.append(w[1])
+
+        # Track arm extension angle in degrees
+        ext = f.get("arm_extension_deg")
+        if ext is not None:
+            arm_exts.append(float(ext))
+        else:
+            # Fallback to direct 2D distance between shoulder and wrist
+            pose = f.get("pose") or {}
+            rs = pose.get(shoulder_name)
+            if w is not None and rs is not None and len(w) >= 2 and len(rs) >= 2:
+                dists.append(math.hypot(w[0] - rs[0], w[1] - rs[1]))
+
+    if len(xs) < 2:
+        return 0.0, None
+
+    dx = max(xs) - min(xs)
+    dy = max(ys) - min(ys)
+    wrist_sweep = math.hypot(dx, dy)
+
+    if len(arm_exts) >= 4:
+        arm_range = max(arm_exts) - min(arm_exts)
+    elif len(dists) >= 4:
+        arm_range = max(dists) - min(dists)
+    else:
+        arm_range = None
+
+    return wrist_sweep, arm_range
+
+
 def _best_contact_frame(features: List[Dict], start_idx: int, end_idx: int, peak_idx: int) -> int:
     event_features = features[start_idx : end_idx + 1]
     scored = [f for f in event_features if f.get("contact_score") is not None]
@@ -677,6 +735,9 @@ def _segment_by_peaks(
     min_event_frames: int,
     min_event_gap: int,
     fps: float,
+    min_wrist_sweep: float = 0.0,
+    min_arm_extension_range: float = 0.0,
+    dominant_hand: str = "right",
 ) -> Optional[Dict]:
     if len(features) < 60:
         return None
@@ -735,6 +796,14 @@ def _segment_by_peaks(
         peak_energy = max(energy[start_idx : end_idx + 1])
         if peak_energy < min_peak_energy:
             continue
+        if min_wrist_sweep > 0.0 or min_arm_extension_range > 0.0:
+            sweep, arm_range = _evaluate_swing_kinematic_bounds(
+                features, start_idx, end_idx, dominant_hand=dominant_hand
+            )
+            if min_wrist_sweep > 0.0 and sweep > 0.0 and sweep < min_wrist_sweep:
+                continue
+            if min_arm_extension_range > 0.0 and arm_range is not None and arm_range < min_arm_extension_range:
+                continue
         event_id = len(events) + 1
         contact_frame = _best_contact_frame(features, start_idx, end_idx, peak_idx)
         contact_idx = next(
@@ -822,6 +891,9 @@ def segment_swing_events(
     min_event_frames: int = 8,
     max_internal_gap: int = 3,
     min_event_gap: int = 18,
+    min_wrist_sweep: float = 0.0,
+    min_arm_extension_range: float = 0.0,
+    dominant_hand: str = "right",
 ) -> Dict:
     """Segment complete swing events from frame features.
 
@@ -842,6 +914,9 @@ def segment_swing_events(
             min_event_frames,
             min_event_gap,
             fps,
+            min_wrist_sweep=min_wrist_sweep,
+            min_arm_extension_range=min_arm_extension_range,
+            dominant_hand=dominant_hand,
         )
         if peak_result is not None:
             return peak_result
@@ -884,6 +959,14 @@ def segment_swing_events(
         peak_energy = max(segment_energy) if segment_energy else 0.0
         if (end_idx - start_idx + 1) < min_event_frames or peak_energy < min_peak_energy:
             continue
+        if min_wrist_sweep > 0.0 or min_arm_extension_range > 0.0:
+            sweep, arm_range = _evaluate_swing_kinematic_bounds(
+                features, start_idx, end_idx, dominant_hand=dominant_hand
+            )
+            if min_wrist_sweep > 0.0 and sweep > 0.0 and sweep < min_wrist_sweep:
+                continue
+            if min_arm_extension_range > 0.0 and arm_range is not None and arm_range < min_arm_extension_range:
+                continue
 
         event_id = len(events) + 1
         peak_rel = segment_energy.index(peak_energy) if segment_energy else 0

@@ -265,6 +265,49 @@ class RealtimeSwingEventEngineTests(unittest.TestCase):
         self.assertEqual(emitted[0].get("coach_advices"), [])
         self.assertIsNone(emitted[0].get("coach_advice"))
 
+    def test_suppresses_follow_through_tail_within_refractory_cooldown(self):
+        engine = RealtimeSwingEventEngine(
+            fps=25.0,
+            min_event_gap=18,
+            refractory_frames=20,
+        )
+        engine._events.append(
+            {
+                "event_id": 1,
+                "start_frame": 574,
+                "end_frame": 624,
+                "peak_frame": 593,
+            }
+        )
+        engine._emitted_peaks.append(593)
+
+        # Immediate follow-through tail: starts 2 frames after 624, peaks at 635 (< 624 + 20)
+        self.assertTrue(
+            engine._is_duplicate(
+                {
+                    "start_frame": 626,
+                    "end_frame": 656,
+                    "peak_frame": 635,
+                }
+            )
+        )
+
+    def test_kinematic_bounds_gate_filters_micro_motion(self):
+        from swing_event_analyzer import analyze_frame_records
+        frames = []
+        for i in range(25):
+            frames.append({
+                "frame_id": i,
+                "pose": {
+                    "right_wrist": [100.0 + (i % 3) * 5.0, 200.0],
+                    "right_shoulder": [50.0, 200.0],
+                },
+                "ball": None,
+                "rackets": [],
+            })
+        res = analyze_frame_records(frames, min_wrist_sweep=120.0, min_peak_energy=1.0)
+        self.assertEqual(len(res["events"]), 0)
+
 
 class RealtimeFrameJournalTests(unittest.TestCase):
     def test_writes_all_processed_frames_and_an_atomic_recent_snapshot(self):

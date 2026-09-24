@@ -310,6 +310,7 @@ def build_report_payload(
                 "stance": stc,
                 "leg_drive": leg,
                 "advice_list": advices,
+                "is_shadow_swing": event.get("is_shadow_swing") or ((event.get("evidence") or {}).get("contact_analysis") or {}).get("is_shadow_swing", False),
                 "impact_freeze_path": event.get("impact_freeze_path") or (event.get("snapshots") or {}).get("impact_freeze"),
             }
         )
@@ -567,9 +568,12 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         )
 
         # 1. 综合技术评级与100分制仪表
+        is_shadow = event.get("is_shadow_swing") or ((event.get("evidence") or {}).get("contact_analysis") or {}).get("is_shadow_swing", False)
         swing_grade = event.get("swing_grade")
         swing_score = event.get("swing_score")
-        if swing_grade:
+        if is_shadow:
+            head_badge_html = '<span class="tier-pill" style="background:rgba(100,116,139,0.18);color:#94a3b8;border:1px solid rgba(148,163,184,0.3);">空挥试拍 · 无来球</span>'
+        elif swing_grade:
             grade_upper = str(swing_grade).upper()
             tier_class = f"tier-{grade_upper.lower()}"
             score_display = f"{float(swing_score):.1f}分" if swing_score is not None else ""

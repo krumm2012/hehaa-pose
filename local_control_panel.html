@@ -443,6 +443,44 @@
     }
     .play-clip-btn:hover { background: rgba(0, 240, 255, 0.25); }
 
+    .swing-filter-toggle {
+      display: inline-flex;
+      background: rgba(14, 23, 38, 0.9);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 2px;
+      gap: 2px;
+      vertical-align: middle;
+    }
+    .filter-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all .15s ease;
+    }
+    .filter-btn:hover {
+      color: var(--text);
+    }
+    .filter-btn.active {
+      background: rgba(0, 240, 255, 0.18);
+      color: var(--blue);
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+    }
+    .swing-item-card.is-shadow-card {
+      opacity: 0.72;
+      border-color: rgba(255, 255, 255, 0.08);
+      background: rgba(14, 20, 30, 0.6);
+    }
+    .swing-item-card.is-shadow-card:hover {
+      opacity: 0.95;
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
     .inline-clip-player {
       margin-top: 4px;
       padding: 12px;
@@ -795,7 +833,11 @@
               <p id="swings-summary-text">AI 实时检测击球动作、高级生物力学遥测与慢动作切片复盘</p>
             </div>
             <div class="actions">
-              <span id="swings-count-badge" class="status-pill" style="border-color: var(--blue); color: var(--blue);">0 次击球</span>
+              <div class="swing-filter-toggle" role="group" aria-label="击球过滤模式">
+                <button id="filter-valid-btn" class="filter-btn active" type="button" title="纯净模式：仅显示击中来球的有效击球与针对性教练建议">🎯 仅看有效击球</button>
+                <button id="filter-all-btn" class="filter-btn" type="button" title="完整记录：显示包含空挥试拍在内的所有检测事件">全部记录</button>
+              </div>
+              <span id="swings-count-badge" class="status-pill" style="border-color: var(--blue); color: var(--blue);">0 次有效击球</span>
               <button id="refresh-swings-btn" class="button" type="button">刷新</button>
             </div>
           </div>
@@ -1242,6 +1284,8 @@
 
     const activeVideoPlayers = new Set();
     let lastEventsJson = "";
+    let filterOnlyValidSwings = true;
+    let latestRawEvents = [];
 
     function toggleClipPlayer(eventId, clipUrl) {
       const container = document.getElementById(`clip-player-${eventId}`);
@@ -1517,8 +1561,8 @@
             <p>基于当前会话所有击球动作的聚合统计、质量稳定性评估与共性短板处方</p>
           </div>
           <div class="summary-stats-pills">
-            <span class="stat-pill highlight">总挥拍: ${total}次</span>
-            <span class="stat-pill">击球: ${valid}次 (空挥${dist.shadow_count || 0})</span>
+            <span class="stat-pill highlight">有效击球: ${valid}次</span>
+            <span class="stat-pill" style="opacity: 0.85;">空挥试拍: ${dist.shadow_count || 0}次</span>
             <span class="stat-pill highlight">均分: ${qm.average_score != null ? qm.average_score + "分" : "—"}</span>
             <span class="stat-pill success">${escapeHtml(qm.stability_label || "—")}</span>
           </div>
@@ -1528,7 +1572,7 @@
           <div class="dist-bar-labels">
             <span>正手: ${dist.forehand_count || 0}球 (${dist.forehand_ratio || 0}%)</span>
             <span>反手: ${dist.backhand_count || 0}球 (${dist.backhand_ratio || 0}%)</span>
-            <span>空挥: ${dist.shadow_count || 0}次 (${dist.shadow_ratio || 0}%)</span>
+            <span>空挥试拍: ${dist.shadow_count || 0}次 (${dist.shadow_ratio || 0}%)</span>
           </div>
           <div class="dist-stacked-bar">
             <div class="dist-segment forehand" style="width: ${dist.forehand_ratio || 0}%;" title="正手 ${dist.forehand_ratio || 0}%"></div>
@@ -1561,15 +1605,16 @@
       `;
     }
 
-    async function pollSwings() {
+    async function pollSwings(force = false) {
       try {
         const response = await api("/api/session/events");
         if (!response.ok) return;
         const data = await response.json();
         const events = data.events || [];
         const summary = data.summary || {};
-        const currentHash = JSON.stringify(events.map(e => e.event_id + "_" + (e.coach_advices?.length || 0)) + "_" + (summary.total_swings || 0));
-        if (currentHash === lastEventsJson) return;
+        latestRawEvents = events;
+        const currentHash = JSON.stringify(events.map(e => e.event_id + "_" + (e.coach_advices?.length || 0)) + "_" + (summary.total_swings || 0) + "_" + filterOnlyValidSwings);
+        if (!force && currentHash === lastEventsJson) return;
         lastEventsJson = currentHash;
         renderSessionSummary(summary, events);
         renderSwingsFeed(events);
@@ -1581,27 +1626,58 @@
       const listEl = $("swings-feed-list");
       const badgeEl = $("swings-count-badge");
       if (!listEl) return;
-      
-      if (!events || events.length === 0) {
-        if (emptyEl) emptyEl.hidden = false;
+
+      const allEvents = events || [];
+      const validEvents = allEvents.filter(ev => !ev.is_shadow_swing && !(ev.evidence?.contact_analysis?.is_shadow_swing));
+      const shadowCount = allEvents.length - validEvents.length;
+      const displayEvents = filterOnlyValidSwings ? validEvents : allEvents;
+
+      if (badgeEl) {
+        if (filterOnlyValidSwings) {
+          badgeEl.textContent = `${validEvents.length} 次有效击球`;
+          if (shadowCount > 0) {
+            badgeEl.title = `共检测到 ${allEvents.length} 次挥拍，已自动过滤 ${shadowCount} 次空挥试拍`;
+          } else {
+            badgeEl.removeAttribute("title");
+          }
+        } else {
+          badgeEl.textContent = `${allEvents.length} 次挥拍 (含空挥)`;
+          badgeEl.removeAttribute("title");
+        }
+      }
+
+      if (displayEvents.length === 0) {
+        if (emptyEl) {
+          emptyEl.hidden = false;
+          if (allEvents.length > 0 && filterOnlyValidSwings) {
+            emptyEl.innerHTML = `
+              <strong>暂无有效实战击球</strong>
+              <span>当前会话已自动过滤 ${shadowCount} 次空挥试拍。点击右上角“全部记录”可查看试拍动作，或在击球后查看针对性教练诊断。</span>
+            `;
+          } else {
+            emptyEl.innerHTML = `
+              <strong>暂无挥拍击球事件</strong>
+              <span>启动流水线分析后，检测到的击球动作、高级遥测卡片与慢动作视频切片将在此处实时显示。</span>
+            `;
+          }
+        }
         listEl.innerHTML = "";
-        if (badgeEl) badgeEl.textContent = "0 次击球";
         return;
       }
 
       if (emptyEl) emptyEl.hidden = true;
-      if (badgeEl) badgeEl.textContent = `${events.length} 次击球`;
 
-      const reversed = [...events].reverse();
+      const reversed = [...displayEvents].reverse();
       listEl.innerHTML = reversed.map(ev => {
         const eid = ev.event_id;
         const isShadow = ev.is_shadow_swing || (ev.evidence?.contact_analysis?.is_shadow_swing);
+        const cardClass = isShadow ? "swing-item-card is-shadow-card" : "swing-item-card";
         const strokeType = ev.stroke_type || "Swing";
         const strokeText = strokeType === "Forehand" ? "正手 (Forehand)" : (strokeType === "Backhand" ? "反手 (Backhand)" : strokeType);
         const score = ev.swing_score ?? (ev.biomechanics?.swing_score ?? "—");
         const grade = ev.swing_grade || (ev.biomechanics?.swing_grade || "DEVELOPING");
         const badgeClass = isShadow ? "badge-shadow" : `badge-${grade.toLowerCase()}`;
-        const badgeText = isShadow ? "空挥练习 · 无来球" : `${grade} · ${score}分`;
+        const badgeText = isShadow ? "空挥试拍 · 无来球" : `${grade} · ${score}分`;
 
         const ext = ev.extended_biomechanics || (ev.biomechanics?.extended_biomechanics || {});
         const speed = ext.racket_head_speed || {};
@@ -1626,9 +1702,9 @@
             ${advices.map(a => `<span class="coach-pill">🎯 ${escapeHtml(a.message || a.code)}</span>`).join("")}
           </div>
         ` : (isShadow ? `
-          <div class="swing-coach-box" style="background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08);">
+          <div class="swing-coach-box" style="background: rgba(255,255,255,0.02); border-color: rgba(255,255,255,0.06);">
             <span class="coach-label" style="color: var(--muted);">提示</span>
-            <span class="coach-pill" style="color: var(--muted);">无来球击打 · 不派发纠错建议</span>
+            <span class="coach-pill" style="color: var(--muted); font-size: 11px;">空挥试拍（未检测到触球）· 已免除纠错建议以保持诊断纯净</span>
           </div>
         ` : "");
 
@@ -1637,7 +1713,7 @@
         const isPlayerOpen = activeVideoPlayers.has(eid);
 
         return `
-          <div class="swing-item-card" id="swing-card-${eid}">
+          <div class="${cardClass}" id="swing-card-${eid}">
             <div class="swing-header">
               <div class="swing-title">
                 <strong>Event #${eid} · ${strokeText}</strong>
@@ -1747,9 +1823,27 @@
           }
         } catch (_) {}
         updateStreamMeta();
+        const filterValidBtn = $("filter-valid-btn");
+        const filterAllBtn = $("filter-all-btn");
+        if (filterValidBtn && filterAllBtn) {
+          filterValidBtn.addEventListener("click", () => {
+            if (filterOnlyValidSwings) return;
+            filterOnlyValidSwings = true;
+            filterValidBtn.classList.add("active");
+            filterAllBtn.classList.remove("active");
+            renderSwingsFeed(latestRawEvents);
+          });
+          filterAllBtn.addEventListener("click", () => {
+            if (!filterOnlyValidSwings) return;
+            filterOnlyValidSwings = false;
+            filterAllBtn.classList.add("active");
+            filterValidBtn.classList.remove("active");
+            renderSwingsFeed(latestRawEvents);
+          });
+        }
         const refreshSwingsBtn = $("refresh-swings-btn");
         if (refreshSwingsBtn) {
-          refreshSwingsBtn.addEventListener("click", pollSwings);
+          refreshSwingsBtn.addEventListener("click", () => pollSwings(true));
         }
         await pollStatus();
         await pollSwings();

@@ -292,6 +292,9 @@ class RealtimeSwingEventEngine:
         min_event_frames: int = 8,
         max_internal_gap: int = 3,
         min_event_gap: int = 18,
+        refractory_frames: Optional[int] = None,
+        min_wrist_sweep: float = 0.0,
+        min_arm_extension_range: float = 0.0,
         coach=None,
         session_metadata: Optional[Dict] = None,
     ):
@@ -312,7 +315,17 @@ class RealtimeSwingEventEngine:
             "min_event_frames": max(1, int(min_event_frames)),
             "max_internal_gap": max(0, int(max_internal_gap)),
             "min_event_gap": max(0, int(min_event_gap)),
+            "min_wrist_sweep": float(min_wrist_sweep),
+            "min_arm_extension_range": float(min_arm_extension_range),
         }
+        if refractory_frames is not None:
+            self.refractory_frames = max(0, int(refractory_frames))
+        else:
+            self.refractory_frames = (
+                max(self.options["min_event_gap"], int(round(self.fps * 0.8)))
+                if self.options["min_event_gap"] >= 15
+                else self.options["min_event_gap"]
+            )
         # Keep realtime duplicate suppression aligned with the segmenter's
         # quality-ordered peak NMS.  The segmenter enforces at least 1.6s
         # between event peaks even when min_event_gap is configured lower.
@@ -362,6 +375,7 @@ class RealtimeSwingEventEngine:
                 "analysis_interval_frames": self.analysis_interval_frames,
                 "window_frames": self.window_frames,
                 "peak_dedup_frames": self.peak_dedup_frames,
+                "refractory_frames": self.refractory_frames,
                 "session_quality": build_session_quality_dashboard(self._events),
             },
             "events": deepcopy(self._events),
@@ -385,7 +399,7 @@ class RealtimeSwingEventEngine:
             # lets a weaker secondary peak become dominant after the original
             # peak leaves the rolling window, which previously emitted
             # overlapping duplicate events.  Only analyze the uncommitted
-            # timeline after the latest published event.
+            # timeline after the latest published event plus refractory cooldown.
             committed_through = max(int(event["end_frame"]) for event in self._events)
             analysis_frames = [
                 record
@@ -474,15 +488,20 @@ class RealtimeSwingEventEngine:
 
         # A rolling window can later promote a weaker secondary peak after the
         # original dominant peak leaves the window edge. If that new peak lies
-        # inside an already-published Swing range, it is the same action rather
-        # than a newly completed Swing.
+        # inside an already-published Swing range, or within the refractory cooldown
+        # after an already-published Swing, it is a follow-through tail or recovery
+        # gesture rather than a newly completed Swing.
         candidate_start = int(candidate["start_frame"])
         candidate_end = int(candidate["end_frame"])
-        return any(
-            max(candidate_start, int(event["start_frame"]))
-            <= min(candidate_end, int(event["end_frame"]))
-            for event in self._events
-        )
+        for event in self._events:
+            event_start = int(event["start_frame"])
+            event_end = int(event["end_frame"])
+            if max(candidate_start, event_start) <= min(candidate_end, event_end):
+                return True
+            if self.refractory_frames > 0:
+                if candidate_start <= event_end + 5 and peak_frame < event_end + self.refractory_frames:
+                    return True
+        return False
 
     def _append_event_trace(self, traces: List[Dict], candidate: Dict, event: Dict) -> None:
         start_frame = int(candidate["start_frame"])

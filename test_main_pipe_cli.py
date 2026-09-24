@@ -36,6 +36,9 @@ class MainPipeCliTests(unittest.TestCase):
             '--min-event-frames', '10',
             '--max-internal-gap', '4',
             '--min-event-gap', '24',
+            '--refractory-frames', '22',
+            '--min-wrist-sweep', '135.0',
+            '--min-arm-extension-range', '70.0',
         ])
 
         self.assertTrue(args.analyze_swings)
@@ -45,6 +48,9 @@ class MainPipeCliTests(unittest.TestCase):
         self.assertEqual(args.min_event_frames, 10)
         self.assertEqual(args.max_internal_gap, 4)
         self.assertEqual(args.min_event_gap, 24)
+        self.assertEqual(args.refractory_frames, 22)
+        self.assertEqual(args.min_wrist_sweep, 135.0)
+        self.assertEqual(args.min_arm_extension_range, 70.0)
 
     def test_realtime_swing_output_options_are_supported(self):
         parser = build_argument_parser()

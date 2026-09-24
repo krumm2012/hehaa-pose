@@ -73,6 +73,9 @@ class MultiprocessPipeline:
         min_event_frames=8,
         max_internal_gap=3,
         min_event_gap=18,
+        refractory_frames=None,
+        min_wrist_sweep=120.0,
+        min_arm_extension_range=65.0,
         realtime_swing_events=False,
         realtime_swing_json=None,
         realtime_swing_html=None,
@@ -182,6 +185,9 @@ class MultiprocessPipeline:
             'min_event_frames': max(1, int(min_event_frames)),
             'max_internal_gap': max(0, int(max_internal_gap)),
             'min_event_gap': max(0, int(min_event_gap)),
+            'refractory_frames': int(refractory_frames) if refractory_frames is not None else None,
+            'min_wrist_sweep': float(min_wrist_sweep) if min_wrist_sweep is not None else 0.0,
+            'min_arm_extension_range': float(min_arm_extension_range) if min_arm_extension_range is not None else 0.0,
         }
         realtime_cfg = self.config.setdefault('realtime_swing', {})
         self.realtime_swing_events = bool(
@@ -1825,6 +1831,12 @@ def build_argument_parser():
                         help='同一挥拍内允许的最大非活跃间隔帧数，默认 3')
     parser.add_argument('--min-event-gap', type=int, default=18,
                         help='相邻挥拍事件的最小间隔帧数，默认 18')
+    parser.add_argument('--refractory-frames', type=int, default=20,
+                        help='挥拍结束后禁止触发新事件的不应期帧数，默认 20 (约 0.8 秒)')
+    parser.add_argument('--min-wrist-sweep', type=float, default=120.0,
+                        help='有效挥拍手腕最小空间轨迹跨度（像素），默认 120.0')
+    parser.add_argument('--min-arm-extension-range', type=float, default=65.0,
+                        help='有效挥拍手腕相对于肩部的最小伸缩距离跨度（像素），默认 65.0')
     parser.add_argument('--realtime-swing-events', action='store_true',
                         help='对直播码流或按时间线播放的视频滚动识别完整挥拍，并更新事件 JSON、HTML 与异步事件片段')
     parser.add_argument('--realtime-swing-json',
@@ -1937,6 +1949,9 @@ def main_cli(argv=None):
         min_event_frames=args.min_event_frames,
         max_internal_gap=args.max_internal_gap,
         min_event_gap=args.min_event_gap,
+        refractory_frames=args.refractory_frames,
+        min_wrist_sweep=args.min_wrist_sweep,
+        min_arm_extension_range=args.min_arm_extension_range,
         realtime_swing_events=args.realtime_swing_events,
         realtime_swing_json=args.realtime_swing_json,
         realtime_swing_html=args.realtime_swing_html,

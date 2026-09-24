@@ -231,7 +231,7 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
         min_score = None
         max_score = None
         stability_rating = "ONLY_SHADOW"
-        stability_label = "全为空挥练习"
+        stability_label = "全为空挥试拍"
 
     # Radar averages
     radar_averages = {
@@ -263,7 +263,7 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
     if backhand_count > 0:
         dist_desc.append(f"反手 {backhand_count} 球 ({backhand_ratio}%)")
     if shadow_count > 0:
-        dist_desc.append(f"空挥热身 {shadow_count} 次 ({shadow_ratio}%)")
+        dist_desc.append(f"空挥试拍 {shadow_count} 次 ({shadow_ratio}%)")
     if dist_desc:
         parts.append(f"（包含 { '，'.join(dist_desc)}）。")
 
@@ -293,7 +293,7 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
         else:
             parts.append("击球动作整体规范，未检测到显著技术短板，建议进入下一阶段加力与控球练习！")
     else:
-        parts.append("本节全为空挥热身或未检测到有效来球，建议进入实战击球环节。")
+        parts.append("本节全为空挥试拍或未检测到有效来球，建议进入实战击球环节。")
 
     macro_diagnosis = "".join(parts)
 

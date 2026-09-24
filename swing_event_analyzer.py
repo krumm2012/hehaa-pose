@@ -192,7 +192,10 @@ def analyze_frame_records(
     min_event_frames: int = 8,
     max_internal_gap: int = 3,
     min_event_gap: int = 18,
+    min_wrist_sweep: float = 0.0,
+    min_arm_extension_range: float = 0.0,
     session_metadata: Optional[Dict] = None,
+    **kwargs,
 ) -> Dict:
     """Build event-level analysis and auditable frame features."""
     features = extract_motion_features(frames, dominant_hand=dominant_hand)
@@ -203,6 +206,9 @@ def analyze_frame_records(
         min_event_frames=min_event_frames,
         max_internal_gap=max_internal_gap,
         min_event_gap=min_event_gap,
+        min_wrist_sweep=min_wrist_sweep,
+        min_arm_extension_range=min_arm_extension_range,
+        dominant_hand=dominant_hand,
     )
     events = enrich_events_with_biomechanics(
         segmentation["events"],
@@ -234,6 +240,8 @@ def analyze_frame_records(
         "min_event_frames": min_event_frames,
         "max_internal_gap": max_internal_gap,
         "min_event_gap": min_event_gap,
+        "min_wrist_sweep": min_wrist_sweep,
+        "min_arm_extension_range": min_arm_extension_range,
     }
     return {
         **document_contract("swing_events", effective_session),
