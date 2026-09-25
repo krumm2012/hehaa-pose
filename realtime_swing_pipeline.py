@@ -538,10 +538,12 @@ class RealtimeSwingOutputManager:
         preview_interval_frames: int = 25,
         event_log_path: Optional[str] = None,
         session_metadata: Optional[Dict] = None,
+        is_dual_view: bool = False,
     ):
         self.output_json = Path(output_json)
         self.output_html = Path(output_html)
         self.clips_dir = Path(clips_dir)
+        self.is_dual_view = bool(is_dual_view)
         self.fps = max(1.0, float(fps or 25.0))
         source_width = int(frame_size[0])
         source_height = int(frame_size[1])
@@ -1032,12 +1034,28 @@ class RealtimeSwingOutputManager:
         os.replace(temporary, path)
 
     def _draw_roi_preview(self, frame, frame_id: int):
-        preview = frame.copy()
-        points = self.roi_metadata.get("points") or []
+        # 算法 2.0 虚拟双机位画面（Side-by-Side 1080x720）已自带 Front/Back View 标题、
+        # 镜面翻转视点、姿态骨架及击球遥测 HUD，直接输出高清实时推流画面，
+        # 不应将单机位 2560x1440 全景球场四角点强行错位叠加到局部人像特写上。
+        if self.is_dual_view:
+            return frame.copy()
+
         configured_size = self.roi_metadata.get("frame_size") or [
             frame.shape[1],
             frame.shape[0],
         ]
+        # 防御性检测：如果画面宽高比与配置的 ROI 全景宽高比差异过大（例如局部双视角裁剪），跳过错位绘制
+        aspect_frame = frame.shape[1] / max(1, frame.shape[0])
+        aspect_conf = (
+            configured_size[0] / max(1, configured_size[1])
+            if len(configured_size) >= 2
+            else aspect_frame
+        )
+        if abs(aspect_frame - aspect_conf) > 0.15:
+            return frame.copy()
+
+        preview = frame.copy()
+        points = self.roi_metadata.get("points") or []
         if len(points) == 4 and len(configured_size) >= 2:
             scale_x = frame.shape[1] / max(1, int(configured_size[0]))
             scale_y = frame.shape[0] / max(1, int(configured_size[1]))

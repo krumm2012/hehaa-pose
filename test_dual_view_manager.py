@@ -107,12 +107,13 @@ class DualViewManagerTests(unittest.TestCase):
         self.assertEqual(np.mean(dual_no_mask.back_frame), 255.0)
 
         # Test with mask covering reflection region
-        # Mirror polygon in default config is roughly [0.08, 0.15] to [0.35, 0.85]
+        rx1, ry1, rx2, ry2 = self.mgr.mirror_reflection_roi_norm
+        cx, cy = (rx1 + rx2) / 2.0, (ry1 + ry2) / 2.0
         self.mgr.mask_polygon_norm = [
-            [0.10, 0.20],
-            [0.30, 0.20],
-            [0.30, 0.80],
-            [0.10, 0.80],
+            [cx - 0.05, cy - 0.05],
+            [cx + 0.05, cy - 0.05],
+            [cx + 0.05, cy + 0.05],
+            [cx - 0.05, cy + 0.05],
         ]
         dual_masked = self.mgr.split_frame(white_frame)
         # Masked area should darken the back_frame pixels
@@ -122,6 +123,64 @@ class DualViewManagerTests(unittest.TestCase):
         # Ensure front frame is untouched (remains pure white)
         self.assertEqual(np.mean(dual_masked.front_frame), 255.0)
 
+    def test_stream_profile_override_and_is_point_in_mirror(self):
+        class DummyStreamProfile:
+            mirror_view = {
+                "enabled": True,
+                "reflection_roi": [0.40, 0.10, 0.80, 0.40],
+                "polygon": [
+                    [0.40, 0.40],
+                    [0.40, 0.10],
+                    [0.80, 0.10],
+                    [0.80, 0.40],
+                ],
+                "horizontal_flip": True,
+                "target_size": [540, 720],
+            }
+            front_view = {
+                "enabled": True,
+                "default_roi": [0.45, 0.10, 0.75, 0.85],
+                "bbox_padding": 0.45,
+                "target_size": [540, 720],
+            }
+
+        mgr = DualViewManager(stream_profile=DummyStreamProfile())
+        self.assertEqual(mgr.mirror_reflection_roi_norm, (0.40, 0.10, 0.80, 0.40))
+        self.assertEqual(mgr.front_default_roi_norm, (0.45, 0.10, 0.75, 0.85))
+
+        # Check point in mirror on 1000x1000 frame
+        # Inside: x=600, y=200 -> norm (0.6, 0.2) which is inside [0.4, 0.1, 0.8, 0.4]
+        self.assertTrue(mgr.is_point_in_mirror(600, 200, 1000, 1000))
+        # Outside: x=200, y=200 -> norm (0.2, 0.2) which is outside
+        self.assertFalse(mgr.is_point_in_mirror(200, 200, 1000, 1000))
+        # Outside: x=600, y=700 -> norm (0.6, 0.7) which is outside
+        self.assertFalse(mgr.is_point_in_mirror(600, 700, 1000, 1000))
+
+    def test_dynamic_player_tracking_and_aspect_ratio_crop(self):
+        dummy_frame = np.zeros((1440, 2560, 3), dtype=np.uint8)
+        # 1. First split without bbox uses default
+        dual_initial = self.mgr.split_frame(dummy_frame)
+        self.assertIsNone(self.mgr.tracked_player_bbox)
+
+        # 2. Split with player_bbox activates tracking
+        p_box = (1450.0, 200.0, 1670.0, 800.0)
+        dual_tracked = self.mgr.split_frame(dummy_frame, player_bbox=p_box)
+        self.assertIsNotNone(self.mgr.tracked_player_bbox)
+        tx1, ty1, tx2, ty2 = self.mgr.tracked_player_bbox
+        self.assertAlmostEqual(tx1, 1450.0)
+        self.assertAlmostEqual(tx2, 1670.0)
+
+        # 3. Subsequent split without explicit player_bbox retains tracking
+        dual_next = self.mgr.split_frame(dummy_frame)
+        fx1, fy1, fx2, fy2 = dual_next.front_info.bbox_orig
+        # Check that player is centered inside front crop
+        self.assertLess(fx1, 1450)
+        self.assertGreater(fx2, 1670)
+        self.assertLess(fy1, 200)
+        self.assertGreater(fy2, 800)
+
 
 if __name__ == "__main__":
     unittest.main()
+
+

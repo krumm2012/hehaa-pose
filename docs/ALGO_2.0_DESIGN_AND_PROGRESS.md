@@ -411,3 +411,47 @@
    - 提供 `[ 全部记录 ]` 一键切换，对空挥试拍弱化透明度呈现，并提供统计数量 badge 提示（如 `4 次有效击球 (共检测到 12 次挥拍，已自动过滤 8 次空挥试拍)`）。
 4. **会话级诊断与报告术语升级 (`swing_session_summary.py` / `swing_report_builder.py`)**：
    - 规范空挥术语为“空挥试拍”，会话全景诊断中单独统计有效击球质量与稳定性，空挥动作免除纠错建议。
+
+#### 2.5 Qwen3-TTS 极致低延迟播报（预热 + 精简口令映射 + 抢占）
+1. **模型静音预热 (`qwen3_tts_worker.py`)**：
+   - Worker 启动时自动执行 1 字符静音推理，消除首次播报需编译 Metal 着色器与显存分配带来的 4.5s 初始卡顿。
+2. **极简教练口令映射 (`qwen3_tts_sidecar.py`)**：
+   - 建立 `DEFAULT_CONCISE_CUE_MAP`，将多字长句精炼为“手臂舒展”、“继续保持”、“重心前移”等 2~4 字短语；
+   - 播报音频耗时从 4.5s 缩短至 ~0.8s，首包流式耗时 TTFB ~420ms，真正实现随挥即报。
+3. **主管道参数透传 (`main_pipe.py`)**：
+   - 默认启用 `concise_speech=True` 与 `warmup=True`，提供 `--realtime-coach-tts-verbose` 与 `--realtime-coach-tts-no-warmup` 兼容开关。
+
+#### 2.6 良性击球复核告警抑制与会话级短板纯净化
+1. **良性击球复核告警抑制 (`local_realtime_coach.py`)**：
+   - 当网球确认为真实命中（`is_valid_contact=True`）时，良性静止球与镜面剔除警告不再下发“网球识别需复核”，平滑降级为“继续保持”。
+2. **会话技术短板纯净化 (`swing_session_summary.py`)**：
+   - 宏观统计“学员共性技术短板”时，彻底排除 `review`（识别复核）、`capture`（捕获状态）、`positive`（表扬词），仅归纳动力学链断裂、蹬地迟缓等真实动作短板并去重排序。
+
+#### 2.7 网络多网卡路由拓扑治理与双机位合成画面 ROI 渲染隔离修复
+1. **多网卡路由拓扑治理**：
+   - 排查并修复了 macOS 在 Wi-Fi（`192.168.110.x`）与球场 USB 网卡（`192.168.1.x`）并存时报 `No route to host` 的路由冲突；将 USB 10/100/1000 LAN 网络服务优先级调升至首位，确保内网相机流量 100% 畅通。
+2. **双机位合成图与全景 ROI 渲染解耦 (`realtime_swing_pipeline.py`)**：
+   - 修复了 `_draw_roi_preview` 误将 1080×720 的 Side-by-Side 双机位特写合成图当作全景图、将 2560×1440 四角点错位缩放叠加于局部人像的视觉 Bug；
+   - 在双视角模式下直接呈现原汁原味的高清推流画面（自带双视角标题与遥测 HUD），消除了遮挡画面的顶部黑色遮罩条，彻底打消了用户对 ROI 范围的困惑。
+
+#### 2.8 统一聚合各机位 ROI 与镜面配置方案落地 (Scheme A) 与导入视频机位绑定优化
+针对多球场、多机位环境下的几何配置孤立问题，全面落地方案 A（统一聚合实现）：
+1. **统一聚合配置架构 (`configs/roi_config.yaml`)**：
+   - 将原单文件 `configs/dual_view_config.yaml` 的镜面区域配置（`reflection_roi`、`polygon`、`mask_polygon`、`horizontal_flip`、`target_size`）统一收敛聚合进 `configs/roi_config.yaml` 的每一个机位节点（`court01-main`、`court02-main`、`court03-main`、`camera04-main`），实现机位四点真实球场 ROI 与虚拟后视镜面配置的物理一一对应。
+2. **多机位智能解析与流绑定 (`roi_stream_config.py` & `ROIStreamProfile`)**：
+   - `ROIStreamProfile` 数据类扩展 `mirror_view`，提供 `has_mirror_view`、`mirror_polygon`、`mirror_mask_polygon` 等标准化属性；
+   - `resolve_roi_stream_profile` 支持显式 `target_stream_id` 匹配（优先于 RTSP URL 与 default 回退），精准绑定指定机位。
+3. **导入/上传本地视频绑定指定机位 (`local_control_panel.py` & `local_control_panel.html`)**：
+   - 在控制面板上传本地视频时，新增“匹配球场机位（绑定 ROI 与镜面配置）”下拉选单；
+   - 彻底废除了“本地视频一律禁用 ROI”的旧有限制，支持将测试录像或上传视频映射到指定球场，自动加载该球场的 ROI 裁剪边界、后墙镜面区域与人像屏蔽；
+   - `main_pipe.py` CLI 增加 `--stream-id` / `--stream-profile` 命令行参数。
+4. **动态多边形碰撞检测替代硬编码边界 (`main_pipe.py` & `dual_view_manager.py`)**：
+   - `DualViewManager` 引入 `is_point_in_mirror(x, y, w, h)` 与 `get_mirror_polygon_pixels`，无缝继承自匹配机位的 `stream_profile`；
+   - `main_pipe.py` 中的球拍/球镜面过滤彻底告别硬编码坐标 `680 <= rx_c <= 1580 and ry_c < 620`，全面切换为各机位镜面多边形的高精度点内检测（`cv2.pointPolygonTest`）。
+5. **镜面标定工具多机位切换与双向同步 (`calibrate_mirror.py` & `mirror_calibration.html`)**：
+   - Web 标定界面增加“当前标定机位”切换下拉选单；
+   - `/api/info?stream_id=...` 与 `/api/save_config` 支持读写特定机位，保存时自动更新 `roi_config.yaml` 并生成时间戳历史备份，同时保持 `dual_view_config.yaml` 兼容同步。
+6. **全套自动化测试 100% 通过**：
+   - 新增 `test_calibrate_mirror.py` 与 `test_local_video_mapped_to_stream_id`、`test_resolves_mirror_view_and_target_stream_id_mapping` 等，全量 302 项单元测试 100% 满分通过。
+
+

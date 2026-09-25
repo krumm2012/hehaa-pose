@@ -690,6 +690,46 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
                 server.server_close()
                 thread.join(timeout=2)
 
+    def test_local_video_mapped_to_stream_id(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = self.make_controller(root)
+            uploads = root / "data" / "control_uploads"
+            uploads.mkdir(parents=True, exist_ok=True)
+            video_name = "0123456789abcdef0123456789abcdef.mp4"
+            (uploads / video_name).write_bytes(b"dummy")
+
+            # 1. 映射到 court01-main
+            stream = controller._stream_from_payload({
+                "stream_id": "local_video",
+                "video_id": video_name,
+                "mapped_stream_id": "court01-main",
+            })
+            self.assertEqual(stream["stream_id"], "local_video")
+            self.assertEqual(stream["mapped_stream_id"], "court01-main")
+            self.assertTrue(stream["roi_enabled"])
+            self.assertEqual(stream["points"], [[20, 20], [300, 20], [300, 160], [20, 160]])
+
+            # 2. ControlSettings & Command 包含 --stream-id court01-main
+            settings = ControlSettings.from_payload({
+                "stream_id": "local_video",
+                "video_id": video_name,
+                "mapped_stream_id": "court01-main",
+                "roi_enabled": True,
+            })
+            self.assertEqual(settings.mapped_stream_id, "court01-main")
+            self.assertTrue(settings.roi_enabled)
+
+            cmd, _ = controller._build_command(
+                settings=settings,
+                runtime_config=root / "runtime.yaml",
+                output_dir=root / "output",
+            )
+            self.assertIn("--stream-id", cmd)
+            idx = cmd.index("--stream-id")
+            self.assertEqual(cmd[idx + 1], "court01-main")
+
 
 if __name__ == "__main__":
     unittest.main()
+

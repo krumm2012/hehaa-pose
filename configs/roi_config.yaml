@@ -2,7 +2,7 @@ version: '2.0'
 created_by: Tennis Analyzer System
 streams:
 - stream_id: court01-main
-  stream_label: 'Court 01 Main Camera     '
+  stream_label: Court 01 Main Camera
   stream_source: rtsp://192.168.1.191:554/h264/ch1/main/av_stream
   default: true
   roi_enabled: true
@@ -19,9 +19,50 @@ streams:
   - - 424
     - 1198
   roi_description: '4-point ROI: [[712, 434], [1544, 440], [1818, 1198], [424, 1198]]'
-  last_updated: '2026-07-27 15:46:39'
+  last_updated: '2026-09-25 07:26:25'
   created_by: Tennis Analyzer ROI Calibration
   version: '2.0'
+  mirror_view:
+    enabled: true
+    reflection_roi:
+    - 0.4244
+    - 0.0
+    - 0.8145
+    - 0.3199
+    polygon:
+    - - 0.4244
+      - 0.2993
+    - - 0.4267
+      - 0.0
+    - - 0.8145
+      - 0.0021
+    - - 0.8029
+      - 0.3199
+    padding: 0.0
+    horizontal_flip: true
+    target_size:
+    - 540
+    - 720
+    mask_polygon:
+    - - 0.5746
+      - 0.2057
+    - - 0.6272
+      - 0.2057
+    - - 0.6342
+      - 0.3048
+    - - 0.5707
+      - 0.2993
+  front_view:
+    enabled: true
+    default_roi:
+    - 0.45
+    - 0.08
+    - 0.75
+    - 0.85
+    bbox_padding: 0.45
+    target_size:
+    - 540
+    - 720
 - stream_id: court02-main
   stream_label: Court 02 Main Camera
   stream_source: rtsp://192.168.1.192:554/h264/ch1/main/av_stream
@@ -39,11 +80,44 @@ streams:
   - - 962
     - 1194
   roi_description: '4-point ROI: [[1170, 336], [1952, 358], [2186, 1196], [962, 1194]]'
-  last_updated: '2026-07-27 15:44:28'
+  last_updated: '2026-09-25 20:20:00'
   created_by: Tennis Analyzer ROI Calibration
   version: '2.0'
+  mirror_view:
+    enabled: true
+    reflection_roi:
+    - 0.4244
+    - 0.0
+    - 0.8145
+    - 0.3199
+    polygon:
+    - - 0.4244
+      - 0.2993
+    - - 0.4267
+      - 0.0
+    - - 0.8145
+      - 0.0021
+    - - 0.8029
+      - 0.3199
+    padding: 0.0
+    horizontal_flip: true
+    target_size:
+    - 540
+    - 720
+    mask_polygon: []
+  front_view:
+    enabled: true
+    default_roi:
+    - 0.45
+    - 0.08
+    - 0.75
+    - 0.85
+    bbox_padding: 0.45
+    target_size:
+    - 540
+    - 720
 - stream_id: court03-main
-  stream_label: 'Court 03 Main Camera     '
+  stream_label: Court 03 Main Camera
   stream_source: rtsp://192.168.1.193:554/h264/ch1/main/av_stream
   roi_enabled: true
   frame_size:
@@ -62,3 +136,89 @@ streams:
   last_updated: '2026-07-27 15:47:32'
   created_by: Tennis Analyzer ROI Calibration
   version: '2.0'
+  mirror_view:
+    enabled: true
+    reflection_roi:
+    - 0.4244
+    - 0.0
+    - 0.8145
+    - 0.3199
+    polygon:
+    - - 0.4244
+      - 0.2993
+    - - 0.4267
+      - 0.0
+    - - 0.8145
+      - 0.0021
+    - - 0.8029
+      - 0.3199
+    padding: 0.0
+    horizontal_flip: true
+    target_size:
+    - 540
+    - 720
+    mask_polygon: []
+  front_view:
+    enabled: true
+    default_roi:
+    - 0.34
+    - 0.3
+    - 0.58
+    - 0.85
+    bbox_padding: 0.45
+    target_size:
+    - 540
+    - 720
+- stream_id: camera04-main
+  stream_label: Camera 04 Test Booth
+  stream_source: /Users/krum5539/Desktop/Camera/test/40.26.mp4
+  roi_enabled: true
+  frame_size:
+  - 2560
+  - 1440
+  roi_points:
+  - - 680
+    - 200
+  - - 1600
+    - 200
+  - - 1800
+    - 1200
+  - - 450
+    - 1200
+  roi_description: Camera 04 Test Booth ROI
+  last_updated: '2026-09-25 07:30:00'
+  created_by: Tennis Analyzer ROI Calibration
+  version: '2.0'
+  mirror_view:
+    enabled: true
+    reflection_roi:
+    - 0.2708
+    - 0.1018
+    - 0.6139
+    - 0.4642
+    polygon:
+    - - 0.2708
+      - 0.4593
+    - - 0.2742
+      - 0.1018
+    - - 0.6139
+      - 0.1214
+    - - 0.5961
+      - 0.4642
+    padding: 0.0
+    horizontal_flip: true
+    target_size:
+    - 540
+    - 720
+    mask_polygon: []
+  front_view:
+    enabled: true
+    default_roi:
+    - 0.34
+    - 0.3
+    - 0.58
+    - 0.85
+    bbox_padding: 0.45
+    target_size:
+    - 540
+    - 720

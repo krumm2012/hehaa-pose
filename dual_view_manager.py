@@ -107,32 +107,54 @@ class DualViewManager:
         self,
         config_path: Optional[str] = None,
         config_dict: Optional[Dict[str, Any]] = None,
+        stream_profile: Optional[Any] = None,
     ):
+        base_config: Dict[str, Any] = {}
+        path_to_load = config_path or self.DEFAULT_CONFIG_PATH
+        loaded_yaml = self._load_yaml(path_to_load)
+        if isinstance(loaded_yaml, dict):
+            base_config.update(loaded_yaml)
+
         if config_dict is not None:
-            self.config = config_dict
-        else:
-            path_to_load = config_path or self.DEFAULT_CONFIG_PATH
-            self.config = self._load_yaml(path_to_load)
+            if "mirror_view" in config_dict:
+                base_config.update(config_dict)
+            elif "reflection_roi" in config_dict or "polygon" in config_dict:
+                base_config["mirror_view"] = config_dict
+            else:
+                base_config.update(config_dict)
+
+        if stream_profile is not None:
+            profile_mirror = getattr(stream_profile, "mirror_view", None)
+            if isinstance(profile_mirror, dict) and profile_mirror:
+                base_config["mirror_view"] = dict(profile_mirror)
+            profile_front = getattr(stream_profile, "front_view", None)
+            if isinstance(profile_front, dict) and profile_front:
+                base_config["front_view"] = dict(profile_front)
+
+        self.config = base_config
+
+        # 选手位置动态追踪状态 (EMA 平滑)
+        self._tracked_player_bbox: Optional[Tuple[float, float, float, float]] = None
+        self._tracking_lost_counter: int = 0
 
         # 解析镜像机位配置
         m_cfg = self.config.get("mirror_view", {})
-        self.mirror_reflection_roi_norm = tuple(m_cfg.get("reflection_roi", [0.36, 0.11, 0.54, 0.44]))
+        self.mirror_reflection_roi_norm = tuple(m_cfg.get("reflection_roi", [0.2708, 0.1018, 0.6139, 0.4642]))
         self.mirror_polygon_norm = np.array(
             m_cfg.get(
                 "polygon",
                 [
-                    [0.0, 0.20],
-                    [0.34, 0.105],
-                    [0.615, 0.125],
-                    [0.59, 0.478],
-                    [0.0, 0.478],
+                    [0.2708, 0.4593],
+                    [0.2742, 0.1018],
+                    [0.6139, 0.1214],
+                    [0.5961, 0.4642],
                 ],
             ),
             dtype=np.float32,
         )
         self.mirror_flip = bool(m_cfg.get("horizontal_flip", True))
         self.mirror_target_size = tuple(m_cfg.get("target_size", [540, 720]))
-        self.mirror_padding = float(m_cfg.get("padding", 0.10))
+        self.mirror_padding = float(m_cfg.get("padding", 0.0))
 
         # 解析正面人像屏蔽区配置 (Mask Polygon)
         mask_poly = m_cfg.get("mask_polygon")
@@ -151,6 +173,78 @@ class DualViewManager:
         v_cfg = self.config.get("visualization", {})
         self.front_label = v_cfg.get("front_label", "FRONT VIEW")
         self.back_label = v_cfg.get("back_label", "BACK VIEW (MIRROR FLIPPED)")
+
+    @property
+    def tracked_player_bbox(self) -> Optional[Tuple[float, float, float, float]]:
+        return self._tracked_player_bbox
+
+    def update_player_bbox(
+        self,
+        bbox: Tuple[float, float, float, float],
+        ema_alpha: float = 0.35,
+    ) -> Tuple[float, float, float, float]:
+        """更新并平滑前景选手包围盒 (x1, y1, x2, y2) 绝对像素坐标。"""
+        x1, y1, x2, y2 = bbox
+        if x2 <= x1 or y2 <= y1:
+            return self._tracked_player_bbox or bbox
+
+        self._tracking_lost_counter = 0
+        if self._tracked_player_bbox is None:
+            self._tracked_player_bbox = (float(x1), float(y1), float(x2), float(y2))
+        else:
+            tx1, ty1, tx2, ty2 = self._tracked_player_bbox
+            smooth_x1 = tx1 * (1.0 - ema_alpha) + float(x1) * ema_alpha
+            smooth_y1 = ty1 * (1.0 - ema_alpha) + float(y1) * ema_alpha
+            smooth_x2 = tx2 * (1.0 - ema_alpha) + float(x2) * ema_alpha
+            smooth_y2 = ty2 * (1.0 - ema_alpha) + float(y2) * ema_alpha
+            self._tracked_player_bbox = (smooth_x1, smooth_y1, smooth_x2, smooth_y2)
+        return self._tracked_player_bbox
+
+    def update_player_from_keypoints(
+        self,
+        keypoints_orig: Dict[str, Any],
+        min_conf: float = 0.25,
+        ema_alpha: float = 0.35,
+    ) -> Optional[Tuple[float, float, float, float]]:
+        """从姿态关键点提取选手全身包围盒并平滑更新追踪。"""
+        if not keypoints_orig:
+            self._tracking_lost_counter += 1
+            if self._tracking_lost_counter > 45:
+                self._tracked_player_bbox = None
+            return self._tracked_player_bbox
+
+        valid_xs = []
+        valid_ys = []
+        for kp in keypoints_orig.values():
+            if kp is None:
+                continue
+            conf = getattr(kp, 'conf', 1.0)
+            if conf >= min_conf:
+                valid_xs.append(kp.x)
+                valid_ys.append(kp.y)
+
+        if len(valid_xs) < 4:
+            self._tracking_lost_counter += 1
+            if self._tracking_lost_counter > 45:
+                self._tracked_player_bbox = None
+            return self._tracked_player_bbox
+
+        min_x = min(valid_xs)
+        max_x = max(valid_xs)
+        min_y = min(valid_ys)
+        max_y = max(valid_ys)
+
+        # 保护：若关键点缺少下肢（例如被球网遮挡或半身帧），按人体工学比例扩展为全身高度
+        has_lower_body = any(
+            k in keypoints_orig and getattr(keypoints_orig[k], 'conf', 0) >= min_conf
+            for k in ("left_knee", "right_knee", "left_ankle", "right_ankle")
+        )
+        if not has_lower_body:
+            width = max(140.0, max_x - min_x)
+            min_height = max(550.0, width * 3.5)
+            max_y = max(max_y, min_y + min_height)
+
+        return self.update_player_bbox((min_x, min_y, max_x, max_y), ema_alpha=ema_alpha)
 
     @property
     def mask_polygon_norm(self) -> Optional[np.ndarray]:
@@ -204,23 +298,111 @@ class DualViewManager:
         player_bbox: Optional[Tuple[float, float, float, float]] = None,
     ) -> Tuple[int, int, int, int]:
         """获取镜中人像区域的外接矩形框（像素坐标）。
-        支持结合前景选手的水平横向坐标进行物理对齐。
+        支持结合前景选手的水平横向坐标在镜面边界内进行物理对齐。
         """
         rx1, ry1, rx2, ry2 = self.mirror_reflection_roi_norm
         y1_px = ry1 * frame_h
         y2_px = ry2 * frame_h
 
-        if player_bbox is not None:
+        effective_player = player_bbox or self._tracked_player_bbox
+        if effective_player is not None:
             # 物理几何：平面镜成像横向 X 轴投影一致
-            px1, _, px2, _ = player_bbox
+            px1, _, px2, _ = effective_player
             pw = max(100.0, px2 - px1)
-            x1_px = max(0.0, px1 - pw * 0.3)
-            x2_px = min(float(frame_w), px2 + pw * 0.3)
+            min_mirror_x = rx1 * frame_w
+            max_mirror_x = rx2 * frame_w
+            x1_px = max(min_mirror_x, px1 - pw * 0.4)
+            x2_px = min(max_mirror_x, px2 + pw * 0.4)
+            if x2_px <= x1_px + 20:
+                x1_px, x2_px = min_mirror_x, max_mirror_x
         else:
             x1_px = rx1 * frame_w
             x2_px = rx2 * frame_w
 
         return self._pad_and_clamp_bbox((x1_px, y1_px, x2_px, y2_px), self.mirror_padding, frame_w, frame_h)
+
+    def compute_front_crop_bbox(
+        self,
+        frame_w: int,
+        frame_h: int,
+        player_bbox: Optional[Tuple[float, float, float, float]] = None,
+    ) -> Tuple[int, int, int, int]:
+        """计算正面机位最佳裁剪视口（保持比例，充分容纳全身、球拍挥击与来球空间）。"""
+        if player_bbox is not None:
+            self.update_player_bbox(player_bbox)
+
+        effective_player = player_bbox or self._tracked_player_bbox
+        if effective_player is not None:
+            px1, py1, px2, py2 = effective_player
+            pw = max(160.0, px2 - px1)
+            ph = max(550.0, py2 - py1, pw * 2.8)
+
+            target_w, target_h = self.front_target_size or (540, 720)
+            target_aspect = float(target_w) / max(1.0, float(target_h))
+
+            # 高度：覆盖引拍过顶空间与地面触球空间，视口至少要有 0.62 * frame_h
+            min_crop_h = max(ph * (1.0 + self.front_bbox_padding * 1.1), frame_h * 0.62)
+            crop_h = max(min_crop_h, pw / target_aspect)
+            crop_w = crop_h * target_aspect
+
+            # 宽度：若持拍延展范围更广，优先扩大并按宽高比同步外扩
+            min_width = pw * (1.0 + self.front_bbox_padding * 1.8)
+            if min_width > crop_w:
+                crop_w = min_width
+                crop_h = crop_w / target_aspect
+
+            # 水平居中
+            cx = (px1 + px2) / 2.0
+            fx1 = int(round(cx - crop_w / 2.0))
+            fx2 = int(round(cx + crop_w / 2.0))
+            if fx1 < 0:
+                fx2 = min(frame_w, fx2 - fx1)
+                fx1 = 0
+            if fx2 > frame_w:
+                fx1 = max(0, fx1 - (fx2 - frame_w))
+                fx2 = frame_w
+
+            # 垂直布局：确保脚底留有球场地面余量
+            fy2 = int(round(min(frame_h, py2 + ph * 0.18)))
+            fy1 = int(round(fy2 - crop_h))
+            if fy1 < 0:
+                fy1 = 0
+                fy2 = int(min(frame_h, crop_h))
+
+            fx1 = max(0, min(frame_w - 10, fx1))
+            fy1 = max(0, min(frame_h - 10, fy1))
+            fx2 = min(frame_w, max(fx1 + 10, fx2))
+            fy2 = min(frame_h, max(fy1 + 10, fy2))
+            return fx1, fy1, fx2, fy2
+
+        # 回退至配置的默认 Front ROI
+        rx1, ry1, rx2, ry2 = self.front_default_roi_norm
+        fx1 = int(rx1 * frame_w)
+        fy1 = int(ry1 * frame_h)
+        fx2 = int(rx2 * frame_w)
+        fy2 = int(ry2 * frame_h)
+        fx1 = max(0, min(frame_w - 10, fx1))
+        fy1 = max(0, min(frame_h - 10, fy1))
+        fx2 = min(frame_w, max(fx1 + 10, fx2))
+        fy2 = min(frame_h, max(fy1 + 10, fy2))
+        return fx1, fy1, fx2, fy2
+
+    def get_mirror_polygon_pixels(self, frame_w: int, frame_h: int) -> np.ndarray:
+        """获取镜面多边形在原图中的绝对像素坐标 (N, 2)，用于几何碰撞检测与目标过滤。"""
+        if self.mirror_polygon_norm is None or len(self.mirror_polygon_norm) == 0:
+            return np.empty((0, 2), dtype=np.int32)
+        pts = self.mirror_polygon_norm.copy()
+        pts[:, 0] *= frame_w
+        pts[:, 1] *= frame_h
+        return pts.astype(np.int32)
+
+    def is_point_in_mirror(self, x: float, y: float, frame_w: int, frame_h: int) -> bool:
+        """判断原始画面中的绝对坐标点 (x, y) 是否落在镜面区域（多边形或外接框）内部。"""
+        poly_px = self.get_mirror_polygon_pixels(frame_w, frame_h)
+        if len(poly_px) >= 3:
+            return cv2.pointPolygonTest(poly_px, (float(x), float(y)), False) >= 0
+        rx1, ry1, rx2, ry2 = self.mirror_reflection_roi_norm
+        return (rx1 * frame_w <= x <= rx2 * frame_w) and (ry1 * frame_h <= y <= ry2 * frame_h)
 
     def split_frame(
         self,
@@ -234,7 +416,7 @@ class DualViewManager:
 
         Args:
             frame: 原始视频帧 (BGR)
-            player_bbox: 前景选手检测框 (x1, y1, x2, y2) 像素坐标，若为 None 则采用默认 ROI
+            player_bbox: 前景选手检测框 (x1, y1, x2, y2) 像素坐标，若为 None 则采用内部追踪或默认 ROI
             frame_id: 当前帧序号
             timestamp_ms: 毫秒级时间戳
 
@@ -243,22 +425,8 @@ class DualViewManager:
         """
         fh, fw = frame.shape[:2]
 
-        # 1. 提取正面机位区域 (Front ROI)
-        if player_bbox is not None:
-            # 采用 Tennis-Vision 的 0.45 黄金 padding
-            fx1, fy1, fx2, fy2 = self._pad_and_clamp_bbox(
-                player_bbox, self.front_bbox_padding, fw, fh
-            )
-        else:
-            rx1, ry1, rx2, ry2 = self.front_default_roi_norm
-            fx1 = int(rx1 * fw)
-            fy1 = int(ry1 * fh)
-            fx2 = int(rx2 * fw)
-            fy2 = int(ry2 * fh)
-
-        # 确保裁剪区域有效
-        fx1, fy1 = max(0, fx1), max(0, fy1)
-        fx2, fy2 = min(fw, max(fx1 + 10, fx2)), min(fh, max(fy1 + 10, fy2))
+        # 1. 提取正面机位区域 (Front ROI，自适应选手跟踪与比例保持)
+        fx1, fy1, fx2, fy2 = self.compute_front_crop_bbox(fw, fh, player_bbox=player_bbox)
         f_crop = frame[fy1:fy2, fx1:fx2].copy()
         f_orig_size = (f_crop.shape[1], f_crop.shape[0])
 

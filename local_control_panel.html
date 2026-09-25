@@ -864,7 +864,16 @@
           <div id="local-video-field" class="field wide" hidden>
             <label for="local_video_file">选择本地视频（最大 2 GB）</label>
             <input id="local_video_file" type="file" accept=".mp4,.mov,.mkv,.avi,.webm,.m4v">
-            <span id="video-upload-status">视频上传至本机后，可刷新预览并启动分析；不使用摄像头 ROI 或直播丢帧。</span>
+            <span id="video-upload-status">视频上传至本机后，可刷新预览并启动分析。</span>
+            <div style="margin-top: 8px;">
+              <label for="mapped_stream_id">匹配球场机位（绑定 ROI 与镜面配置）</label>
+              <select id="mapped_stream_id" name="mapped_stream_id" style="width: 100%; margin-top: 4px;">
+                <option value="">不使用机位绑定 (全画幅分析)</option>
+              </select>
+              <span class="help" style="font-size: 11px; color: var(--muted); display: block; margin-top: 2px;">
+                可将导入的视频映射到指定的球场机位，自动应用该机位的四点 ROI、后墙镜面区域与人像屏蔽。
+              </span>
+            </div>
           </div>
           <div id="custom-stream-field" class="field wide" hidden>
                 <label for="custom_stream_source">自定义码流地址</label>
@@ -1021,7 +1030,7 @@
 
   <script>
     const ids = [
-      "stream_id", "custom_stream_source", "username", "password", "crop_margin", "output_fps",
+      "stream_id", "mapped_stream_id", "custom_stream_source", "username", "password", "crop_margin", "output_fps",
       "roi_enabled", "show_roi_boundary", "show_roi_fill", "show_roi_points",
       "analysis_interval", "settle_frames", "max_suggestions", "min_confidence",
       "realtime_swing_events", "realtime_coach", "coach_tts", "coach_tts_playback", "deepseek_coach",
@@ -1118,8 +1127,6 @@
       $("local-video-field").hidden = !video;
       $("username").disabled = video;
       $("password").disabled = video;
-      $("roi_enabled").disabled = video;
-      $("live_mode").disabled = video;
       const custom = $("stream_id").value === CUSTOM_STREAM_ID;
       const configured = custom ? state.defaultCredentialsConfigured :
         (state.cameraCredentialsConfigured || {})[$("stream_id").value];
@@ -1127,12 +1134,24 @@
       $("password").placeholder = configured ? "当前通道已配置，无需重复输入" : "不在浏览器中保存";
       $("custom-stream-field").hidden = !custom;
       $("custom_stream_source").required = custom;
+      $("live_mode").disabled = video;
       if (video) {
-        $("stream-meta").textContent = "本地视频 · " + (state.videoName || "请先选择视频文件");
-        $("point-list").textContent = "全画面分析 · 不使用摄像头 ROI · 不启用直播丢帧";
+        const mappedId = $("mapped_stream_id") ? $("mapped_stream_id").value : "";
+        const mappedStream = mappedId ? state.streams.find(item => item.stream_id === mappedId) : null;
+        $("roi_enabled").disabled = !mappedStream;
+        if (mappedStream) {
+          $("stream-meta").innerHTML = `<strong>本地视频</strong><span>映射机位：${escapeHtml(mappedStream.label)} (${state.videoName || "已选择文件"})</span>`;
+          $("point-list").innerHTML = (mappedStream.points || []).map(
+            (point, index) => `<span>P${index + 1}: [${point[0]}, ${point[1]}]</span>`
+          ).join("") || "<span>已绑定机位，但该机位未配置有效ROI</span>";
+        } else {
+          $("stream-meta").textContent = "本地视频 · " + (state.videoName || "请先选择视频文件");
+          $("point-list").textContent = "全画面分析 · 未绑定机位 ROI · 不启用直播丢帧";
+        }
         savePreset();
         return;
       }
+      $("roi_enabled").disabled = false;
       if (custom) {
         $("stream-meta").innerHTML = `<strong>自定义码流</strong><span>${escapeHtml(customPublicSource())}</span>`;
         $("point-list").innerHTML = "<span>ROI 将按码流地址自动匹配</span>";
@@ -1824,6 +1843,15 @@
         $("stream_id").innerHTML = state.streams.map(
           stream => `<option value="${escapeHtml(stream.stream_id)}">${escapeHtml(stream.label)}</option>`
         ).join("") + `<option value="${CUSTOM_STREAM_ID}">自定义码流</option><option value="local_video">本地视频文件</option>`;
+        if ($("mapped_stream_id")) {
+          $("mapped_stream_id").innerHTML = `<option value="">不使用机位绑定 (全画幅分析)</option>` + state.streams.map(
+            stream => `<option value="${escapeHtml(stream.stream_id)}">${escapeHtml(stream.label)} (绑定ROI与镜面)</option>`
+          ).join("");
+          $("mapped_stream_id").addEventListener("change", () => {
+            updateStreamMeta();
+            savePreset();
+          });
+        }
         applyValues(config.defaults);
         try {
           const saved = JSON.parse(localStorage.getItem("tennis-control-preset-v1") || "null");

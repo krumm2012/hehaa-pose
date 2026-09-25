@@ -464,6 +464,40 @@ class RealtimeSwingOutputManagerTests(unittest.TestCase):
         self.assertEqual(payload["summary"]["roi"]["stream_id"], "court01-main")
         self.assertGreater(int(preview[100, 20, 1]), 100)
 
+    def test_dual_view_preview_preserves_clean_composite_canvas(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            preview_path = root / "dual_roi_preview.jpg"
+            manager = RealtimeSwingOutputManager(
+                output_json=str(root / "events.json"),
+                output_html=str(root / "report.html"),
+                clips_dir=str(root / "clips"),
+                fps=25.0,
+                frame_size=(1080, 720),
+                buffer_frames=5,
+                preview_path=str(preview_path),
+                roi_metadata={
+                    "enabled": True,
+                    "matched": True,
+                    "stream_id": "court01-main",
+                    "points": [[712, 434], [1544, 440], [1818, 1198], [424, 1198]],
+                    "frame_size": [2560, 1440],
+                },
+                preview_interval_frames=1,
+                is_dual_view=True,
+            )
+            # Create a 720x1080 synthetic dual view frame with a distinctive pixel color
+            synthetic_frame = np.full((720, 1080, 3), 77, dtype=np.uint8)
+            manager.record_frame(1, synthetic_frame)
+            manager.close()
+
+            preview = cv2.imread(str(preview_path))
+            self.assertIsNotNone(preview)
+            # In dual view, it should preserve the clean canvas without the distorted yellow polygon or top black banner
+            self.assertEqual(preview.shape, (720, 1080, 3))
+            # Test that pixel is close to 77 and not overwritten by black header (y < 92) or yellow overlay
+            self.assertAlmostEqual(int(preview[30, 30, 0]), 77, delta=15)
+
     def test_publishes_json_html_and_async_event_clip(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)

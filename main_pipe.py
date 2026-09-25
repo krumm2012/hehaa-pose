@@ -102,10 +102,17 @@ class MultiprocessPipeline:
         evidence_manifest=None,
         algo2_dual_view=False,
         algo2_config=None,
+        stream_id=None,
     ):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
 
+        self.stream_id = (
+            stream_id
+            or self.config.get("stream_id")
+            or self.config.get("target_stream_id")
+            or (self.config.get("roi_settings") or {}).get("target_stream_id")
+        )
         self.session_started_at_unix_ns = time.time_ns()
         self.session_id = normalize_session_id(session_id, prefix="tennis")
         self.session_output_dir = None
@@ -421,6 +428,7 @@ class MultiprocessPipeline:
             self.config,
             self.video_path,
             (self.width, self.height),
+            target_stream_id=self.stream_id,
         )
         if self.roi_profile.enabled:
             print(
@@ -646,7 +654,10 @@ class MultiprocessPipeline:
                 from dual_view_manager import DualViewManager
                 from dual_pose_estimator import DualPoseEstimator
 
-                dual_view_mgr = DualViewManager(config_path=self.algo2_config_path)
+                dual_view_mgr = DualViewManager(
+                    config_path=self.algo2_config_path,
+                    stream_profile=self.roi_profile,
+                )
                 dual_pose_estimator = DualPoseEstimator(
                     model_path=self.config.get('yolo_pose_model_path'),
                     dominant_hand=self.swing_analysis_options.get('dominant_hand', 'right'),
@@ -726,6 +737,10 @@ class MultiprocessPipeline:
                     ball_diagnostics = detector.get_last_ball_diagnostics()
                     racket_diagnostics = detector.get_last_racket_diagnostics()
                     pose_res = f2.result()
+                    current_player_bbox = None
+                    if dual_view_mgr is not None and hasattr(dual_view_mgr, "update_player_from_keypoints"):
+                        dual_view_mgr.update_player_from_keypoints(pose_res.front_pose_orig or pose_res.fused_pose_orig)
+                        current_player_bbox = dual_view_mgr.tracked_player_bbox
 
                     # 关联手腕位置并过滤后墙镜面区域 (x ∈ [680, 1580] 且 y < 620)
                     dominant = self.swing_analysis_options.get('dominant_hand', 'right')
@@ -738,7 +753,9 @@ class MultiprocessPipeline:
                             continue
                         rx_c = (r_box[0] + r_box[2]) / 2.0
                         ry_c = (r_box[1] + r_box[3]) / 2.0
-                        if 680 <= rx_c <= 1580 and ry_c < 620:
+                        if dual_view_mgr is not None and dual_view_mgr.is_point_in_mirror(rx_c, ry_c, self.width, self.height):
+                            continue
+                        elif dual_view_mgr is None and 680 <= rx_c <= 1580 and ry_c < 620:
                             continue
                         if wrist_kp is not None:
                             dist = ((rx_c - wrist_kp.x) ** 2 + (ry_c - wrist_kp.y) ** 2) ** 0.5
@@ -802,6 +819,7 @@ class MultiprocessPipeline:
                         'healed_pose': healed_pose_dict,
                         'dual_pose_res': pose_res,
                         'dual_view_biomechanics': dual_view_biomech,
+                        'player_bbox': current_player_bbox,
                         'ball_diagnostics': ball_diagnostics,
                         'racket_diagnostics': racket_diagnostics,
                         'captured_at': task.get('captured_at'),
@@ -879,7 +897,10 @@ class MultiprocessPipeline:
             from dual_view_manager import DualViewManager
             from dual_view_renderer import DualViewRenderer
 
-            dual_view_mgr = DualViewManager(config_path=self.algo2_config_path)
+            dual_view_mgr = DualViewManager(
+                config_path=self.algo2_config_path,
+                stream_profile=self.roi_profile,
+            )
             dual_view_renderer = DualViewRenderer(show_hud=True, show_skeleton=True)
             fw = dual_view_mgr.front_target_size[0] if dual_view_mgr.front_target_size else 540
             bw = dual_view_mgr.mirror_target_size[0] if dual_view_mgr.mirror_target_size else 540
@@ -1131,6 +1152,7 @@ class MultiprocessPipeline:
                 ),
                 event_log_path=self.realtime_swing_event_log,
                 session_metadata=self.session_metadata,
+                is_dual_view=self.algo2_dual_view,
             )
             print(
                 f'⚡ [Swing-Live] 实时事件分析已开启'
@@ -1264,7 +1286,7 @@ class MultiprocessPipeline:
                 ev_coach = disp.get("coaching_text") or ""
                 telemetry_card = disp.get("telemetry_card")
 
-                dual_frame = dual_view_mgr.split_frame(canvas, frame_id=fid)
+                dual_frame = dual_view_mgr.split_frame(canvas, player_bbox=data.get('player_bbox'), frame_id=fid)
                 rendered_canvas = dual_view_renderer.render_dual_frame(
                     dual_frame,
                     pose_res,
@@ -1920,6 +1942,12 @@ def build_argument_parser():
         default='configs/dual_view_config.yaml',
         help='算法2.0双机位配置文件路径，默认 configs/dual_view_config.yaml',
     )
+    parser.add_argument(
+        '--stream-id', '--stream-profile',
+        dest='stream_id',
+        default=None,
+        help='指定码流ID（如 court01-main, camera04-main），用于本地视频文件或未匹配视频映射到指定的ROI与镜面配置',
+    )
     return parser
 
 
@@ -2003,6 +2031,7 @@ def main_cli(argv=None):
         evidence_manifest=args.evidence_manifest,
         algo2_dual_view=args.algo2_dual_view,
         algo2_config=args.algo2_config,
+        stream_id=args.stream_id,
     ).run()
 
 

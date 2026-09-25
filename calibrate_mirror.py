@@ -42,12 +42,23 @@ class MirrorCalibrationServer:
         html_path: Path,
         host: str = "127.0.0.1",
         port: int = 8502,
+        stream_id: Optional[str] = None,
+        roi_config_path: Optional[Path] = None,
     ):
         self.video_path = video_path.resolve()
         self.config_path = config_path.resolve()
         self.html_path = html_path.resolve()
         self.host = host
         self.port = port
+        self.stream_id = stream_id
+
+        if roi_config_path is not None:
+            self.roi_config_path = roi_config_path.resolve()
+        elif self.config_path.name == "roi_config.yaml":
+            self.roi_config_path = self.config_path
+        else:
+            default_roi_path = self.config_path.parent / "roi_config.yaml"
+            self.roi_config_path = default_roi_path.resolve() if default_roi_path.exists() else None
 
         if not self.video_path.exists():
             raise FileNotFoundError(f"视频文件不存在: {self.video_path}")
@@ -95,7 +106,34 @@ class MirrorCalibrationServer:
             self._frame_cache[index] = jpeg_bytes
         return jpeg_bytes
 
-    def get_current_config(self) -> Dict[str, Any]:
+    def get_current_config(self, stream_id: Optional[str] = None) -> Dict[str, Any]:
+        target_id = stream_id or self.stream_id
+        # 1. 优先尝试从 roi_config.yaml 中加载指定 stream_id 的 mirror_view
+        if self.roi_config_path and self.roi_config_path.exists():
+            try:
+                with open(self.roi_config_path, "r", encoding="utf-8") as f:
+                    doc = yaml.safe_load(f) or {}
+                streams = doc.get("streams", [])
+                matched = None
+                if target_id:
+                    matched = next((s for s in streams if s.get("stream_id") == target_id), None)
+                if matched is None:
+                    matched = next((s for s in streams if s.get("default", False)), None)
+                if matched is None and streams:
+                    matched = streams[0]
+                if matched:
+                    res = dict(matched.get("mirror_view") or {})
+                    res["stream_id"] = matched.get("stream_id")
+                    res["stream_label"] = matched.get("stream_label")
+                    res["available_streams"] = [
+                        {"stream_id": s.get("stream_id"), "label": s.get("stream_label", s.get("stream_id"))}
+                        for s in streams
+                    ]
+                    return res
+            except Exception as e:
+                logger.error(f"从 roi_config.yaml 读取流配置异常: {e}")
+
+        # 2. 回退到 dual_view_config.yaml
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
@@ -140,8 +178,9 @@ class MirrorCalibrationServer:
         reflection_roi: List[float],
         polygon: List[List[float]],
         mask_polygon: Optional[List[List[float]]] = None,
+        stream_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """将标定好的镜面参数持久化写入 dual_view_config.yaml 并创建备份。"""
+        """将标定好的镜面参数持久化写入 roi_config.yaml（特定机位）与 dual_view_config.yaml，并创建备份。"""
         # 1. 校验点位合法性
         if not (len(reflection_roi) == 4 and all(0.0 <= v <= 1.0 for v in reflection_roi)):
             raise ValueError("reflection_roi 必须是 4 个介于 0.0~1.0 的浮点数 [x1, y1, x2, y2]")
@@ -151,38 +190,70 @@ class MirrorCalibrationServer:
             if not (len(mask_polygon) >= 3 and all(len(p) == 2 and 0.0 <= p[0] <= 1.0 and 0.0 <= p[1] <= 1.0 for p in mask_polygon)):
                 raise ValueError("mask_polygon 若存在必须包含至少 3 个归一化坐标点 [[x, y], ...]")
 
-        # 2. 读取现有配置完整文档
-        with open(self.config_path, "r", encoding="utf-8") as f:
-            full_cfg = yaml.safe_load(f) or {}
-
-        # 3. 创建时间戳备份
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = self.config_path.with_name(f"{self.config_path.name}.bak_{ts}")
-        shutil.copy2(self.config_path, backup_path)
-        logger.info(f"已创建配置历史备份: {backup_path}")
-
-        # 4. 更新 mirror_view 节点
-        if "mirror_view" not in full_cfg:
-            full_cfg["mirror_view"] = {}
-
-        full_cfg["mirror_view"]["reflection_roi"] = [float(f"{v:.4f}") for v in reflection_roi]
-        full_cfg["mirror_view"]["polygon"] = [[float(f"{p[0]:.4f}"), float(f"{p[1]:.4f}")] for p in polygon]
+        target_stream_id = stream_id or self.stream_id
+        new_mirror_view = {
+            "enabled": True,
+            "reflection_roi": [float(f"{v:.4f}") for v in reflection_roi],
+            "polygon": [[float(f"{p[0]:.4f}"), float(f"{p[1]:.4f}")] for p in polygon],
+            "padding": 0.0,
+            "horizontal_flip": True,
+            "target_size": [540, 720],
+        }
         if mask_polygon and len(mask_polygon) >= 3:
-            full_cfg["mirror_view"]["mask_polygon"] = [[float(f"{p[0]:.4f}"), float(f"{p[1]:.4f}")] for p in mask_polygon]
-        elif "mask_polygon" in full_cfg["mirror_view"]:
-            del full_cfg["mirror_view"]["mask_polygon"]
+            new_mirror_view["mask_polygon"] = [[float(f"{p[0]:.4f}"), float(f"{p[1]:.4f}")] for p in mask_polygon]
+        else:
+            new_mirror_view["mask_polygon"] = []
 
-        # 5. 写回文件
-        with open(self.config_path, "w", encoding="utf-8") as f:
-            yaml.safe_dump(full_cfg, f, allow_unicode=True, sort_keys=False)
+        backup_names = []
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        logger.info(f"✅ 镜面与人像屏蔽标定配置已成功更新: {self.config_path}")
+        # 2. 如果存在 roi_config.yaml，将配置写入对应的 stream 中
+        if self.roi_config_path and self.roi_config_path.exists():
+            with open(self.roi_config_path, "r", encoding="utf-8") as f:
+                roi_doc = yaml.safe_load(f) or {}
+            streams = roi_doc.get("streams", [])
+            target = None
+            if target_stream_id:
+                target = next((s for s in streams if s.get("stream_id") == target_stream_id), None)
+            if target is None:
+                target = next((s for s in streams if s.get("default", False)), None)
+            if target is None and streams:
+                target = streams[0]
+
+            if target is not None:
+                target["mirror_view"] = new_mirror_view
+                roi_bak = self.roi_config_path.with_name(f"{self.roi_config_path.name}.bak_{ts}")
+                shutil.copy2(self.roi_config_path, roi_bak)
+                backup_names.append(roi_bak.name)
+                with open(self.roi_config_path, "w", encoding="utf-8") as f:
+                    yaml.safe_dump(roi_doc, f, allow_unicode=True, sort_keys=False)
+                logger.info(f"✅ 镜面标定已成功写入 {self.roi_config_path.name} (stream: {target.get('stream_id')})")
+
+        # 3. 同时更新 dual_view_config.yaml（保持向下兼容）
+        if self.config_path.exists():
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                full_cfg = yaml.safe_load(f) or {}
+            dual_bak = self.config_path.with_name(f"{self.config_path.name}.bak_{ts}")
+            shutil.copy2(self.config_path, dual_bak)
+            backup_names.append(dual_bak.name)
+
+            if "mirror_view" not in full_cfg:
+                full_cfg["mirror_view"] = {}
+            full_cfg["mirror_view"].update(new_mirror_view)
+            if not new_mirror_view.get("mask_polygon") and "mask_polygon" in full_cfg["mirror_view"]:
+                del full_cfg["mirror_view"]["mask_polygon"]
+
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                yaml.safe_dump(full_cfg, f, allow_unicode=True, sort_keys=False)
+            logger.info(f"✅ dual_view_config.yaml 兼容性同步更新完成: {self.config_path}")
+
         return {
             "success": True,
-            "backup": str(backup_path.name),
-            "reflection_roi": full_cfg["mirror_view"]["reflection_roi"],
-            "polygon": full_cfg["mirror_view"]["polygon"],
-            "mask_polygon": full_cfg["mirror_view"].get("mask_polygon", []),
+            "stream_id": target_stream_id,
+            "backup": backup_names[0] if backup_names else "",
+            "reflection_roi": new_mirror_view["reflection_roi"],
+            "polygon": new_mirror_view["polygon"],
+            "mask_polygon": new_mirror_view.get("mask_polygon", []),
         }
 
 
@@ -217,13 +288,14 @@ def make_handler(server_instance: MirrorCalibrationServer):
                 return
 
             if path == "/api/info":
+                s_id = query.get("stream_id", [None])[0]
                 self._send_json({
                     "video_path": str(server_instance.video_path),
                     "width": server_instance.width,
                     "height": server_instance.height,
                     "total_frames": server_instance.total_frames,
                     "fps": server_instance.fps,
-                    "current_config": server_instance.get_current_config(),
+                    "current_config": server_instance.get_current_config(s_id),
                 })
                 return
 
@@ -275,7 +347,8 @@ def make_handler(server_instance: MirrorCalibrationServer):
                     roi = data.get("reflection_roi", [])
                     poly = data.get("polygon", [])
                     mask_poly = data.get("mask_polygon", [])
-                    res = server_instance.save_config(roi, poly, mask_poly)
+                    s_id = data.get("stream_id")
+                    res = server_instance.save_config(roi, poly, mask_poly, stream_id=s_id)
                     self._send_json(res)
                 except Exception as e:
                     logger.error(f"保存配置失败: {e}")
@@ -297,7 +370,17 @@ def main():
     parser.add_argument(
         "--config",
         default="configs/dual_view_config.yaml",
-        help="配置文件路径",
+        help="双机位配置文件路径",
+    )
+    parser.add_argument(
+        "--roi-config",
+        default="configs/roi_config.yaml",
+        help="ROI与机位主配置文件路径",
+    )
+    parser.add_argument(
+        "--stream-id",
+        default=None,
+        help="待标定的机位ID (如 court01-main, camera04-main)",
     )
     parser.add_argument(
         "--html",
@@ -313,6 +396,8 @@ def main():
         config_path=Path(args.config),
         html_path=Path(args.html),
         port=args.port,
+        stream_id=args.stream_id,
+        roi_config_path=Path(args.roi_config),
     )
 
     httpd = ThreadingHTTPServer((server_inst.host, server_inst.port), make_handler(server_inst))

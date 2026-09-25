@@ -148,6 +148,44 @@ roi_points: [[1, 2], [30, 2], [30, 40], [1, 40]]
         self.assertTrue(profile.enabled)
         self.assertEqual(profile.points[0], (1, 2))
 
+    def test_resolves_mirror_view_and_target_stream_id_mapping(self):
+        config = {
+            "roi_settings": {
+                "enabled": True,
+                "auto_load_config": True,
+                "roi_config_path": "configs/roi_config.yaml",
+            }
+        }
+        # 1. 导入视频映射到 court01-main
+        profile_c1 = resolve_roi_stream_profile(
+            config,
+            "/Users/krum5539/Desktop/some_uploaded_test.mp4",
+            (2560, 1440),
+            target_stream_id="court01-main",
+        )
+        self.assertTrue(profile_c1.enabled)
+        self.assertTrue(profile_c1.matched)
+        self.assertEqual(profile_c1.stream_id, "court01-main")
+        self.assertTrue(profile_c1.has_mirror_view)
+        self.assertEqual(profile_c1.mirror_reflection_roi, [0.4244, 0.0, 0.8145, 0.3199])
+        self.assertEqual(len(profile_c1.mirror_polygon), 4)
+        self.assertEqual(len(profile_c1.mirror_mask_polygon), 4)
+        self.assertIn("mirror_view", profile_c1.as_metadata())
+
+        # 2. 导入视频映射到 camera04-main
+        profile_c4 = resolve_roi_stream_profile(
+            config,
+            "/Users/krum5539/Desktop/some_other_video.mp4",
+            (2560, 1440),
+            target_stream_id="camera04-main",
+        )
+        self.assertTrue(profile_c4.enabled)
+        self.assertTrue(profile_c4.matched)
+        self.assertEqual(profile_c4.stream_id, "camera04-main")
+        self.assertTrue(profile_c4.has_mirror_view)
+        self.assertEqual(profile_c4.mirror_reflection_roi, [0.2708, 0.1018, 0.6139, 0.4642])
+
 
 if __name__ == "__main__":
     unittest.main()
+

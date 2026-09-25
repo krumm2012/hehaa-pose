@@ -289,9 +289,15 @@
       <span class="badge" id="videoNameBadge">视频加载中...</span>
     </div>
     <div class="header-actions">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:12px;color:var(--muted);">标定机位:</span>
+        <select id="streamSelector" class="btn" style="padding:5px 8px;font-size:12px;color:var(--cyan);background:var(--panel-2);font-weight:600;">
+          <option value="court01-main">Court 01 Main Camera</option>
+        </select>
+      </div>
       <button class="btn" id="btnReset" title="重新从配置文件加载">🔄 重载已保存</button>
       <button class="btn" id="btnPreset" title="重置为默认镜面区域">🎯 恢复推荐预设</button>
-      <button class="btn btn-success" id="btnSave">💾 保存配置到 dual_view_config.yaml</button>
+      <button class="btn btn-success" id="btnSave">💾 保存配置到 roi_config.yaml</button>
     </div>
   </header>
 
@@ -381,6 +387,8 @@
       currentFrameIndex: 0,
       currentImage: null,
       activeMode: 'mirror', // 'mirror' | 'mask'
+      currentStreamId: 'court01-main',
+      streams: [],
       maskEnabled: true,
       mirrorPoints: [
         { x: 0.2708, y: 0.4593, label: 'P1 (左下)' },
@@ -411,9 +419,10 @@
       setTimeout(() => toastBox.classList.remove('show'), 3000);
     }
 
-    async function init() {
+    async function init(targetStreamId = null) {
       try {
-        const res = await fetch('/api/info');
+        const queryId = targetStreamId || state.currentStreamId;
+        const res = await fetch(queryId ? `/api/info?stream_id=${encodeURIComponent(queryId)}` : '/api/info');
         const data = await res.json();
         state.width = data.width || 2560;
         state.height = data.height || 1440;
@@ -425,8 +434,21 @@
         document.getElementById('frameInput').max = state.totalFrames - 1;
         document.getElementById('frameTotalText').innerText = `/ ${state.totalFrames}`;
 
-        // 恢复镜面多边形点位
+        // 渲染机位下拉选单
         const mcfg = data.current_config || {};
+        if (mcfg.available_streams && mcfg.available_streams.length > 0) {
+          state.streams = mcfg.available_streams;
+          const sel = document.getElementById('streamSelector');
+          sel.innerHTML = state.streams.map(s => 
+            `<option value="${s.stream_id}">${s.label || s.stream_id}</option>`
+          ).join('');
+          if (mcfg.stream_id) {
+            sel.value = mcfg.stream_id;
+            state.currentStreamId = mcfg.stream_id;
+          }
+        }
+
+        // 恢复镜面多边形点位
         if (mcfg.polygon && mcfg.polygon.length >= 4) {
           state.mirrorPoints = mcfg.polygon.slice(0, 4).map((pt, i) => ({
             x: pt[0], y: pt[1], label: `P${i+1}`
@@ -858,6 +880,7 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            stream_id: state.currentStreamId,
             reflection_roi: roi,
             polygon: polygon,
             mask_polygon: maskPolygon
@@ -865,7 +888,7 @@
         });
         const ret = await res.json();
         if (ret.success) {
-          showToast('✅ 镜面与人像屏蔽标定配置已成功保存！');
+          showToast(`✅ 机位 [${ret.stream_id || state.currentStreamId}] 镜面与人像屏蔽已成功保存！`);
         } else {
           showToast(`保存失败: ${ret.error || '未知错误'}`, false);
         }
@@ -875,6 +898,10 @@
     }
 
     document.getElementById('btnSave').addEventListener('click', saveConfig);
+    document.getElementById('streamSelector').addEventListener('change', (e) => {
+      state.currentStreamId = e.target.value;
+      init(state.currentStreamId);
+    });
 
     // 快捷键
     window.addEventListener('keydown', (e) => {
@@ -890,7 +917,7 @@
       }
     });
 
-    window.onload = init;
+    window.onload = () => init();
   </script>
 </body>
 </html>

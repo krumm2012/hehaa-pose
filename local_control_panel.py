@@ -199,6 +199,7 @@ class ControlSettings:
     display_origin_x: int
     display_origin_y: int
     algo2_dual_view: bool = False
+    mapped_stream_id: str = ""
 
     @classmethod
     def from_payload(cls, payload: Dict[str, Any]) -> "ControlSettings":
@@ -223,8 +224,15 @@ class ControlSettings:
             or deepseek_coach
             or coach_tts
         )
+        stream_id = str(payload.get("stream_id") or "").strip()
+        mapped_stream_id = str(payload.get("mapped_stream_id") or "").strip()
+        roi_enabled = _bool(payload, "roi_enabled", True)
+        if stream_id == LOCAL_VIDEO_ID and not mapped_stream_id:
+            roi_enabled = False
+
         return cls(
-            stream_id=str(payload.get("stream_id") or "").strip(),
+            stream_id=stream_id,
+            mapped_stream_id=mapped_stream_id,
             output_dir=output_dir,
             session_name=session_name,
             output_fps=_number(payload, "output_fps", 25, 1, 60),
@@ -236,7 +244,7 @@ class ControlSettings:
                 32,
                 integer=True,
             ),
-            roi_enabled=payload.get("stream_id") != LOCAL_VIDEO_ID and _bool(payload, "roi_enabled", True),
+            roi_enabled=roi_enabled,
             crop_margin=_number(
                 payload,
                 "crop_margin",
@@ -367,6 +375,7 @@ def load_stream_profiles(path: Path) -> List[Dict[str, Any]]:
                 and len(frame_size) >= 2
                 else [0, 0],
                 "default": bool(profile.get("default", False)),
+                "mirror_view": dict(profile.get("mirror_view") or {}),
             }
         )
     if not result:
@@ -552,9 +561,15 @@ class LocalPipelineController:
             )
             roi = config.setdefault("roi_settings", {})
             roi["enabled"] = settings.roi_enabled
-            roi["auto_load_config"] = settings.stream_id != LOCAL_VIDEO_ID
+            roi["auto_load_config"] = True
             roi["roi_config_path"] = str(self.roi_config_path)
             roi["crop_margin"] = settings.crop_margin
+            target_id = settings.mapped_stream_id or (
+                settings.stream_id if settings.stream_id not in (LOCAL_VIDEO_ID, CUSTOM_STREAM_ID) else ""
+            )
+            if target_id:
+                roi["target_stream_id"] = target_id
+                config["target_stream_id"] = target_id
             visualization = roi.setdefault("visualization", {})
             visualization["show_roi_boundary"] = settings.show_roi_boundary
             visualization["show_roi_fill"] = settings.show_roi_fill
@@ -830,7 +845,7 @@ class LocalPipelineController:
             raise
         return {"video_id": video_id, "size": length}
 
-    def _get_mirror_calibrator(self) -> Any:
+    def _get_mirror_calibrator(self, stream_id: Optional[str] = None) -> Any:
         from calibrate_mirror import MirrorCalibrationServer
         video_to_use = getattr(self, "_last_uploaded_video", None)
         if video_to_use is None or not video_to_use.exists():
@@ -849,29 +864,32 @@ class LocalPipelineController:
             video_path=video_to_use,
             config_path=self.workspace / "configs/dual_view_config.yaml",
             html_path=self.workspace / "mirror_calibration.html",
+            stream_id=stream_id,
+            roi_config_path=self.roi_config_path,
         )
 
-    def mirror_info(self) -> Dict[str, Any]:
-        calib = self._get_mirror_calibrator()
+    def mirror_info(self, stream_id: Optional[str] = None) -> Dict[str, Any]:
+        calib = self._get_mirror_calibrator(stream_id=stream_id)
         return {
             "video_path": str(calib.video_path),
             "width": calib.width,
             "height": calib.height,
             "total_frames": calib.total_frames,
             "fps": calib.fps,
-            "current_config": calib.get_current_config(),
+            "current_config": calib.get_current_config(stream_id=stream_id),
         }
 
-    def mirror_frame(self, index: int) -> bytes:
-        calib = self._get_mirror_calibrator()
+    def mirror_frame(self, index: int, stream_id: Optional[str] = None) -> bytes:
+        calib = self._get_mirror_calibrator(stream_id=stream_id)
         return calib.get_frame_jpeg(index)
 
     def mirror_save_config(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        calib = self._get_mirror_calibrator()
+        stream_id = payload.get("stream_id")
+        calib = self._get_mirror_calibrator(stream_id=stream_id)
         roi = payload.get("reflection_roi", [])
         poly = payload.get("polygon", [])
         mask_poly = payload.get("mask_polygon", [])
-        return calib.save_config(roi, poly, mask_poly)
+        return calib.save_config(roi, poly, mask_poly, stream_id=stream_id)
 
     def mirror_preview_backview(self, payload: Dict[str, Any]) -> bytes:
         calib = self._get_mirror_calibrator()
@@ -891,10 +909,34 @@ class LocalPipelineController:
             source = (directory / video_id).resolve()
             if source.parent != directory or not source.is_file():
                 raise ValueError("本地视频不存在，请重新上传")
-            return {"stream_id": LOCAL_VIDEO_ID, "label": "本地视频",
-                    "source": str(source), "public_source": video_id,
-                    "roi_enabled": False, "points": [], "frame_size": [0, 0],
-                    "default": False}
+
+            mapped_id = str(payload.get("mapped_stream_id") or "").strip()
+            matched = next((s for s in self.streams if s["stream_id"] == mapped_id), None) if mapped_id else None
+            if matched:
+                return {
+                    "stream_id": LOCAL_VIDEO_ID,
+                    "mapped_stream_id": mapped_id,
+                    "label": f"本地视频 ({matched['label']})",
+                    "source": str(source),
+                    "public_source": video_id,
+                    "roi_enabled": bool(matched.get("roi_enabled", True)),
+                    "points": list(matched.get("points") or []),
+                    "frame_size": list(matched.get("frame_size") or [0, 0]),
+                    "mirror_view": dict(matched.get("mirror_view") or {}),
+                    "default": False,
+                }
+            return {
+                "stream_id": LOCAL_VIDEO_ID,
+                "mapped_stream_id": "",
+                "label": "本地视频",
+                "source": str(source),
+                "public_source": video_id,
+                "roi_enabled": False,
+                "points": [],
+                "frame_size": [0, 0],
+                "mirror_view": {},
+                "default": False,
+            }
         if stream_id != CUSTOM_STREAM_ID:
             return self._stream(stream_id)
 
@@ -1005,6 +1047,11 @@ class LocalPipelineController:
             "--inference-workers",
             str(settings.inference_workers),
         ]
+        target_stream_id = settings.mapped_stream_id or (
+            settings.stream_id if settings.stream_id not in (LOCAL_VIDEO_ID, CUSTOM_STREAM_ID) else ""
+        )
+        if target_stream_id:
+            command.extend(["--stream-id", target_stream_id])
         if settings.algo2_dual_view:
             command.append("--algo2-dual-view")
         else:
@@ -1243,7 +1290,10 @@ def create_handler(controller: LocalPipelineController):
                     else:
                         self.send_error(HTTPStatus.NOT_FOUND, "mirror_calibration.html not found")
                 elif path in ("/api/mirror/info", "/api/info"):
-                    self._send_json(controller.mirror_info(), head_only=head_only)
+                    from urllib.parse import parse_qs, urlsplit
+                    query = parse_qs(urlsplit(self.path).query)
+                    s_id = query.get("stream_id", [None])[0]
+                    self._send_json(controller.mirror_info(stream_id=s_id), head_only=head_only)
                 elif path in ("/api/mirror/frame", "/api/frame"):
                     from urllib.parse import parse_qs, urlsplit
                     query = parse_qs(urlsplit(self.path).query)
