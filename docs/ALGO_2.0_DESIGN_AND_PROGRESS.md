@@ -116,6 +116,7 @@
 | **TASK-17** | Phase 9 | 三个梯队高级生物力学指标、击球特写卡片与综合技术评分标准落地 | `swing_biomechanics.py`<br>`dual_view_renderer.py`<br>`scripts/process_algo2_dual_view.py`<br>`docs/SWING_QUALITY_SCORING_STANDARD.md` | 🟢 已完成 | 1. 落地三个梯队：拍头动力学挥速、刷球仰角与下潜、步法站位分类、垂直蹬地率、双机位 3D 相对深度与动力学链时序；<br>2. 实现击球瞬间特写遥测卡片与 10 帧子弹时间定格；<br>3. 建立 100 分制单拍综合技术评分（Swing Quality Score）与四级段位（PRO/ADVANCED/INTERMEDIATE/DEVELOPING），详见 [`docs/SWING_QUALITY_SCORING_STANDARD.md`](./SWING_QUALITY_SCORING_STANDARD.md)；<br>4. 治理镜面跳变与有球训练走动误检，260 项自动化测试全绿。 |
 | **TASK-18** | Phase P1 | 镜面与人像遮挡标定工具集成、Web HTML 5维雷达图与动力学链时序升级 | `local_control_panel.py`<br>`local_control_panel.html`<br>`calibrate_mirror.py`<br>`mirror_calibration.html`<br>`dual_view_manager.py`<br>`swing_report_builder.py`<br>`test_dual_view_manager.py`<br>`test_swing_report_builder.py` | 🟢 已完成 | 1. 控制台原生集成镜面标定工具（`/mirror-calibration` 路由与 API）；<br>2. 交互式人像遮挡区（`mask_polygon`）标定与 Backview 实时半透明暗色隐私遮罩渲染；<br>3. Web HTML 报告升级：原生 SVG 5 维技术雷达图（转肩/引拍/延展/挥速/蹬地）、四级段位徽章（PRO/ADVANCED/INTERMEDIATE/DEVELOPING）与 100 分制仪表、动力学链传递延时条（$\Delta t_{\text{hip}\to\text{sh}}$ 和 $\Delta t_{\text{sh}\to\text{rkt}}$）、击球定格特写与遥测指标网格；<br>4. 全量自动化单元测试增至 265 项且 100% 通过。 |
 | **TASK-19** | Phase P0 | 生产实时化与主工程对接（离线批处理 ➔ 实时运行） | `main_pipe.py`<br>`frame_processor.py`<br>`realtime_swing_runtime.py`<br>`qwen3_tts_sidecar.py`<br>`test_algo2_realtime_pipeline.py` | 🟢 已完成 | 1. 深度集成 Algo 2.0 虚拟双机位管线到生产级 `main_pipe.py`（支持 `--algo2-dual-view` / `--dual-view` 开启，保持原有单机位 100% 向后兼容）；<br>2. 实时推理多进程架构：ANE YOLO-pose 前后双机位姿态、遮挡自愈姿态合成与镜面球拍误检空间过滤；<br>3. 实时分析多进程渲染：Side-by-Side HD ($1080 \times 720$) 实时拼合、隐私遮罩、荧光动态球轨迹拖尾与击球瞬间特写遥测卡片平滑悬浮；<br>4. 在 `40.26.mp4` 生产流水线上实测稳定达到 25.4 ~ 26.3 FPS（Hardware Videotoolbox 编码），低延迟输出实时击球事件与三梯队生物力学指标；<br>5. 全量自动化单元测试增至 270 项且 100% 通过。 |
+| **TASK-20** | Phase P0 | 正反双机位几何校准、动态人体追踪自愈与各机位聚合标定 | `dual_view_manager.py`<br>`main_pipe.py`<br>`configs/roi_config.yaml`<br>`roi_stream_config.py`<br>`realtime_swing_pipeline.py` | 🟢 已完成 | 1. 动态自适应人体追踪（EMA 平滑，540x720 3:4 黄金宽高比，彻底消除拉伸畸变）；<br>2. 人体工学自愈扩展，彻底解决切掉人/球/拍问题；<br>3. 物理镜面边界校准，消除视角颠倒与拍部遮挡；<br>4. 推理与渲染进程透传同步；<br>5. 全量 303 项测试 100% 通过。 |
 
 **状态图例**：  
 - ⬜ 待开始 (Pending)  
@@ -453,5 +454,22 @@
    - `/api/info?stream_id=...` 与 `/api/save_config` 支持读写特定机位，保存时自动更新 `roi_config.yaml` 并生成时间戳历史备份，同时保持 `dual_view_config.yaml` 兼容同步。
 6. **全套自动化测试 100% 通过**：
    - 新增 `test_calibrate_mirror.py` 与 `test_local_video_mapped_to_stream_id`、`test_resolves_mirror_view_and_target_stream_id_mapping` 等，全量 302 项单元测试 100% 满分通过。
+
+#### 2.9 正面机位动态自适应人体追踪与 3:4 比例自愈保护 & 背面物理镜面校准 (2026-09-25)
+针对双机位在多机位（如 Court 02）场景下正面与背面视口裁剪不准确、看不全人/球/拍的问题，实施端到端几何校准与动态自适应：
+1. **正面视口动态自适应人体追踪与 3:4 黄金宽高比 (`dual_view_manager.py`)**：
+   - 引入 EMA 平滑的人体动态追踪框（`_tracked_player_bbox`），由姿态关键点实时驱动（`update_player_from_keypoints`）；
+   - `compute_front_crop_bbox` 始终保持 3:4 宽高比（匹配 $540 \times 720$ 输出，彻底杜绝横向或纵向拉伸畸变）；
+   - 水平居中并按动态裕量预留后侧引拍空间与前侧挥拍击球延展空间。
+2. **人体工学全身自愈比例扩展**：
+   - 针对近景或低置信度下仅检出上半身关键点（导致传统 bounding box 骤降至 120px 特写）的缺陷，设定最小高度保护（$\ge 550\text{px}$）与人体工学宽高比自愈扩展（`ph >= pw * 2.8`），自动向下补全至脚底与地面，确保球落地与弹跳空间完整可视。
+3. **背面虚拟机位真实物理镜面几何校准与误遮挡清除 (`configs/roi_config.yaml`)**：
+   - 将 `court02-main` 镜面坐标校准至物理平镜反射区 `[0.4244, 0.0, 0.8145, 0.3199]`，消除原测试占位符误切真实前景人体导致机位颠倒的问题；
+   - `get_mirror_bbox_pixels` 实现镜面边界内横向对齐后背，真实还原后背引拍深度与转肩动作；
+   - 清除静态 `mask_polygon` 对球拍的遮挡，依靠自动人脸黑条动态保护隐私。
+4. **主管道推理与视觉渲染同步 (`main_pipe.py` & `realtime_swing_pipeline.py`)**：
+   - 推理进程实时提取并平滑更新选手坐标，向分析与渲染进程透传 `player_bbox`，确保推理视口与视觉渲染视口 100% 同步；
+   - 303 项全量单元测试 100% 通过。
+
 
 
