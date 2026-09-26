@@ -100,7 +100,51 @@ class DualPoseEstimatorTests(unittest.TestCase):
         self.assertEqual(len(res_conc.front_pose_local), len(res_seq.front_pose_local))
         self.assertEqual(len(res_conc.back_pose_local), len(res_seq.back_pose_local))
 
+    def test_front_view_candidate_selection_and_mirror_filtering(self):
+        estimator = DualPoseEstimator(backend="mock")
+        # 构造两个候选人数据：
+        # Person 0 (镜面虚影): y 处于顶部 [20, 280]，h=260
+        # Person 1 (真实前景选手): y 处于下半部 [220, 600]，h=380
+        cand_mirror = np.zeros((17, 3), dtype=np.float32)
+        for i in range(17):
+            cand_mirror[i] = [270.0, 20.0 + i * 15.0, 0.90]
+
+        cand_real = np.zeros((17, 3), dtype=np.float32)
+        for i in range(17):
+            cand_real[i] = [270.0, 220.0 + i * 22.0, 0.90]
+
+        kp_data = np.stack([cand_mirror, cand_real], axis=0)
+        h, w = 720, 540
+
+        # 模拟镜面检测函数 (将顶部判定为镜面)
+        is_mirror_fn = lambda x, y: y <= 200.0
+
+        class MockCropInfo:
+            def map_to_original(self, x, y):
+                return x, y
+
+        chosen = estimator._select_front_candidate_ultralytics(
+            kp_data, h, w, crop_info=MockCropInfo(), is_point_in_mirror_fn=is_mirror_fn
+        )
+        self.assertIsNotNone(chosen)
+        # 应选择下半部的真实选手 Person 1
+        self.assertGreater(chosen[0, 1], 200.0)
+
+    def test_front_view_temporal_smoothing_and_reset(self):
+        estimator = DualPoseEstimator(backend="mock")
+        from dual_view_biomechanics import Keypoint
+        estimator._last_valid_front_pose = {"nose": Keypoint(x=100.0, y=200.0, conf=0.8)}
+        estimator._front_missing_count = 1
+        self.assertEqual(len(estimator._last_valid_front_pose), 1)
+
+        estimator.reset()
+        self.assertEqual(len(estimator._last_valid_front_pose), 0)
+        self.assertEqual(estimator._front_missing_count, 0)
+        self.assertEqual(len(estimator._last_valid_back_pose), 0)
+        self.assertEqual(estimator._back_missing_count, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

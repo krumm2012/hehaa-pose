@@ -94,6 +94,8 @@ class DualViewFrame:
     front_info: DualViewCropInfo
     back_info: DualViewCropInfo
     timestamp_ms: Optional[float] = None
+    is_point_in_mirror_fn: Optional[Any] = None
+
 
 
 class DualViewManager:
@@ -136,6 +138,7 @@ class DualViewManager:
         # 选手位置动态追踪状态 (EMA 平滑)
         self._tracked_player_bbox: Optional[Tuple[float, float, float, float]] = None
         self._tracking_lost_counter: int = 0
+        self._last_frame_shape: Optional[Tuple[int, int]] = None
 
         # 解析镜像机位配置
         m_cfg = self.config.get("mirror_view", {})
@@ -233,6 +236,14 @@ class DualViewManager:
         max_x = max(valid_xs)
         min_y = min(valid_ys)
         max_y = max(valid_ys)
+
+        # 防镜面虚影污染：若传入关键点中心位于后墙镜面区域内，坚决拒绝污染前景选手追踪
+        if getattr(self, "_last_frame_shape", None) is not None:
+            fh, fw = self._last_frame_shape
+            cx = (min_x + max_x) / 2.0
+            cy = (min_y + max_y) / 2.0
+            if self.is_point_in_mirror(cx, cy, fw, fh):
+                return self._tracked_player_bbox
 
         # 保护：若关键点缺少下肢（例如被球网遮挡或半身帧），按人体工学比例扩展为全身高度
         has_lower_body = any(
@@ -424,6 +435,7 @@ class DualViewManager:
             DualViewFrame 包含正面帧、背面帧及双向映射元数据
         """
         fh, fw = frame.shape[:2]
+        self._last_frame_shape = (fh, fw)
 
         # 1. 提取正面机位区域 (Front ROI，自适应选手跟踪与比例保持)
         fx1, fy1, fx2, fy2 = self.compute_front_crop_bbox(fw, fh, player_bbox=player_bbox)
@@ -481,6 +493,7 @@ class DualViewManager:
             front_info=front_info,
             back_info=back_info,
             timestamp_ms=timestamp_ms,
+            is_point_in_mirror_fn=lambda x, y: self.is_point_in_mirror(x, y, fw, fh),
         )
 
     def apply_mask_to_view(

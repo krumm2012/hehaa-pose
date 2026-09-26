@@ -696,6 +696,10 @@ class MultiprocessPipeline:
                 print("⚡ [Inference] 直播新鲜度模式：Reader只保留最新待推理帧")
             self.inf_ready.set()
 
+            last_racket_box = None
+            last_racket_entry = None
+            racket_missing_count = 0
+
             while not self.stop_event.is_set():
                 try:
                     task = self.q_inference.get(timeout=1.0)
@@ -743,10 +747,17 @@ class MultiprocessPipeline:
                         dual_view_mgr.update_player_from_keypoints(pose_res.front_pose_orig or pose_res.fused_pose_orig)
                         current_player_bbox = dual_view_mgr.tracked_player_bbox
 
-                    # 关联手腕位置并过滤后墙镜面区域 (x ∈ [680, 1580] 且 y < 620)
-                    dominant = self.swing_analysis_options.get('dominant_hand', 'right')
-                    wrist_key = "right_wrist" if dominant == "right" else "left_wrist"
-                    wrist_kp = pose_res.front_pose_orig.get(wrist_key)
+                    # 关联手腕位置并防误判后墙纯镜面虚影
+                    wrists = [
+                        kp for name, kp in (pose_res.front_pose_orig or {}).items()
+                        if "wrist" in name and getattr(kp, "conf", 0.0) >= 0.20
+                    ]
+                    if not wrists:
+                        wrists = [
+                            kp for name, kp in (pose_res.front_pose_orig or {}).items()
+                            if "elbow" in name and getattr(kp, "conf", 0.0) >= 0.20
+                        ]
+
                     valid_rackets = []
                     for r in (raw_rackets or []):
                         r_box = r.get("box")
@@ -754,22 +765,40 @@ class MultiprocessPipeline:
                             continue
                         rx_c = (r_box[0] + r_box[2]) / 2.0
                         ry_c = (r_box[1] + r_box[3]) / 2.0
-                        if dual_view_mgr is not None and dual_view_mgr.is_point_in_mirror(rx_c, ry_c, self.width, self.height):
-                            continue
-                        elif dual_view_mgr is None and 680 <= rx_c <= 1580 and ry_c < 620:
-                            continue
-                        if wrist_kp is not None:
-                            dist = ((rx_c - wrist_kp.x) ** 2 + (ry_c - wrist_kp.y) ** 2) ** 0.5
-                            if dist <= 320.0:
+
+                        in_mirror = False
+                        if dual_view_mgr is not None:
+                            in_mirror = dual_view_mgr.is_point_in_mirror(rx_c, ry_c, self.width, self.height)
+                        elif 680 <= rx_c <= 1580 and ry_c < 620:
+                            in_mirror = True
+
+                        if wrists:
+                            dist = min(((rx_c - w.x) ** 2 + (ry_c - w.y) ** 2) ** 0.5 for w in wrists)
+                            if dist <= 420.0:
+                                # 手持球拍（即便后墙背景处于镜面投影区，也是真实前景球拍）
                                 valid_rackets.append((dist, r))
+                            elif not in_mirror:
+                                valid_rackets.append((dist + 200.0, r))
                         else:
-                            valid_rackets.append((0.0, r))
+                            if not in_mirror:
+                                valid_rackets.append((0.0, r))
 
                     if valid_rackets:
                         valid_rackets.sort(key=lambda x: x[0])
                         racket = [item[1] for item in valid_rackets]
                         racket_box = valid_rackets[0][1].get("box")
+                        last_racket_box = racket_box
+                        last_racket_entry = racket[0]
+                        racket_missing_count = 0
+                    elif last_racket_box is not None and racket_missing_count < 2 and wrists:
+                        # 挥拍动作模糊短时平滑自愈（最多保持 2 帧）
+                        racket_missing_count += 1
+                        racket_box = list(last_racket_box)
+                        decayed = dict(last_racket_entry) if last_racket_entry else {"box": racket_box, "confidence": 0.5}
+                        decayed["confidence"] = float(decayed.get("confidence", 0.5)) * 0.90
+                        racket = [decayed]
                     else:
+                        racket_missing_count += 1
                         racket = []
                         racket_box = None
 

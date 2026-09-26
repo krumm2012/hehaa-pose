@@ -80,6 +80,8 @@ class DualViewRenderer:
         self.eye_mask_style = eye_mask_style
         self._prev_eye_boxes: List[Tuple[int, int, int, int]] = []
         self._eye_hold_counter: int = 0
+        self._prev_racket_box: Optional[Tuple[int, int, int, int]] = None
+        self._racket_hold_counter: int = 0
         self._font_mgr = None
 
     @property
@@ -457,7 +459,8 @@ class DualViewRenderer:
                 cv2.circle(f_img, curr_pt, 6, (0, 255, 230), -1, cv2.LINE_AA)
                 cv2.circle(f_img, curr_pt, 7, (255, 255, 255), 1, cv2.LINE_AA)
 
-        # 绘制球拍边界框 (正面视角局部映射)
+        # 绘制球拍边界框 (正面视角局部映射，带帧间平滑与自愈保持)
+        box_to_draw = None
         if racket_box is not None and len(racket_box) >= 4:
             rx1, ry1, rx2, ry2 = racket_box[:4]
             fx1, fy1 = dual_frame.front_info.map_from_original(rx1, ry1)
@@ -465,17 +468,34 @@ class DualViewRenderer:
             px1, py1 = int(round(min(fx1, fx2))), int(round(min(fy1, fy2)))
             px2, py2 = int(round(max(fx1, fx2))), int(round(max(fy1, fy2)))
             if px2 > 0 and py2 > 0 and px1 < f_img.shape[1] and py1 < f_img.shape[0]:
-                cv2.rectangle(f_img, (px1, py1), (px2, py2), (255, 220, 0), 2, cv2.LINE_AA)
-                cv2.putText(
-                    f_img,
-                    "RACKET",
-                    (px1, max(18, py1 - 5)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.45,
-                    (255, 220, 0),
-                    1,
-                    cv2.LINE_AA,
-                )
+                curr_box = (px1, py1, px2, py2)
+                if self._prev_racket_box is not None:
+                    sx1 = int(round(0.75 * px1 + 0.25 * self._prev_racket_box[0]))
+                    sy1 = int(round(0.75 * py1 + 0.25 * self._prev_racket_box[1]))
+                    sx2 = int(round(0.75 * px2 + 0.25 * self._prev_racket_box[2]))
+                    sy2 = int(round(0.75 * py2 + 0.25 * self._prev_racket_box[3]))
+                    box_to_draw = (sx1, sy1, sx2, sy2)
+                else:
+                    box_to_draw = curr_box
+                self._prev_racket_box = box_to_draw
+                self._racket_hold_counter = 2
+        elif self._racket_hold_counter > 0 and self._prev_racket_box is not None:
+            self._racket_hold_counter -= 1
+            box_to_draw = self._prev_racket_box
+
+        if box_to_draw is not None:
+            px1, py1, px2, py2 = box_to_draw
+            cv2.rectangle(f_img, (px1, py1), (px2, py2), (255, 220, 0), 2, cv2.LINE_AA)
+            cv2.putText(
+                f_img,
+                "RACKET",
+                (px1, max(18, py1 - 5)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                (255, 220, 0),
+                1,
+                cv2.LINE_AA,
+            )
 
         if self.show_skeleton:
             # 在正面绘制自愈后的完整姿态

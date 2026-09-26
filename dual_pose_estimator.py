@@ -15,7 +15,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -87,6 +87,8 @@ class DualPoseEstimator:
         self._last_back_eyes: List[Tuple[int, int, int, int]] = []
         self._last_valid_back_pose: Dict[str, Keypoint] = {}
         self._back_missing_count: int = 0
+        self._last_valid_front_pose: Dict[str, Keypoint] = {}
+        self._front_missing_count: int = 0
         self._init_backend(model_path)
 
     def _init_backend(self, model_path: Optional[str]):
@@ -260,11 +262,164 @@ class DualPoseEstimator:
             boxes.append((x1, y1, x2, y2))
         return boxes
 
+    def _select_front_candidate_ultralytics(
+        self,
+        kp_data: np.ndarray,
+        h: int,
+        w: int,
+        crop_info: Optional[DualViewCropInfo] = None,
+        is_point_in_mirror_fn: Optional[Callable[[float, float], bool]] = None,
+    ) -> Optional[np.ndarray]:
+        """
+        正面机位候选人筛选：在多候选人场景中准确识别球场真实前景选手，坚决排除后墙镜面虚影。
+        综合多边形几何碰撞、画面垂直深度、人体尺度及帧间时序连续性进行动态评分。
+        """
+        if len(kp_data) == 0:
+            return None
+
+        scored_candidates = []
+        for p in kp_data:
+            valid_mask = p[:, 2] >= self.conf_threshold if p.shape[1] > 2 else np.ones(len(p), dtype=bool)
+            valid_pts = p[valid_mask]
+            if len(valid_pts) < 4:
+                continue
+
+            min_x = float(np.min(valid_pts[:, 0]))
+            max_x = float(np.max(valid_pts[:, 0]))
+            min_y = float(np.min(valid_pts[:, 1]))
+            max_y = float(np.max(valid_pts[:, 1]))
+            cand_h = max_y - min_y
+            cx = (min_x + max_x) / 2.0
+            cy = (min_y + max_y) / 2.0
+
+            # 1. 镜面多边形与几何碰撞检测 (最高优先级)
+            is_mirror = False
+            if crop_info is not None and is_point_in_mirror_fn is not None:
+                orig_cx, orig_cy = crop_info.map_to_original(cx, cy)
+                orig_bx, orig_by = crop_info.map_to_original(cx, max_y)
+                # 镜中倒影的中心或底部双脚落在镜面内部，且位于画面上部
+                if bool(is_point_in_mirror_fn(orig_cx, orig_cy)) or (bool(is_point_in_mirror_fn(orig_bx, orig_by)) and cy < 0.50 * h):
+                    is_mirror = True
+            elif cy < 0.40 * h and max_y < 0.50 * h:
+                # 当无原图多边形回调时，退化为局部视口顶部禁区几何判断
+                is_mirror = True
+
+            score = 0.0
+            if is_mirror:
+                score -= 1000.0  # 镜面虚影重罚，严禁作为正面选手
+
+            # 2. 尺度特征：前景选手更靠近摄像头，像素高度更高
+            score += (cand_h / max(1.0, float(h))) * 120.0
+
+            # 3. 接地特征：真实选手双脚踩在球场地面上，在画面的下半部 (y 坐标更大)
+            score += (max_y / max(1.0, float(h))) * 100.0
+
+            # 4. 置信度特征
+            mean_conf = float(np.mean(valid_pts[:, 2])) if p.shape[1] > 2 else 0.85
+            score += mean_conf * 25.0
+
+            # 5. 帧间时序连续性（平滑追踪）
+            if self._last_valid_front_pose:
+                prev_xs = [kp.x for kp in self._last_valid_front_pose.values()]
+                prev_ys = [kp.y for kp in self._last_valid_front_pose.values()]
+                if prev_xs and prev_ys:
+                    pcx = (min(prev_xs) + max(prev_xs)) / 2.0
+                    pcy = (min(prev_ys) + max(prev_ys)) / 2.0
+                    dist = float(np.hypot(cx - pcx, cy - pcy))
+                    norm_dist = dist / max(1.0, float(h))
+                    if norm_dist < 0.25:
+                        score += 30.0 * (1.0 - norm_dist / 0.25)
+                    elif norm_dist > 0.40:
+                        score -= 50.0 * norm_dist
+
+            scored_candidates.append((score, p))
+
+        if not scored_candidates:
+            return None
+
+        scored_candidates.sort(key=lambda x: x[0], reverse=True)
+        best_score, best_candidate = scored_candidates[0]
+        # 若最高分仍低于 -500 分，说明所有候选均在镜面内部，拒绝选用镜面虚影
+        if best_score < -500.0:
+            return None
+        return best_candidate
+
+    def _select_front_candidate_coreml(
+        self,
+        kpts_list: List[Dict[str, Any]],
+        h: int,
+        w: int,
+        crop_info: Optional[DualViewCropInfo] = None,
+        is_point_in_mirror_fn: Optional[Callable[[float, float], bool]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Core ML 正面机位候选人筛选：在多候选人场景中准确识别球场真实前景选手，坚决排除后墙镜面虚影。
+        """
+        if not kpts_list:
+            return None
+
+        scored_candidates = []
+        for p in kpts_list:
+            pts = [pt for pt in p.values() if pt is not None]
+            if len(pts) < 4:
+                continue
+
+            xs = [pt[0] for pt in pts]
+            ys = [pt[1] for pt in pts]
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
+            cand_h = max_y - min_y
+            cx = (min_x + max_x) / 2.0
+            cy = (min_y + max_y) / 2.0
+
+            is_mirror = False
+            if crop_info is not None and is_point_in_mirror_fn is not None:
+                orig_cx, orig_cy = crop_info.map_to_original(cx, cy)
+                orig_bx, orig_by = crop_info.map_to_original(cx, max_y)
+                if bool(is_point_in_mirror_fn(orig_cx, orig_cy)) or (bool(is_point_in_mirror_fn(orig_bx, orig_by)) and cy < 0.50 * h):
+                    is_mirror = True
+            elif cy < 0.40 * h and max_y < 0.50 * h:
+                is_mirror = True
+
+            score = 0.0
+            if is_mirror:
+                score -= 1000.0
+
+            score += (cand_h / max(1.0, float(h))) * 120.0
+            score += (max_y / max(1.0, float(h))) * 100.0
+            score += 0.85 * 25.0
+
+            if self._last_valid_front_pose:
+                prev_xs = [kp.x for kp in self._last_valid_front_pose.values()]
+                prev_ys = [kp.y for kp in self._last_valid_front_pose.values()]
+                if prev_xs and prev_ys:
+                    pcx = (min(prev_xs) + max(prev_xs)) / 2.0
+                    pcy = (min(prev_ys) + max(prev_ys)) / 2.0
+                    dist = float(np.hypot(cx - pcx, cy - pcy))
+                    norm_dist = dist / max(1.0, float(h))
+                    if norm_dist < 0.25:
+                        score += 30.0 * (1.0 - norm_dist / 0.25)
+                    elif norm_dist > 0.40:
+                        score -= 50.0 * norm_dist
+
+            scored_candidates.append((score, p))
+
+        if not scored_candidates:
+            return None
+
+        scored_candidates.sort(key=lambda x: x[0], reverse=True)
+        best_score, best_candidate = scored_candidates[0]
+        if best_score < -500.0:
+            return None
+        return best_candidate
+
     def _predict_single_view(
         self,
         view_frame: np.ndarray,
         is_back_view: bool = False,
         model: Optional[Any] = None,
+        crop_info: Optional[DualViewCropInfo] = None,
+        is_point_in_mirror_fn: Optional[Callable[[float, float], bool]] = None,
     ) -> Dict[str, Keypoint]:
         """对单路裁剪视角画面进行姿态估计。"""
         active_model = model or (self.model_back if is_back_view and self.model_back is not None else self.model_front) or self.model
@@ -276,12 +431,23 @@ class DualPoseEstimator:
         if self.backend == "ultralytics":
             results = active_model(view_frame, conf=self.conf_threshold, verbose=False)
             if not results or results[0].keypoints is None or len(results[0].keypoints) == 0:
+                if is_back_view and self._last_valid_back_pose and self._back_missing_count < 3:
+                    self._back_missing_count += 1
+                    return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_back_pose.items()}
+                elif not is_back_view and self._last_valid_front_pose and self._front_missing_count < 3:
+                    self._front_missing_count += 1
+                    return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_front_pose.items()}
                 return {}
             kp_data = results[0].keypoints.data.cpu().numpy()  # [N, 17, 3] or [N, 17, 2]
             if len(kp_data) == 0:
+                if is_back_view and self._last_valid_back_pose and self._back_missing_count < 3:
+                    self._back_missing_count += 1
+                    return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_back_pose.items()}
+                elif not is_back_view and self._last_valid_front_pose and self._front_missing_count < 3:
+                    self._front_missing_count += 1
+                    return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_front_pose.items()}
                 return {}
 
-            # 背面镜面机位：提取人脸眼睛遮挡区域并严格过滤正面人脸，优先选择镜中背影
             best_person = None
             if is_back_view:
                 self._last_back_eyes = self._extract_eye_boxes_from_kp_data(kp_data, h, w)
@@ -310,7 +476,9 @@ class DualPoseEstimator:
                     candidates.sort(key=lambda x: x[0])
                     best_person = candidates[0][1]
             else:
-                best_person = kp_data[0]
+                best_person = self._select_front_candidate_ultralytics(
+                    kp_data, h, w, crop_info=crop_info, is_point_in_mirror_fn=is_point_in_mirror_fn
+                )
 
             parsed = {}
             if best_person is not None:
@@ -332,8 +500,17 @@ class DualPoseEstimator:
                 else:
                     self._back_missing_count += 1
                     return {}
-
-            return parsed
+            else:
+                if parsed:
+                    self._last_valid_front_pose = parsed
+                    self._front_missing_count = 0
+                    return parsed
+                elif self._last_valid_front_pose and self._front_missing_count < 3:
+                    self._front_missing_count += 1
+                    return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_front_pose.items()}
+                else:
+                    self._front_missing_count += 1
+                    return {}
 
         # Core ML 分支
         if self.backend == "coreml":
@@ -343,6 +520,9 @@ class DualPoseEstimator:
                     if is_back_view and self._last_valid_back_pose and self._back_missing_count < 3:
                         self._back_missing_count += 1
                         return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_back_pose.items()}
+                    elif not is_back_view and self._last_valid_front_pose and self._front_missing_count < 3:
+                        self._front_missing_count += 1
+                        return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_front_pose.items()}
                     return {}
 
                 best = None
@@ -375,7 +555,9 @@ class DualPoseEstimator:
                         candidates.sort(key=lambda x: x[0])
                         best = candidates[0][1]
                 else:
-                    best = kpts_list[0]
+                    best = self._select_front_candidate_coreml(
+                        kpts_list, h, w, crop_info=crop_info, is_point_in_mirror_fn=is_point_in_mirror_fn
+                    )
 
                 parsed = {}
                 if best is not None:
@@ -394,13 +576,24 @@ class DualPoseEstimator:
                     else:
                         self._back_missing_count += 1
                         return {}
+                else:
+                    if parsed:
+                        self._last_valid_front_pose = parsed
+                        self._front_missing_count = 0
+                        return parsed
+                    elif self._last_valid_front_pose and self._front_missing_count < 3:
+                        self._front_missing_count += 1
+                        return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_front_pose.items()}
+                    else:
+                        self._front_missing_count += 1
+                        return {}
 
-                return parsed
             except Exception as e:
                 logger.debug(f"CoreML prediction exception: {e}")
                 return {}
 
         return {}
+
 
     def _map_pose_to_original(
         self,
@@ -433,6 +626,7 @@ class DualPoseEstimator:
         """
         # 1. 独立并发估计
         self._last_back_eyes = []
+        is_mirror_fn = getattr(dual_frame, "is_point_in_mirror_fn", None)
         if (
             self.concurrent
             and self._pool is not None
@@ -445,12 +639,16 @@ class DualPoseEstimator:
                 dual_frame.front_frame,
                 False,
                 self.model_front,
+                dual_frame.front_info,
+                is_mirror_fn,
             )
             fut_back = self._pool.submit(
                 self._predict_single_view,
                 dual_frame.back_frame,
                 True,
                 self.model_back,
+                dual_frame.back_info,
+                is_mirror_fn,
             )
             front_pose_local = fut_front.result()
             back_pose_local = fut_back.result()
@@ -459,11 +657,15 @@ class DualPoseEstimator:
                 dual_frame.front_frame,
                 is_back_view=False,
                 model=self.model_front,
+                crop_info=dual_frame.front_info,
+                is_point_in_mirror_fn=is_mirror_fn,
             )
             back_pose_local = self._predict_single_view(
                 dual_frame.back_frame,
                 is_back_view=True,
                 model=self.model_back,
+                crop_info=dual_frame.back_info,
+                is_point_in_mirror_fn=is_mirror_fn,
             )
         back_eyes = list(self._last_back_eyes)
 
@@ -500,6 +702,14 @@ class DualPoseEstimator:
             timestamp_ms=dual_frame.timestamp_ms,
             back_view_eyes=back_eyes,
         )
+
+    def reset(self):
+        """重置内部姿态追踪与时序平滑状态。"""
+        self._last_back_eyes = []
+        self._last_valid_back_pose = {}
+        self._back_missing_count = 0
+        self._last_valid_front_pose = {}
+        self._front_missing_count = 0
 
     def close(self):
         """关闭内部并发线程池，释放系统资源。"""
