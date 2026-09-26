@@ -60,5 +60,47 @@ class DualPoseEstimatorTests(unittest.TestCase):
                 self.assertLessEqual(kp.y, 1440.0)
 
 
+    def test_concurrent_configuration_and_instances(self):
+        # 1. Mock backend
+        est_mock = DualPoseEstimator(backend="mock", concurrent=True)
+        self.assertTrue(est_mock.concurrent)
+        self.assertIsNotNone(est_mock._pool)
+        est_mock.close()
+        self.assertIsNone(est_mock._pool)
+
+        # 2. Non-concurrent mock
+        est_seq = DualPoseEstimator(backend="mock", concurrent=False)
+        self.assertFalse(est_seq.concurrent)
+        self.assertIsNone(est_seq._pool)
+        est_seq.close()
+
+        # 3. Auto backend dual instances
+        est_auto = DualPoseEstimator(backend="auto", concurrent=True)
+        if est_auto.backend != "mock":
+            self.assertIsNotNone(est_auto.model_front)
+            self.assertIsNotNone(est_auto.model_back)
+            self.assertIs(est_auto.model, est_auto.model_front)
+        est_auto.close()
+        self.assertIsNone(est_auto._pool)
+
+    def test_concurrent_vs_sequential_pose_consistency(self):
+        mgr = DualViewManager()
+        dummy_frame = np.zeros((1440, 2560, 3), dtype=np.uint8)
+        dual_frame = mgr.split_frame(dummy_frame, frame_id=10)
+
+        est_conc = DualPoseEstimator(backend="auto", concurrent=True)
+        res_conc = est_conc.estimate_dual_pose(dual_frame)
+        est_conc.close()
+
+        est_seq = DualPoseEstimator(backend="auto", concurrent=False)
+        res_seq = est_seq.estimate_dual_pose(dual_frame)
+        est_seq.close()
+
+        self.assertEqual(res_conc.frame_id, res_seq.frame_id)
+        self.assertEqual(len(res_conc.front_pose_local), len(res_seq.front_pose_local))
+        self.assertEqual(len(res_conc.back_pose_local), len(res_seq.back_pose_local))
+
+
 if __name__ == "__main__":
     unittest.main()
+

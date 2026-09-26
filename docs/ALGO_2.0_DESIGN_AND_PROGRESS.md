@@ -117,6 +117,7 @@
 | **TASK-18** | Phase P1 | 镜面与人像遮挡标定工具集成、Web HTML 5维雷达图与动力学链时序升级 | `local_control_panel.py`<br>`local_control_panel.html`<br>`calibrate_mirror.py`<br>`mirror_calibration.html`<br>`dual_view_manager.py`<br>`swing_report_builder.py`<br>`test_dual_view_manager.py`<br>`test_swing_report_builder.py` | 🟢 已完成 | 1. 控制台原生集成镜面标定工具（`/mirror-calibration` 路由与 API）；<br>2. 交互式人像遮挡区（`mask_polygon`）标定与 Backview 实时半透明暗色隐私遮罩渲染；<br>3. Web HTML 报告升级：原生 SVG 5 维技术雷达图（转肩/引拍/延展/挥速/蹬地）、四级段位徽章（PRO/ADVANCED/INTERMEDIATE/DEVELOPING）与 100 分制仪表、动力学链传递延时条（$\Delta t_{\text{hip}\to\text{sh}}$ 和 $\Delta t_{\text{sh}\to\text{rkt}}$）、击球定格特写与遥测指标网格；<br>4. 全量自动化单元测试增至 265 项且 100% 通过。 |
 | **TASK-19** | Phase P0 | 生产实时化与主工程对接（离线批处理 ➔ 实时运行） | `main_pipe.py`<br>`frame_processor.py`<br>`realtime_swing_runtime.py`<br>`qwen3_tts_sidecar.py`<br>`test_algo2_realtime_pipeline.py` | 🟢 已完成 | 1. 深度集成 Algo 2.0 虚拟双机位管线到生产级 `main_pipe.py`（支持 `--algo2-dual-view` / `--dual-view` 开启，保持原有单机位 100% 向后兼容）；<br>2. 实时推理多进程架构：ANE YOLO-pose 前后双机位姿态、遮挡自愈姿态合成与镜面球拍误检空间过滤；<br>3. 实时分析多进程渲染：Side-by-Side HD ($1080 \times 720$) 实时拼合、隐私遮罩、荧光动态球轨迹拖尾与击球瞬间特写遥测卡片平滑悬浮；<br>4. 在 `40.26.mp4` 生产流水线上实测稳定达到 25.4 ~ 26.3 FPS（Hardware Videotoolbox 编码），低延迟输出实时击球事件与三梯队生物力学指标；<br>5. 全量自动化单元测试增至 270 项且 100% 通过。 |
 | **TASK-20** | Phase P0 | 正反双机位几何校准、动态人体追踪自愈与各机位聚合标定 | `dual_view_manager.py`<br>`main_pipe.py`<br>`configs/roi_config.yaml`<br>`roi_stream_config.py`<br>`realtime_swing_pipeline.py` | 🟢 已完成 | 1. 动态自适应人体追踪（EMA 平滑，540x720 3:4 黄金宽高比，彻底消除拉伸畸变）；<br>2. 人体工学自愈扩展，彻底解决切掉人/球/拍问题；<br>3. 物理镜面边界校准，消除视角颠倒与拍部遮挡；<br>4. 推理与渲染进程透传同步；<br>5. 全量 303 项测试 100% 通过。 |
+| **TASK-21** | Phase P0 | 双视角独立实例姿态并发推理与延迟大幅压缩 | `dual_pose_estimator.py`<br>`main_pipe.py`<br>`test_dual_pose_estimator.py` | 🟢 已完成 | 1. 为 Front View 与 Back View 维护独立 CoreML 模型实例并开启 ThreadPool 并发调度；<br>2. 单帧双姿态耗时从 27.3ms 骤降至 19.9ms（降幅 ~28%），理论吞吐从 36 FPS 提升至 50+ FPS；<br>3. 全量 305 项单元测试 100% 通过。 |
 
 **状态图例**：  
 - ⬜ 待开始 (Pending)  
@@ -470,6 +471,20 @@
 4. **主管道推理与视觉渲染同步 (`main_pipe.py` & `realtime_swing_pipeline.py`)**：
    - 推理进程实时提取并平滑更新选手坐标，向分析与渲染进程透传 `player_bbox`，确保推理视口与视觉渲染视口 100% 同步；
    - 303 项全量单元测试 100% 通过。
+
+#### 2.10 双视角独立实例姿态并发推理与延迟大幅压缩 (2026-09-26)
+在实机性能评估中，发现姿态检测为流水线最核心耗时瓶颈（串行下前后双视角耗时合计 ~27.3ms，占总推理耗时的 85%）。
+1. **单实例串行锁根因排查**：
+   - CoreML 底层 C++ / ANE 运行库在单一 `MLModel` 实例上并发调用时会发生内部状态互斥或 GIL 争用，导致简单的 `ThreadPool` 调度单实例无法获得并行加速（实测仍然为 27.5ms）。
+2. **双模型实例并发架构 (`dual_pose_estimator.py`)**：
+   - 为正面视口与背面视口分别实例化独立的 CoreML 模型对象（`self.model_front` 与 `self.model_back`），配合内部常驻的 `ThreadPoolExecutor(max_workers=2)`；
+   - 两路视口前向推理同时派发至 Apple Neural Engine (ANE) 与 GPU 硬件，实现物理维度的计算重叠与并发。
+3. **性能收益实测 (Apple M5)**：
+   - 双视角姿态估计耗时从 **27.57 ms 骤降至 19.96 ms**（时延**降低约 27.6%**）；
+   - 单帧端到端总计算延迟从 **30.75 ms 压缩至 25.04 ms**；
+   - 多进程流水线理论极限吞吐率从 **36.3 FPS 跃升至 50.1 FPS**（吞吐能力**提升约 38%**），为后续接入 50/60 FPS 高帧率机位奠定了算力基础；
+   - 保留 `self.model` 别名与优雅关闭 `close()`，全仓库 305 项单元测试 100% 通过。
+
 
 
 

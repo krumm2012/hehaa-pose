@@ -12,6 +12,7 @@ dual_pose_estimator.py
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -55,7 +56,7 @@ class DualPoseResult:
 
 class DualPoseEstimator:
     """
-    双视角姿态估计器
+    双视角姿态估计器（支持双实例并发推理与单实例兼容模式）
     """
 
     def __init__(
@@ -65,6 +66,7 @@ class DualPoseEstimator:
         dominant_hand: str = "right",
         max_contact_distance: float = 200.0,
         backend: str = "auto",  # 'auto' | 'coreml' | 'ultralytics'
+        concurrent: bool = True,
     ):
         self.conf_threshold = conf_threshold
         self.biomech_engine = DualViewBiomechanicsEngine(
@@ -73,14 +75,22 @@ class DualPoseEstimator:
             min_keypoint_conf=conf_threshold,
         )
         self.backend = backend
-        self.model = None
+        self.concurrent = bool(concurrent)
+        self.model_front = None
+        self.model_back = None
+        self.model = None  # 兼容原有单实例属性访问 (指向 model_front)
+        self._pool: Optional[ThreadPoolExecutor] = (
+            ThreadPoolExecutor(max_workers=2, thread_name_prefix="dual-pose")
+            if self.concurrent
+            else None
+        )
         self._last_back_eyes: List[Tuple[int, int, int, int]] = []
         self._last_valid_back_pose: Dict[str, Keypoint] = {}
         self._back_missing_count: int = 0
         self._init_backend(model_path)
 
     def _init_backend(self, model_path: Optional[str]):
-        """初始化姿态推理后端（优先 Core ML，回退至 Ultralytics）。"""
+        """初始化姿态推理后端（优先 Core ML 双实例并发，回退至 Ultralytics）。"""
         # 1. 尝试 Core ML
         if self.backend in ("auto", "coreml"):
             try:
@@ -93,16 +103,25 @@ class DualPoseEstimator:
                 ]
                 for cp in candidate_paths:
                     if cp and Path(cp).exists():
-                        self.model = PoseEstimatorYOLO26(
-                            cp,
-                            {
-                                "pose_confidence_threshold": self.conf_threshold,
-                                "pose_keypoint_confidence": self.conf_threshold * 0.7,
-                                "pose_smoothing_enabled": False,
-                            },
-                        )
+                        cfg = {
+                            "pose_confidence_threshold": self.conf_threshold,
+                            "pose_keypoint_confidence": self.conf_threshold * 0.7,
+                            "pose_smoothing_enabled": False,
+                        }
+                        self.model_front = PoseEstimatorYOLO26(str(cp), cfg)
+                        if self.concurrent:
+                            try:
+                                self.model_back = PoseEstimatorYOLO26(str(cp), cfg)
+                                logger.info(f"Loaded CoreML dual-instance pose models (front & back) from {cp}")
+                            except Exception as e_back:
+                                logger.warning(
+                                    f"Dual-instance back model creation failed, falling back to shared instance: {e_back}"
+                                )
+                                self.model_back = self.model_front
+                        else:
+                            self.model_back = self.model_front
+                        self.model = self.model_front
                         self.backend = "coreml"
-                        logger.info(f"Loaded CoreML pose model from {cp}")
                         return
             except Exception as e:
                 logger.debug(f"CoreML backend not initialized: {e}")
@@ -119,12 +138,22 @@ class DualPoseEstimator:
                 ]
                 for cp in candidate_paths:
                     if cp and Path(cp).exists():
-                        self.model = YOLO(cp)
+                        self.model_front = YOLO(cp)
+                        if self.concurrent:
+                            try:
+                                self.model_back = YOLO(cp)
+                            except Exception:
+                                self.model_back = self.model_front
+                        else:
+                            self.model_back = self.model_front
+                        self.model = self.model_front
                         self.backend = "ultralytics"
                         logger.info(f"Loaded Ultralytics pose model from {cp}")
                         return
                 # 默认加载 yolov8n-pose.pt
-                self.model = YOLO("yolov8n-pose.pt")
+                self.model_front = YOLO("yolov8n-pose.pt")
+                self.model_back = YOLO("yolov8n-pose.pt") if self.concurrent else self.model_front
+                self.model = self.model_front
                 self.backend = "ultralytics"
                 logger.info("Loaded default yolov8n-pose.pt backend")
                 return
@@ -133,6 +162,9 @@ class DualPoseEstimator:
 
         logger.warning("No ML pose model loaded. DualPoseEstimator running in dummy/pass-through mode.")
         self.backend = "mock"
+        self.model_front = None
+        self.model_back = None
+        self.model = None
 
     def _extract_eye_boxes_from_kpts_list(
         self, kpts_list: List[Dict[str, Any]], h: int, w: int
@@ -232,15 +264,17 @@ class DualPoseEstimator:
         self,
         view_frame: np.ndarray,
         is_back_view: bool = False,
+        model: Optional[Any] = None,
     ) -> Dict[str, Keypoint]:
         """对单路裁剪视角画面进行姿态估计。"""
-        if self.model is None or self.backend == "mock":
+        active_model = model or (self.model_back if is_back_view and self.model_back is not None else self.model_front) or self.model
+        if active_model is None or self.backend == "mock":
             return {}
 
         h, w = view_frame.shape[:2]
 
         if self.backend == "ultralytics":
-            results = self.model(view_frame, conf=self.conf_threshold, verbose=False)
+            results = active_model(view_frame, conf=self.conf_threshold, verbose=False)
             if not results or results[0].keypoints is None or len(results[0].keypoints) == 0:
                 return {}
             kp_data = results[0].keypoints.data.cpu().numpy()  # [N, 17, 3] or [N, 17, 2]
@@ -304,7 +338,7 @@ class DualPoseEstimator:
         # Core ML 分支
         if self.backend == "coreml":
             try:
-                kpts_list = self.model.get_keypoints(view_frame)
+                kpts_list = active_model.get_keypoints(view_frame)
                 if not kpts_list:
                     if is_back_view and self._last_valid_back_pose and self._back_missing_count < 3:
                         self._back_missing_count += 1
@@ -393,14 +427,44 @@ class DualPoseEstimator:
     ) -> DualPoseResult:
         """
         双视角主估计流程：
-        1. 分别在正面和背面提取姿态
+        1. 分别在正面和背面提取姿态（支持独立双实例并发）
         2. 坐标转换映射至原始全局像素
         3. 进行生物力学融合、抗侧身塌陷及遮挡自愈
         """
-        # 1. 独立估计
+        # 1. 独立并发估计
         self._last_back_eyes = []
-        front_pose_local = self._predict_single_view(dual_frame.front_frame, is_back_view=False)
-        back_pose_local = self._predict_single_view(dual_frame.back_frame, is_back_view=True)
+        if (
+            self.concurrent
+            and self._pool is not None
+            and self.model_front is not None
+            and self.model_back is not None
+            and self.model_front is not self.model_back
+        ):
+            fut_front = self._pool.submit(
+                self._predict_single_view,
+                dual_frame.front_frame,
+                False,
+                self.model_front,
+            )
+            fut_back = self._pool.submit(
+                self._predict_single_view,
+                dual_frame.back_frame,
+                True,
+                self.model_back,
+            )
+            front_pose_local = fut_front.result()
+            back_pose_local = fut_back.result()
+        else:
+            front_pose_local = self._predict_single_view(
+                dual_frame.front_frame,
+                is_back_view=False,
+                model=self.model_front,
+            )
+            back_pose_local = self._predict_single_view(
+                dual_frame.back_frame,
+                is_back_view=True,
+                model=self.model_back,
+            )
         back_eyes = list(self._last_back_eyes)
 
         # 2. 映射回原图坐标
@@ -436,3 +500,15 @@ class DualPoseEstimator:
             timestamp_ms=dual_frame.timestamp_ms,
             back_view_eyes=back_eyes,
         )
+
+    def close(self):
+        """关闭内部并发线程池，释放系统资源。"""
+        if self._pool is not None:
+            self._pool.shutdown(wait=False)
+            self._pool = None
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass

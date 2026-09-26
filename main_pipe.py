@@ -629,6 +629,7 @@ class MultiprocessPipeline:
         from concurrent.futures import ThreadPoolExecutor
         shms = []
         executor = None
+        dual_pose_estimator = None
         try:
             from detection_frame_context import DetectionFrameContext
             from pose_estimator_yolo26 import PoseEstimatorYOLO26
@@ -872,6 +873,11 @@ class MultiprocessPipeline:
         finally:
             if executor is not None:
                 executor.shutdown()
+            if dual_pose_estimator is not None and hasattr(dual_pose_estimator, "close"):
+                try:
+                    dual_pose_estimator.close()
+                except Exception:
+                    pass
             for s in shms:
                 s.close()
             self.inf_done.set()
