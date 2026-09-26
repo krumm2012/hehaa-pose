@@ -498,10 +498,41 @@ class DualViewRenderer:
             )
 
         if self.show_skeleton:
-            # 在正面绘制自愈后的完整姿态
-            f_img = self.draw_skeleton(f_img, pose_result.fused_pose_local, is_back_view=False)
-            # 在背面绘制背面视角关键点
-            b_img = self.draw_skeleton(b_img, pose_result.back_pose_local, is_back_view=True)
+            # 严格依据当前正面视口几何投影映射骨骼（消除多进程跨帧视口漂移导致的骨骼错位）
+            front_pose_to_draw = {}
+            source_front = getattr(pose_result, "fused_pose_orig", None) or getattr(pose_result, "front_pose_orig", None)
+            if source_front and getattr(dual_frame, "front_info", None) is not None:
+                for name, kp in source_front.items():
+                    fx, fy = dual_frame.front_info.map_from_original(kp.x, kp.y)
+                    front_pose_to_draw[name] = Keypoint(
+                        x=fx,
+                        y=fy,
+                        conf=kp.conf,
+                        z=kp.z,
+                        recovered_from_mirror=kp.recovered_from_mirror,
+                    )
+            else:
+                front_pose_to_draw = pose_result.fused_pose_local
+
+            f_img = self.draw_skeleton(f_img, front_pose_to_draw, is_back_view=False)
+
+            # 在背面绘制背面视角关键点（严格依据当前背面视口几何投影映射）
+            back_pose_to_draw = {}
+            source_back = getattr(pose_result, "back_pose_orig", None)
+            if source_back and getattr(dual_frame, "back_info", None) is not None:
+                for name, kp in source_back.items():
+                    bx, by = dual_frame.back_info.map_from_original(kp.x, kp.y)
+                    back_pose_to_draw[name] = Keypoint(
+                        x=bx,
+                        y=by,
+                        conf=kp.conf,
+                        z=kp.z,
+                        recovered_from_mirror=kp.recovered_from_mirror,
+                    )
+            else:
+                back_pose_to_draw = pose_result.back_pose_local
+
+            b_img = self.draw_skeleton(b_img, back_pose_to_draw, is_back_view=True)
 
         # 在背面视角画面上叠加人脸眼睛隐私遮挡（在骨骼绘制之后，确保完整遮蔽）
         should_mask_eyes = self.mask_backview_eyes if mask_back_eyes is None else mask_back_eyes

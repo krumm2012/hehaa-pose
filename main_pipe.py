@@ -850,6 +850,7 @@ class MultiprocessPipeline:
                         'dual_pose_res': pose_res,
                         'dual_view_biomechanics': dual_view_biomech,
                         'player_bbox': current_player_bbox,
+                        'front_crop_bbox': dual_frame.front_info.bbox_orig if dual_frame is not None else None,
                         'ball_diagnostics': ball_diagnostics,
                         'racket_diagnostics': racket_diagnostics,
                         'captured_at': task.get('captured_at'),
@@ -1321,7 +1322,12 @@ class MultiprocessPipeline:
                 ev_coach = disp.get("coaching_text") or ""
                 telemetry_card = disp.get("telemetry_card")
 
-                dual_frame = dual_view_mgr.split_frame(canvas, player_bbox=data.get('player_bbox'), frame_id=fid)
+                dual_frame = dual_view_mgr.split_frame(
+                    canvas,
+                    player_bbox=data.get('player_bbox'),
+                    frame_id=fid,
+                    front_crop_bbox=data.get('front_crop_bbox'),
+                )
                 rendered_canvas = dual_view_renderer.render_dual_frame(
                     dual_frame,
                     pose_res,

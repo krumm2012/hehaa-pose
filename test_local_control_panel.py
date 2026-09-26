@@ -729,6 +729,30 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
             idx = cmd.index("--stream-id")
             self.assertEqual(cmd[idx + 1], "court01-main")
 
+    def test_sse_events_streaming(self):
+        with TemporaryDirectory() as directory:
+            controller = self.make_controller(Path(directory))
+            server = ThreadingHTTPServer(("127.0.0.1", 0), create_handler(controller))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                url = f"http://127.0.0.1:{server.server_port}/api/events"
+                request = urllib.request.Request(url, method="GET")
+                with urllib.request.urlopen(request, timeout=3.0) as response:
+                    self.assertIn("text/event-stream", response.headers.get("Content-Type", ""))
+                    # Read the first event: should be event: status
+                    line1 = response.readline().decode("utf-8").strip()
+                    line2 = response.readline().decode("utf-8").strip()
+                    self.assertEqual(line1, "event: status")
+                    self.assertTrue(line2.startswith("data: {"))
+                    data = json.loads(line2[len("data: "):])
+                    self.assertEqual(data.get("state"), "stopped")
+            finally:
+                controller.stop_server()
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
 
 if __name__ == "__main__":
     unittest.main()

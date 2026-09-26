@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import cv2
 import numpy as np
 import yaml
 
@@ -141,6 +142,41 @@ class CalibrateMirrorTests(unittest.TestCase):
         with open(self.dual_config_path, "r", encoding="utf-8") as f:
             dual_doc = yaml.safe_load(f)
         self.assertEqual(dual_doc["mirror_view"]["reflection_roi"], new_roi)
+
+    def test_render_backview_preview_modes(self):
+        server = MirrorCalibrationServer(
+            video_path=self.video_path,
+            config_path=self.dual_config_path,
+            html_path=self.html_path,
+            roi_config_path=self.roi_config_path,
+        )
+        roi = [0.30, 0.10, 0.70, 0.50]
+        poly = [[0.30, 0.50], [0.30, 0.10], [0.70, 0.10], [0.70, 0.50]]
+        mask = [[0.40, 0.20], [0.50, 0.20], [0.50, 0.30], [0.40, 0.30]]
+
+        # 1. Backview mode (540x720)
+        jpeg_back = server.render_backview_preview(
+            frame_idx=0,
+            reflection_roi=roi,
+            polygon=poly,
+            mask_polygon=mask,
+            preview_mode="back",
+        )
+        self.assertTrue(jpeg_back.startswith(b"\xff\xd8"))
+        img_back = cv2.imdecode(np.frombuffer(jpeg_back, np.uint8), cv2.IMREAD_COLOR)
+        self.assertEqual(img_back.shape, (720, 540, 3))
+
+        # 2. Side-by-side SBS mode (1080x720)
+        jpeg_sbs = server.render_backview_preview(
+            frame_idx=0,
+            reflection_roi=roi,
+            polygon=poly,
+            mask_polygon=mask,
+            preview_mode="sbs",
+        )
+        self.assertTrue(jpeg_sbs.startswith(b"\xff\xd8"))
+        img_sbs = cv2.imdecode(np.frombuffer(jpeg_sbs, np.uint8), cv2.IMREAD_COLOR)
+        self.assertEqual(img_sbs.shape, (720, 1080, 3))
 
 
 if __name__ == "__main__":

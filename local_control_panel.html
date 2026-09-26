@@ -99,6 +99,38 @@
     .status-pill.stopping::before { background: var(--yellow); }
     .status-pill.failed::before { background: var(--red); }
 
+    .sse-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      background: #0b1018;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      transition: all .2s ease;
+      user-select: none;
+    }
+    .sse-badge.live {
+      color: var(--green);
+      border-color: rgba(64, 214, 139, .38);
+      background: rgba(64, 214, 139, .08);
+      box-shadow: 0 0 12px rgba(64, 214, 139, .15);
+    }
+    .sse-badge.connecting {
+      color: var(--yellow);
+      border-color: rgba(245, 208, 76, .38);
+      background: rgba(245, 208, 76, .08);
+    }
+    .sse-badge.fallback {
+      color: #8da4c4;
+      border-color: rgba(141, 164, 196, .38);
+      background: rgba(141, 164, 196, .08);
+    }
+
     .button {
       min-height: 38px;
       padding: 0 14px;
@@ -793,6 +825,7 @@
         <a href="/mirror-calibration" target="_blank" class="button" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;background:rgba(0,240,255,0.12);border:1px solid var(--blue);color:var(--text);font-weight:600;">
           🪞 镜面与人像遮挡标定
         </a>
+        <span id="sse-status-badge" class="sse-badge connecting" title="实时事件流推送通道状态">🟡 连接中…</span>
         <span id="status-pill" class="status-pill">已停止</span>
         <button id="start-button" class="button primary">启动分析</button>
         <button id="stop-button" class="button danger" disabled>停止</button>
@@ -1634,19 +1667,24 @@
       `;
     }
 
+    function handleSwingsData(data, force = false) {
+      if (!data) return;
+      const events = data.events || [];
+      const summary = data.summary || {};
+      latestRawEvents = events;
+      const currentHash = JSON.stringify(events.map(e => e.event_id + "_" + (e.coach_advices?.length || 0)) + "_" + (summary.total_swings || 0) + "_" + filterOnlyValidSwings);
+      if (!force && currentHash === lastEventsJson) return;
+      lastEventsJson = currentHash;
+      renderSessionSummary(summary, events);
+      renderSwingsFeed(events);
+    }
+
     async function pollSwings(force = false) {
       try {
         const response = await api("/api/session/events");
         if (!response.ok) return;
         const data = await response.json();
-        const events = data.events || [];
-        const summary = data.summary || {};
-        latestRawEvents = events;
-        const currentHash = JSON.stringify(events.map(e => e.event_id + "_" + (e.coach_advices?.length || 0)) + "_" + (summary.total_swings || 0) + "_" + filterOnlyValidSwings);
-        if (!force && currentHash === lastEventsJson) return;
-        lastEventsJson = currentHash;
-        renderSessionSummary(summary, events);
-        renderSwingsFeed(events);
+        handleSwingsData(data, force);
       } catch (err) {}
     }
 
@@ -1822,6 +1860,88 @@
       });
     }
 
+    function handleLogsData(data) {
+      const log = $("log-output");
+      if (!log || !data) return;
+      const newLines = data.logs || [];
+      if (!newLines.length) return;
+      const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 50;
+      if (log.textContent === "控制台日志将在这里显示。" || (data.total && data.total === newLines.length)) {
+        log.textContent = newLines.join("\n");
+      } else {
+        log.textContent += (log.textContent ? "\n" : "") + newLines.join("\n");
+      }
+      if (nearBottom) log.scrollTop = log.scrollHeight;
+    }
+
+    let evtSource = null;
+    let sseFallbackTimer = null;
+
+    function setSSEStatus(type, text) {
+      const badge = $("sse-status-badge");
+      if (!badge) return;
+      badge.className = `sse-badge ${type}`;
+      badge.textContent = text;
+    }
+
+    function initSSE() {
+      if (evtSource) {
+        try { evtSource.close(); } catch (_) {}
+        evtSource = null;
+      }
+      setSSEStatus("connecting", "🟡 连接中…");
+
+      try {
+        evtSource = new EventSource("/api/events");
+        evtSource.onopen = () => {
+          setSSEStatus("live", "🟢 实时流 (SSE)");
+          if (sseFallbackTimer) {
+            clearInterval(sseFallbackTimer);
+            sseFallbackTimer = null;
+          }
+        };
+
+        evtSource.addEventListener("status", (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            updateStatus(data);
+          } catch (err) {
+            console.error("SSE status error:", err);
+          }
+        });
+
+        evtSource.addEventListener("swings", (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            handleSwingsData(data);
+          } catch (err) {
+            console.error("SSE swings error:", err);
+          }
+        });
+
+        evtSource.addEventListener("logs", (e) => {
+          try {
+            const data = JSON.parse(e.data);
+            handleLogsData(data);
+          } catch (err) {
+            console.error("SSE logs error:", err);
+          }
+        });
+
+        evtSource.onerror = () => {
+          setSSEStatus("fallback", "⏳ 轮询回退 (Polling)");
+          if (!sseFallbackTimer) {
+            sseFallbackTimer = setInterval(pollStatus, 2000);
+          }
+        };
+      } catch (err) {
+        setSSEStatus("fallback", "⏳ 轮询回退 (Polling)");
+        if (!sseFallbackTimer) {
+          sseFallbackTimer = setInterval(pollStatus, 2000);
+        }
+      }
+    }
+
     async function pollStatus() {
       try {
         const response = await api("/api/status");
@@ -1885,6 +2005,7 @@
         }
         await pollStatus();
         await pollSwings();
+        initSSE();
       } catch (error) {
         showToast(`页面初始化失败：${error.message}`, true);
       }
@@ -1922,7 +2043,6 @@
     $("custom_stream_source").addEventListener("input", updateStreamMeta);
     $("settings-form").addEventListener("change", savePreset);
     $("settings-form").addEventListener("submit", event => event.preventDefault());
-    setInterval(pollStatus, 1000);
     initialize();
   </script>
 

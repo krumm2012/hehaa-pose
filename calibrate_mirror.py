@@ -148,8 +148,10 @@ class MirrorCalibrationServer:
         reflection_roi: List[float],
         polygon: List[List[float]],
         mask_polygon: Optional[List[List[float]]] = None,
+        preview_mode: str = "back",
     ) -> bytes:
-        """根据动态调整的多边形和屏蔽区，实时合成背面视角 JPEG 预览。"""
+        """根据动态调整的多边形和屏蔽区，实时合成背面视角或双视角合成 JPEG 预览。"""
+        import numpy as np
         frame = self.get_frame_raw(frame_idx)
         cfg_dict = {
             "mirror_view": {
@@ -168,7 +170,11 @@ class MirrorCalibrationServer:
         from dual_view_manager import DualViewManager
         mgr = DualViewManager(config_dict=cfg_dict)
         dual = mgr.split_frame(frame, frame_id=frame_idx)
-        ok, buf = cv2.imencode(".jpg", dual.back_frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if preview_mode == "sbs":
+            preview_img = np.hstack([dual.front_frame, dual.back_frame])
+        else:
+            preview_img = dual.back_frame
+        ok, buf = cv2.imencode(".jpg", preview_img, [cv2.IMWRITE_JPEG_QUALITY, 85])
         if not ok:
             raise RuntimeError("Backview preview encode failed")
         return buf.tobytes()
@@ -319,7 +325,7 @@ def make_handler(server_instance: MirrorCalibrationServer):
             parsed = urlsplit(self.path)
             path = parsed.path
 
-            if path == "/api/preview_backview":
+            if path in ("/api/preview_backview", "/api/mirror/preview_backview"):
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
                     raw = self.rfile.read(length)
@@ -328,14 +334,16 @@ def make_handler(server_instance: MirrorCalibrationServer):
                     roi = data.get("reflection_roi", [0.27, 0.10, 0.61, 0.46])
                     poly = data.get("polygon", [])
                     mask_poly = data.get("mask_polygon", [])
-                    jpeg_bytes = server_instance.render_backview_preview(f_idx, roi, poly, mask_poly)
+                    mode = data.get("mode", "back")
+                    jpeg_bytes = server_instance.render_backview_preview(f_idx, roi, poly, mask_poly, preview_mode=mode)
                     self.send_response(HTTPStatus.OK)
                     self.send_header("Content-Type", "image/jpeg")
                     self.send_header("Content-Length", str(len(jpeg_bytes)))
+                    self.send_header("Cache-Control", "no-cache")
                     self.end_headers()
                     self.wfile.write(jpeg_bytes)
                 except Exception as e:
-                    logger.error(f"生成背面预览失败: {e}")
+                    logger.error(f"生成预览失败: {e}")
                     self._send_json({"success": False, "error": str(e)}, status=HTTPStatus.BAD_REQUEST)
                 return
 

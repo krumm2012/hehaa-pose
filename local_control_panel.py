@@ -411,6 +411,8 @@ class LocalPipelineController:
             for name in self._camera_variable_names(stream["stream_id"]):
                 load_local_environment_variable(credentials_path, name)
         self._lock = threading.RLock()
+        self._change_condition = threading.Condition()
+        self._server_stop_event = threading.Event()
         self._process: Optional[subprocess.Popen] = None
         self._reader_thread: Optional[threading.Thread] = None
         self._runtime_directory: Optional[Path] = None
@@ -421,6 +423,17 @@ class LocalPipelineController:
         self._logs = deque(maxlen=300)
         self._public_command: List[str] = []
         self._artifacts: Dict[str, str] = {}
+
+    def _notify_change(self) -> None:
+        with self._change_condition:
+            self._change_condition.notify_all()
+
+    def is_server_stopped(self) -> bool:
+        return self._server_stop_event.is_set()
+
+    def stop_server(self) -> None:
+        self._server_stop_event.set()
+        self._notify_change()
 
     def public_config(self) -> Dict[str, Any]:
         config = yaml.safe_load(self.config_path.read_text(encoding="utf-8")) or {}
@@ -626,6 +639,7 @@ class LocalPipelineController:
                 name="tennis-control-log-reader",
             )
             self._reader_thread.start()
+            self._notify_change()
             return self.status()
 
     def stop(self) -> Dict[str, Any]:
@@ -636,9 +650,11 @@ class LocalPipelineController:
                 or self._process.poll() is not None
             ):
                 self._state = "stopped"
+                self._notify_change()
                 return self.status()
             self._state = "stopping"
             self._logs.append("[control] 正在发送安全停止信号…")
+            self._notify_change()
             try:
                 os.killpg(self._process.pid, signal.SIGINT)
             except (ProcessLookupError, PermissionError):
@@ -646,6 +662,7 @@ class LocalPipelineController:
             return self.status()
 
     def shutdown(self) -> None:
+        self.stop_server()
         self.stop()
         process = self._process
         if process is not None and process.poll() is None:
@@ -897,7 +914,8 @@ class LocalPipelineController:
         roi = payload.get("reflection_roi", [0.27, 0.10, 0.61, 0.46])
         poly = payload.get("polygon", [])
         mask_poly = payload.get("mask_polygon", [])
-        return calib.render_backview_preview(f_idx, roi, poly, mask_poly)
+        mode = payload.get("mode", "back")
+        return calib.render_backview_preview(f_idx, roi, poly, mask_poly, preview_mode=mode)
 
     def _stream_from_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         stream_id = str(payload.get("stream_id") or "").strip()
@@ -1229,6 +1247,7 @@ class LocalPipelineController:
                     if text:
                         with self._lock:
                             self._logs.append(text)
+                        self._notify_change()
             returncode = process.wait()
             with self._lock:
                 self._returncode = int(returncode)
@@ -1237,6 +1256,7 @@ class LocalPipelineController:
                 self._logs.append(
                     f"[control] 进程结束，返回码 {returncode}"
                 )
+            self._notify_change()
         finally:
             if stream is not None:
                 stream.close()
@@ -1248,10 +1268,13 @@ class LocalPipelineController:
         returncode = self._process.poll()
         if returncode is None:
             return
+        old_state = self._state
         self._returncode = int(returncode)
         if self._state in {"running", "stopping"}:
             self._state = "stopped" if returncode == 0 else "failed"
             self._stopped_at = time.time()
+            if self._state != old_state:
+                self._notify_change()
 
     def _cleanup_runtime_directory(self) -> None:
         with self._lock:
@@ -1278,10 +1301,95 @@ def create_handler(controller: LocalPipelineController):
         def do_GET(self):
             self._do_request(head_only=False)
 
+        def _handle_sse(self):
+            self.close_connection = True
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-transform")
+            self.send_header("Connection", "close")
+            self.send_header("X-Accel-Buffering", "no")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+
+            def send_sse_event(event_name: str, data_dict: Any) -> None:
+                payload = json.dumps(data_dict, ensure_ascii=False, separators=(",", ":"))
+                msg = f"event: {event_name}\ndata: {payload}\n\n".encode("utf-8")
+                self.wfile.write(msg)
+                self.wfile.flush()
+
+            try:
+                curr_status = controller.status()
+                send_sse_event("status", curr_status)
+                curr_swings = controller.session_events()
+                send_sse_event("swings", curr_swings)
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                return
+
+            last_status_state = curr_status.get("state")
+            last_pid = curr_status.get("pid")
+            last_returncode = curr_status.get("returncode")
+            last_log_count = len(curr_status.get("logs") or [])
+            last_total_events = curr_swings.get("total_events", 0)
+            last_ping_time = time.time()
+            last_status_time = time.time()
+
+            while not controller.is_server_stopped():
+                with controller._change_condition:
+                    controller._change_condition.wait(timeout=0.3)
+
+                if controller.is_server_stopped():
+                    break
+
+                now = time.time()
+                try:
+                    if now - last_ping_time >= 10.0:
+                        self.wfile.write(b": ping\n\n")
+                        self.wfile.flush()
+                        last_ping_time = now
+
+                    curr_status = controller.status()
+                    state_changed = (
+                        curr_status.get("state") != last_status_state
+                        or curr_status.get("pid") != last_pid
+                        or curr_status.get("returncode") != last_returncode
+                    )
+                    curr_logs = curr_status.get("logs") or []
+                    logs_changed = len(curr_logs) != last_log_count
+                    elapsed_tick = (curr_status.get("state") == "running" and (now - last_status_time >= 1.0))
+
+                    if state_changed or elapsed_tick or logs_changed:
+                        send_sse_event("status", curr_status)
+                        last_status_state = curr_status.get("state")
+                        last_pid = curr_status.get("pid")
+                        last_returncode = curr_status.get("returncode")
+                        last_status_time = now
+
+                    if logs_changed:
+                        new_logs = curr_logs[last_log_count:] if len(curr_logs) > last_log_count else curr_logs
+                        send_sse_event("logs", {"logs": new_logs, "total": len(curr_logs)})
+                        last_log_count = len(curr_logs)
+
+                    curr_swings = controller.session_events()
+                    if curr_swings.get("total_events", 0) != last_total_events:
+                        send_sse_event("swings", curr_swings)
+                        last_total_events = curr_swings.get("total_events", 0)
+
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+                    break
+                except Exception:
+                    break
+
         def _do_request(self, head_only: bool = False):
             path = self.path.split("?", 1)[0]
             try:
-                if path == "/":
+                if path in ("/api/events", "/api/sse"):
+                    if head_only:
+                        self.send_response(HTTPStatus.OK)
+                        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                        self.end_headers()
+                    else:
+                        self._handle_sse()
+                elif path == "/":
                     self._send_file(controller.frontend_path, "text/html", head_only=head_only)
                 elif path in ("/mirror-calibration", "/mirror_calibration.html"):
                     calib_html = controller.workspace / "mirror_calibration.html"
@@ -1646,6 +1754,7 @@ def main(argv=None) -> int:
     except KeyboardInterrupt:
         print("\n🛑 正在关闭本地控制面板…")
     finally:
+        controller.stop_server()
         server.shutdown()
         server.server_close()
         controller.shutdown()
