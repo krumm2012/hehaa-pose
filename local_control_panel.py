@@ -927,6 +927,65 @@ class LocalPipelineController:
         mode = payload.get("mode", "back")
         return calib.render_backview_preview(f_idx, roi, poly, mask_poly, preview_mode=mode)
 
+    def roi_info(self, stream_id: Optional[str] = None) -> Dict[str, Any]:
+        target_id = stream_id or (self.streams[0]["stream_id"] if self.streams else "")
+        matched = next((s for s in self.streams if s["stream_id"] == target_id), None)
+        if not matched:
+            raise ValueError(f"未找到机位配置: {target_id}")
+        return {
+            "stream_id": matched["stream_id"],
+            "label": matched["label"],
+            "points": list(matched.get("points") or []),
+            "frame_size": list(matched.get("frame_size") or [2560, 1440]),
+            "mirror_view": dict(matched.get("mirror_view") or {}),
+            "mirror_exclusion": True,
+            "exclusion_polygons": list(matched.get("exclusion_polygons") or []),
+        }
+
+    def save_roi_boundary(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        stream_id = str(payload.get("stream_id") or "").strip()
+        points = payload.get("points") or payload.get("roi_points") or []
+        if not stream_id:
+            raise ValueError("缺少 stream_id")
+        if not isinstance(points, (list, tuple)) or len(points) < 3:
+            raise ValueError("ROI 边界至少需要 3 个顶点坐标")
+        cleaned_points = []
+        for p in points:
+            if not isinstance(p, (list, tuple)) or len(p) < 2:
+                raise ValueError(f"无效的顶点坐标: {p}")
+            cleaned_points.append([int(round(float(p[0]))), int(round(float(p[1])))])
+
+        if not self.roi_config_path.exists():
+            raise ValueError("ROI 配置文件不存在")
+        doc = yaml.safe_load(self.roi_config_path.read_text(encoding="utf-8")) or {}
+        streams = doc.get("streams") or []
+        matched = next((s for s in streams if s.get("stream_id") == stream_id), None)
+        if not matched:
+            raise ValueError(f"在配置文件中未找到机位: {stream_id}")
+
+        matched["roi_points"] = cleaned_points
+        matched["roi_description"] = f"{len(cleaned_points)}-point ROI: {cleaned_points}"
+        matched["last_updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+
+        if "mirror_exclusion" in payload:
+            mv = matched.setdefault("mirror_view", {})
+            mv["exclusion_enabled"] = bool(payload["mirror_exclusion"])
+
+        if "exclusion_polygons" in payload and isinstance(payload["exclusion_polygons"], list):
+            matched["exclusion_polygons"] = payload["exclusion_polygons"]
+
+        self.roi_config_path.write_text(
+            yaml.safe_dump(doc, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+        self.streams = load_stream_profiles(self.roi_config_path)
+        return {
+            "success": True,
+            "stream_id": stream_id,
+            "points": cleaned_points,
+            "message": "ROI 边界已成功保存",
+        }
+
     def _stream_from_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         stream_id = str(payload.get("stream_id") or "").strip()
         if stream_id == LOCAL_VIDEO_ID:
@@ -1191,7 +1250,7 @@ class LocalPipelineController:
             ],
             dtype=np.int32,
         )
-        if len(points) == 4:
+        if len(points) >= 3:
             overlay = preview.copy()
             cv2.fillPoly(overlay, [points], (0, 210, 255))
             preview = cv2.addWeighted(overlay, 0.13, preview, 0.87, 0)
@@ -1216,6 +1275,35 @@ class LocalPipelineController:
                     2,
                     cv2.LINE_AA,
                 )
+
+        # 绘制镜面反射排除区域（阻断镜中球与虚影）
+        mirror_poly = stream.get("mirror_view", {}).get("polygon") or []
+        if len(mirror_poly) >= 3:
+            m_pts = np.asarray(
+                [
+                    [
+                        int(round(float(p[0]) * width)),
+                        int(round(float(p[1]) * height)),
+                    ]
+                    for p in mirror_poly
+                ],
+                dtype=np.int32,
+            )
+            m_overlay = preview.copy()
+            cv2.fillPoly(m_overlay, [m_pts], (0, 0, 200))
+            preview = cv2.addWeighted(m_overlay, 0.22, preview, 0.78, 0)
+            cv2.polylines(preview, [m_pts], True, (0, 0, 255), max(2, int(round(width / 900))), cv2.LINE_AA)
+            cv2.putText(
+                preview,
+                "MIRROR EXCLUSION (BALL/RACKET BLOCKED)",
+                (int(m_pts[0][0]) + 15, int(m_pts[0][1]) + 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.62,
+                (0, 60, 255),
+                2,
+                cv2.LINE_AA,
+            )
+
         header_height = max(64, int(round(height * 0.075)))
         cv2.rectangle(
             preview,
@@ -1432,6 +1520,11 @@ def create_handler(controller: LocalPipelineController):
                         self.wfile.write(jpeg_bytes)
                 elif path == "/api/config":
                     self._send_json(controller.public_config(), head_only=head_only)
+                elif path == "/api/roi/config":
+                    from urllib.parse import parse_qs, urlsplit
+                    query = parse_qs(urlsplit(self.path).query)
+                    s_id = query.get("stream_id", [None])[0]
+                    self._send_json(controller.roi_info(stream_id=s_id), head_only=head_only)
                 elif path == "/api/status":
                     self._send_json(controller.status(), head_only=head_only)
                 elif path == "/api/session/events":
@@ -1492,6 +1585,7 @@ def create_handler(controller: LocalPipelineController):
                 "/api/video/upload",
                 "/api/stop",
                 "/api/manual-review/evaluate",
+                "/api/roi/config",
             }
             if path not in allowed_paths:
                 self.send_error(HTTPStatus.NOT_FOUND)
@@ -1528,6 +1622,8 @@ def create_handler(controller: LocalPipelineController):
                     self._send_json(controller.start(payload))
                 elif path == "/api/stop":
                     self._send_json(controller.stop())
+                elif path == "/api/roi/config":
+                    self._send_json(controller.save_roi_boundary(payload))
                 elif path == "/api/manual-review/evaluate":
                     self._send_json(
                         controller.evaluate_manual_review(

@@ -104,6 +104,7 @@ class YOLO26nUnifiedDetector:
         self.last_ball_diagnostics = {}
         self.last_racket_diagnostics = {}
         self.last_parse_diagnostics = {}
+        self.roi_manager = None
         
         print("✅ YOLO26n 统一检测器初始化完成")
 
@@ -114,6 +115,10 @@ class YOLO26nUnifiedDetector:
     def get_last_racket_diagnostics(self):
         """Return raw-threshold and selection evidence for the last racket step."""
         return dict(self.last_racket_diagnostics) if isinstance(self.last_racket_diagnostics, dict) else {}
+
+    def set_roi_manager(self, roi_manager):
+        """动态配置或更新 ROI 管理器（包含边界与镜面排除多边形）。"""
+        self.roi_manager = roi_manager
     
     def detect_unified(
         self,
@@ -186,6 +191,14 @@ class YOLO26nUnifiedDetector:
                 coordinate_offset,
             )
         
+        # 恢复全图坐标后，优先基于 ROI 有效边界与排除区（如后墙镜面区域）过滤球候选
+        roi_mgr = getattr(self, "roi_manager", None)
+        if roi_mgr is not None and getattr(roi_mgr, "is_roi_set", False):
+            ball_detections = roi_mgr.filter_detections_by_roi(
+                ball_detections,
+                detection_type="ball",
+            )
+
         # 在已有候选中选择真实运动球/主拍；不增加模型推理，只做轻量距离打分。
         ball_detections = self._filter_static_balls(ball_detections, racket_detections)
         if isinstance(self.last_ball_diagnostics, dict):

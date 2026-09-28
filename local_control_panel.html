@@ -949,6 +949,22 @@
               <label class="switch"><input id="show_roi_fill" type="checkbox">显示 ROI 填充</label>
               <label class="switch"><input id="show_roi_points" type="checkbox">显示 P1–P4</label>
             </div>
+            <div id="roi-boundary-editor" style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label style="font-weight: 600; font-size: 13px;">ROI 边界坐标定义</label>
+                <span id="roi-mirror-tag" class="status-tag" style="background: rgba(255, 110, 115, 0.15); color: #ff6e73; font-size: 11px; padding: 2px 6px; border-radius: 4px;">🛡️ 镜面排除已启用</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div class="field"><label style="font-size: 11px;">P1 (左上)</label><input id="roi_p1" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                <div class="field"><label style="font-size: 11px;">P2 (右上)</label><input id="roi_p2" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                <div class="field"><label style="font-size: 11px;">P3 (右下)</label><input id="roi_p3" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                <div class="field"><label style="font-size: 11px;">P4 (左下)</label><input id="roi_p4" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                <label class="switch" style="font-size: 12px; margin: 0;"><input id="roi_mirror_exclusion" type="checkbox" checked>自动排除镜面反射区</label>
+                <button type="button" id="save-roi-boundary-btn" class="button" style="padding: 4px 10px; font-size: 12px;">保存边界</button>
+              </div>
+            </div>
           </div>
 
           <div class="section">
@@ -1199,11 +1215,21 @@
         return;
       }
       const stream = selectedStream();
+      const editor = $("roi-boundary-editor");
+      if (editor) editor.hidden = video || custom;
       if (!stream) return;
       $("stream-meta").innerHTML = `<strong>${escapeHtml(stream.label)}</strong><span>${escapeHtml(stream.source)}</span>`;
+      const hasMirror = Boolean(stream.mirror_view && stream.mirror_view.polygon && stream.mirror_view.polygon.length >= 3);
       $("point-list").innerHTML = (stream.points || []).map(
-        (point, index) => `<span>P${index + 1} ${point[0]},${point[1]}</span>`
-      ).join("");
+        (point, index) => `<span>P${index + 1}: ${point[0]}, ${point[1]}</span>`
+      ).join("") + (hasMirror ? `<span style="color: #ff6e73; border-color: rgba(255, 110, 115, 0.4);">🛡️ 镜面排除已激活 (阻断镜中虚像)</span>` : "");
+
+      const pts = stream.points || [];
+      if ($("roi_p1")) $("roi_p1").value = pts[0] ? `${pts[0][0]}, ${pts[0][1]}` : "";
+      if ($("roi_p2")) $("roi_p2").value = pts[1] ? `${pts[1][0]}, ${pts[1][1]}` : "";
+      if ($("roi_p3")) $("roi_p3").value = pts[2] ? `${pts[2][0]}, ${pts[2][1]}` : "";
+      if ($("roi_p4")) $("roi_p4").value = pts[3] ? `${pts[3][0]}, ${pts[3][1]}` : "";
+      if ($("roi-mirror-tag")) $("roi-mirror-tag").textContent = hasMirror ? "🛡️ 镜面排除已启用" : "未配置镜面";
       savePreset();
     }
 
@@ -2044,6 +2070,67 @@
         if (generation === state.uploadGeneration) $("video-upload-status").textContent = `上传失败：${error.message}`;
       }
     });
+    async function saveRoiBoundary() {
+      const stream = selectedStream();
+      if (!stream || !stream.stream_id) {
+        showToast("请先选择机位", true);
+        return;
+      }
+      function parsePoint(str) {
+        if (!str) return null;
+        const parts = str.split(/[,，\s]+/).filter(Boolean);
+        if (parts.length >= 2) {
+          const x = parseFloat(parts[0]);
+          const y = parseFloat(parts[1]);
+          if (!isNaN(x) && !isNaN(y)) return [Math.round(x), Math.round(y)];
+        }
+        return null;
+      }
+
+      const points = [
+        parsePoint($("roi_p1")?.value),
+        parsePoint($("roi_p2")?.value),
+        parsePoint($("roi_p3")?.value),
+        parsePoint($("roi_p4")?.value),
+      ].filter(Boolean);
+
+      if (points.length < 3) {
+        showToast("ROI 边界至少需要输入 3 个有效顶点坐标 (格式: X, Y)", true);
+        return;
+      }
+
+      const mirrorExclusion = $("roi_mirror_exclusion") ? $("roi_mirror_exclusion").checked : true;
+      const btn = $("save-roi-boundary-btn");
+      if (btn) btn.disabled = true;
+      try {
+        const response = await api("/api/roi/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            stream_id: stream.stream_id,
+            points: points,
+            mirror_exclusion: mirrorExclusion,
+          }),
+        });
+        const result = await response.json();
+        if (result.success) {
+          showToast(`机位 ${stream.stream_id} ROI 边界保存成功！`);
+          stream.points = result.points;
+          updateStreamMeta();
+          refreshPreview(false);
+        } else {
+          showToast(`保存失败: ${result.message || result.error || "未知错误"}`, true);
+        }
+      } catch (error) {
+        showToast(`保存失败: ${error.message}`, true);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    if ($("save-roi-boundary-btn")) {
+      $("save-roi-boundary-btn").addEventListener("click", saveRoiBoundary);
+    }
     $("preview-button").addEventListener("click", () => refreshPreview(true));
     $("start-button").addEventListener("click", startAnalysis);
     $("stop-button").addEventListener("click", stopAnalysis);

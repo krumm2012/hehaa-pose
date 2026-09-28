@@ -6,6 +6,7 @@ import yaml
 
 from roi_manager import ROIManager
 from roi_stream_config import (
+    ROIStreamProfile,
     resolve_roi_stream_profile,
     sanitize_stream_source,
 )
@@ -167,7 +168,7 @@ roi_points: [[1, 2], [30, 2], [30, 40], [1, 40]]
         self.assertTrue(profile_c1.matched)
         self.assertEqual(profile_c1.stream_id, "court01-main")
         self.assertTrue(profile_c1.has_mirror_view)
-        self.assertEqual(profile_c1.mirror_reflection_roi, [0.4244, 0.0, 0.8145, 0.3199])
+        self.assertEqual(profile_c1.mirror_reflection_roi, [0.2541, 0.1034, 0.6125, 0.4832])
         self.assertEqual(len(profile_c1.mirror_polygon), 4)
         self.assertEqual(len(profile_c1.mirror_mask_polygon), 4)
         self.assertIn("mirror_view", profile_c1.as_metadata())
@@ -184,6 +185,62 @@ roi_points: [[1, 2], [30, 2], [30, 40], [1, 40]]
         self.assertEqual(profile_c4.stream_id, "camera04-main")
         self.assertTrue(profile_c4.has_mirror_view)
         self.assertEqual(profile_c4.mirror_reflection_roi, [0.2708, 0.1018, 0.6139, 0.4642])
+
+    def test_roi_manager_exclusion_and_multipoint_polygon(self):
+        manager = ROIManager({"roi_settings": {"enabled": True}})
+        # 5-point polygon
+        five_points = [(100, 100), (500, 50), (900, 100), (800, 800), (200, 800)]
+        success = manager.set_roi_points(five_points)
+        self.assertTrue(success)
+        self.assertEqual(len(manager.roi_points), 5)
+        self.assertTrue(manager.is_roi_set)
+
+        # Center point inside ROI
+        self.assertTrue(manager.is_point_in_roi((500, 400)))
+        # Outside ROI
+        self.assertFalse(manager.is_point_in_roi((50, 50)))
+
+        # Add mirror exclusion zone
+        mirror_poly = [(400, 300), (600, 300), (600, 500), (400, 500)]
+        self.assertTrue(manager.add_exclusion_polygon(mirror_poly, label="mirror_zone"))
+        self.assertEqual(len(manager.exclusion_polygons), 1)
+
+        # Center point (500, 400) is inside mirror polygon -> should be excluded!
+        self.assertTrue(manager.is_point_in_exclusion((500, 400)))
+        self.assertFalse(manager.is_point_in_roi((500, 400)))
+
+        # Point (250, 400) is inside court ROI but outside mirror -> should be kept!
+        self.assertFalse(manager.is_point_in_exclusion((250, 400)))
+        self.assertTrue(manager.is_point_in_roi((250, 400)))
+
+        # Filter candidate detections
+        detections = [
+            {"position": [250, 400], "confidence": 0.9},  # Valid court ball
+            {"position": [500, 400], "confidence": 0.95}, # Mirror reflected ball
+            {"position": [50, 50], "confidence": 0.8},    # Out of boundary ball
+        ]
+        filtered = manager.filter_detections_by_roi(detections, detection_type="ball")
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered[0]["position"], [250, 400])
+
+    def test_get_mirror_polygon_pixels_conversion(self):
+        profile = resolve_roi_stream_profile(
+            {
+                "roi_settings": {
+                    "enabled": True,
+                    "auto_load_config": True,
+                    "roi_config_path": "configs/roi_config.yaml",
+                }
+            },
+            "rtsp://192.168.1.191:554/h264/ch1/main/av_stream",
+            (2560, 1440),
+        )
+        pixels = profile.get_mirror_polygon_pixels((2560, 1440))
+        self.assertIsNotNone(pixels)
+        self.assertEqual(len(pixels), 4)
+        # Should be scaled to ~ (0.2541 * 2560, 0.4777 * 1440) -> (650, 688)
+        self.assertAlmostEqual(pixels[0][0], int(round(0.2541 * 2560)), delta=2)
+        self.assertAlmostEqual(pixels[0][1], int(round(0.4777 * 1440)), delta=2)
 
 
 if __name__ == "__main__":

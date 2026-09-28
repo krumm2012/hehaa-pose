@@ -103,6 +103,45 @@ class UnifiedDetectorROITests(unittest.TestCase):
             0,
         )
 
+    def test_filters_balls_in_mirror_exclusion_zone_via_roi_manager(self):
+        from roi_manager import ROIManager
+        detector = YOLO26nUnifiedDetector.__new__(YOLO26nUnifiedDetector)
+        detector.roi_manager = None
+        detector._coreml_input_names = set()
+        detector.detection_times = []
+        detector.config = {}
+        detector.last_ball_diagnostics = {}
+        detector.last_racket_diagnostics = {}
+        detector._filter_static_balls = lambda balls, rackets: balls
+        detector._select_primary_racket = lambda rackets, balls: rackets
+
+        roi_manager = ROIManager({"roi_settings": {"enabled": True}})
+        roi_manager.set_roi_points([(100, 100), (900, 100), (900, 900), (100, 900)])
+        # Mirror exclusion polygon
+        roi_manager.add_exclusion_polygon([(400, 300), (600, 300), (600, 500), (400, 500)], label="mirror")
+        detector.set_roi_manager(roi_manager)
+
+        # Mock _preprocess, model, _parse_predictions
+        frame = np.zeros((1000, 1000, 3), dtype=np.uint8)
+        detector._preprocess = lambda img: None
+        detector.model = type("MockModel", (), {"predict": lambda self, feed: {}})()
+
+        # Candidate ball 1: inside court (250, 400)
+        # Candidate ball 2: inside mirror (500, 400)
+        # Candidate ball 3: outside court (50, 50)
+        detector._parse_predictions = lambda preds: (
+            [
+                {"position": [250, 400], "box": [245, 395, 255, 405], "confidence": 0.9},
+                {"position": [500, 400], "box": [495, 395, 505, 405], "confidence": 0.95},
+                {"position": [50, 50], "box": [45, 45, 55, 55], "confidence": 0.85},
+            ],
+            [],
+        )
+
+        balls, rackets, _ = detector.detect_unified(frame)
+        self.assertEqual(len(balls), 1)
+        self.assertEqual(balls[0]["position"], [250, 400])
+
 
 if __name__ == "__main__":
     unittest.main()

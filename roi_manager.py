@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import yaml
 import time
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Optional, Dict, Any, Sequence
 import logging
 
 class ROIManager:
@@ -13,8 +13,9 @@ class ROIManager:
     
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.roi_points = []  # 存储ROI的4个角点
+        self.roi_points = []  # 存储ROI角点
         self.roi_polygon = None  # ROI多边形
+        self.exclusion_polygons = []  # 排除区域多边形列表 [{"polygon": np.ndarray, "label": str}]
         self.is_roi_set = False
         
         # 交互状态
@@ -185,14 +186,14 @@ class ROIManager:
     
     def _create_roi_polygon(self):
         """创建ROI多边形"""
-        if len(self.roi_points) == self.max_points:
+        if len(self.roi_points) >= 3:
             self.roi_polygon = np.array(self.roi_points, dtype=np.int32)
-            self.logger.info("ROI多边形创建完成")
+            self.logger.info(f"ROI多边形创建完成 (顶点数: {len(self.roi_points)})")
 
     def set_roi_points(self, roi_points: List[Tuple[int, int]]) -> bool:
-        """Set a validated four-point ROI supplied by a stream profile."""
-        if not isinstance(roi_points, (list, tuple)) or len(roi_points) != self.max_points:
-            self.logger.error(f"ROI点数不正确: 需要{self.max_points}个点")
+        """设置ROI多边形顶点（支持 >=3 个点）"""
+        if not isinstance(roi_points, (list, tuple)) or len(roi_points) < 3:
+            self.logger.error("ROI点数不正确: 至少需要3个点")
             return False
         normalized = []
         for point in roi_points:
@@ -201,26 +202,61 @@ class ROIManager:
                 return False
             normalized.append((int(point[0]), int(point[1])))
         self.roi_points = normalized
-        self.current_point_index = self.max_points
+        self.current_point_index = len(self.roi_points)
         self.is_roi_set = True
         self._create_roi_polygon()
         return True
-    
-    def is_point_in_roi(self, point: Tuple[int, int]) -> bool:
+
+    def add_exclusion_polygon(self, points: Sequence[Sequence[int]], label: str = "exclusion") -> bool:
+        """添加排除区域（如后墙镜面区域、静态网兜等），区域内的球或拍将被主动过滤"""
+        if not points or len(points) < 3:
+            return False
+        try:
+            poly = np.asarray([[int(round(p[0])), int(round(p[1]))] for p in points], dtype=np.int32)
+            self.exclusion_polygons.append({"polygon": poly, "label": label})
+            self.logger.info(f"添加ROI排除区域 [{label}]: {len(poly)}个顶点")
+            return True
+        except Exception as e:
+            self.logger.error(f"添加排除区域失败: {e}")
+            return False
+
+    def clear_exclusion_polygons(self):
+        """清空所有排除区域"""
+        self.exclusion_polygons = []
+
+    def set_exclusion_polygons(self, polygons: Sequence[Sequence[Sequence[int]]], labels: Optional[Sequence[str]] = None):
+        """重置设置多个排除区域"""
+        self.clear_exclusion_polygons()
+        for idx, poly in enumerate(polygons or []):
+            lbl = labels[idx] if labels and idx < len(labels) else f"exclusion_{idx+1}"
+            self.add_exclusion_polygon(poly, label=lbl)
+
+    def is_point_in_exclusion(self, point: Tuple[float, float]) -> bool:
+        """检查点是否落在任何排除区域（如镜面反射区）内"""
+        pt = (float(point[0]), float(point[1]))
+        for item in self.exclusion_polygons:
+            poly = item["polygon"] if isinstance(item, dict) else item
+            if cv2.pointPolygonTest(poly, pt, False) >= 0:
+                return True
+        return False
+
+    def is_point_in_roi(self, point: Tuple[float, float]) -> bool:
         """
-        检查点是否在ROI内
+        检查点是否在ROI有效范围内（在ROI多边形内且不在任何排除区域内）
         
         Args:
             point: (x, y) 坐标
             
         Returns:
-            True if point is inside ROI, False otherwise
+            True if point is inside ROI and outside all exclusion zones, False otherwise
         """
-        if self.roi_polygon is None or not self.is_roi_set:
-            return True  # 如果没有设置ROI，默认所有点都在内
-        
-        result = cv2.pointPolygonTest(self.roi_polygon, point, False)
-        return result >= 0  # >= 0 表示在多边形内或边界上
+        pt = (float(point[0]), float(point[1]))
+        if self.roi_polygon is not None and self.is_roi_set:
+            if cv2.pointPolygonTest(self.roi_polygon, pt, False) < 0:
+                return False
+        if self.is_point_in_exclusion(pt):
+            return False
+        return True
     
     def filter_detections_by_roi(self, detections: List[Dict], detection_type: str = "general") -> List[Dict]:
         """
@@ -328,6 +364,26 @@ class ROIManager:
             cv2.putText(result_frame, "ROI ACTIVE", label_pos, 
                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, self.colors['roi_boundary'], 2)
         
+        # 绘制排除区域（如后墙镜面区域）
+        for ex in self.exclusion_polygons:
+            poly = ex["polygon"] if isinstance(ex, dict) else ex
+            lbl = ex.get("label", "EXCLUDED") if isinstance(ex, dict) else "EXCLUDED"
+            cv2.polylines(result_frame, [poly], True, (0, 0, 255), self.line_thickness)
+            if show_fill:
+                overlay_ex = result_frame.copy()
+                cv2.fillPoly(overlay_ex, [poly], (0, 0, 180))
+                cv2.addWeighted(overlay_ex, 0.20, result_frame, 0.80, 0, result_frame)
+            if len(poly) > 0:
+                cv2.putText(
+                    result_frame,
+                    f"🚫 {lbl.upper()}",
+                    (int(poly[0][0]) + 10, int(poly[0][1]) + 25),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 80, 255),
+                    2,
+                )
+        
         return result_frame
     
     def highlight_roi_detections(self, frame: np.ndarray, detections: List, detection_type: str = "general") -> np.ndarray:
@@ -429,9 +485,8 @@ class ROIManager:
             if roi_config.get('roi_enabled', False) and 'roi_points' in roi_config:
                 roi_points = roi_config['roi_points']
                 
-                # 确保有4个点
-                if len(roi_points) == self.max_points:
-                    # 将坐标转换为元组格式 (x, y)
+                # 支持 >= 3 个点的多边形
+                if len(roi_points) >= 3:
                     self.roi_points = []
                     for point in roi_points:
                         if isinstance(point, (list, tuple)) and len(point) >= 2:
@@ -442,10 +497,28 @@ class ROIManager:
                     
                     self._create_roi_polygon()
                     self.is_roi_set = True
+                    self.current_point_index = len(self.roi_points)
+
+                    # 加载排除多边形与镜面排除多边形
+                    self.clear_exclusion_polygons()
+                    frame_size = roi_config.get('frame_size') or [2560, 1440]
+                    fw, fh = int(frame_size[0]), int(frame_size[1])
+                    mirror_view = roi_config.get('mirror_view') or {}
+                    if mirror_view.get('enabled', True) and 'polygon' in mirror_view:
+                        m_pts = mirror_view['polygon']
+                        if len(m_pts) >= 3:
+                            m_px = [(int(round(p[0] * fw)), int(round(p[1] * fh))) for p in m_pts]
+                            self.add_exclusion_polygon(m_px, label="mirror_zone")
+                    for ex in (roi_config.get('exclusion_polygons') or roi_config.get('exclusion_zones') or []):
+                        ex_pts = ex.get('points') if isinstance(ex, dict) else ex
+                        ex_lbl = ex.get('label', 'exclusion') if isinstance(ex, dict) else 'exclusion'
+                        if ex_pts and len(ex_pts) >= 3:
+                            self.add_exclusion_polygon(ex_pts, label=ex_lbl)
+
                     self.logger.info(f"ROI配置已从 {config_path} 加载: {self.roi_points}")
                     return True
                 else:
-                    self.logger.warning(f"ROI点数不正确: 需要{self.max_points}个点，实际{len(roi_points)}个")
+                    self.logger.warning(f"ROI点数不正确: 至少需要3个点，实际{len(roi_points)}个")
             else:
                 self.logger.info(f"ROI配置文件中ROI未启用或缺少roi_points")
             

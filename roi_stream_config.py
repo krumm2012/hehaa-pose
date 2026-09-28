@@ -46,6 +46,7 @@ class ROIStreamProfile:
     reason: str = ""
     mirror_view: Dict[str, Any] = field(default_factory=dict)
     front_view: Dict[str, Any] = field(default_factory=dict)
+    exclusion_polygons: Tuple[Tuple[Point, ...], ...] = field(default_factory=tuple)
 
     def as_metadata(self) -> Dict[str, Any]:
         return {
@@ -61,6 +62,7 @@ class ROIStreamProfile:
             "reason": self.reason,
             "mirror_view": dict(self.mirror_view) if self.mirror_view else {},
             "front_view": dict(self.front_view) if self.front_view else {},
+            "exclusion_polygons": [list(list(p) for p in poly) for poly in self.exclusion_polygons],
         }
 
     @property
@@ -78,6 +80,14 @@ class ROIStreamProfile:
     @property
     def mirror_reflection_roi(self) -> list:
         return list(self.mirror_view.get("reflection_roi", []))
+
+    def get_mirror_polygon_pixels(self, frame_size: Optional[FrameSize] = None) -> List[Point]:
+        """获取当前画面尺寸下镜面多边形的像素绝对坐标"""
+        w, h = frame_size or self.frame_size
+        poly = self.mirror_polygon
+        if not poly or len(poly) < 3:
+            return []
+        return [(int(round(float(p[0]) * w)), int(round(float(p[1]) * h))) for p in poly]
 
     @property
     def has_front_view(self) -> bool:
@@ -258,6 +268,15 @@ def resolve_roi_stream_profile(
         or stream_id
     )
 
+    raw_exclusions = selected.get("exclusion_polygons") or selected.get("exclusion_zones") or []
+    parsed_exclusions = []
+    for item in raw_exclusions:
+        raw_pts = item.get("points") if isinstance(item, dict) else item
+        if raw_pts and len(raw_pts) >= 3:
+            scaled = _scaled_points(raw_pts, configured_size, frame_size)
+            if scaled:
+                parsed_exclusions.append(scaled)
+
     if not enabled or not points:
         return _disabled_profile(
             source,
@@ -282,4 +301,5 @@ def resolve_roi_stream_profile(
         config_path=str(path),
         mirror_view=mirror_view,
         front_view=front_view,
+        exclusion_polygons=tuple(parsed_exclusions),
     )

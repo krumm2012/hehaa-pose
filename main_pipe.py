@@ -640,6 +640,13 @@ class MultiprocessPipeline:
             if self.roi_profile.enabled:
                 candidate = ROIManager(self.config)
                 if candidate.set_roi_points(self.roi_profile.points):
+                    # 自动将镜面多边形注册为排除区域，阻止镜中虚像被锁定追踪
+                    if self.roi_profile.has_mirror_view and self.roi_profile.mirror_polygon:
+                        mirror_px = self.roi_profile.get_mirror_polygon_pixels((self.width, self.height))
+                        if mirror_px:
+                            candidate.add_exclusion_polygon(mirror_px, label="mirror_zone")
+                    for ex_poly in self.roi_profile.exclusion_polygons:
+                        candidate.add_exclusion_polygon(ex_poly, label="custom_exclusion")
                     roi_manager = candidate
 
             detector = YOLO26nUnifiedDetector(
@@ -739,6 +746,20 @@ class MultiprocessPipeline:
                     f2 = executor.submit(dual_pose_estimator.estimate_dual_pose, dual_frame)
 
                     ball, raw_rackets, _ = f1.result()
+                    # 双重保障：排除镜面反射球与ROI范围外球，防止镜中虚像被锁定追踪
+                    if ball:
+                        valid_balls = []
+                        for b in ball:
+                            b_pos = b.get("position")
+                            if not b_pos:
+                                continue
+                            bx, by = float(b_pos[0]), float(b_pos[1])
+                            if dual_view_mgr is not None and dual_view_mgr.is_point_in_mirror(bx, by, self.width, self.height):
+                                continue
+                            if roi_manager is not None and not roi_manager.is_point_in_roi((bx, by)):
+                                continue
+                            valid_balls.append(b)
+                        ball = valid_balls
                     ball_diagnostics = detector.get_last_ball_diagnostics()
                     racket_diagnostics = detector.get_last_racket_diagnostics()
                     pose_res = f2.result()

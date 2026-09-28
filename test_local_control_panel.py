@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import cv2
 import numpy as np
+import yaml
 
 from local_control_panel import (
     ControlSettings,
@@ -767,6 +768,49 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
                     self.assertTrue(line2.startswith("data: {"))
                     data = json.loads(line2[len("data: "):])
                     self.assertEqual(data.get("state"), "stopped")
+            finally:
+                controller.stop_server()
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+    def test_roi_boundary_api_get_and_post(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = self.make_controller(root)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), create_handler(controller))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                # 1. GET /api/roi/config
+                url = f"http://127.0.0.1:{server.server_port}/api/roi/config?stream_id=court01-main"
+                req = urllib.request.Request(url, method="GET")
+                with urllib.request.urlopen(req, timeout=3.0) as resp:
+                    self.assertEqual(resp.status, 200)
+                    data = json.load(resp)
+                    self.assertEqual(data["stream_id"], "court01-main")
+                    self.assertEqual(data["points"], [[20, 20], [300, 20], [300, 160], [20, 160]])
+
+                # 2. POST /api/roi/config with updated points
+                post_url = f"http://127.0.0.1:{server.server_port}/api/roi/config"
+                new_points = [[25, 25], [295, 25], [295, 155], [25, 155]]
+                payload = json.dumps({"stream_id": "court01-main", "points": new_points}).encode("utf-8")
+                post_req = urllib.request.Request(
+                    post_url,
+                    data=payload,
+                    headers={"Content-Type": "application/json", "X-Control-Token": controller.token},
+                    method="POST",
+                )
+                with urllib.request.urlopen(post_req, timeout=3.0) as resp:
+                    self.assertEqual(resp.status, 200)
+                    result = json.load(resp)
+                    self.assertTrue(result["success"])
+                    self.assertEqual(result["points"], new_points)
+
+                # Verify file was updated
+                saved_doc = yaml.safe_load(controller.roi_config_path.read_text(encoding="utf-8"))
+                matched = next(s for s in saved_doc["streams"] if s["stream_id"] == "court01-main")
+                self.assertEqual(matched["roi_points"], new_points)
             finally:
                 controller.stop_server()
                 server.shutdown()
