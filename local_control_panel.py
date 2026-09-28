@@ -545,7 +545,20 @@ class LocalPipelineController:
             config,
             warmup_frames=3,
         )
-        preview = self._draw_roi_preview(frame, stream)
+        clean = bool(payload.get("clean") or payload.get("raw"))
+        if clean:
+            height, width = frame.shape[:2]
+            max_width = 1600
+            if width > max_width:
+                scale = max_width / width
+                frame = cv2.resize(
+                    frame,
+                    (max_width, int(round(height * scale))),
+                    interpolation=cv2.INTER_AREA,
+                )
+            preview = frame
+        else:
+            preview = self._draw_roi_preview(frame, stream)
         ok, encoded = cv2.imencode(
             ".jpg",
             preview,
@@ -971,6 +984,33 @@ class LocalPipelineController:
             mv = matched.setdefault("mirror_view", {})
             mv["exclusion_enabled"] = bool(payload["mirror_exclusion"])
 
+        if "mirror_polygon" in payload and isinstance(payload["mirror_polygon"], list):
+            mv = matched.setdefault("mirror_view", {})
+            raw_mirror = payload["mirror_polygon"]
+            fw, fh = matched.get("frame_size") or [2560, 1440]
+            norm_mirror = []
+            for p in raw_mirror:
+                if isinstance(p, (list, tuple)) and len(p) >= 2:
+                    nx = float(p[0]) / fw if float(p[0]) > 1.0 else float(p[0])
+                    ny = float(p[1]) / fh if float(p[1]) > 1.0 else float(p[1])
+                    norm_mirror.append([round(max(0.0, min(1.0, nx)), 4), round(max(0.0, min(1.0, ny)), 4)])
+            if len(norm_mirror) >= 3:
+                mv["polygon"] = norm_mirror
+                xs = [p[0] for p in norm_mirror]
+                ys = [p[1] for p in norm_mirror]
+                mv["reflection_roi"] = [round(min(xs), 4), round(min(ys), 4), round(max(xs), 4), round(max(ys), 4)]
+                mv["enabled"] = True
+                dual_view_path = self.workspace / "configs" / "dual_view_config.yaml"
+                if dual_view_path.exists():
+                    try:
+                        dv_doc = yaml.safe_load(dual_view_path.read_text(encoding="utf-8")) or {}
+                        if "mirror_view" in dv_doc:
+                            dv_doc["mirror_view"]["polygon"] = norm_mirror
+                            dv_doc["mirror_view"]["reflection_roi"] = mv["reflection_roi"]
+                            dual_view_path.write_text(yaml.safe_dump(dv_doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to sync mirror_view to dual_view_config: {e}")
+
         if "exclusion_polygons" in payload and isinstance(payload["exclusion_polygons"], list):
             matched["exclusion_polygons"] = payload["exclusion_polygons"]
 
@@ -983,7 +1023,8 @@ class LocalPipelineController:
             "success": True,
             "stream_id": stream_id,
             "points": cleaned_points,
-            "message": "ROI 边界已成功保存",
+            "mirror_view": dict(matched.get("mirror_view") or {}),
+            "message": "ROI 边界与镜面排除配置已成功保存",
         }
 
     def _stream_from_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:

@@ -19,7 +19,7 @@ streams:
   - - 424
     - 1198
   roi_description: '4-point ROI: [[712, 434], [1544, 440], [1818, 1198], [424, 1198]]'
-  last_updated: '2026-09-25 07:26:25'
+  last_updated: '2026-09-28 13:12:00'
   created_by: Tennis Analyzer ROI Calibration
   version: '2.0'
   mirror_view:
@@ -52,6 +52,7 @@ streams:
       - 0.3048
     - - 0.5707
       - 0.2993
+    exclusion_enabled: true
   front_view:
     enabled: true
     default_roi:

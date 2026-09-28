@@ -793,6 +793,7 @@
       max-height: 62vh;
       border-radius: 6px;
       outline: none;
+    }
     /* Interactive ROI Point Drawing & Editing Toolbar */
     .roi-editor-toolbar {
       position: absolute;
@@ -816,6 +817,42 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      flex-wrap: wrap;
+    }
+    .roi-target-switch {
+      display: inline-flex;
+      background: rgba(8, 12, 20, 0.9);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .roi-target-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .roi-target-btn:hover {
+      color: var(--text);
+    }
+    .roi-target-btn.active[data-target="court"] {
+      background: rgba(0, 240, 255, 0.22);
+      color: var(--cyan);
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.25);
+    }
+    .roi-target-btn.active[data-target="mirror"] {
+      background: rgba(255, 90, 95, 0.25);
+      color: #ff6e73;
+      box-shadow: 0 0 10px rgba(255, 90, 95, 0.25);
     }
     .roi-mode-badge {
       background: rgba(0, 240, 255, 0.18);
@@ -831,6 +868,7 @@
       display: flex;
       align-items: center;
       gap: 6px;
+      flex-wrap: wrap;
     }
     .btn-tool {
       background: var(--panel-2);
@@ -929,6 +967,10 @@
             
             <div id="roi-editor-toolbar" class="roi-editor-toolbar" hidden>
               <div class="roi-toolbar-info">
+                <div class="roi-target-switch">
+                  <button type="button" class="roi-target-btn active" id="btn-target-court" data-target="court">🎾 球场 ROI (P1~P4)</button>
+                  <button type="button" class="roi-target-btn" id="btn-target-mirror" data-target="mirror">🪞 镜面排除区 (M1~M4)</button>
+                </div>
                 <span class="roi-mode-badge" id="roi-mode-badge">📐 交互描点模式</span>
                 <span id="roi-editor-status" style="font-size: 12px; color: var(--text);">拖拽黄色角点手柄微调，或点击重新描点</span>
               </div>
@@ -1043,8 +1085,12 @@
             </div>
             <div id="roi-boundary-editor" style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line);">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <label style="font-weight: 600; font-size: 13px;">ROI 边界坐标定义</label>
+                <label style="font-weight: 600; font-size: 13px;">ROI 与镜面区域定义</label>
                 <span id="roi-mirror-tag" class="status-tag" style="background: rgba(255, 110, 115, 0.15); color: #ff6e73; font-size: 11px; padding: 2px 6px; border-radius: 4px;">🛡️ 镜面排除已启用</span>
+              </div>
+              <div class="roi-target-switch" style="width: 100%; margin-bottom: 10px; display: flex;">
+                <button type="button" class="roi-target-btn active" id="btn-sidebar-target-court" data-target="court" style="flex: 1; justify-content: center;">🎾 球场 ROI (P1~P4)</button>
+                <button type="button" class="roi-target-btn" id="btn-sidebar-target-mirror" data-target="mirror" style="flex: 1; justify-content: center;">🪞 镜面排除区 (M1~M4)</button>
               </div>
               <div style="display: flex; gap: 6px; margin-bottom: 10px;">
                 <button type="button" id="btn-toggle-roi-editor" class="button" style="flex: 1; padding: 6px 8px; font-size: 12px; background: rgba(0, 240, 255, 0.1); border-color: var(--cyan); color: var(--cyan); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 4px;">
@@ -1053,19 +1099,25 @@
                 <button type="button" id="btn-repoint-roi" class="button" style="padding: 6px 10px; font-size: 12px;" title="清空并在画面中重新依次点击 4 个角点">
                   🔄 重新描点
                 </button>
-                <button type="button" id="btn-auto-sort-roi" class="button" style="padding: 6px 10px; font-size: 12px;" title="自动对齐四角：P1左上→P2右上→P3右下→P4左下">
+                <button type="button" id="btn-auto-sort-roi" class="button" style="padding: 6px 10px; font-size: 12px;" title="自动对齐四角：左上→右上→右下→左下">
                   ⚡ 排序
                 </button>
               </div>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                <div class="field"><label style="font-size: 11px;">P1 (左上)</label><input id="roi_p1" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
-                <div class="field"><label style="font-size: 11px;">P2 (右上)</label><input id="roi_p2" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
-                <div class="field"><label style="font-size: 11px;">P3 (右下)</label><input id="roi_p3" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
-                <div class="field"><label style="font-size: 11px;">P4 (左下)</label><input id="roi_p4" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+              <div id="sidebar-court-box" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div class="field"><label style="font-size: 11px; color: var(--cyan);">P1 (左上)</label><input id="roi_p1" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                <div class="field"><label style="font-size: 11px; color: var(--cyan);">P2 (右上)</label><input id="roi_p2" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                <div class="field"><label style="font-size: 11px; color: var(--cyan);">P3 (右下)</label><input id="roi_p3" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                <div class="field"><label style="font-size: 11px; color: var(--cyan);">P4 (左下)</label><input id="roi_p4" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+              </div>
+              <div id="sidebar-mirror-box" style="display: none; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <div class="field"><label style="font-size: 11px; color: #ff6e73;">M1 (左上)</label><input id="mirror_m1" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                <div class="field"><label style="font-size: 11px; color: #ff6e73;">M2 (右上)</label><input id="mirror_m2" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                <div class="field"><label style="font-size: 11px; color: #ff6e73;">M3 (右下)</label><input id="mirror_m3" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                <div class="field"><label style="font-size: 11px; color: #ff6e73;">M4 (左下)</label><input id="mirror_m4" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
                 <label class="switch" style="font-size: 12px; margin: 0;"><input id="roi_mirror_exclusion" type="checkbox" checked>自动排除镜面反射区</label>
-                <button type="button" id="save-roi-boundary-btn" class="button" style="padding: 4px 12px; font-size: 12px; font-weight: 600; background: #007799; border-color: var(--cyan); color: #fff;">保存边界</button>
+                <button type="button" id="save-roi-boundary-btn" class="button" style="padding: 4px 12px; font-size: 12px; font-weight: 600; background: #007799; border-color: var(--cyan); color: #fff;">保存边界与镜面</button>
               </div>
             </div>
           </div>
@@ -1324,7 +1376,7 @@
       $("stream-meta").innerHTML = `<strong>${escapeHtml(stream.label)}</strong><span>${escapeHtml(stream.source)}</span>`;
       const hasMirror = Boolean(stream.mirror_view && stream.mirror_view.polygon && stream.mirror_view.polygon.length >= 3);
       $("point-list").innerHTML = (stream.points || []).map(
-        (point, index) => `<span>P${index + 1}: ${point[0]}, ${point[1]}</span>`
+        (point, index) => `<span>P${index + 1}: [${point[0]}, ${point[1]}]</span>`
       ).join("") + (hasMirror ? `<span style="color: #ff6e73; border-color: rgba(255, 110, 115, 0.4);">🛡️ 镜面排除已激活 (阻断镜中虚像)</span>` : "");
 
       const pts = stream.points || [];
@@ -1332,12 +1384,21 @@
       if ($("roi_p2")) $("roi_p2").value = pts[1] ? `${pts[1][0]}, ${pts[1][1]}` : "";
       if ($("roi_p3")) $("roi_p3").value = pts[2] ? `${pts[2][0]}, ${pts[2][1]}` : "";
       if ($("roi_p4")) $("roi_p4").value = pts[3] ? `${pts[3][0]}, ${pts[3][1]}` : "";
+
+      const mPoly = stream.mirror_view?.polygon || [];
+      const [sw, sh] = (typeof getSourceDimensions === "function") ? getSourceDimensions() : [2560, 1440];
+      if ($("mirror_m1")) $("mirror_m1").value = mPoly[0] ? `${Math.round(mPoly[0][0] * sw)}, ${Math.round(mPoly[0][1] * sh)}` : "";
+      if ($("mirror_m2")) $("mirror_m2").value = mPoly[1] ? `${Math.round(mPoly[1][0] * sw)}, ${Math.round(mPoly[1][1] * sh)}` : "";
+      if ($("mirror_m3")) $("mirror_m3").value = mPoly[2] ? `${Math.round(mPoly[2][0] * sw)}, ${Math.round(mPoly[2][1] * sh)}` : "";
+      if ($("mirror_m4")) $("mirror_m4").value = mPoly[3] ? `${Math.round(mPoly[3][0] * sw)}, ${Math.round(mPoly[3][1] * sh)}` : "";
+
+      if ($("roi_mirror_exclusion") && stream.mirror_view) {
+        $("roi_mirror_exclusion").checked = stream.mirror_view.exclusion_enabled !== false;
+      }
       if ($("roi-mirror-tag")) $("roi-mirror-tag").textContent = hasMirror ? "🛡️ 镜面排除已启用" : "未配置镜面";
-      if (typeof roiEditorState !== "undefined" && roiEditorState.active) {
-        if (pts.length >= 4) {
-          roiEditorState.points = pts.map(p => [p[0], p[1]]);
-          roiEditorState.mode = "drag";
-        }
+
+      if (typeof roiEditorState !== "undefined" && roiEditorState.active && typeof initRoiEditorFromStream === "function") {
+        initRoiEditorFromStream(stream);
         drawRoiCanvas();
       }
       savePreset();
@@ -1363,9 +1424,12 @@
       };
     }
 
-    async function refreshPreview(manual = true) {
+    async function refreshPreview(manual = true, clean = false) {
       if (!$("settings-form").reportValidity()) return;
       const payload = formPayload();
+      if (clean) {
+        payload.clean = true;
+      }
       $("preview-loading").classList.add("visible");
       $("preview-button").disabled = true;
       try {
@@ -1375,7 +1439,7 @@
         });
         const blob = await response.blob();
         applyPreviewBlob(blob);
-        if (manual) showToast("ROI 预览已更新");
+        if (manual) showToast(clean ? "画面已加载 (纯净无标注模式)" : "ROI 预览已更新");
       } catch (error) {
         showToast(`预览失败：${error.message}`, true);
       } finally {
@@ -2190,13 +2254,93 @@
     // ==========================================
     const roiEditorState = {
       active: false,
+      target: "court", // "court" (球场ROI) | "mirror" (镜面排除区)
       mode: "drag", // "drag" (拖拽已有顶点) | "click" (重新顺序点击4点)
-      points: [], // [[x, y], ...] 原始画面像素坐标
+      courtPoints: [], // [[previewX, previewY], ...] 画布预览像素坐标
+      mirrorPoints: [], // [[previewX, previewY], ...] 画布预览像素坐标
       clickStep: 0,
       hoverIdx: -1,
       draggingIdx: -1,
       mousePos: null,
     };
+
+    function getSourceDimensions() {
+      const stream = selectedStream();
+      let sw = (stream && stream.frame_size && stream.frame_size[0]) ? stream.frame_size[0] : 0;
+      let sh = (stream && stream.frame_size && stream.frame_size[1]) ? stream.frame_size[1] : 0;
+      const canvas = $("roi-canvas");
+      const img = $("preview-image");
+      if (!sw || !sh) {
+        sw = img && img.naturalWidth ? img.naturalWidth : (canvas && canvas.width ? canvas.width : 2560);
+        sh = img && img.naturalHeight ? img.naturalHeight : (canvas && canvas.height ? canvas.height : 1440);
+      }
+      return [sw, sh];
+    }
+
+    function sourceToPreview(pt) {
+      if (!pt || pt.length < 2) return null;
+      const [sw, sh] = getSourceDimensions();
+      const canvas = $("roi-canvas");
+      const img = $("preview-image");
+      const cw = canvas && canvas.width ? canvas.width : (img && img.naturalWidth ? img.naturalWidth : 1600);
+      const ch = canvas && canvas.height ? canvas.height : (img && img.naturalHeight ? img.naturalHeight : 900);
+      return [
+        Math.round(pt[0] * (cw / sw)),
+        Math.round(pt[1] * (ch / sh)),
+      ];
+    }
+
+    function previewToSource(pt) {
+      if (!pt || pt.length < 2) return null;
+      const [sw, sh] = getSourceDimensions();
+      const canvas = $("roi-canvas");
+      const img = $("preview-image");
+      const cw = canvas && canvas.width ? canvas.width : (img && img.naturalWidth ? img.naturalWidth : 1600);
+      const ch = canvas && canvas.height ? canvas.height : (img && img.naturalHeight ? img.naturalHeight : 900);
+      return [
+        Math.round(pt[0] * (sw / cw)),
+        Math.round(pt[1] * (sh / ch)),
+      ];
+    }
+
+    function normToPreview(pt) {
+      if (!pt || pt.length < 2) return null;
+      const canvas = $("roi-canvas");
+      const img = $("preview-image");
+      const cw = canvas && canvas.width ? canvas.width : (img && img.naturalWidth ? img.naturalWidth : 1600);
+      const ch = canvas && canvas.height ? canvas.height : (img && img.naturalHeight ? img.naturalHeight : 900);
+      return [
+        Math.round(pt[0] * cw),
+        Math.round(pt[1] * ch),
+      ];
+    }
+
+    function previewToNorm(pt) {
+      if (!pt || pt.length < 2) return null;
+      const canvas = $("roi-canvas");
+      const img = $("preview-image");
+      const cw = canvas && canvas.width ? canvas.width : (img && img.naturalWidth ? img.naturalWidth : 1600);
+      const ch = canvas && canvas.height ? canvas.height : (img && img.naturalHeight ? img.naturalHeight : 900);
+      return [
+        Number(Math.max(0, Math.min(1, pt[0] / cw)).toFixed(4)),
+        Number(Math.max(0, Math.min(1, pt[1] / ch)).toFixed(4)),
+      ];
+    }
+
+    function initRoiEditorFromStream(stream) {
+      if (!stream) return;
+      if (stream.points && stream.points.length >= 3) {
+        roiEditorState.courtPoints = stream.points.map(sourceToPreview);
+      } else {
+        roiEditorState.courtPoints = [];
+      }
+      const mPoly = stream.mirror_view?.polygon;
+      if (mPoly && mPoly.length >= 3) {
+        roiEditorState.mirrorPoints = mPoly.map(normToPreview);
+      } else {
+        roiEditorState.mirrorPoints = [];
+      }
+    }
 
     function getImageRenderedRect(img) {
       if (!img || !img.naturalWidth || !img.naturalHeight) return null;
@@ -2249,43 +2393,86 @@
       canvas.style.height = `${rect.height}px`;
       canvas.width = rect.naturalWidth;
       canvas.height = rect.naturalHeight;
+
+      const stream = selectedStream();
+      if ((!roiEditorState.courtPoints.length || !roiEditorState.mirrorPoints.length) && stream) {
+        initRoiEditorFromStream(stream);
+      }
+
       drawRoiCanvas();
     }
 
-    function parseRoiInputs() {
-      function parsePoint(str) {
-        if (!str) return null;
-        const parts = str.split(/[,，\s]+/).filter(Boolean);
-        if (parts.length >= 2) {
-          const x = parseFloat(parts[0]);
-          const y = parseFloat(parts[1]);
-          if (!isNaN(x) && !isNaN(y)) return [Math.round(x), Math.round(y)];
-        }
-        return null;
+    function parsePointString(str) {
+      if (!str) return null;
+      const parts = str.split(/[,，\s]+/).filter(Boolean);
+      if (parts.length >= 2) {
+        const x = parseFloat(parts[0]);
+        const y = parseFloat(parts[1]);
+        if (!isNaN(x) && !isNaN(y)) return [x, y];
       }
-      return [
-        parsePoint($("roi_p1")?.value),
-        parsePoint($("roi_p2")?.value),
-        parsePoint($("roi_p3")?.value),
-        parsePoint($("roi_p4")?.value),
-      ].filter(Boolean);
+      return null;
     }
 
-    function updateRoiInputs(points) {
-      if (!points) return;
-      const ids = ["roi_p1", "roi_p2", "roi_p3", "roi_p4"];
+    function parseSidebarPoints(target = "court") {
+      const isCourt = target === "court";
+      const ids = isCourt ? ["roi_p1", "roi_p2", "roi_p3", "roi_p4"] : ["mirror_m1", "mirror_m2", "mirror_m3", "mirror_m4"];
+      const raw = ids.map(id => parsePointString($(id)?.value)).filter(Boolean);
+      if (isCourt) {
+        return raw.map(p => [Math.round(p[0]), Math.round(p[1])]);
+      } else {
+        const [sw, sh] = getSourceDimensions();
+        return raw.map(p => {
+          if (p[0] <= 1.0 && p[1] <= 1.0) {
+            return [Math.round(p[0] * sw), Math.round(p[1] * sh)];
+          }
+          return [Math.round(p[0]), Math.round(p[1])];
+        });
+      }
+    }
+
+    function updateRoiInputs(target = "court", previewPoints = null) {
+      const isCourt = target === "court";
+      const ids = isCourt ? ["roi_p1", "roi_p2", "roi_p3", "roi_p4"] : ["mirror_m1", "mirror_m2", "mirror_m3", "mirror_m4"];
+      const pts = previewPoints || (isCourt ? roiEditorState.courtPoints : roiEditorState.mirrorPoints);
+      if (!pts) return;
+
       ids.forEach((id, idx) => {
         const el = $(id);
-        if (el && points[idx]) {
-          el.value = `${points[idx][0]}, ${points[idx][1]}`;
+        if (el && pts[idx]) {
+          const srcPt = previewToSource(pts[idx]);
+          el.value = `${srcPt[0]}, ${srcPt[1]}`;
+          if (!isCourt) {
+            const normPt = previewToNorm(pts[idx]);
+            el.title = `源分辨率像素: [${srcPt[0]}, ${srcPt[1]}] · 归一化: (${normPt[0]}, ${normPt[1]})`;
+          }
         }
       });
       savePreset();
     }
 
-    function normalizeRoiPoints(points) {
+    function sortPointsTLTRBRBL(points) {
       if (!points || points.length !== 4) return points;
-      const byY = [...points].sort((a, b) => a[1] - b[1]);
+      const pts = [...points];
+      let minSumIdx = 0, maxSumIdx = 0;
+      let minDiffIdx = 0, maxDiffIdx = 0;
+
+      for (let i = 0; i < 4; i++) {
+        const s = pts[i][0] + pts[i][1];
+        const d = pts[i][0] - pts[i][1];
+        if (s < pts[minSumIdx][0] + pts[minSumIdx][1]) minSumIdx = i;
+        if (s > pts[maxSumIdx][0] + pts[maxSumIdx][1]) maxSumIdx = i;
+        if (d < pts[minDiffIdx][0] - pts[minDiffIdx][1]) minDiffIdx = i;
+        if (d > pts[maxDiffIdx][0] - pts[maxDiffIdx][1]) maxDiffIdx = i;
+      }
+
+      const indices = [minSumIdx, maxDiffIdx, maxSumIdx, minDiffIdx];
+      const uniqueIndices = new Set(indices);
+      if (uniqueIndices.size === 4) {
+        return [pts[minSumIdx], pts[maxDiffIdx], pts[maxSumIdx], pts[minDiffIdx]];
+      }
+
+      // Fallback: sort by Y, then by X
+      const byY = [...pts].sort((a, b) => a[1] - b[1]);
       const top = byY.slice(0, 2).sort((a, b) => a[0] - b[0]);
       const bottom = byY.slice(2).sort((a, b) => b[0] - a[0]);
       return [top[0], top[1], bottom[0], bottom[1]];
@@ -2294,6 +2481,41 @@
     function updateRoiEditorStatus(text) {
       const el = $("roi-editor-status");
       if (el) el.textContent = text;
+    }
+
+    function setEditTarget(target) {
+      roiEditorState.target = target;
+      roiEditorState.mode = "drag";
+      roiEditorState.hoverIdx = -1;
+      roiEditorState.draggingIdx = -1;
+      roiEditorState.clickStep = 0;
+
+      document.querySelectorAll(".roi-target-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.getAttribute("data-target") === target);
+      });
+
+      const isCourt = target === "court";
+      const badge = $("roi-mode-badge");
+      if (badge) {
+        badge.textContent = isCourt ? "🎾 球场 ROI 编辑 (P1~P4)" : "🪞 镜面排除区编辑 (M1~M4)";
+        badge.style.borderColor = isCourt ? "var(--cyan)" : "#ff6e73";
+        badge.style.color = isCourt ? "var(--cyan)" : "#ff6e73";
+        badge.style.background = isCourt ? "rgba(0, 240, 255, 0.18)" : "rgba(255, 90, 95, 0.18)";
+      }
+
+      const courtBox = $("sidebar-court-box");
+      const mirrorBox = $("sidebar-mirror-box");
+      if (courtBox) courtBox.style.display = isCourt ? "grid" : "none";
+      if (mirrorBox) mirrorBox.style.display = !isCourt ? "grid" : "none";
+
+      const pts = isCourt ? roiEditorState.courtPoints : roiEditorState.mirrorPoints;
+      if (!pts || pts.length < 4) {
+        updateRoiEditorStatus(isCourt ? "尚未设置完整 4 点球场 ROI，请点击【🔄 重新描点】绘制" : "尚未设置镜面排除区，请点击【🔄 重新描点】在画面中绘制镜面 4 角");
+      } else {
+        updateRoiEditorStatus(isCourt ? "正在编辑球场 ROI (P1~P4)：拖拽黄色手柄微调，或点击重新描点" : "正在编辑镜面排除区 (M1~M4)：拖拽红色手柄微调，或点击重新描点");
+      }
+
+      drawRoiCanvas();
     }
 
     function drawRoiCanvas() {
@@ -2305,65 +2527,68 @@
       const ch = canvas.height;
       ctx.clearRect(0, 0, cw, ch);
 
-      // 1. 绘制镜面反射排除区 (若配置了镜面)
-      const stream = selectedStream();
-      const mirrorPoly = stream?.mirror_view?.polygon;
-      if (mirrorPoly && mirrorPoly.length >= 3) {
-        ctx.save();
-        ctx.beginPath();
-        mirrorPoly.forEach((p, idx) => {
-          const mx = p[0] * cw;
-          const my = p[1] * ch;
-          if (idx === 0) ctx.moveTo(mx, my);
-          else ctx.lineTo(mx, my);
-        });
-        ctx.closePath();
-        ctx.fillStyle = "rgba(255, 60, 60, 0.22)";
-        ctx.fill();
-        ctx.strokeStyle = "rgba(255, 90, 95, 0.9)";
-        ctx.lineWidth = Math.max(2, Math.round(cw / 750));
-        ctx.stroke();
-
-        ctx.fillStyle = "#ff6e73";
-        ctx.font = `bold ${Math.max(14, Math.round(cw / 110))}px sans-serif`;
-        const firstP = mirrorPoly[0];
-        ctx.fillText("🛡️ 镜面排除区 (MIRROR EXCLUSION)", firstP[0] * cw + 12, firstP[1] * ch + 28);
-        ctx.restore();
-      }
-
-      const points = roiEditorState.points;
+      const isCourt = roiEditorState.target === "court";
+      const activePts = isCourt ? roiEditorState.courtPoints : roiEditorState.mirrorPoints;
+      const secondaryPts = isCourt ? roiEditorState.mirrorPoints : roiEditorState.courtPoints;
       const isClickMode = roiEditorState.mode === "click";
-      const labels = ["P1 (左上)", "P2 (右上)", "P3 (右下)", "P4 (左下)"];
+      const activeLabels = isCourt ? ["P1 (左上)", "P2 (右上)", "P3 (右下)", "P4 (左下)"] : ["M1 (左上)", "M2 (右上)", "M3 (右下)", "M4 (左下)"];
 
-      // 2. 绘制多边形边线及半透明填充
-      if (points.length >= 2) {
+      // 1. 绘制非活跃目标（半透明背景轮廓）
+      if (secondaryPts && secondaryPts.length >= 3) {
         ctx.save();
         ctx.beginPath();
-        points.forEach((p, idx) => {
+        secondaryPts.forEach((p, idx) => {
           if (idx === 0) ctx.moveTo(p[0], p[1]);
           else ctx.lineTo(p[0], p[1]);
         });
-        if (!isClickMode && points.length >= 3) {
+        ctx.closePath();
+        ctx.fillStyle = isCourt ? "rgba(255, 60, 60, 0.14)" : "rgba(0, 220, 255, 0.12)";
+        ctx.fill();
+        ctx.strokeStyle = isCourt ? "rgba(255, 90, 95, 0.75)" : "rgba(0, 240, 255, 0.65)";
+        ctx.lineWidth = Math.max(2, Math.round(cw / 750));
+        ctx.setLineDash([6, 5]);
+        ctx.stroke();
+
+        ctx.fillStyle = isCourt ? "#ff6e73" : "#00f0ff";
+        ctx.font = `bold ${Math.max(12, Math.round(cw / 125))}px sans-serif`;
+        const firstP = secondaryPts[0];
+        const secTag = isCourt ? "🛡️ 镜面排除区 (M1~M4)" : "🎾 球场 ROI (P1~P4)";
+        ctx.fillText(secTag, firstP[0] + 10, firstP[1] + 24);
+        ctx.restore();
+      }
+
+      // 2. 绘制活跃目标多边形
+      const themeColor = isCourt ? "#00f0ff" : "#ff5757";
+      const fillColor = isCourt ? "rgba(0, 220, 255, 0.20)" : "rgba(255, 60, 60, 0.22)";
+
+      if (activePts.length >= 2) {
+        ctx.save();
+        ctx.beginPath();
+        activePts.forEach((p, idx) => {
+          if (idx === 0) ctx.moveTo(p[0], p[1]);
+          else ctx.lineTo(p[0], p[1]);
+        });
+        if (!isClickMode && activePts.length >= 3) {
           ctx.closePath();
-          ctx.fillStyle = "rgba(0, 220, 255, 0.16)";
+          ctx.fillStyle = fillColor;
           ctx.fill();
         }
-        ctx.strokeStyle = "#00f0ff";
-        ctx.lineWidth = Math.max(3, Math.round(cw / 600));
+        ctx.strokeStyle = themeColor;
+        ctx.lineWidth = Math.max(3, Math.round(cw / 550));
         ctx.stroke();
         ctx.restore();
       }
 
       // 3. 点击模式下的橡皮筋动态虚线
       if (isClickMode && roiEditorState.mousePos && roiEditorState.clickStep > 0 && roiEditorState.clickStep < 4) {
-        const prev = points[roiEditorState.clickStep - 1];
+        const prev = activePts[roiEditorState.clickStep - 1];
         if (prev) {
           ctx.save();
           ctx.beginPath();
           ctx.moveTo(prev[0], prev[1]);
           ctx.lineTo(roiEditorState.mousePos[0], roiEditorState.mousePos[1]);
-          ctx.strokeStyle = "rgba(245, 208, 76, 0.9)";
-          ctx.lineWidth = Math.max(2, Math.round(cw / 750));
+          ctx.strokeStyle = isCourt ? "rgba(245, 208, 76, 0.9)" : "rgba(255, 130, 135, 0.9)";
+          ctx.lineWidth = Math.max(2, Math.round(cw / 700));
           ctx.setLineDash([8, 6]);
           ctx.stroke();
           ctx.restore();
@@ -2374,34 +2599,38 @@
       if (isClickMode && roiEditorState.mousePos && roiEditorState.clickStep < 4) {
         const mx = roiEditorState.mousePos[0];
         const my = roiEditorState.mousePos[1];
+        const crossColor = isCourt ? "#f5d04c" : "#ff6e73";
         ctx.save();
         ctx.beginPath();
         ctx.arc(mx, my, Math.max(12, Math.round(cw / 150)), 0, Math.PI * 2);
-        ctx.strokeStyle = "#f5d04c";
+        ctx.strokeStyle = crossColor;
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        ctx.fillStyle = "#f5d04c";
+        ctx.fillStyle = crossColor;
         ctx.font = `bold ${Math.max(12, Math.round(cw / 120))}px sans-serif`;
-        ctx.fillText(`+ 点击放置 ${labels[roiEditorState.clickStep]}`, mx + 16, my - 8);
+        ctx.fillText(`+ 点击放置 ${activeLabels[roiEditorState.clickStep]}`, mx + 16, my - 8);
         ctx.restore();
       }
 
-      // 5. 绘制各个顶点手柄与坐标胶囊标签
+      // 5. 绘制各个顶点手柄与源物理坐标胶囊标签
       const baseR = Math.max(14, Math.round(cw / 130));
       const fontSize = Math.max(12, Math.round(cw / 120));
 
-      points.forEach((pt, i) => {
+      activePts.forEach((pt, i) => {
         if (!pt) return;
         const isHover = roiEditorState.hoverIdx === i;
         const isDrag = roiEditorState.draggingIdx === i;
         const r = (isHover || isDrag) ? baseR * 1.35 : baseR;
+        const handleColor = isCourt
+          ? (isDrag ? "#00f0ff" : (isHover ? "#f5d04c" : "#ffcc00"))
+          : (isDrag ? "#ff333a" : (isHover ? "#ff9ea2" : "#ff6e73"));
 
         // 外层高亮辉光环
         if (isHover || isDrag) {
           ctx.beginPath();
           ctx.arc(pt[0], pt[1], r + 6, 0, Math.PI * 2);
-          ctx.strokeStyle = isDrag ? "#00f0ff" : "#f5d04c";
+          ctx.strokeStyle = isDrag ? themeColor : (isCourt ? "#f5d04c" : "#ff9ea2");
           ctx.lineWidth = 4;
           ctx.stroke();
         }
@@ -2409,7 +2638,7 @@
         // 手柄圆点
         ctx.beginPath();
         ctx.arc(pt[0], pt[1], r, 0, Math.PI * 2);
-        ctx.fillStyle = isDrag ? "#00f0ff" : (isHover ? "#f5d04c" : "#ffcc00");
+        ctx.fillStyle = handleColor;
         ctx.fill();
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = Math.max(2, Math.round(r * 0.22));
@@ -2422,8 +2651,9 @@
         ctx.textBaseline = "middle";
         ctx.fillText(`${i + 1}`, pt[0], pt[1]);
 
-        // 顶点坐标胶囊背景
-        const text = `${labels[i] || `P${i+1}`} [${pt[0]}, ${pt[1]}]`;
+        // 顶点坐标胶囊背景（显示原始物理源像素坐标！）
+        const srcPt = previewToSource(pt);
+        const text = `${activeLabels[i] || (isCourt ? `P${i+1}` : `M${i+1}`)} [${srcPt[0]}, ${srcPt[1]}]`;
         ctx.font = `bold ${fontSize}px ui-monospace, SFMono-Regular, Menlo, monospace`;
         const textW = ctx.measureText(text).width;
         const pillH = fontSize + 8;
@@ -2435,16 +2665,16 @@
         if (pillY < 8) pillY = 8;
         if (pillY + pillH > ch - 8) pillY = ch - 8 - pillH;
 
-        ctx.fillStyle = "rgba(10, 16, 26, 0.90)";
+        ctx.fillStyle = "rgba(10, 16, 26, 0.92)";
         ctx.beginPath();
         if (ctx.roundRect) ctx.roundRect(pillX, pillY, pillW, pillH, 4);
         else ctx.rect(pillX, pillY, pillW, pillH);
         ctx.fill();
-        ctx.strokeStyle = isDrag ? "#00f0ff" : (isHover ? "#f5d04c" : "rgba(255, 204, 0, 0.65)");
+        ctx.strokeStyle = isDrag ? themeColor : (isHover ? (isCourt ? "#f5d04c" : "#ff9ea2") : themeColor);
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        ctx.fillStyle = isDrag ? "#00f0ff" : (isHover ? "#f5d04c" : "#ffffff");
+        ctx.fillStyle = isDrag ? themeColor : (isHover ? (isCourt ? "#f5d04c" : "#ff9ea2") : "#ffffff");
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
         ctx.fillText(text, pillX + 7, pillY + pillH / 2);
@@ -2457,30 +2687,27 @@
       const btnSide = $("btn-toggle-roi-editor");
       const canvas = $("roi-canvas");
       const toolbar = $("roi-editor-toolbar");
-      const img = $("preview-image");
 
       if (nextActive) {
-        if (!state.previewUrl || !img || img.hidden) {
-          showToast("正在获取当前球场画面…");
-          await refreshPreview(false);
-        }
+        showToast("正在获取纯净无标注画面以进行高精度描点…");
+        // Always request clean preview frame without baked annotations!
+        await refreshPreview(false, true);
+
         roiEditorState.active = true;
-        let pts = parseRoiInputs();
-        if (pts.length < 4) {
-          const stream = selectedStream();
-          if (stream && stream.points && stream.points.length >= 4) {
-            pts = stream.points.map(p => [p[0], p[1]]);
-            updateRoiInputs(pts);
+        const stream = selectedStream();
+        initRoiEditorFromStream(stream);
+
+        if (roiEditorState.courtPoints.length < 3) {
+          const sideCourt = parseSidebarPoints("court");
+          if (sideCourt.length >= 3) {
+            roiEditorState.courtPoints = sideCourt.map(sourceToPreview);
           }
         }
-        if (pts.length >= 4) {
-          roiEditorState.points = pts;
-          roiEditorState.mode = "drag";
-          updateRoiEditorStatus("拖拽黄色角点手柄微调，或点击重新描点");
-          const badge = $("roi-mode-badge");
-          if (badge) badge.textContent = "📐 交互描点模式";
-        } else {
-          startRepointRoi();
+        if (roiEditorState.mirrorPoints.length < 3) {
+          const sideMirror = parseSidebarPoints("mirror");
+          if (sideMirror.length >= 3) {
+            roiEditorState.mirrorPoints = sideMirror.map(sourceToPreview);
+          }
         }
 
         canvas.hidden = false;
@@ -2499,6 +2726,7 @@
           btnSide.style.color = "#ff6e73";
         }
         syncCanvasGeometry();
+        setEditTarget(roiEditorState.target || "court");
       } else {
         roiEditorState.active = false;
         roiEditorState.mode = "drag";
@@ -2519,30 +2747,45 @@
           btnSide.style.borderColor = "var(--cyan)";
           btnSide.style.color = "var(--cyan)";
         }
+        await refreshPreview(false, false);
       }
     }
 
     function startRepointRoi() {
+      const isCourt = roiEditorState.target === "court";
       roiEditorState.mode = "click";
       roiEditorState.clickStep = 0;
-      roiEditorState.points = [];
+      if (isCourt) {
+        roiEditorState.courtPoints = [];
+      } else {
+        roiEditorState.mirrorPoints = [];
+      }
       roiEditorState.hoverIdx = -1;
       roiEditorState.draggingIdx = -1;
-      updateRoiEditorStatus("请在画面中点击第 1 个点：P1 (左上角)");
+      const targetName = isCourt ? "球场 ROI" : "镜面排除区";
+      updateRoiEditorStatus(`请在画面中点击【${targetName}】第 1 个点：左上角`);
       const badge = $("roi-mode-badge");
-      if (badge) badge.textContent = "🎯 顺序点击 4 点";
+      if (badge) badge.textContent = `🎯 顺序点击 4 点 (${targetName})`;
       drawRoiCanvas();
     }
 
     function autoSortRoiPoints() {
-      if (roiEditorState.points.length !== 4) {
+      const isCourt = roiEditorState.target === "court";
+      const pts = isCourt ? roiEditorState.courtPoints : roiEditorState.mirrorPoints;
+      if (!pts || pts.length !== 4) {
         showToast("需要 4 个顶点才能进行四角自动排序", true);
         return;
       }
-      roiEditorState.points = normalizeRoiPoints(roiEditorState.points);
-      updateRoiInputs(roiEditorState.points);
+      const sorted = sortPointsTLTRBRBL(pts);
+      if (isCourt) {
+        roiEditorState.courtPoints = sorted;
+        updateRoiInputs("court", sorted);
+      } else {
+        roiEditorState.mirrorPoints = sorted;
+        updateRoiInputs("mirror", sorted);
+      }
       drawRoiCanvas();
-      showToast("已自动对齐四角：P1左上→P2右上→P3右下→P4左下");
+      showToast("已自动对齐四角：左上→右上→右下→左下");
     }
 
     function getCanvasPixelCoords(e) {
@@ -2562,20 +2805,35 @@
       roiCanvasEl.addEventListener("mousedown", (e) => {
         if (!roiEditorState.active) return;
         const [rawX, rawY] = getCanvasPixelCoords(e);
-        const labels = ["P1 (左上角)", "P2 (右上角)", "P3 (右下角)", "P4 (左下角)"];
+        const isCourt = roiEditorState.target === "court";
+        const labels = isCourt ? ["P1 (左上角)", "P2 (右上角)", "P3 (右下角)", "P4 (左下角)"] : ["M1 (左上角)", "M2 (右上角)", "M3 (右下角)", "M4 (左下角)"];
+        let pts = isCourt ? roiEditorState.courtPoints : roiEditorState.mirrorPoints;
 
         if (roiEditorState.mode === "click") {
-          roiEditorState.points[roiEditorState.clickStep] = [rawX, rawY];
+          pts[roiEditorState.clickStep] = [rawX, rawY];
           roiEditorState.clickStep++;
-          updateRoiInputs(roiEditorState.points);
 
           if (roiEditorState.clickStep >= 4) {
+            const sorted = sortPointsTLTRBRBL(pts);
+            if (isCourt) {
+              roiEditorState.courtPoints = sorted;
+              updateRoiInputs("court", sorted);
+            } else {
+              roiEditorState.mirrorPoints = sorted;
+              updateRoiInputs("mirror", sorted);
+            }
             roiEditorState.mode = "drag";
-            const badge = $("roi-mode-badge");
-            if (badge) badge.textContent = "📐 交互描点模式";
-            updateRoiEditorStatus("✅ 4点描线完成！可拖拽手柄微调，或点击保存边界");
-            showToast("✅ 4点描线完成，已自动填充坐标！");
+            setEditTarget(roiEditorState.target);
+            updateRoiEditorStatus("✅ 4点绘制完成！已自动按四角对齐，可拖拽手柄微调，或点击保存");
+            showToast("✅ 4点描线完成，已自动对齐四角并填充坐标！");
           } else {
+            if (isCourt) {
+              roiEditorState.courtPoints = pts;
+              updateRoiInputs("court", pts);
+            } else {
+              roiEditorState.mirrorPoints = pts;
+              updateRoiInputs("mirror", pts);
+            }
             updateRoiEditorStatus(`已放置 ${roiEditorState.clickStep}/4 点，请点击第 ${roiEditorState.clickStep + 1} 个点：${labels[roiEditorState.clickStep]}`);
           }
           drawRoiCanvas();
@@ -2585,13 +2843,14 @@
         if (roiEditorState.mode === "drag") {
           const hitRadius = Math.max(28, Math.round(roiCanvasEl.width / 65));
           let hit = -1;
-          roiEditorState.points.forEach((pt, idx) => {
+          pts.forEach((pt, idx) => {
             if (Math.hypot(pt[0] - rawX, pt[1] - rawY) <= hitRadius) hit = idx;
           });
           if (hit !== -1) {
             roiEditorState.draggingIdx = hit;
             roiCanvasEl.style.cursor = "grabbing";
-            updateRoiEditorStatus(`正在拖拽调整 ${labels[hit]}：[${rawX}, ${rawY}]`);
+            const srcPt = previewToSource([rawX, rawY]);
+            updateRoiEditorStatus(`正在拖拽调整 ${labels[hit]}：[${srcPt[0]}, ${srcPt[1]}]`);
             drawRoiCanvas();
           }
         }
@@ -2601,27 +2860,37 @@
         if (!roiEditorState.active) return;
         const [rawX, rawY] = getCanvasPixelCoords(e);
         roiEditorState.mousePos = [rawX, rawY];
-        const labels = ["P1 (左上角)", "P2 (右上角)", "P3 (右下角)", "P4 (左下角)"];
+        const isCourt = roiEditorState.target === "court";
+        const labels = isCourt ? ["P1 (左上角)", "P2 (右上角)", "P3 (右下角)", "P4 (左下角)"] : ["M1 (左上角)", "M2 (右上角)", "M3 (右下角)", "M4 (左下角)"];
+        let pts = isCourt ? roiEditorState.courtPoints : roiEditorState.mirrorPoints;
 
         if (roiEditorState.mode === "drag") {
           if (roiEditorState.draggingIdx !== -1) {
-            roiEditorState.points[roiEditorState.draggingIdx] = [rawX, rawY];
-            updateRoiInputs(roiEditorState.points);
-            updateRoiEditorStatus(`正在拖拽调整 ${labels[roiEditorState.draggingIdx]}：[${rawX}, ${rawY}]`);
+            pts[roiEditorState.draggingIdx] = [rawX, rawY];
+            if (isCourt) {
+              roiEditorState.courtPoints = pts;
+              updateRoiInputs("court", pts);
+            } else {
+              roiEditorState.mirrorPoints = pts;
+              updateRoiInputs("mirror", pts);
+            }
+            const srcPt = previewToSource([rawX, rawY]);
+            updateRoiEditorStatus(`正在拖拽调整 ${labels[roiEditorState.draggingIdx]}：[${srcPt[0]}, ${srcPt[1]}]`);
             drawRoiCanvas();
           } else {
             const hitRadius = Math.max(28, Math.round(roiCanvasEl.width / 65));
             let hit = -1;
-            roiEditorState.points.forEach((pt, idx) => {
+            pts.forEach((pt, idx) => {
               if (Math.hypot(pt[0] - rawX, pt[1] - rawY) <= hitRadius) hit = idx;
             });
             if (roiEditorState.hoverIdx !== hit) {
               roiEditorState.hoverIdx = hit;
               roiCanvasEl.style.cursor = hit !== -1 ? "grab" : "default";
               if (hit !== -1) {
-                updateRoiEditorStatus(`指向 ${labels[hit]} [${roiEditorState.points[hit][0]}, ${roiEditorState.points[hit][1]}] · 按住鼠标左键可拖动微调`);
+                const srcPt = previewToSource(pts[hit]);
+                updateRoiEditorStatus(`指向 ${labels[hit]} [${srcPt[0]}, ${srcPt[1]}] · 按住鼠标左键可拖动微调`);
               } else {
-                updateRoiEditorStatus("拖拽黄色角点手柄微调，或点击重新描点");
+                updateRoiEditorStatus(isCourt ? "拖拽黄色角点手柄微调，或点击重新描点" : "拖拽红色手柄微调镜面边界，或点击重新描点");
               }
               drawRoiCanvas();
             }
@@ -2637,27 +2906,51 @@
         if (roiEditorState.draggingIdx !== -1) {
           roiEditorState.draggingIdx = -1;
           roiCanvasEl.style.cursor = roiEditorState.hoverIdx !== -1 ? "grab" : "default";
-          updateRoiInputs(roiEditorState.points);
-          updateRoiEditorStatus("拖拽黄色角点手柄微调，或点击保存边界");
+          const isCourt = roiEditorState.target === "court";
+          updateRoiInputs(isCourt ? "court" : "mirror");
+          updateRoiEditorStatus("拖拽角点手柄微调，或点击保存边界");
           drawRoiCanvas();
         }
       });
     }
 
-    // Manual input typing synchronization
+    // 手动输入框同步输入
     ["roi_p1", "roi_p2", "roi_p3", "roi_p4"].forEach((id) => {
       const el = $(id);
       if (el) {
         el.addEventListener("input", () => {
-          if (roiEditorState.active && roiEditorState.mode === "drag") {
-            const pts = parseRoiInputs();
+          if (roiEditorState.active && roiEditorState.mode === "drag" && roiEditorState.target === "court") {
+            const pts = parseSidebarPoints("court");
             if (pts.length > 0) {
-              roiEditorState.points = pts;
+              roiEditorState.courtPoints = pts.map(sourceToPreview);
               drawRoiCanvas();
             }
           }
         });
       }
+    });
+
+    ["mirror_m1", "mirror_m2", "mirror_m3", "mirror_m4"].forEach((id) => {
+      const el = $(id);
+      if (el) {
+        el.addEventListener("input", () => {
+          if (roiEditorState.active && roiEditorState.mode === "drag" && roiEditorState.target === "mirror") {
+            const pts = parseSidebarPoints("mirror");
+            if (pts.length > 0) {
+              roiEditorState.mirrorPoints = pts.map(sourceToPreview);
+              drawRoiCanvas();
+            }
+          }
+        });
+      }
+    });
+
+    // 目标切换按钮监听
+    document.querySelectorAll(".roi-target-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const target = btn.getAttribute("data-target") || "court";
+        setEditTarget(target);
+      });
     });
 
     window.addEventListener("resize", () => {
@@ -2682,51 +2975,72 @@
         showToast("请先选择机位", true);
         return;
       }
-      function parsePoint(str) {
-        if (!str) return null;
-        const parts = str.split(/[,，\s]+/).filter(Boolean);
-        if (parts.length >= 2) {
-          const x = parseFloat(parts[0]);
-          const y = parseFloat(parts[1]);
-          if (!isNaN(x) && !isNaN(y)) return [Math.round(x), Math.round(y)];
-        }
-        return null;
+
+      // 提取球场 ROI 物理源坐标
+      let courtSourcePoints = [];
+      if (roiEditorState.courtPoints && roiEditorState.courtPoints.length >= 3) {
+        courtSourcePoints = roiEditorState.courtPoints.map(previewToSource);
+      } else {
+        courtSourcePoints = parseSidebarPoints("court");
       }
 
-      const points = [
-        parsePoint($("roi_p1")?.value),
-        parsePoint($("roi_p2")?.value),
-        parsePoint($("roi_p3")?.value),
-        parsePoint($("roi_p4")?.value),
-      ].filter(Boolean);
-
-      if (points.length < 3) {
-        showToast("ROI 边界至少需要输入 3 个有效顶点坐标 (格式: X, Y)", true);
+      if (courtSourcePoints.length < 3) {
+        showToast("球场 ROI 边界至少需要输入 3 个有效顶点坐标 (格式: X, Y)", true);
         return;
+      }
+
+      // 提取镜面排除区归一化坐标 [0.0 ~ 1.0]
+      let mirrorNormPoints = [];
+      if (roiEditorState.mirrorPoints && roiEditorState.mirrorPoints.length >= 3) {
+        mirrorNormPoints = roiEditorState.mirrorPoints.map(previewToNorm);
+      } else {
+        const sideMirror = parseSidebarPoints("mirror");
+        const [sw, sh] = getSourceDimensions();
+        if (sideMirror.length >= 3) {
+          mirrorNormPoints = sideMirror.map(p => [
+            Number(Math.max(0, Math.min(1, p[0] / sw)).toFixed(4)),
+            Number(Math.max(0, Math.min(1, p[1] / sh)).toFixed(4)),
+          ]);
+        }
       }
 
       const mirrorExclusion = $("roi_mirror_exclusion") ? $("roi_mirror_exclusion").checked : true;
       const btn = $("save-roi-boundary-btn");
+      const toolBtn = $("tool-btn-save");
       if (btn) btn.disabled = true;
+      if (toolBtn) toolBtn.disabled = true;
+
       try {
+        const payload = {
+          stream_id: stream.stream_id,
+          points: courtSourcePoints,
+          mirror_exclusion: mirrorExclusion,
+        };
+        if (mirrorNormPoints.length >= 3) {
+          payload.mirror_polygon = mirrorNormPoints;
+        }
+
         const response = await api("/api/roi/config", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            stream_id: stream.stream_id,
-            points: points,
-            mirror_exclusion: mirrorExclusion,
-          }),
+          body: JSON.stringify(payload),
         });
         const result = await response.json();
         if (result.success) {
-          showToast(`机位 ${stream.stream_id} ROI 边界保存成功！`);
+          showToast(`✅ 机位 ${stream.stream_id} ROI 与镜面排除区保存成功！`);
           stream.points = result.points;
-          roiEditorState.points = result.points;
+          if (result.mirror_view) {
+            stream.mirror_view = result.mirror_view;
+          }
+          roiEditorState.courtPoints = stream.points.map(sourceToPreview);
+          if (stream.mirror_view && stream.mirror_view.polygon) {
+            roiEditorState.mirrorPoints = stream.mirror_view.polygon.map(normToPreview);
+          }
           updateStreamMeta();
-          refreshPreview(false);
           if (roiEditorState.active) {
             drawRoiCanvas();
+          } else {
+            refreshPreview(false, false);
           }
         } else {
           showToast(`保存失败: ${result.message || result.error || "未知错误"}`, true);
@@ -2735,6 +3049,7 @@
         showToast(`保存失败: ${error.message}`, true);
       } finally {
         if (btn) btn.disabled = false;
+        if (toolBtn) toolBtn.disabled = false;
       }
     }
 

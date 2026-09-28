@@ -791,10 +791,16 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
                     self.assertEqual(data["stream_id"], "court01-main")
                     self.assertEqual(data["points"], [[20, 20], [300, 20], [300, 160], [20, 160]])
 
-                # 2. POST /api/roi/config with updated points
+                # 2. POST /api/roi/config with updated points and mirror_polygon
                 post_url = f"http://127.0.0.1:{server.server_port}/api/roi/config"
                 new_points = [[25, 25], [295, 25], [295, 155], [25, 155]]
-                payload = json.dumps({"stream_id": "court01-main", "points": new_points}).encode("utf-8")
+                mirror_poly = [[0.5, 0.1], [0.8, 0.1], [0.8, 0.3], [0.5, 0.3]]
+                payload = json.dumps({
+                    "stream_id": "court01-main",
+                    "points": new_points,
+                    "mirror_polygon": mirror_poly,
+                    "mirror_exclusion": True,
+                }).encode("utf-8")
                 post_req = urllib.request.Request(
                     post_url,
                     data=payload,
@@ -806,11 +812,15 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
                     result = json.load(resp)
                     self.assertTrue(result["success"])
                     self.assertEqual(result["points"], new_points)
+                    self.assertIn("mirror_view", result)
+                    self.assertEqual(result["mirror_view"]["polygon"], mirror_poly)
 
                 # Verify file was updated
                 saved_doc = yaml.safe_load(controller.roi_config_path.read_text(encoding="utf-8"))
                 matched = next(s for s in saved_doc["streams"] if s["stream_id"] == "court01-main")
                 self.assertEqual(matched["roi_points"], new_points)
+                self.assertEqual(matched["mirror_view"]["polygon"], mirror_poly)
+                self.assertTrue(matched["mirror_view"]["exclusion_enabled"])
             finally:
                 controller.stop_server()
                 server.shutdown()
