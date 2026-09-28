@@ -118,6 +118,16 @@ def _number(
     return int(value) if integer else value
 
 
+def sort_points_tl_tr_br_bl(points: List[List[Any]]) -> List[List[Any]]:
+    """Sort 4 points canonically: TL, TR, BR, BL (clockwise starting from top-left)."""
+    if len(points) != 4:
+        return points
+    by_y = sorted(points, key=lambda p: float(p[1]))
+    top_two = sorted(by_y[:2], key=lambda p: float(p[0]))
+    bottom_two = sorted(by_y[2:], key=lambda p: float(p[0]), reverse=True)
+    return [top_two[0], top_two[1], bottom_two[0], bottom_two[1]]
+
+
 def inject_rtsp_credentials(source: str, username: str, password: str) -> str:
     """Add credentials to a URL without changing its stable camera identity."""
     parsed = urlsplit(str(source or "").strip())
@@ -366,7 +376,11 @@ def load_stream_profiles(path: Path) -> List[Dict[str, Any]]:
                         profile.get("enabled", False),
                     )
                 ),
-                "points": [
+                "points": sort_points_tl_tr_br_bl([
+                    [int(point[0]), int(point[1])]
+                    for point in points
+                    if isinstance(point, (list, tuple)) and len(point) >= 2
+                ]) if len(points) == 4 else [
                     [int(point[0]), int(point[1])]
                     for point in points
                     if isinstance(point, (list, tuple)) and len(point) >= 2
@@ -379,7 +393,12 @@ def load_stream_profiles(path: Path) -> List[Dict[str, Any]]:
                 and len(frame_size) >= 2
                 else [0, 0],
                 "default": bool(profile.get("default", False)),
-                "mirror_view": dict(profile.get("mirror_view") or {}),
+                "mirror_view": {
+                    **dict(profile.get("mirror_view") or {}),
+                    **({"polygon": sort_points_tl_tr_br_bl(profile["mirror_view"]["polygon"])}
+                       if profile.get("mirror_view") and isinstance(profile["mirror_view"].get("polygon"), list) and len(profile["mirror_view"]["polygon"]) == 4
+                       else {})
+                },
             }
         )
     if not result:
@@ -967,6 +986,8 @@ class LocalPipelineController:
             if not isinstance(p, (list, tuple)) or len(p) < 2:
                 raise ValueError(f"无效的顶点坐标: {p}")
             cleaned_points.append([int(round(float(p[0]))), int(round(float(p[1])))])
+        if len(cleaned_points) == 4:
+            cleaned_points = sort_points_tl_tr_br_bl(cleaned_points)
 
         if not self.roi_config_path.exists():
             raise ValueError("ROI 配置文件不存在")
@@ -995,6 +1016,8 @@ class LocalPipelineController:
                     ny = float(p[1]) / fh if float(p[1]) > 1.0 else float(p[1])
                     norm_mirror.append([round(max(0.0, min(1.0, nx)), 4), round(max(0.0, min(1.0, ny)), 4)])
             if len(norm_mirror) >= 3:
+                if len(norm_mirror) == 4:
+                    norm_mirror = sort_points_tl_tr_br_bl(norm_mirror)
                 mv["polygon"] = norm_mirror
                 xs = [p[0] for p in norm_mirror]
                 ys = [p[1] for p in norm_mirror]
@@ -1334,16 +1357,32 @@ class LocalPipelineController:
             cv2.fillPoly(m_overlay, [m_pts], (0, 0, 200))
             preview = cv2.addWeighted(m_overlay, 0.22, preview, 0.78, 0)
             cv2.polylines(preview, [m_pts], True, (0, 0, 255), max(2, int(round(width / 900))), cv2.LINE_AA)
+            tx = int(np.min(m_pts[:, 0])) + 15
+            ty = int(np.min(m_pts[:, 1])) + 28
             cv2.putText(
                 preview,
                 "MIRROR EXCLUSION (BALL/RACKET BLOCKED)",
-                (int(m_pts[0][0]) + 15, int(m_pts[0][1]) + 30),
+                (tx, ty),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.62,
                 (0, 60, 255),
                 2,
                 cv2.LINE_AA,
             )
+            sorted_m_pts = sort_points_tl_tr_br_bl(m_pts.tolist()) if len(m_pts) == 4 else m_pts
+            for index, point in enumerate(sorted_m_pts, start=1):
+                x, y = int(point[0]), int(point[1])
+                cv2.circle(preview, (x, y), 6, (0, 0, 255), -1)
+                cv2.putText(
+                    preview,
+                    f"M{index}",
+                    (x + 8, y - 8),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 0, 255),
+                    2,
+                    cv2.LINE_AA,
+                )
 
         header_height = max(64, int(round(height * 0.075)))
         cv2.rectangle(

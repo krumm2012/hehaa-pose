@@ -7,14 +7,14 @@ mirror_view:
   - 0.6125
   - 0.4832
   polygon:
-  - - 0.2541
-    - 0.4777
   - - 0.2696
     - 0.1034
   - - 0.6125
     - 0.1254
   - - 0.5908
     - 0.4832
+  - - 0.2541
+    - 0.4777
   padding: 0.0
   horizontal_flip: true
   target_size:

@@ -796,17 +796,13 @@
     }
     /* Interactive ROI Point Drawing & Editing Toolbar */
     .roi-editor-toolbar {
-      position: absolute;
-      top: 12px;
-      left: 12px;
-      right: 12px;
-      padding: 8px 14px;
-      background: rgba(14, 21, 32, 0.94);
+      position: static;
+      margin-bottom: 12px;
+      padding: 10px 14px;
+      background: rgba(14, 21, 32, 0.96);
       border: 1px solid var(--cyan);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
       border-radius: 8px;
-      backdrop-filter: blur(8px);
-      z-index: 30;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -957,6 +953,24 @@
               <button id="preview-button" class="button">刷新预览</button>
             </div>
           </div>
+
+          <div id="roi-editor-toolbar" class="roi-editor-toolbar" hidden>
+            <div class="roi-toolbar-info">
+              <div class="roi-target-switch">
+                <button type="button" class="roi-target-btn active" id="btn-target-court" data-target="court">🎾 球场 ROI (P1~P4)</button>
+                <button type="button" class="roi-target-btn" id="btn-target-mirror" data-target="mirror">🪞 镜面排除区 (M1~M4)</button>
+              </div>
+              <span class="roi-mode-badge" id="roi-mode-badge">📐 交互描点模式</span>
+              <span id="roi-editor-status" style="font-size: 12px; color: var(--text);">拖拽黄色角点手柄微调，或点击重新描点</span>
+            </div>
+            <div class="roi-toolbar-actions">
+              <button type="button" class="btn-tool" id="tool-btn-repoint" title="清空并依次在画面中点击 4 个角点重新绘制">🔄 重新描点</button>
+              <button type="button" class="btn-tool" id="tool-btn-sort" title="自动按左上、右上、右下、左下排序">⚡ 排序</button>
+              <button type="button" class="btn-tool btn-tool-primary" id="tool-btn-save">💾 保存</button>
+              <button type="button" class="btn-tool btn-tool-danger" id="tool-btn-close">✕ 退出编辑</button>
+            </div>
+          </div>
+
           <div class="preview-stage" id="preview-stage-container" style="position: relative; overflow: hidden;">
             <div id="preview-empty" class="preview-empty">
               <strong>选择球场后刷新预览</strong>
@@ -964,24 +978,6 @@
             </div>
             <img id="preview-image" alt="ROI preview" hidden>
             <canvas id="roi-canvas" style="position: absolute; pointer-events: none; z-index: 20; touch-action: none;" hidden></canvas>
-            
-            <div id="roi-editor-toolbar" class="roi-editor-toolbar" hidden>
-              <div class="roi-toolbar-info">
-                <div class="roi-target-switch">
-                  <button type="button" class="roi-target-btn active" id="btn-target-court" data-target="court">🎾 球场 ROI (P1~P4)</button>
-                  <button type="button" class="roi-target-btn" id="btn-target-mirror" data-target="mirror">🪞 镜面排除区 (M1~M4)</button>
-                </div>
-                <span class="roi-mode-badge" id="roi-mode-badge">📐 交互描点模式</span>
-                <span id="roi-editor-status" style="font-size: 12px; color: var(--text);">拖拽黄色角点手柄微调，或点击重新描点</span>
-              </div>
-              <div class="roi-toolbar-actions">
-                <button type="button" class="btn-tool" id="tool-btn-repoint" title="清空并依次在画面中点击 4 个角点重新绘制">🔄 重新描点</button>
-                <button type="button" class="btn-tool" id="tool-btn-sort" title="自动按左上、右上、右下、左下排序">⚡ 排序</button>
-                <button type="button" class="btn-tool btn-tool-primary" id="tool-btn-save">💾 保存</button>
-                <button type="button" class="btn-tool btn-tool-danger" id="tool-btn-close">✕ 退出编辑</button>
-              </div>
-            </div>
-
             <div id="preview-loading" class="preview-loading">正在连接码流并提取画面…</div>
           </div>
           <div class="preview-footer">
@@ -1379,7 +1375,8 @@
         (point, index) => `<span>P${index + 1}: [${point[0]}, ${point[1]}]</span>`
       ).join("") + (hasMirror ? `<span style="color: #ff6e73; border-color: rgba(255, 110, 115, 0.4);">🛡️ 镜面排除已激活 (阻断镜中虚像)</span>` : "");
 
-      const pts = stream.points || [];
+      const pts = (typeof sortPointsTLTRBRBL === "function" && stream.points && stream.points.length === 4)
+        ? sortPointsTLTRBRBL(stream.points) : (stream.points || []);
       if ($("roi_p1")) $("roi_p1").value = pts[0] ? `${pts[0][0]}, ${pts[0][1]}` : "";
       if ($("roi_p2")) $("roi_p2").value = pts[1] ? `${pts[1][0]}, ${pts[1][1]}` : "";
       if ($("roi_p3")) $("roi_p3").value = pts[2] ? `${pts[2][0]}, ${pts[2][1]}` : "";
@@ -1387,10 +1384,14 @@
 
       const mPoly = stream.mirror_view?.polygon || [];
       const [sw, sh] = (typeof getSourceDimensions === "function") ? getSourceDimensions() : [2560, 1440];
-      if ($("mirror_m1")) $("mirror_m1").value = mPoly[0] ? `${Math.round(mPoly[0][0] * sw)}, ${Math.round(mPoly[0][1] * sh)}` : "";
-      if ($("mirror_m2")) $("mirror_m2").value = mPoly[1] ? `${Math.round(mPoly[1][0] * sw)}, ${Math.round(mPoly[1][1] * sh)}` : "";
-      if ($("mirror_m3")) $("mirror_m3").value = mPoly[2] ? `${Math.round(mPoly[2][0] * sw)}, ${Math.round(mPoly[2][1] * sh)}` : "";
-      if ($("mirror_m4")) $("mirror_m4").value = mPoly[3] ? `${Math.round(mPoly[3][0] * sw)}, ${Math.round(mPoly[3][1] * sh)}` : "";
+      const mSrcRaw = mPoly.map(p => [Math.round(p[0] * sw), Math.round(p[1] * sh)]);
+      const mSrcPts = (typeof sortPointsTLTRBRBL === "function" && mSrcRaw.length === 4)
+        ? sortPointsTLTRBRBL(mSrcRaw) : mSrcRaw;
+
+      if ($("mirror_m1")) $("mirror_m1").value = mSrcPts[0] ? `${mSrcPts[0][0]}, ${mSrcPts[0][1]}` : "";
+      if ($("mirror_m2")) $("mirror_m2").value = mSrcPts[1] ? `${mSrcPts[1][0]}, ${mSrcPts[1][1]}` : "";
+      if ($("mirror_m3")) $("mirror_m3").value = mSrcPts[2] ? `${mSrcPts[2][0]}, ${mSrcPts[2][1]}` : "";
+      if ($("mirror_m4")) $("mirror_m4").value = mSrcPts[3] ? `${mSrcPts[3][0]}, ${mSrcPts[3][1]}` : "";
 
       if ($("roi_mirror_exclusion") && stream.mirror_view) {
         $("roi_mirror_exclusion").checked = stream.mirror_view.exclusion_enabled !== false;
@@ -1424,10 +1425,11 @@
       };
     }
 
-    async function refreshPreview(manual = true, clean = false) {
+    async function refreshPreview(manual = true, clean = null) {
       if (!$("settings-form").reportValidity()) return;
       const payload = formPayload();
-      if (clean) {
+      const shouldClean = (clean !== null) ? Boolean(clean) : Boolean(typeof roiEditorState !== "undefined" && roiEditorState.active);
+      if (shouldClean) {
         payload.clean = true;
       }
       $("preview-loading").classList.add("visible");
@@ -1439,7 +1441,7 @@
         });
         const blob = await response.blob();
         applyPreviewBlob(blob);
-        if (manual) showToast(clean ? "画面已加载 (纯净无标注模式)" : "ROI 预览已更新");
+        if (manual) showToast(shouldClean ? "画面已加载 (纯净无标注模式)" : "ROI 预览已更新");
       } catch (error) {
         showToast(`预览失败：${error.message}`, true);
       } finally {
@@ -2330,13 +2332,17 @@
     function initRoiEditorFromStream(stream) {
       if (!stream) return;
       if (stream.points && stream.points.length >= 3) {
-        roiEditorState.courtPoints = stream.points.map(sourceToPreview);
+        const sorted = (stream.points.length === 4) ? sortPointsTLTRBRBL(stream.points) : stream.points;
+        roiEditorState.courtPoints = sorted.map(sourceToPreview);
       } else {
         roiEditorState.courtPoints = [];
       }
       const mPoly = stream.mirror_view?.polygon;
       if (mPoly && mPoly.length >= 3) {
-        roiEditorState.mirrorPoints = mPoly.map(normToPreview);
+        const [sw, sh] = getSourceDimensions();
+        const mSrcRaw = mPoly.map(p => [Math.round(p[0] * sw), Math.round(p[1] * sh)]);
+        const sorted = (mSrcRaw.length === 4) ? sortPointsTLTRBRBL(mSrcRaw) : mSrcRaw;
+        roiEditorState.mirrorPoints = sorted.map(sourceToPreview);
       } else {
         roiEditorState.mirrorPoints = [];
       }
@@ -2452,30 +2458,11 @@
 
     function sortPointsTLTRBRBL(points) {
       if (!points || points.length !== 4) return points;
-      const pts = [...points];
-      let minSumIdx = 0, maxSumIdx = 0;
-      let minDiffIdx = 0, maxDiffIdx = 0;
-
-      for (let i = 0; i < 4; i++) {
-        const s = pts[i][0] + pts[i][1];
-        const d = pts[i][0] - pts[i][1];
-        if (s < pts[minSumIdx][0] + pts[minSumIdx][1]) minSumIdx = i;
-        if (s > pts[maxSumIdx][0] + pts[maxSumIdx][1]) maxSumIdx = i;
-        if (d < pts[minDiffIdx][0] - pts[minDiffIdx][1]) minDiffIdx = i;
-        if (d > pts[maxDiffIdx][0] - pts[maxDiffIdx][1]) maxDiffIdx = i;
-      }
-
-      const indices = [minSumIdx, maxDiffIdx, maxSumIdx, minDiffIdx];
-      const uniqueIndices = new Set(indices);
-      if (uniqueIndices.size === 4) {
-        return [pts[minSumIdx], pts[maxDiffIdx], pts[maxSumIdx], pts[minDiffIdx]];
-      }
-
-      // Fallback: sort by Y, then by X
+      const pts = points.map(p => [Number(p[0]), Number(p[1])]);
       const byY = [...pts].sort((a, b) => a[1] - b[1]);
-      const top = byY.slice(0, 2).sort((a, b) => a[0] - b[0]);
-      const bottom = byY.slice(2).sort((a, b) => b[0] - a[0]);
-      return [top[0], top[1], bottom[0], bottom[1]];
+      const topTwo = byY.slice(0, 2).sort((a, b) => a[0] - b[0]);
+      const bottomTwo = byY.slice(2).sort((a, b) => b[0] - a[0]); // bottom-right then bottom-left
+      return [topTwo[0], topTwo[1], bottomTwo[0], bottomTwo[1]];
     }
 
     function updateRoiEditorStatus(text) {
@@ -2988,6 +2975,9 @@
         showToast("球场 ROI 边界至少需要输入 3 个有效顶点坐标 (格式: X, Y)", true);
         return;
       }
+      if (courtSourcePoints.length === 4) {
+        courtSourcePoints = sortPointsTLTRBRBL(courtSourcePoints);
+      }
 
       // 提取镜面排除区归一化坐标 [0.0 ~ 1.0]
       let mirrorNormPoints = [];
@@ -3002,6 +2992,10 @@
             Number(Math.max(0, Math.min(1, p[1] / sh)).toFixed(4)),
           ]);
         }
+      }
+
+      if (mirrorNormPoints.length === 4) {
+        mirrorNormPoints = sortPointsTLTRBRBL(mirrorNormPoints);
       }
 
       const mirrorExclusion = $("roi_mirror_exclusion") ? $("roi_mirror_exclusion").checked : true;

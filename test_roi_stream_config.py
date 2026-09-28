@@ -238,9 +238,13 @@ roi_points: [[1, 2], [30, 2], [30, 40], [1, 40]]
         pixels = profile.get_mirror_polygon_pixels((2560, 1440))
         self.assertIsNotNone(pixels)
         self.assertEqual(len(pixels), 4)
-        # Should be scaled to ~ (0.2541 * 2560, 0.4777 * 1440) -> (650, 688)
-        self.assertAlmostEqual(pixels[0][0], int(round(0.2541 * 2560)), delta=2)
-        self.assertAlmostEqual(pixels[0][1], int(round(0.4777 * 1440)), delta=2)
+        # Canonical order TL, TR, BR, BL:
+        # TL (index 0) ~ (0.2696 * 2560, 0.1034 * 1440) -> (690, 149)
+        # BL (index 3) ~ (0.2541 * 2560, 0.4777 * 1440) -> (650, 688)
+        self.assertAlmostEqual(pixels[0][0], int(round(0.2696 * 2560)), delta=2)
+        self.assertAlmostEqual(pixels[0][1], int(round(0.1034 * 1440)), delta=2)
+        self.assertAlmostEqual(pixels[3][0], int(round(0.2541 * 2560)), delta=2)
+        self.assertAlmostEqual(pixels[3][1], int(round(0.4777 * 1440)), delta=2)
 
 
 if __name__ == "__main__":

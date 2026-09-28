@@ -827,6 +827,30 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
                 server.server_close()
                 thread.join(timeout=2)
 
+    def test_roi_and_mirror_points_canonical_sorting(self):
+        from local_control_panel import sort_points_tl_tr_br_bl
+        # Out-of-order points: BL, TL, TR, BR
+        raw_pts = [[100, 500], [120, 100], [600, 120], [580, 510]]
+        sorted_pts = sort_points_tl_tr_br_bl(raw_pts)
+        self.assertEqual(sorted_pts, [[120, 100], [600, 120], [580, 510], [100, 500]])
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = self.make_controller(root)
+            # Post unsorted points
+            res = controller.save_roi_boundary({
+                "stream_id": "court01-main",
+                "points": [[100, 500], [120, 100], [600, 120], [580, 510]],
+                "mirror_polygon": [[0.25, 0.48], [0.27, 0.10], [0.61, 0.12], [0.59, 0.48]],
+            })
+            self.assertEqual(res["points"], [[120, 100], [600, 120], [580, 510], [100, 500]])
+            self.assertEqual(res["mirror_view"]["polygon"], [[0.27, 0.10], [0.61, 0.12], [0.59, 0.48], [0.25, 0.48]])
+
+            # Check loaded streams also return sorted points
+            loaded = controller.streams[0]
+            self.assertEqual(loaded["points"], [[120, 100], [600, 120], [580, 510], [100, 500]])
+            self.assertEqual(loaded["mirror_view"]["polygon"], [[0.27, 0.10], [0.61, 0.12], [0.59, 0.48], [0.25, 0.48]])
+
 
 if __name__ == "__main__":
     unittest.main()
