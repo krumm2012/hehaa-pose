@@ -1113,6 +1113,9 @@
         const element = $(id);
         payload[id] = checkboxIds.has(id) ? element.checked : element.value;
       }
+      if ($("stream_id").value !== "local_video") {
+        payload.mapped_stream_id = "";
+      }
       return payload;
     }
 
@@ -1124,6 +1127,7 @@
       delete payload.video_id;
       if (payload.stream_id === "local_video") delete payload.stream_id;
       if (payload.stream_id === CUSTOM_STREAM_ID) delete payload.stream_id;
+      if (payload.stream_id !== "local_video") delete payload.mapped_stream_id;
       localStorage.setItem("tennis-control-preset-v1", JSON.stringify(payload));
     }
 
@@ -1183,6 +1187,9 @@
         }
         savePreset();
         return;
+      }
+      if ($("mapped_stream_id")) {
+        $("mapped_stream_id").value = "";
       }
       $("roi_enabled").disabled = false;
       if (custom) {
@@ -1977,6 +1984,7 @@
           const saved = JSON.parse(localStorage.getItem("tennis-control-preset-v1") || "null");
           if (saved) {
             if (saved.stream_id === CUSTOM_STREAM_ID) delete saved.stream_id;
+            if (saved.stream_id !== "local_video") delete saved.mapped_stream_id;
             applyValues(saved);
           }
         } catch (_) {}

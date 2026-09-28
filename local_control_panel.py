@@ -225,7 +225,11 @@ class ControlSettings:
             or coach_tts
         )
         stream_id = str(payload.get("stream_id") or "").strip()
-        mapped_stream_id = str(payload.get("mapped_stream_id") or "").strip()
+        mapped_stream_id = (
+            str(payload.get("mapped_stream_id") or "").strip()
+            if stream_id == LOCAL_VIDEO_ID
+            else ""
+        )
         roi_enabled = _bool(payload, "roi_enabled", True)
         if stream_id == LOCAL_VIDEO_ID and not mapped_stream_id:
             roi_enabled = False
@@ -577,8 +581,14 @@ class LocalPipelineController:
             roi["auto_load_config"] = True
             roi["roi_config_path"] = str(self.roi_config_path)
             roi["crop_margin"] = settings.crop_margin
-            target_id = settings.mapped_stream_id or (
-                settings.stream_id if settings.stream_id not in (LOCAL_VIDEO_ID, CUSTOM_STREAM_ID) else ""
+            target_id = (
+                settings.mapped_stream_id
+                if settings.stream_id == LOCAL_VIDEO_ID
+                else (
+                    settings.stream_id
+                    if settings.stream_id not in (LOCAL_VIDEO_ID, CUSTOM_STREAM_ID)
+                    else ""
+                )
             )
             if target_id:
                 roi["target_stream_id"] = target_id
@@ -1065,8 +1075,14 @@ class LocalPipelineController:
             "--inference-workers",
             str(settings.inference_workers),
         ]
-        target_stream_id = settings.mapped_stream_id or (
-            settings.stream_id if settings.stream_id not in (LOCAL_VIDEO_ID, CUSTOM_STREAM_ID) else ""
+        target_stream_id = (
+            settings.mapped_stream_id
+            if settings.stream_id == LOCAL_VIDEO_ID
+            else (
+                settings.stream_id
+                if settings.stream_id not in (LOCAL_VIDEO_ID, CUSTOM_STREAM_ID)
+                else ""
+            )
         )
         if target_stream_id:
             command.extend(["--stream-id", target_stream_id])

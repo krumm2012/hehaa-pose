@@ -729,6 +729,26 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
             idx = cmd.index("--stream-id")
             self.assertEqual(cmd[idx + 1], "court01-main")
 
+    def test_camera_stream_never_overridden_by_mapped_stream_id(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = self.make_controller(root)
+            settings = ControlSettings.from_payload({
+                "stream_id": "court01-main",
+                "mapped_stream_id": "court02-main",
+            })
+            self.assertEqual(settings.stream_id, "court01-main")
+            self.assertEqual(settings.mapped_stream_id, "")
+
+            cmd, _ = controller._build_command(
+                settings=settings,
+                runtime_config=root / "runtime.yaml",
+                output_dir=root / "output",
+            )
+            self.assertIn("--stream-id", cmd)
+            idx = cmd.index("--stream-id")
+            self.assertEqual(cmd[idx + 1], "court01-main")
+
     def test_sse_events_streaming(self):
         with TemporaryDirectory() as directory:
             controller = self.make_controller(Path(directory))
