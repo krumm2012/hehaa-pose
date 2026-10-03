@@ -2,23 +2,22 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from statistics import mean, median
 from typing import Dict, Iterable, List, Optional, Sequence
 
+from practice_scoring import number
+from practice_score_adapter import resolve_practice_score
 
-SCHEMA_VERSION = "swing_session_quality_v1"
+
+SCHEMA_VERSION = "swing_session_quality_v2"
 MIN_DRIFT_EVENTS = 6
 MAX_WINDOW_EVENTS = 5
 
 
 def _number(value) -> Optional[float]:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+    return number(value)
 
 
 def _rounded(value: Optional[float], digits: int = 4) -> Optional[float]:
@@ -37,7 +36,7 @@ def _median(values: Iterable[Optional[float]]) -> Optional[float]:
 
 def _metric_value(event: Dict, name: str) -> Optional[float]:
     metric = (((event.get("biomechanics") or {}).get("metrics") or {}).get(name) or {})
-    if metric.get("coach_eligible") is False:
+    if metric.get("coach_eligible") is not True:
         return None
     return _number(metric.get("value"))
 
@@ -57,7 +56,8 @@ def _event_point(event: Dict, index: int) -> Dict:
     quality = event.get("quality_flags") or {}
     biomechanics = event.get("biomechanics") or {}
     bio_quality = biomechanics.get("quality") or {}
-    calibration = event.get("coach_calibration") or {}
+    practice = resolve_practice_score(event)
+    calibration = practice["calibration"]
     deepseek = event.get("deepseek_advice") or {}
     timing = event.get("timing") or {}
     pose = _number(quality.get("pose_frame_ratio"))
@@ -98,6 +98,16 @@ def _event_point(event: Dict, index: int) -> Dict:
             else None
         ),
         "stroke_type": event.get("stroke_type"),
+        "comparison_key": json.dumps({"policy": practice["policy_version"], "method": practice["method"], "stroke": event.get("stroke_type"), "context": event.get("practice_context") or {}}, sort_keys=True),
+        "practice_score_100": practice["score"],
+        "scoring_method": practice["method"],
+        "score_uncertainty_100": (
+            _number(calibration.get("uncertainty_9")) / 9 * 100
+            if practice["method"] == "automatic_2d_projection"
+            and _number(calibration.get("uncertainty_9")) is not None
+            else None
+        ),
+        "policy_version": practice["policy_version"],
         "visible_score_9": _number(calibration.get("visible_technique_score_9")),
         "score_uncertainty_9": _number(calibration.get("uncertainty_9")),
         "calibration_confidence": _number(calibration.get("confidence")),
@@ -252,7 +262,8 @@ def build_session_quality_dashboard(events: Iterable[Dict]) -> Dict:
     baseline = series[:window_size]
     recent = series[-window_size:]
     enough_events = event_count >= MIN_DRIFT_EVENTS
-    drift_ready = enough_events and not overlapping_pairs
+    compatible_series = len({p["comparison_key"] for p in series}) <= 1
+    drift_ready = enough_events and not overlapping_pairs and compatible_series
 
     evidence_score = _mean(
         _number(point.get("evidence_quality_100")) for point in series
@@ -280,11 +291,11 @@ def build_session_quality_dashboard(events: Iterable[Dict]) -> Dict:
     indicators = [
         _indicator(
             "visible_technique_score",
-            "可见动作分",
+            "练习评分",
             baseline,
             recent,
-            "visible_score_9",
-            0.75,
+            "practice_score_100",
+            0.75 / 9 * 100,
             drift_ready,
         ),
         _indicator(
@@ -339,6 +350,10 @@ def build_session_quality_dashboard(events: Iterable[Dict]) -> Dict:
         for indicator in indicators:
             if indicator.get("status") != "unavailable":
                 indicator["status"] = "event_integrity_confounded"
+    if not compatible_series:
+        for indicator in indicators:
+            indicator["baseline"] = indicator["recent"] = indicator["delta"] = None
+            indicator["status"] = "incomparable_series"
     camera_shifted = indicator_by_name["camera_scale"]["status"] == "shifted"
     if camera_shifted:
         technique = indicator_by_name["visible_technique_score"]
@@ -415,9 +430,14 @@ def build_session_quality_dashboard(events: Iterable[Dict]) -> Dict:
             }
         )
 
+    if not compatible_series:
+        alerts.append({"code": "incomparable_practice_series", "domain": "context", "severity": "medium",
+                       "message": "动作、评分来源或训练条件不同，已暂停合并趋势"})
     drift_status = "warming_up"
     if overlapping_pairs:
         drift_status = "integrity_blocked"
+    elif not compatible_series:
+        drift_status = "incomparable_series"
     elif drift_ready:
         if alerts:
             drift_status = "attention"
@@ -435,20 +455,24 @@ def build_session_quality_dashboard(events: Iterable[Dict]) -> Dict:
             "ready"
             if drift_ready
             else "blocked"
-            if overlapping_pairs
+            if overlapping_pairs or not compatible_series
             else "warming_up"
         ),
         "quality": {
             "evidence_quality_score_100": _rounded(evidence_score, 2),
             "grade": grade,
+            "practice_score_mean_100": _rounded(_mean(point["practice_score_100"] for point in series)) if len({p["comparison_key"] for p in series}) <= 1 else None,
             "visible_technique_mean_9": _rounded(
                 _mean(_number(point.get("visible_score_9")) for point in series),
                 2,
-            ),
+            ) if compatible_series else None,
             "visible_technique_median_9": _rounded(
                 _median(_number(point.get("visible_score_9")) for point in series),
                 2,
-            ),
+            ) if compatible_series else None,
+            "median_uncertainty_100": _rounded(
+                _median(point.get("score_uncertainty_100") for point in series), 2,
+            ) if compatible_series else None,
             "median_uncertainty_9": _rounded(
                 _median(_number(point.get("score_uncertainty_9")) for point in series),
                 2,

@@ -16,23 +16,25 @@ def build_impact_telemetry_card(event_dict: Dict) -> Dict:
     """Build telemetry card dictionary for DualViewRenderer overlay."""
     bio = event_dict.get("biomechanics") or {}
     ext = bio.get("extended_biomechanics") or event_dict.get("extended_biomechanics") or {}
-    score = ext.get("swing_quality_score") or {}
+    from practice_score_adapter import resolve_practice_score
+    practice = resolve_practice_score(event_dict)
     rkt = ext.get("racket_head_speed") or {}
     brush = ext.get("brush_angle") or {}
     stc = ext.get("stance") or {}
     leg = ext.get("leg_drive") or {}
     seq = ext.get("kinematic_sequence") or {}
     return {
+        "practice_score": practice,
         "stroke_type": event_dict.get("stroke_type", "FOREHAND"),
-        "swing_score": score.get("overall_score", 0.0),
-        "swing_grade": score.get("grade", "N/A"),
-        "racket_speed_kmh": rkt.get("contact_kmh", 0.0),
-        "racket_max_speed_kmh": rkt.get("max_kmh", 0.0),
-        "brush_angle_deg": brush.get("low_to_high_angle_deg", 0.0),
+        "swing_score": practice["score"],
+        "swing_grade": practice["grade"],
+        "racket_speed_kmh": rkt.get("contact_kmh"),
+        "racket_max_speed_kmh": rkt.get("max_kmh"),
+        "brush_angle_deg": brush.get("low_to_high_angle_deg"),
         "drop_depth_ratio": brush.get("drop_depth_ratio"),
-        "stance_type": stc.get("stance_type", "Semi-Open Stance"),
+        "stance_type": stc.get("stance_type"),
         "leg_drive_ratio": leg.get("drive_ratio"),
-        "kinematic_sequence_text": f"腿 -> 髋 -> 肩 -> 拍 ({seq.get('sequence_quality', 'OPTIMAL')})",
+        "kinematic_sequence_text": f"腿 -> 髋 -> 肩 -> 拍 ({seq.get('sequence_quality') or '未观测'})",
     }
 
 

@@ -2,7 +2,9 @@
 
 **版本**：v2.0-release  
 **生效日期**：2026-09-23  
-**状态**：已正式落地  
+**状态**：历史标准，已停用；现行草案见 [发球机练习统一评分](PRACTICE_SCORING.md)
+
+> 以下公式、PRO 等级及缺失值保底规则仅保留用于解释历史结果，不再用于当前评分。当前 `practice_score` 区分教练五维评价与自动二维参考，缺失证据不补默认分。
 **关联代码实现**：[`swing_biomechanics.py`](file:///Users/krum5539/Documents/tennis_analyzer/swing_biomechanics.py#L498-L563)、[`dual_view_renderer.py`](file:///Users/krum5539/Documents/tennis_analyzer/dual_view_renderer.py)、[`local_realtime_coach.py`](file:///Users/krum5539/Documents/tennis_analyzer/local_realtime_coach.py)
 
 ---

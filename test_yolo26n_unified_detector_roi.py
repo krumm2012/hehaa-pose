@@ -6,6 +6,41 @@ from yolo26n_unified_detector import YOLO26nUnifiedDetector
 
 
 class UnifiedDetectorROITests(unittest.TestCase):
+    def test_airborne_ball_survives_before_primary_selection_with_exclusions(self):
+        from roi_manager import ROIManager
+
+        manager = ROIManager({})
+        manager.set_roi_points([(200, 600), (800, 600), (900, 900), (100, 900)])
+        manager.configure_ball_airspace((1000, 1000))
+        manager.add_exclusion_polygon([(400, 100), (600, 100), (600, 400), (400, 400)])
+        manager.add_exclusion_polygon([(250, 420), (350, 420), (350, 550), (250, 550)])
+
+        detector = YOLO26nUnifiedDetector.__new__(YOLO26nUnifiedDetector)
+        detector.roi_manager = manager
+        detector._coreml_input_names = set()
+        detector.detection_times = []
+        detector.config = {}
+        detector.last_ball_diagnostics = {}
+        detector.last_racket_diagnostics = {}
+        detector._preprocess = lambda frame: None
+        detector.model = type("MockModel", (), {"predict": lambda self, feed: {}})()
+        candidates = [{"position": position} for position in
+                      [[700, 300], [500, 300], [300, 480], [20, 300], [500, 950]]]
+        detector._parse_predictions = lambda predictions: (candidates, [])
+        seen = []
+
+        def select(balls, rackets):
+            seen.extend(balls)
+            return balls
+
+        detector._filter_static_balls = select
+        detector._select_primary_racket = lambda rackets, balls: rackets
+        balls, _, _ = detector.detect_unified(np.zeros((1000, 1000, 3), dtype=np.uint8))
+        self.assertEqual(seen, [{"position": [700, 300]}])
+        self.assertEqual(balls, seen)
+        self.assertFalse(manager.is_point_in_roi((700, 300)))
+        self.assertTrue(manager.is_ball_in_roi((700, 300)))
+
     def test_parses_two_class_end_to_end_output_with_configured_name(self):
         detector = YOLO26nUnifiedDetector.__new__(YOLO26nUnifiedDetector)
         detector.original_width = 1920

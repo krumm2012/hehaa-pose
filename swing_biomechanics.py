@@ -402,7 +402,7 @@ def _calculate_extended_tier_biomechanics(
         for f in features_in_event
         if f.get("racket_head_speed_kmh") is not None
     ]
-    max_racket_speed = max(racket_speeds) if racket_speeds else 0.0
+    max_racket_speed = max(racket_speeds) if racket_speeds else None
     contact_f = next((f for f in features_in_event if f.get("frame_id") == contact_frame), {})
     contact_window_feats = [
         f for f in features_in_event
@@ -413,12 +413,12 @@ def _calculate_extended_tier_biomechanics(
         for f in contact_window_feats
         if f.get("racket_head_speed_kmh") is not None
     ]
-    if contact_speeds and max(contact_speeds) > 0:
+    if contact_speeds:
         contact_racket_speed = max(contact_speeds)
-    elif max_racket_speed > 0:
+    elif max_racket_speed is not None:
         contact_racket_speed = max_racket_speed * 0.88
     else:
-        contact_racket_speed = 0.0
+        contact_racket_speed = None
 
     # 2. 第一梯队：由下向上刷球角与掉拍头下潜深度 (Low-to-High Brush Angle & Drop Depth)
     pre_contact_feats = [
@@ -471,7 +471,7 @@ def _calculate_extended_tier_biomechanics(
         from collections import Counter
         stance_type = Counter(stance_samples).most_common(1)[0][0]
     else:
-        stance_type = "Semi-Open Stance"
+        stance_type = None
 
     # 4. 第二梯队：垂直蹬地发力率 (Vertical Leg Drive)
     hip_ys = [
@@ -495,9 +495,9 @@ def _calculate_extended_tier_biomechanics(
     if not accel_features:
         accel_features = features_in_event
 
-    hip_peak_f = max(accel_features, key=lambda f: float(f.get("hip_rotation_speed") or 0.0)).get("frame_id", contact_frame)
-    sh_peak_f = max(accel_features, key=lambda f: float(f.get("shoulder_rotation_speed") or 0.0)).get("frame_id", contact_frame)
-    rkt_peak_f = max(accel_features, key=lambda f: float(f.get("racket_speed") or 0.0)).get("frame_id", contact_frame)
+    hip_peak_f = max(accel_features or [{}], key=lambda f: float(f.get("hip_rotation_speed") or 0.0)).get("frame_id", contact_frame)
+    sh_peak_f = max(accel_features or [{}], key=lambda f: float(f.get("shoulder_rotation_speed") or 0.0)).get("frame_id", contact_frame)
+    rkt_peak_f = max(accel_features or [{}], key=lambda f: float(f.get("racket_speed") or 0.0)).get("frame_id", contact_frame)
 
     dt_hip_sh = round((sh_peak_f - hip_peak_f) / fps * 1000.0, 1)
     dt_sh_rkt = round((rkt_peak_f - sh_peak_f) / fps * 1000.0, 1)
@@ -506,70 +506,56 @@ def _calculate_extended_tier_biomechanics(
     )
 
 
-    # 6. 第二梯队：单拍综合技术评分 (Swing Quality Score: 0~100)
-    turn_val = float(contact_f.get("robust_shoulder_turn_deg") or contact_f.get("shoulder_turn_deg") or 30.0)
-    tb_val = float(contact_f.get("takeback_depth_ratio") or 1.2)
-    arm_val = float(contact_f.get("arm_extension_deg") or 150.0)
-
-    score_turn = 100.0 * min(1.0, max(0.0, turn_val / 42.0))
-    score_tb = 100.0 * min(1.0, max(0.0, tb_val / 1.5))
-    score_arm = 100.0 * min(1.0, max(0.0, (arm_val - 90.0) / 75.0))
-    score_speed = 100.0 * min(1.0, max(0.0, max_racket_speed / 85.0)) if max_racket_speed > 0 else 75.0
-    score_drive = 100.0 * min(1.0, max(0.0, (leg_drive_ratio or 0.15) / 0.22))
-
-    total_score = round(
-        0.25 * score_turn + 0.25 * score_tb + 0.20 * score_arm + 0.15 * score_speed + 0.15 * score_drive,
-        1,
+    # Legacy weighted composite is retired: missing data never receives defaults.
+    # A single practice policy is attached after the evidence metrics are assembled.
+    total_score = None
+    grade = None
+    sequence_observed = bool(accel_features) and all(
+        any(float(f.get(key) or 0) > 0 for f in accel_features)
+        for key in ("hip_rotation_speed", "shoulder_rotation_speed", "racket_speed")
     )
-    if total_score >= 88.0:
-        grade = "PRO"
-    elif total_score >= 75.0:
-        grade = "ADVANCED"
-    elif total_score >= 60.0:
-        grade = "INTERMEDIATE"
-    else:
-        grade = "DEVELOPING"
 
     return {
         "racket_head_speed": {
-            "max_kmh": round(max_racket_speed, 1),
-            "contact_kmh": round(contact_racket_speed, 1),
-            "confidence": 0.88,
+            "max_kmh": round(max_racket_speed, 1) if max_racket_speed is not None else None,
+            "contact_kmh": round(contact_racket_speed, 1) if contact_racket_speed is not None else None,
+            "confidence": 0.0,
+            "coach_eligible": False,
+            "observability": "racket_center_speed_assumed_body_scale",
         },
         "brush_angle": {
-            "low_to_high_angle_deg": low_to_high_angle,
-            "drop_depth_px": racket_drop_px,
-            "drop_depth_ratio": racket_drop_ratio,
-            "confidence": 0.85,
+            "low_to_high_angle_deg": low_to_high_angle if len(racket_centers) >= 2 else None,
+            "drop_depth_px": racket_drop_px if len(racket_centers) >= 2 else None,
+            "drop_depth_ratio": racket_drop_ratio if len(racket_centers) >= 2 and body_width else None,
+            "confidence": 0.0,
+            "coach_eligible": False,
         },
         "stance": {
             "stance_type": stance_type,
-            "confidence": 0.90,
+            "confidence": 0.0,
+            "coach_eligible": False,
         },
         "leg_drive": {
-            "drive_px": round(leg_drive_px, 1),
-            "drive_ratio": leg_drive_ratio,
-            "confidence": 0.85,
+            "drive_px": round(leg_drive_px, 1) if len(hip_ys) >= 2 else None,
+            "drive_ratio": leg_drive_ratio if len(hip_ys) >= 2 and body_width else None,
+            "confidence": 0.0,
+            "coach_eligible": False,
         },
         "kinematic_sequence": {
-            "hip_peak_frame": int(hip_peak_f),
-            "shoulder_peak_frame": int(sh_peak_f),
-            "racket_peak_frame": int(rkt_peak_f),
-            "latency_hip_to_shoulder_ms": dt_hip_sh,
-            "latency_shoulder_to_racket_ms": dt_sh_rkt,
-            "is_sequential": is_sequential,
-            "sequence_quality": "OPTIMAL" if is_sequential else "DISCONNECTED",
+            "hip_peak_frame": int(hip_peak_f) if sequence_observed else None,
+            "shoulder_peak_frame": int(sh_peak_f) if sequence_observed else None,
+            "racket_peak_frame": int(rkt_peak_f) if sequence_observed else None,
+            "latency_hip_to_shoulder_ms": dt_hip_sh if sequence_observed else None,
+            "latency_shoulder_to_racket_ms": dt_sh_rkt if sequence_observed else None,
+            "is_sequential": is_sequential if sequence_observed else None,
+            "sequence_quality": ("OPTIMAL" if is_sequential else "DISCONNECTED") if sequence_observed else None,
+            "coach_eligible": False,
+            "confidence": 0.0,
         },
         "swing_quality_score": {
             "overall_score": total_score,
             "grade": grade,
-            "sub_scores": {
-                "shoulder_turn": round(score_turn, 1),
-                "takeback": round(score_tb, 1),
-                "arm_extension": round(score_arm, 1),
-                "racket_speed": round(score_speed, 1),
-                "leg_drive": round(score_drive, 1),
-            },
+            "sub_scores": {},
         },
     }
 
@@ -711,7 +697,7 @@ def aggregate_event_biomechanics(
         fps=float(event.get("fps") or 25.0),
     )
 
-    return {
+    result = {
         "schema_version": "dual_view_2d_v1" if has_dual_view else "single_view_2d_v2",
         "coordinate_space": "image_plane_normalized_by_body_width",
         "contact_frame": contact_frame,
@@ -784,29 +770,39 @@ def aggregate_event_biomechanics(
             "takeback_depth": takeback_depth_metric,
             "scapular_retraction": scapular_retraction_metric,
             "racket_head_speed": {
-                "value": round(ext["racket_head_speed"]["contact_kmh"], 1) if pose_ratio > 0 else None,
+                "coach_eligible": False,
+                "exclusion_reason": "unvalidated_projection_estimate",
+                "value": ext["racket_head_speed"]["contact_kmh"] if pose_ratio > 0 else None,
                 "confidence": ext["racket_head_speed"]["confidence"] if pose_ratio > 0 else 0.0,
                 "unit": "km/h",
                 "max_kmh": ext["racket_head_speed"]["max_kmh"] if pose_ratio > 0 else None,
             },
             "brush_angle": {
+                "coach_eligible": False,
+                "exclusion_reason": "unvalidated_projection_estimate",
                 "value": ext["brush_angle"]["low_to_high_angle_deg"] if pose_ratio > 0 else None,
                 "confidence": ext["brush_angle"]["confidence"] if pose_ratio > 0 else 0.0,
                 "unit": "deg",
                 "drop_depth_ratio": ext["brush_angle"]["drop_depth_ratio"] if pose_ratio > 0 else None,
             },
             "stance": {
+                "coach_eligible": False,
+                "exclusion_reason": "unvalidated_projection_estimate",
                 "value": ext["stance"]["stance_type"] if pose_ratio > 0 else None,
                 "confidence": ext["stance"]["confidence"] if pose_ratio > 0 else 0.0,
             },
             "leg_drive": {
+                "coach_eligible": False,
+                "exclusion_reason": "unvalidated_projection_estimate",
                 "value": ext["leg_drive"]["drive_ratio"] if pose_ratio > 0 else None,
                 "confidence": ext["leg_drive"]["confidence"] if pose_ratio > 0 else 0.0,
                 "unit": "ratio",
             },
             "kinematic_sequence": {
+                "coach_eligible": False,
+                "exclusion_reason": "unvalidated_projection_estimate",
                 "value": ext["kinematic_sequence"]["sequence_quality"] if pose_ratio > 0 else None,
-                "confidence": 0.85 if pose_ratio > 0 else 0.0,
+                "confidence": 0.0,
                 "details": ext["kinematic_sequence"] if pose_ratio > 0 else {},
             },
             "swing_quality_score": {
@@ -830,6 +826,10 @@ def aggregate_event_biomechanics(
             "early_recovery_frame": int(early_recovery_frame),
         },
     }
+
+    from practice_scoring import attach_score
+    attach_score({**event, "biomechanics": result})
+    return result
 
 
 def enrich_events_with_biomechanics(
@@ -855,5 +855,7 @@ def enrich_events_with_biomechanics(
             event["swing_score"] = bio["swing_score"]
         if "swing_grade" in bio:
             event["swing_grade"] = bio["swing_grade"]
+        from practice_scoring import attach_score
+        attach_score(event)
         enriched.append(event)
     return enriched

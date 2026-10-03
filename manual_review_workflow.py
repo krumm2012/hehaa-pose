@@ -284,7 +284,8 @@ def derive_manual_coach_events(
         )
         event.update({key: value for key, value in summary.items() if key != "frame_phases"})
         event["biomechanics"] = aggregate_event_biomechanics(event, frame_records, features)
-        event["coach_calibration"] = calibrate_coaching_event(event)
+        from practice_scoring import attach_score
+        attach_score(event)
         advices = coach.advise_all(event)
         event["coach_advices"] = advices
         event["coach_advice"] = advices[0]

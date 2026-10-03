@@ -1129,8 +1129,8 @@ class RealtimeSwingOutputManager:
                 number(quality.get("evidence_quality_score_100"), 0, "/100"),
             ),
             (
-                "可见动作",
-                number(quality.get("visible_technique_mean_9"), 1, "/9"),
+                "练习评分",
+                number(quality.get("practice_score_mean_100"), 1, "/100"),
             ),
             (
                 "校准覆盖",
@@ -1151,9 +1151,9 @@ class RealtimeSwingOutputManager:
         )
         trend_rows = []
         for point in dashboard.get("series") or []:
-            score = point.get("visible_score_9")
+            score = point.get("practice_score_100")
             evidence = point.get("evidence_quality_100")
-            score_width = max(0.0, min(100.0, float(score or 0.0) / 9.0 * 100.0))
+            score_width = max(0.0, min(100.0, float(score or 0.0)))
             evidence_width = max(0.0, min(100.0, float(evidence or 0.0)))
             trend_rows.append(
                 '<div class="live-trend-row">'
@@ -1162,7 +1162,7 @@ class RealtimeSwingOutputManager:
                 f'<i class="technique" style="width:{score_width:.1f}%"></i>'
                 f'<i class="evidence" style="width:{evidence_width:.1f}%"></i>'
                 '</div>'
-                f'<span>{number(score, 1, "/9")}</span>'
+                f'<span>{number(score, 1, "/100")}</span>'
                 '</div>'
             )
         alerts = dashboard.get("alerts") or []
@@ -1265,25 +1265,22 @@ class RealtimeSwingOutputManager:
                 .get("contact_analysis", {})
                 .get("is_shadow_swing")
             )
-            swing_grade = event.get("swing_grade") or bio.get("swing_grade") or (sqs.get("grade") if isinstance(sqs, dict) else None)
-            swing_score = event.get("swing_score") or bio.get("swing_score") or (sqs.get("overall_score") if isinstance(sqs, dict) else (sqs.get("value") if isinstance(sqs, dict) else None))
+            from practice_scoring import POLICY
+            from practice_score_adapter import resolve_practice_score
+            practice = resolve_practice_score(event)
+            swing_grade, swing_score = practice["grade"], practice["score"]
             if is_shadow_swing:
                 head_badge_html = '<span class="tier-pill" style="background:#4b5563;color:#e5e7eb;font-weight:600;">空挥练习 · 无来球</span>'
             elif swing_grade:
                 grade_upper = str(swing_grade).upper()
                 tier_class = f"tier-{grade_upper.lower()}"
                 score_display = f"{float(swing_score):.1f}分" if swing_score is not None else ""
-                grade_labels = {
-                    "PRO": "PRO · 职业级",
-                    "ADVANCED": "ADVANCED · 进阶级",
-                    "INTERMEDIATE": "INTERMEDIATE · 中级",
-                    "DEVELOPING": "DEVELOPING · 基础级",
-                }
+                grade_labels = {code: ("教练评分" if practice["method"] == "coach_manual" else "可见动作参考") + " · " + label for _, code, label in POLICY["grade_bands"]}
                 grade_label = grade_labels.get(grade_upper, grade_upper)
                 head_badge_html = f'<span class="tier-pill {tier_class}">{html.escape(grade_label)} <strong style="margin-left:4px;">{score_display}</strong></span>'
             else:
                 conf_val = float(event.get('confidence') or 0.0)
-                head_badge_html = f'<span>{conf_val:.1%}</span>'
+                head_badge_html = '<span>可见动作参考分：证据不足</span>'
 
             snapshot_html = ""
             c_frame = event.get("contact_frame")
@@ -1396,7 +1393,7 @@ class RealtimeSwingOutputManager:
                 or {}
             )
             details = seq.get("details") if isinstance(seq, dict) and isinstance(seq.get("details"), dict) else (seq if isinstance(seq, dict) else {})
-            seq_quality = (seq.get("value") or details.get("sequence_quality") or "OPTIMAL") if isinstance(seq, dict) else "OPTIMAL"
+            seq_quality = (seq.get("value") or details.get("sequence_quality") or "未观测") if isinstance(seq, dict) else "未观测"
             dt_hip_sh = details.get("latency_hip_to_shoulder_ms") if isinstance(details, dict) else None
             dt_sh_rkt = details.get("latency_shoulder_to_racket_ms") if isinstance(details, dict) else None
 
@@ -1456,9 +1453,9 @@ class RealtimeSwingOutputManager:
             scap = metrics.get("scapular_retraction") or {}
             sh_turn = metrics.get("shoulder_turn") or {}
 
-            contact_kmh = rkt.get("contact_kmh") or rkt.get("contact_speed_kmh") or (rkt.get("value") if isinstance(rkt, dict) else None)
-            max_kmh = rkt.get("max_kmh") or rkt.get("max_speed_kmh")
-            brush_angle = brush.get("low_to_high_angle_deg") or brush.get("angle_deg") or (brush.get("value") if isinstance(brush, dict) else None)
+            contact_kmh = rkt.get("contact_kmh") if rkt.get("contact_kmh") is not None else rkt.get("contact_speed_kmh") or (rkt.get("value") if isinstance(rkt, dict) else None)
+            max_kmh = rkt.get("max_kmh") if rkt.get("max_kmh") is not None else rkt.get("max_speed_kmh")
+            brush_angle = brush.get("low_to_high_angle_deg") if brush.get("low_to_high_angle_deg") is not None else brush.get("angle_deg") or (brush.get("value") if isinstance(brush, dict) else None)
             drop_ratio = brush.get("drop_depth_ratio") if isinstance(brush, dict) else None
             stance_type = stc.get("stance_type") or (stc.get("value") if isinstance(stc, dict) else None)
             leg_ratio = leg.get("drive_ratio") or (leg.get("value") if isinstance(leg, dict) else None)
@@ -1590,13 +1587,13 @@ class RealtimeSwingOutputManager:
                 "unknown": "未知",
             }.get(swing_context.get("side"), "未知")
             coach_calibration = event.get("coach_calibration") or {}
-            visible_score = coach_calibration.get("visible_technique_score_9")
+            visible_score = practice["score"]
             visible_uncertainty = coach_calibration.get("uncertainty_9")
             calibration_text = (
-                f"{float(visible_score):.1f}/9"
+                f"{float(visible_score):.1f}/100"
                 + (
-                    f" ±{float(visible_uncertainty):.1f}"
-                    if visible_uncertainty is not None
+                    f" 启发式范围 ±{float(visible_uncertainty)/9*100:.1f}"
+                    if visible_uncertainty is not None and practice["method"] != "coach_manual"
                     else ""
                 )
                 if visible_score is not None

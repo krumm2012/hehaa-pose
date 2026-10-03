@@ -22,21 +22,25 @@ class LocalRealtimeCoachTests(unittest.TestCase):
                         "value": 0.31,
                         "unit": "body_width",
                         "confidence": 0.86,
+                        "coach_eligible": True,
                     },
                     "arm_extension": {
                         "value": 121.0,
                         "unit": "deg",
                         "confidence": 0.91,
+                        "coach_eligible": True,
                     },
                     "hip_shoulder_separation": {
                         "value": 7.0,
                         "unit": "deg",
                         "confidence": 0.88,
+                        "coach_eligible": True,
                     },
                     "balance_drift": {
                         "value": 0.9,
                         "unit": "body_width",
                         "confidence": 0.8,
+                        "coach_eligible": True,
                     },
                 },
             },
@@ -76,7 +80,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         advices = coach.advise_all(event)
 
         self.assertEqual(len(advices), 1)
-        self.assertEqual(advices[0]["code"], "maintain_form")
+        self.assertEqual(advices[0]["code"], "insufficient_technique_evidence")
 
     def test_moderate_pose_gap_does_not_block_reliable_biomechanics(self):
         coach = LocalRealtimeCoach(max_suggestions=3, min_confidence=0.45)
@@ -94,6 +98,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
                         "value": 120.0,
                         "unit": "deg",
                         "confidence": 0.75,
+                        "coach_eligible": True,
                     }
                 }
             },
@@ -117,11 +122,13 @@ class LocalRealtimeCoachTests(unittest.TestCase):
                         "value": 0.02,
                         "unit": "body_width",
                         "confidence": 0.9,
+                        "coach_eligible": True,
                     },
                     "balance_drift": {
                         "value": 1.0,
                         "unit": "body_width",
                         "confidence": 0.9,
+                        "coach_eligible": True,
                     },
                 }
             },
@@ -158,7 +165,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
 
         advices = coach.advise_all(event)
 
-        self.assertEqual(advices[0]["code"], "maintain_form")
+        self.assertEqual(advices[0]["code"], "insufficient_technique_evidence")
         self.assertNotIn("limited_separation", {item["code"] for item in advices})
         self.assertNotIn("unstable_balance", {item["code"] for item in advices})
 
@@ -176,6 +183,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
                         "value": 5.0,
                         "unit": "deg_2d",
                         "confidence": 0.8,
+                        "coach_eligible": True,
                         "coach_eligible": True,
                         "observability": "image_plane_joint_angle",
                     }
@@ -204,7 +212,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
 
         advice = coach.advise(event)
 
-        self.assertEqual(advice["code"], "maintain_form")
+        self.assertEqual(advice["code"], "insufficient_technique_evidence")
 
     def test_pose_gap_gets_short_capture_guidance_before_technique_advice(self):
         coach = LocalRealtimeCoach(max_chars=15)
@@ -233,6 +241,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         event = {
             "event_id": 2,
             "confidence": 0.88,
+                        "coach_eligible": True,
             "quality_flags": {"warnings": []},
             "phase_counts": {
                 "backswing": 8,
@@ -252,6 +261,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         event = {
             "event_id": 3,
             "confidence": 0.91,
+                        "coach_eligible": True,
             "quality_flags": {
                 "warnings": ["ball_track_gaps"],
                 "ball_frame_ratio": 0.42,
@@ -272,6 +282,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         event = {
             "event_id": 13,
             "confidence": 0.91,
+                        "coach_eligible": True,
             "quality_flags": {
                 "warnings": ["ball_track_gaps"],
                 "ball_frame_ratio": 0.1,
@@ -303,7 +314,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
 
         self.assertEqual(
             (advice["code"], advice["message"]),
-            ("maintain_form", "动作稳定继续保持"),
+            ("insufficient_technique_evidence", "动作证据不足需复核"),
         )
         self.assertLessEqual(len(advice["message"]), 15)
 
@@ -449,9 +460,9 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         }
         advices = coach.advise_all(event)
         self.assertEqual(len(advices), 1)
-        self.assertEqual(advices[0]["code"], "maintain_form")
-        self.assertEqual(advices[0]["message"], "动作稳定继续保持")
-        self.assertEqual(advices[0]["category"], "positive")
+        self.assertEqual(advices[0]["code"], "insufficient_technique_evidence")
+        self.assertEqual(advices[0]["message"], "动作证据不足需复核")
+        self.assertEqual(advices[0]["category"], "review")
 
     def test_disconnected_kinetic_chain_produces_advice(self):
         coach = LocalRealtimeCoach(max_chars=15)
@@ -525,6 +536,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         event = {
             "event_id": 33,
             "confidence": 0.91,
+                        "coach_eligible": True,
             "quality_flags": {
                 "warnings": ["ball_track_gaps"],
                 "ball_frame_ratio": 0.1,
@@ -557,6 +569,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         event = {
             "event_id": 99,
             "confidence": 0.88,
+                        "coach_eligible": True,
             "is_shadow_swing": True,
             "quality_flags": {
                 "warnings": ["ball_track_gaps"],
@@ -573,6 +586,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         event = {
             "event_id": 100,
             "confidence": 0.88,
+                        "coach_eligible": True,
             "is_shadow_swing": True,
             "biomechanics": {
                 "metrics": {

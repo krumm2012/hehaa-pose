@@ -297,8 +297,11 @@ class DualPoseEstimator:
             if crop_info is not None and is_point_in_mirror_fn is not None:
                 orig_cx, orig_cy = crop_info.map_to_original(cx, cy)
                 orig_bx, orig_by = crop_info.map_to_original(cx, max_y)
-                # 镜中倒影的中心或底部双脚落在镜面内部，且位于画面上部
-                if bool(is_point_in_mirror_fn(orig_cx, orig_cy)) or (bool(is_point_in_mirror_fn(orig_bx, orig_by)) and cy < 0.50 * h):
+                in_mirror_center = bool(is_point_in_mirror_fn(orig_cx, orig_cy))
+                in_mirror_bottom = bool(is_point_in_mirror_fn(orig_bx, orig_by))
+                # 真实选手的双脚站在球场地面上（底部在镜面多边形下方），绝不是后墙镜中虚影；
+                # 只有当底部双脚也完全落在镜面内部，或中心在镜面内且人像位于局部视口上半部/小尺度时，才是后墙镜中倒影。
+                if in_mirror_bottom or (in_mirror_center and cy < 0.45 * h and max_y < 0.55 * h):
                     is_mirror = True
             elif cy < 0.40 * h and max_y < 0.50 * h:
                 # 当无原图多边形回调时，退化为局部视口顶部禁区几何判断
@@ -376,7 +379,11 @@ class DualPoseEstimator:
             if crop_info is not None and is_point_in_mirror_fn is not None:
                 orig_cx, orig_cy = crop_info.map_to_original(cx, cy)
                 orig_bx, orig_by = crop_info.map_to_original(cx, max_y)
-                if bool(is_point_in_mirror_fn(orig_cx, orig_cy)) or (bool(is_point_in_mirror_fn(orig_bx, orig_by)) and cy < 0.50 * h):
+                in_mirror_center = bool(is_point_in_mirror_fn(orig_cx, orig_cy))
+                in_mirror_bottom = bool(is_point_in_mirror_fn(orig_bx, orig_by))
+                # 真实选手的双脚站在球场地面上（底部在镜面多边形下方），绝不是后墙镜中虚影；
+                # 只有当底部双脚也完全落在镜面内部，或中心在镜面内且人像位于局部视口上半部/小尺度时，才是后墙镜中倒影。
+                if in_mirror_bottom or (in_mirror_center and cy < 0.45 * h and max_y < 0.55 * h):
                     is_mirror = True
             elif cy < 0.40 * h and max_y < 0.50 * h:
                 is_mirror = True

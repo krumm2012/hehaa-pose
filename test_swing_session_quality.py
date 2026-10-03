@@ -11,7 +11,7 @@ def event(
     warnings=None,
     advice_code=None,
 ):
-    return {
+    result = {
         "event_id": event_id,
         "start_frame": event_id * 20,
         "contact_frame": event_id * 20 + 5,
@@ -56,6 +56,17 @@ def event(
             [{"code": advice_code, "message": "建议"}] if advice_code else []
         ),
     }
+    from practice_scoring import POLICY
+    for name, curve in POLICY["automatic_curves"].items():
+        target = score / 9
+        value = curve[-1][0]
+        for (x0, y0), (x1, y1) in zip(curve, curve[1:]):
+            if y0 <= target <= y1:
+                value = x0 + (target-y0) / (y1-y0) * (x1-x0)
+                break
+        result["biomechanics"]["metrics"][name].update(value=value, confidence=.8, unit="deg_2d")
+    return result
+
 
 
 class SwingSessionQualityTests(unittest.TestCase):

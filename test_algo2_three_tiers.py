@@ -72,8 +72,9 @@ class TestAlgo2ThreeTiers(unittest.TestCase):
         self.assertIn("leg_drive", ext)
         self.assertGreater(ext["leg_drive"]["drive_px"], 0.0)
         self.assertIn("swing_quality_score", ext)
-        self.assertGreaterEqual(ext["swing_quality_score"]["overall_score"], 60.0)
-        self.assertIn(ext["swing_quality_score"]["grade"], ["PRO", "ADVANCED", "INTERMEDIATE"])
+        self.assertIsNone(ext["swing_quality_score"]["overall_score"])
+        self.assertIsNone(ext["swing_quality_score"]["grade"])
+        self.assertFalse(ext["leg_drive"]["coach_eligible"])
 
         # Tier 3: 动力学链时序
         self.assertIn("kinematic_sequence", ext)

@@ -10,8 +10,12 @@ Aggregates individual swing events across a training session into:
 from __future__ import annotations
 
 import math
+import json
 from collections import Counter, defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Sequence
+
+from practice_scoring import score_review, DIMENSIONS, POLICY_VERSION
+from practice_score_adapter import resolve_practice_score
 
 
 def _is_shadow(ev: Dict[str, Any]) -> bool:
@@ -26,21 +30,16 @@ def _is_shadow(ev: Dict[str, Any]) -> bool:
     return False
 
 
+def _get_practice_score(ev: Dict[str, Any]) -> Dict[str, Any]:
+    return resolve_practice_score(ev)
+
+
 def _get_score(ev: Dict[str, Any]) -> Optional[float]:
-    score = ev.get("swing_score")
-    if score is None:
-        score = (ev.get("biomechanics") or {}).get("swing_score")
-    try:
-        return float(score) if score is not None else None
-    except (TypeError, ValueError):
-        return None
+    return _get_practice_score(ev).get("score")
 
 
-def _get_grade(ev: Dict[str, Any]) -> str:
-    grade = ev.get("swing_grade")
-    if not grade:
-        grade = (ev.get("biomechanics") or {}).get("swing_grade")
-    return str(grade or "DEVELOPING")
+def _get_grade(ev: Dict[str, Any]) -> Optional[str]:
+    return _get_practice_score(ev).get("grade")
 
 
 def _get_speed(ev: Dict[str, Any]) -> Optional[float]:
@@ -54,46 +53,22 @@ def _get_speed(ev: Dict[str, Any]) -> Optional[float]:
         return None
 
 
-def calculate_radar_dimensions(ev: Dict[str, Any]) -> Dict[str, float]:
-    """Calculate 5-dimension normalized scores (0-100) for a single swing."""
-    ext = ev.get("extended_biomechanics") or (ev.get("biomechanics") or {}).get("extended_biomechanics") or {}
-    
-    # 1. Speed (normalized to 0-100, where 75 km/h is 85 pts)
-    speed_kmh = _get_speed(ev) or 0.0
-    dim_speed = min(100.0, max(20.0, (speed_kmh / 85.0) * 100.0))
+def calculate_radar_dimensions(ev: Dict[str, Any]) -> Dict[str, Optional[float]]:
+    """Only explicit coach ratings populate the five practice dimensions."""
+    result = _get_practice_score(ev)
+    if result["method"] != "coach_manual":
+        return {key: None for key in DIMENSIONS}
+    result = score_review({"ratings": result.get("ratings"),
+                           "confirmed": result.get("status") == "coach_confirmed"})
+    return {key: value * 20.0 if value is not None and result["status"] == "coach_confirmed" else None
+            for key, value in result["ratings"].items()}
 
-    # 2. Brush & Drop (normalized from low_to_high_angle_deg and drop ratio)
-    brush = ext.get("brush_angle") or {}
-    angle = float(brush.get("low_to_high_angle_deg") or 0.0)
-    drop = float(brush.get("drop_depth_ratio") or 0.0)
-    dim_brush = min(100.0, max(20.0, (min(angle, 60.0) / 60.0 * 60.0) + (min(drop, 0.4) / 0.4 * 40.0)))
 
-    # 3. Kinematic Sequence
-    seq = ext.get("kinematic_sequence") or {}
-    quality = seq.get("sequence_quality")
-    if quality == "OPTIMAL":
-        dim_kinematics = 92.0
-    elif quality == "ACCEPTABLE":
-        dim_kinematics = 75.0
-    else:
-        dim_kinematics = 45.0
-
-    # 4. Leg Drive
-    leg = ext.get("leg_drive") or {}
-    drive_ratio = float(leg.get("drive_ratio") or 1.0)
-    dim_leg = min(100.0, max(25.0, (drive_ratio / 1.6) * 85.0))
-
-    # 5. Preparation & Quality
-    raw_score = _get_score(ev) or 60.0
-    dim_prep = min(100.0, max(20.0, raw_score * 0.95))
-
-    return {
-        "speed": round(dim_speed, 1),
-        "brush": round(dim_brush, 1),
-        "kinematics": round(dim_kinematics, 1),
-        "leg_drive": round(dim_leg, 1),
-        "preparation": round(dim_prep, 1),
-    }
+def _series_key(ev):
+    result = _get_practice_score(ev)
+    context = ev.get("practice_context") or {}
+    return json.dumps({"policy": result["policy_version"], "method": result["method"],
+                       "stroke": ev.get("stroke_type"), "context": context}, sort_keys=True)
 
 
 def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
@@ -127,13 +102,9 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
             "score_trends": [],
             "common_deficiencies": [],
             "macro_diagnosis": "当前会话暂无击球事件记录。",
-            "radar_averages": {
-                "speed": 0.0,
-                "brush": 0.0,
-                "kinematics": 0.0,
-                "leg_drive": 0.0,
-                "preparation": 0.0,
-            },
+            "radar_averages": {key: None for key in DIMENSIONS},
+            "scoring_policy_version": POLICY_VERSION,
+            "score_series": [],
         }
 
     forehand_count = 0
@@ -146,7 +117,8 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
     deficiency_counter: Counter[str] = Counter()
     advice_info: Dict[str, Dict[str, Any]] = {}
     radar_accumulator: Dict[str, float] = defaultdict(float)
-    radar_count = 0
+    radar_counts = defaultdict(int)
+    score_groups = defaultdict(list)
 
     for ev in ordered:
         eid = int(ev.get("event_id") or 0)
@@ -167,13 +139,15 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
 
         if not shadow and score is not None:
             valid_scores.append(score)
+            score_groups[_series_key(ev)].append(score)
 
         # Accumulate radar
         if not shadow:
             dims = calculate_radar_dimensions(ev)
             for k, v in dims.items():
-                radar_accumulator[k] += v
-            radar_count += 1
+                if v is not None:
+                    radar_accumulator[k] += v
+                    radar_counts[k] += 1
 
         score_trends.append({
             "event_id": eid,
@@ -228,7 +202,15 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
         else:
             score_std = 0.0
 
-        if score_std < 5.0:
+        if len(score_groups) > 1:
+            avg_score = score_std = min_score = max_score = None
+            stability_rating = "INCOMPARABLE_SERIES"
+            stability_label = "分动作与训练条件查看，不能合并比较"
+        elif valid_shots_count < 3:
+            score_std = None
+            stability_rating = "INSUFFICIENT_SAMPLES"
+            stability_label = "样本不足，暂不评价稳定性"
+        elif score_std < 5.0:
             stability_rating = "HIGH_CONSISTENCY"
             stability_label = "极高稳定性 (动作品质稳定)"
         elif score_std < 10.0:
@@ -242,19 +224,19 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
         score_std = None
         min_score = None
         max_score = None
-        stability_rating = "ONLY_SHADOW"
-        stability_label = "全为空挥试拍"
+        stability_rating = "INSUFFICIENT_EVIDENCE"
+        stability_label = "暂无可评分证据"
 
     # Radar averages
     radar_averages = {
-        k: round(radar_accumulator[k] / radar_count, 1) if radar_count > 0 else 0.0
-        for k in ["speed", "brush", "kinematics", "leg_drive", "preparation"]
+        k: round(radar_accumulator[k] / radar_counts[k], 1) if radar_counts[k] and len(score_groups) <= 1 else None
+        for k in DIMENSIONS
     }
 
     # Common deficiencies
     common_deficiencies = []
     for key, count in deficiency_counter.most_common():
-        rate = round((count / valid_shots_count) * 100, 1) if valid_shots_count > 0 else 0.0
+        rate = round((count / max(1, total_swings - shadow_count)) * 100, 1) if total_swings > shadow_count else 0.0
         info = advice_info.get(key, {})
         severity = "HIGH" if rate >= 60.0 else ("MEDIUM" if rate >= 30.0 else "LOW")
         common_deficiencies.append({
@@ -280,7 +262,7 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
         parts.append(f"（包含 { '，'.join(dist_desc)}）。")
 
     if valid_shots_count > 0:
-        parts.append(f"击球平均技术质量得分为 {avg_score} 分（{stability_label}）。")
+        parts.append(f"动作参考平均分 {avg_score}（{stability_label}）。" if avg_score is not None else f"{stability_label}。")
         if common_deficiencies:
             top_def = common_deficiencies[:2]
             top_desc = "、".join([f"{d['message']}（出现率 {d['occurrence_rate_percent']}%）" for d in top_def])
@@ -315,10 +297,12 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
             if prescriptions:
                 parts.append(f"下阶段训练处方建议：{'；'.join(prescriptions)}。")
         else:
-            parts.append("击球动作整体规范，未检测到显著技术短板，建议进入下一阶段加力与控球练习！")
+            parts.append("当前证据未产生技术纠错建议，仍需教练复核。")
     else:
-        parts.append("本节全为空挥试拍或未检测到有效来球，建议进入实战击球环节。")
+        parts.append("全为空挥试拍。" if shadow_count == total_swings else "证据不足，暂不评分；请复核采集与动作标记。")
 
+    if not valid_shots_count and common_deficiencies:
+        parts.append("已有动作建议：" + "、".join(d["message"] for d in common_deficiencies) + "。")
     macro_diagnosis = "".join(parts)
 
     return {
@@ -345,4 +329,9 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
         "common_deficiencies": common_deficiencies,
         "macro_diagnosis": macro_diagnosis,
         "radar_averages": radar_averages,
+        "radar_available_counts": dict(radar_counts),
+        "scoring_policy_version": POLICY_VERSION,
+        "score_series": [{"key": json.loads(key), "count": len(values),
+                          "average_score": round(sum(values) / len(values), 1)}
+                         for key, values in score_groups.items()],
     }

@@ -350,7 +350,7 @@ class DualViewRenderer:
             thickness=2,
         )
 
-        score = float(card_data.get("swing_score", 0.0) or 0.0)
+        score = card_data.get("swing_score")
         grade = str(card_data.get("swing_grade", "N/A"))
         grade_colors = {
             "PRO": (0, 215, 255),          # 金黄色
@@ -359,7 +359,8 @@ class DualViewRenderer:
             "DEVELOPING": (200, 200, 200), # 灰白
         }
         badge_color = grade_colors.get(grade, (0, 240, 255))
-        score_badge = f"SCORE: {score:.1f} [{grade}]"
+        score_label = "COACH" if (card_data.get("practice_score") or {}).get("method") == "coach_manual" else "VISIBLE"
+        score_badge = f"{score_label}: {score:.1f} [{grade}]" if score is not None else f"{score_label}: N/A"
         canvas = self.font_mgr.put_text_with_font(
             canvas,
             score_badge,
@@ -370,20 +371,20 @@ class DualViewRenderer:
         )
 
         # 4 行遥测核心指标
-        speed_kmh = float(card_data.get("racket_speed_kmh", 0.0) or 0.0)
-        max_speed = float(card_data.get("racket_max_speed_kmh", 0.0) or 0.0)
-        brush_deg = float(card_data.get("brush_angle_deg", 0.0) or 0.0)
+        speed_kmh = card_data.get("racket_speed_kmh")
+        max_speed = card_data.get("racket_max_speed_kmh")
+        brush_deg = card_data.get("brush_angle_deg")
         drop_ratio = card_data.get("drop_depth_ratio")
-        stance_str = str(card_data.get("stance_type") or "Semi-Open")
+        stance_str = str(card_data.get("stance_type") or "未观测")
         drive_ratio = card_data.get("leg_drive_ratio")
-        seq_text = str(card_data.get("kinematic_sequence_text") or "腿 -> 髋 -> 肩 -> 拍 (OPTIMAL)")
+        seq_text = str(card_data.get("kinematic_sequence_text") or "未观测")
 
         drive_display = f"+{float(drive_ratio)*100:.1f}%" if drive_ratio is not None else "N/A"
         drop_display = f"{float(drop_ratio):.2f}x" if drop_ratio is not None else "N/A"
 
         items = [
-            ("RACKET SPEED", f"{speed_kmh:.1f} km/h (Peak: {max_speed:.1f})", (0, 255, 180)),
-            ("BRUSH & DROP", f"{brush_deg:+.1f} deg | Drop: {drop_display}", (0, 220, 255)),
+            ("RACKET SPEED", (f"{speed_kmh:.1f} km/h (proxy)" if speed_kmh is not None else "N/A"), (0, 255, 180)),
+            ("BRUSH & DROP", (f"{brush_deg:+.1f} deg | Drop: {drop_display}" if brush_deg is not None else "N/A"), (0, 220, 255)),
             ("STANCE & LEG", f"{stance_str} | Drive: {drive_display}", (255, 230, 100)),
             ("KINETIC CHAIN", f"{seq_text}", (255, 180, 255)),
         ]

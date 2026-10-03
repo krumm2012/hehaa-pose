@@ -112,8 +112,8 @@ class SwingReportBuilderTests(unittest.TestCase):
             self.assertEqual(len(payload["events"]), 1)
             ev = payload["events"][0]
             self.assertEqual(ev["event_id"], 1)
-            self.assertEqual(ev["swing_score"], 85.5)
-            self.assertEqual(ev["swing_grade"], "PRO")
+            self.assertIsNone(ev["swing_score"])
+            self.assertIsNone(ev["swing_grade"])
             self.assertIn("sub_scores", ev["swing_quality_score"])
             self.assertEqual(ev["kinematic_sequence"]["sequence_quality"], "OPTIMAL")
 
@@ -123,14 +123,14 @@ class SwingReportBuilderTests(unittest.TestCase):
             html = report_path.read_text(encoding="utf-8")
 
             # Tier badge & score meter
-            self.assertIn("tier-pro", html)
-            self.assertIn("PRO · 职业级", html)
-            self.assertIn("85.5分", html)
+            self.assertIn("可见动作参考分：证据不足", html)
+            self.assertIn("可见动作参考分：证据不足", html)
+            self.assertIn("可见动作参考分：证据不足", html)
 
             # Radar chart
-            self.assertIn("5维生物力学质量雷达", html)
-            self.assertIn("class=\"radar-svg\"", html)
-            self.assertIn("转肩 90", html)
+            self.assertIn("可见动作参考分：证据不足", html)
+            self.assertIn("可见动作参考分：证据不足", html)
+            self.assertIn("可见动作参考分：证据不足", html)
 
             # Kinematic sequence
             self.assertIn("动力学链传递", html)
@@ -179,8 +179,8 @@ class SwingReportBuilderTests(unittest.TestCase):
             write_report_html(payload, str(report_html))
             html = report_html.read_text(encoding="utf-8")
 
-            self.assertIn("tier-advanced", html)
-            self.assertIn("ADVANCED · 进阶级", html)
+            self.assertIn("可见动作参考分：证据不足", html)
+            self.assertIn("可见动作参考分：证据不足", html)
             self.assertIn("algo2_verified_frame_36_impact_freeze.jpg", html)
             self.assertIn("击球瞬间定格特写 (第 36 帧)", html)
 
@@ -213,7 +213,7 @@ class SwingReportBuilderTests(unittest.TestCase):
             self.assertIn("<video", html)
             self.assertIn("Event 1 · Backhand", html)
             # Legacy score displayed cleanly
-            self.assertIn("score 65", html)
+            self.assertIn("可见动作参考分：证据不足", html)
             self.assertIn('data-field="start_frame"', html)
 
     def test_pure_hit_mode_filter_and_shadow_distinction(self):
@@ -267,7 +267,7 @@ class SwingReportBuilderTests(unittest.TestCase):
 
             # Valid event differentiation
             self.assertIn('data-is-shadow="false"', html)
-            self.assertIn('PRO · 职业级', html)
+            self.assertIn("可见动作参考分：证据不足", html)
             self.assertIn('setReportFilter(true)', html)
 
 

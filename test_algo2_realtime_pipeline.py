@@ -107,8 +107,9 @@ class Algo2RealtimePipelineTests(unittest.TestCase):
         }
         card = build_impact_telemetry_card(event_dict)
         self.assertEqual(card["stroke_type"], "forehand")
-        self.assertEqual(card["swing_score"], 88.5)
-        self.assertEqual(card["swing_grade"], "ADVANCED")
+        self.assertIsNone(card["swing_score"])
+        self.assertEqual(card["practice_score"]["status"], "insufficient_evidence")
+        self.assertIsNone(card["swing_grade"])
         self.assertEqual(card["racket_speed_kmh"], 76.2)
         self.assertEqual(card["brush_angle_deg"], 24.5)
         self.assertEqual(card["stance_type"], "Semi-Open")
@@ -162,7 +163,7 @@ class Algo2RealtimePipelineTests(unittest.TestCase):
         self.assertIn("FOREHAND", state_active["event_label"])
         self.assertEqual(state_active["coaching_text"], "挥拍时手臂再舒展")
         self.assertIsNotNone(state_active["telemetry_card"])
-        self.assertEqual(state_active["telemetry_card"]["swing_grade"], "ADVANCED")
+        self.assertIsNone(state_active["telemetry_card"]["swing_grade"])
 
         # 超过过期帧后查询 (如第 85 帧)
         state_expired = runtime.get_active_display_state(current_frame_id=85)

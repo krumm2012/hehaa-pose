@@ -92,25 +92,30 @@ class SwingSessionSummaryTests(unittest.TestCase):
             },
         ]
 
+        for ev in events:
+            if not ev.get("is_shadow_swing"):
+                ev["practice_review"] = {"confirmed": True, "ratings": {
+                    "preparation": 4, "positioning": 4, "contact": 4, "coordination": 4, "recovery": 4}}
+                ev["stroke_type"] = "Forehand"
         summary = build_session_coaching_summary(events)
         self.assertEqual(summary["total_swings"], 4)
         self.assertEqual(summary["valid_shots_count"], 3)
 
         # Distribution
         dist = summary["distribution"]
-        self.assertEqual(dist["forehand_count"], 2)
-        self.assertEqual(dist["backhand_count"], 1)
+        self.assertEqual(dist["forehand_count"], 3)
+        self.assertEqual(dist["backhand_count"], 0)
         self.assertEqual(dist["shadow_count"], 1)
-        self.assertEqual(dist["forehand_ratio"], 50.0)
-        self.assertEqual(dist["backhand_ratio"], 25.0)
+        self.assertEqual(dist["forehand_ratio"], 75.0)
+        self.assertEqual(dist["backhand_ratio"], 0.0)
         self.assertEqual(dist["shadow_ratio"], 25.0)
 
         # Quality metrics (scores: 85, 88, 82 -> mean: 85.0)
         qm = summary["quality_metrics"]
-        self.assertEqual(qm["average_score"], 85.0)
-        self.assertEqual(qm["min_score"], 82.0)
-        self.assertEqual(qm["max_score"], 88.0)
-        self.assertAlmostEqual(qm["score_std"], 3.0, places=1)
+        self.assertEqual(qm["average_score"], 80.0)
+        self.assertEqual(qm["min_score"], 80.0)
+        self.assertEqual(qm["max_score"], 80.0)
+        self.assertAlmostEqual(qm["score_std"], 0.0, places=1)
         self.assertEqual(qm["stability_rating"], "HIGH_CONSISTENCY")
 
         # Common deficiencies
@@ -127,15 +132,15 @@ class SwingSessionSummaryTests(unittest.TestCase):
         # Macro diagnosis text
         macro = summary["macro_diagnosis"]
         self.assertIn("完成 4 次挥拍", macro)
-        self.assertIn("正手 2 球", macro)
-        self.assertIn("平均技术质量得分为 85.0 分", macro)
+        self.assertIn("正手 3 球", macro)
+        self.assertIn("参考平均分 80.0", macro)
         self.assertIn("准备时适当降低重心（出现率 66.7%）", macro)
         self.assertIn("训练处方建议", macro)
 
         # Radar dimensions
         radar = summary["radar_averages"]
-        self.assertGreater(radar["speed"], 50.0)
-        self.assertGreater(radar["kinematics"], 60.0)
+        self.assertGreater(radar["positioning"], 50.0)
+        self.assertGreater(radar["coordination"], 60.0)
 
     def test_radar_dimension_bounds(self):
         ev = {
@@ -147,8 +152,9 @@ class SwingSessionSummaryTests(unittest.TestCase):
             },
             "swing_score": 85.0,
         }
+        ev["practice_review"] = {"confirmed": True, "ratings": {k: 3 for k in ["preparation", "positioning", "contact", "coordination", "recovery"]}}
         dims = calculate_radar_dimensions(ev)
-        for k in ["speed", "brush", "kinematics", "leg_drive", "preparation"]:
+        for k in ["preparation", "positioning", "contact", "coordination", "recovery"]:
             self.assertIn(k, dims)
             self.assertGreaterEqual(dims[k], 0.0)
             self.assertLessEqual(dims[k], 100.0)

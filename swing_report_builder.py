@@ -11,6 +11,8 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from practice_scoring import POLICY
+from practice_score_adapter import resolve_practice_score
 from swing_session_quality import build_session_quality_dashboard
 
 RADAR_AXES = [
@@ -255,37 +257,10 @@ def build_report_payload(
         )
         advices = event.get("coach_advice") or coach_event.get("coach_advice") or []
 
-        has_bio = bool(bio or ext or sqs or event.get("swing_score") or event.get("swing_grade"))
-        raw_score = (
-            event.get("swing_score")
-            or bio.get("swing_score")
-            or (sqs.get("overall_score") if isinstance(sqs, dict) else None)
-        )
-        if raw_score is None and has_bio:
-            raw_score = scores.get("overall_score") or event.get("overall_score")
-
-        if raw_score is not None:
-            try:
-                raw_score = float(raw_score)
-                if 0.0 < raw_score <= 1.0:
-                    raw_score = raw_score * 100.0
-            except (ValueError, TypeError):
-                pass
-
-        raw_grade = (
-            event.get("swing_grade")
-            or bio.get("swing_grade")
-            or (sqs.get("grade") if isinstance(sqs, dict) else None)
-        )
-        if has_bio and not raw_grade and raw_score is not None and isinstance(raw_score, (int, float)):
-            if raw_score >= 85.0:
-                raw_grade = "PRO"
-            elif raw_score >= 70.0:
-                raw_grade = "ADVANCED"
-            elif raw_score >= 55.0:
-                raw_grade = "INTERMEDIATE"
-            else:
-                raw_grade = "DEVELOPING"
+        practice = resolve_practice_score({**event, "biomechanics": bio})
+        calibration = practice["calibration"]
+        raw_score, raw_grade = practice["score"], practice["grade"]
+        sqs = {"overall_score": raw_score, "grade": raw_grade, "sub_scores": {}}
 
         merged_events.append(
             {
@@ -301,11 +276,14 @@ def build_report_payload(
                 "classification_context": classification_context,
                 "quality_flags": quality_flags,
                 "diagnosis_tags": coach_event.get("diagnosis_tags") or list(quality_flags.get("warnings") or []),
-                "overall_score": scores.get("overall_score") if scores.get("overall_score") is not None else event.get("overall_score"),
-                "overall_score_9": scores.get("overall_score_9") or (event.get("coach_calibration") or {}).get("visible_technique_score_9"),
-                "score_uncertainty_9": scores.get("uncertainty_9") or (event.get("coach_calibration") or {}).get("uncertainty_9"),
-                "score_confidence": scores.get("confidence") or (event.get("coach_calibration") or {}).get("confidence"),
-                "coach_calibration": coach_event.get("coach_calibration") or event.get("coach_calibration") or {},
+                "overall_score": calibration["visible_technique_score"],
+                "practice_score": practice,
+                "practice_context": event.get("practice_context") or {},
+                "practice_review": event.get("practice_review"),
+                "overall_score_9": calibration["visible_technique_score_9"],
+                "score_uncertainty_9": calibration["uncertainty_9"],
+                "score_confidence": calibration["confidence"],
+                "coach_calibration": calibration,
                 "contact_score": scores.get("contact_score"),
                 "preparation_score": scores.get("preparation_score"),
                 "follow_through_score": scores.get("follow_through_score"),
@@ -420,6 +398,7 @@ def _session_dashboard_html(dashboard: Dict) -> str:
         "improving": "改善",
         "attention": "需关注",
         "integrity_blocked": "事件重叠",
+        "incomparable_series": "训练条件不同",
     }
     grade_labels = {
         "good": "良好",
@@ -427,6 +406,7 @@ def _session_dashboard_html(dashboard: Dict) -> str:
         "poor": "偏低",
         "unavailable": "无数据",
         "event_integrity_confounded": "受事件重叠影响",
+        "incomparable_series": "训练条件不同",
     }
     kpis = [
         (
@@ -435,11 +415,11 @@ def _session_dashboard_html(dashboard: Dict) -> str:
             grade_labels.get(quality.get("grade"), str(quality.get("grade") or "-")),
         ),
         (
-            "可见动作均值",
-            _dashboard_number(quality.get("visible_technique_mean_9"), 1, "/9"),
+            "练习评分均值",
+            _dashboard_number(quality.get("practice_score_mean_100"), 1, "/100"),
             (
-                "±" + _dashboard_number(quality.get("median_uncertainty_9"), 1)
-                if quality.get("median_uncertainty_9") is not None
+                "启发式范围 ±" + _dashboard_number(quality["median_uncertainty_100"], 1)
+                if quality.get("median_uncertainty_100") is not None
                 else "证据不足"
             ),
         ),
@@ -479,9 +459,9 @@ def _session_dashboard_html(dashboard: Dict) -> str:
     )
     series_rows = []
     for point in dashboard.get("series") or []:
-        score = point.get("visible_score_9")
+        score = point.get("practice_score_100")
         evidence = point.get("evidence_quality_100")
-        score_width = max(0.0, min(100.0, float(score or 0.0) / 9.0 * 100.0))
+        score_width = max(0.0, min(100.0, float(score or 0.0)))
         evidence_width = max(0.0, min(100.0, float(evidence or 0.0)))
         warnings = len(point.get("warnings") or [])
         series_rows.append(
@@ -491,7 +471,7 @@ def _session_dashboard_html(dashboard: Dict) -> str:
             f'<i class="score-bar" style="width:{score_width:.1f}%"></i>'
             f'<i class="quality-bar" style="width:{evidence_width:.1f}%"></i>'
             '</div>'
-            f'<span>{_dashboard_number(score, 1, "/9")}</span>'
+            f'<span>{_dashboard_number(score, 1, "/100")}</span>'
             f'<small>{_dashboard_number(evidence, 0, "/100")} · {warnings}警告</small>'
             '</div>'
         )
@@ -570,14 +550,16 @@ def render_report_html(payload: Dict, output_path: str) -> str:
             )
             if value
         ) or "legacy"
-        score_9 = event.get("overall_score_9")
+        practice = resolve_practice_score(event)
+        score_100 = practice["score"]
         uncertainty_9 = event.get("score_uncertainty_9")
+        scope_label = "教练评分" if practice["method"] == "coach_manual" else "可见动作参考"
         calibrated_score_text = (
-            f"可见动作 {float(score_9):.1f}/9"
-            + (f" ±{float(uncertainty_9):.1f}" if uncertainty_9 is not None else "")
-            if score_9 is not None
-            else "可见动作评分：证据不足"
+            f"{scope_label} {float(score_100):.1f}/100"
+            + (f" 启发式范围 ±{float(uncertainty_9)/9*100:.1f}" if uncertainty_9 is not None and practice["method"] != "coach_manual" else "")
+            if score_100 is not None else "可见动作评分：证据不足"
         )
+
 
         # 1. 综合技术评级与100分制仪表
         is_shadow = _is_shadow_swing(event)
@@ -589,16 +571,11 @@ def render_report_html(payload: Dict, output_path: str) -> str:
             grade_upper = str(swing_grade).upper()
             tier_class = f"tier-{grade_upper.lower()}"
             score_display = f"{float(swing_score):.1f}分" if swing_score is not None else ""
-            grade_labels = {
-                "PRO": "PRO · 职业级",
-                "ADVANCED": "ADVANCED · 进阶级",
-                "INTERMEDIATE": "INTERMEDIATE · 中级",
-                "DEVELOPING": "DEVELOPING · 基础级",
-            }
+            grade_labels = {code: scope_label + " · " + label for _, code, label in POLICY["grade_bands"]}
             grade_label = grade_labels.get(grade_upper, grade_upper)
             head_badge_html = f'<span class="tier-pill {tier_class}">{html.escape(grade_label)} <strong style="margin-left:4px;">{score_display}</strong></span>'
         else:
-            head_badge_html = f"<span>score {_score_text(event.get('overall_score'))}</span>"
+            head_badge_html = "<span>可见动作参考分：证据不足</span>"
 
         meter_pct = f"{float(swing_score):.0f}" if swing_score is not None else _score_text(event.get('overall_score'))
 
@@ -616,7 +593,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         # 3. 动力学链时序时延条
         seq = event.get("kinematic_sequence") or {}
         details = seq.get("details") if isinstance(seq, dict) and isinstance(seq.get("details"), dict) else seq
-        seq_quality = (seq.get("value") or details.get("sequence_quality") or "OPTIMAL") if isinstance(seq, dict) else "OPTIMAL"
+        seq_quality = (seq.get("value") or details.get("sequence_quality") or "未观测") if isinstance(seq, dict) else "未观测"
         dt_hip_sh = details.get("latency_hip_to_shoulder_ms") if isinstance(details, dict) else None
         dt_sh_rkt = details.get("latency_shoulder_to_racket_ms") if isinstance(details, dict) else None
 
@@ -653,12 +630,12 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         stc = event.get("stance") or {}
         leg = event.get("leg_drive") or {}
 
-        contact_kmh = rkt.get("contact_kmh") or rkt.get("contact_speed_kmh")
-        max_kmh = rkt.get("max_kmh") or rkt.get("max_speed_kmh")
-        brush_angle = brush.get("low_to_high_angle_deg") or brush.get("angle_deg")
+        contact_kmh = rkt.get("contact_kmh") if rkt.get("contact_kmh") is not None else rkt.get("contact_speed_kmh")
+        max_kmh = rkt.get("max_kmh") if rkt.get("max_kmh") is not None else rkt.get("max_speed_kmh")
+        brush_angle = brush.get("low_to_high_angle_deg") if brush.get("low_to_high_angle_deg") is not None else brush.get("angle_deg")
         drop_ratio = brush.get("drop_depth_ratio")
         stance_type = stc.get("stance_type") or stc.get("value")
-        leg_ratio = leg.get("drive_ratio") or leg.get("value")
+        leg_ratio = leg.get("drive_ratio") if leg.get("drive_ratio") is not None else leg.get("value")
 
         has_telemetry = any(v is not None for v in [contact_kmh, max_kmh, brush_angle, drop_ratio, stance_type, leg_ratio])
         telemetry_html = ""

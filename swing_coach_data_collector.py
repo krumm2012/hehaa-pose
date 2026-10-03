@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from swing_event_analyzer import analyze_frame_records
+from practice_score_adapter import resolve_practice_score
 from swing_coach_calibration import calibrate_coaching_event
 
 
@@ -273,7 +274,7 @@ def _quality_scores(event: Dict, body: Dict, racket: Dict, ball: Dict, timing: D
         )
     follow_frames = timing.get("phase_durations_frames", {}).get("follow_through", 0)
     preparation_frames = timing.get("phase_durations_frames", {}).get("backswing", 0)
-    calibration = event.get("coach_calibration") or calibrate_coaching_event(event)
+    calibration = calibrate_coaching_event(event)
 
     scores = {
         "contact_score": (
@@ -286,6 +287,9 @@ def _quality_scores(event: Dict, body: Dict, racket: Dict, ball: Dict, timing: D
         "follow_through_score": _score_from_ratio(follow_frames, 4.0, 18.0),
         "power_transfer_score": None,
     }
+    scores["practice_score"] = resolve_practice_score(event)
+    scores["overall_score_100"] = scores["practice_score"]["score"]
+    scores["overall_score_legacy_scale"] = [0, 1]
     scores["overall_score"] = calibration.get("visible_technique_score")
     scores["overall_score_9"] = calibration.get("visible_technique_score_9")
     scores["uncertainty_9"] = calibration.get("uncertainty_9")
@@ -651,7 +655,8 @@ def build_coach_dataset(frame_data: Dict, event_analysis: Dict) -> Dict:
                 "body": body,
                 "timing": timing,
                 "scores": scores,
-                "coach_calibration": event.get("coach_calibration") or calibrate_coaching_event(event),
+                "coach_calibration": calibrate_coaching_event(event),
+                "practice_score": resolve_practice_score(event),
                 "diagnosis_tags": sorted(
                     set(_diagnosis_tags(scores, body, racket, ball, timing) + list(event_quality_flags.get("warnings") or []))
                 ),

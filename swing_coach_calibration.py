@@ -3,26 +3,24 @@
 
 from __future__ import annotations
 
+import math
+
 from typing import Dict, List, Optional, Sequence, Tuple
 
 
-CALIBRATION_POLICY_VERSION = "single_view_visible_coach_v1"
+CALIBRATION_POLICY_VERSION = "single_view_visible_coach_v2"
 
-# These are visible-technique rubrics, not normative 3D biomechanics.  A low
-# endpoint deliberately remains above zero because one camera cannot justify a
-# zero-quality athletic score from a single projected angle.
-VISIBLE_SCORE_CURVES: Dict[str, Sequence[Tuple[float, float]]] = {
-    "arm_extension": ((60.0, 0.35), (120.0, 0.62), (145.0, 0.80), (165.0, 1.0)),
-    "shoulder_turn_change": ((0.0, 0.35), (12.0, 0.50), (30.0, 0.80), (45.0, 1.0)),
-    "preparation_knee_flexion": ((0.0, 0.35), (12.0, 0.50), (25.0, 0.75), (45.0, 1.0)),
-}
+from practice_scoring import POLICY
+
+VISIBLE_SCORE_CURVES = POLICY["automatic_curves"]
 
 
 def _float(value) -> Optional[float]:
     if value is None:
         return None
     try:
-        return float(value)
+        number = float(value)
+        return number if math.isfinite(number) and not isinstance(value, bool) else None
     except (TypeError, ValueError):
         return None
 
@@ -47,13 +45,9 @@ def calibrate_coaching_event(event: Dict, min_confidence: float = 0.45) -> Dict:
     intentionally separate from stroke classification confidence and from
     capture-quality scores.
     """
-    is_shadow_swing = bool(
-        event.get("is_shadow_swing")
-        or (event.get("evidence") or {})
-        .get("classification_context", {})
-        .get("contact_analysis", {})
-        .get("is_shadow_swing")
-    )
+    evidence = event.get("evidence") or {}
+    contact = evidence.get("contact_analysis") or (evidence.get("classification_context") or {}).get("contact_analysis") or {}
+    is_shadow_swing = bool(event.get("is_shadow_swing") or contact.get("is_shadow_swing") or contact.get("has_ball") is False)
     if is_shadow_swing:
         return {
             "policy_version": CALIBRATION_POLICY_VERSION,
@@ -80,12 +74,15 @@ def calibrate_coaching_event(event: Dict, min_confidence: float = 0.45) -> Dict:
     for name, curve in VISIBLE_SCORE_CURVES.items():
         metric = metrics.get(name) or {}
         value = _float(metric.get("value"))
-        confidence = _float(metric.get("confidence")) or 0.0
-        eligible = metric.get("coach_eligible") is not False
+        confidence = max(0.0, min(1.0, _float(metric.get("confidence")) or 0.0))
+        eligible = metric.get("coach_eligible") is True
         reason = metric.get("exclusion_reason")
         if value is None:
             status = "missing"
             reason = reason or "metric_missing"
+        elif metric.get("unit") not in POLICY["automatic_units"] or "3d" in str(metric.get("observability", "")).lower():
+            status = "excluded"
+            reason = "projection_rubric_not_valid_for_this_coordinate_space"
         elif not eligible:
             status = "excluded"
             reason = reason or "not_coach_eligible"
@@ -116,7 +113,7 @@ def calibrate_coaching_event(event: Dict, min_confidence: float = 0.45) -> Dict:
         excluded.append({"metric": name, "reason": reason})
 
     expected_metrics = len(VISIBLE_SCORE_CURVES)
-    if len(weighted_scores) >= 2:
+    if len(weighted_scores) >= POLICY["minimum_automatic_metrics"]:
         total_weight = sum(confidence for _, confidence in weighted_scores)
         score = sum(value * confidence for value, confidence in weighted_scores) / max(
             1e-9,
@@ -151,5 +148,7 @@ def calibrate_coaching_event(event: Dict, min_confidence: float = 0.45) -> Dict:
             "single_view_visible_technique_only",
             "not_a_3d_kinetic_or_injury_score",
             "compare_sessions_only_after_camera_calibration",
+            "draft_rubric_pending_independent_coach_validation",
+            "uncertainty_is_heuristic_not_statistical_confidence_interval",
         ],
     }

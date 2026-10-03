@@ -312,11 +312,11 @@ def main():
             print(f"      • 肩胛骨收缩比率 (Scapular Pinch): {sc.get('value', 'N/A')} (置信度: {sc.get('confidence', 0)*100:.1f}%)")
             print(f"      • 抗侧身塌陷转肩角 (Shoulder Turn): {st.get('value', 'N/A')}° (置信度: {st.get('confidence', 0)*100:.1f}%)")
             print(f"      • 手臂延展角度 (Arm Extension): {arm.get('value', 'N/A')}° (置信度: {arm.get('confidence', 0)*100:.1f}%)")
-            print(f"      • 拍头动力学挥速 (Racket Speed): 击球 {rkt.get('contact_kmh', 0):.1f} km/h | 峰值 {rkt.get('max_kmh', 0):.1f} km/h")
-            print(f"      • 刷球角与下潜深度 (Brush & Drop): 刷球角 {brush.get('low_to_high_angle_deg', 0):+.1f} deg | 下潜 {brush.get('drop_depth_ratio', 'N/A')}x")
+            print(f"      • 拍头动力学挥速 (Racket Speed): 击球 {rkt.get('contact_kmh')} km/h | 峰值 {rkt.get('max_kmh')} km/h")
+            print(f"      • 刷球角与下潜深度 (Brush & Drop): 刷球角 {brush.get('low_to_high_angle_deg')} deg | 下潜 {brush.get('drop_depth_ratio', 'N/A')}x")
             print(f"      • 步法站位与蹬地 (Stance & Leg Drive): {stc.get('stance_type', 'Semi-Open Stance')} | 垂直蹬地比 {leg.get('drive_ratio', 'N/A')}")
             print(f"      • 动力学链时序 (Kinematic Sequence): 腿 -> 髋 -> 肩 -> 拍 ({seq.get('sequence_quality', 'OPTIMAL')}) [髋-肩延时: {seq.get('latency_hip_to_shoulder_ms', 0)}ms, 肩-拍延时: {seq.get('latency_shoulder_to_racket_ms', 0)}ms]")
-            print(f"      • 单拍综合技术评分 (Swing Quality Score): {score.get('overall_score', 0):.1f} 分 [{score.get('grade', 'N/A')}]")
+            print(f"      • 单拍综合技术评分 (Swing Quality Score): {score.get('overall_score')} 分 [{score.get('grade', 'N/A')}]")
 
             print("   📢 实时教练纠错建议 (≤15字):")
             for j, adv in enumerate(advices, 1):
@@ -329,18 +329,8 @@ def main():
                 frame_to_coach[f_no] = first_coach_msg
 
             # 击球瞬间特写遥测卡片信息绑定
-            contact_telemetry_map[c_f] = {
-                "stroke_type": event_dict.get("stroke_type", "FOREHAND"),
-                "swing_score": score.get("overall_score", 0.0),
-                "swing_grade": score.get("grade", "N/A"),
-                "racket_speed_kmh": rkt.get("contact_kmh", 0.0),
-                "racket_max_speed_kmh": rkt.get("max_kmh", 0.0),
-                "brush_angle_deg": brush.get("low_to_high_angle_deg", 0.0),
-                "drop_depth_ratio": brush.get("drop_depth_ratio"),
-                "stance_type": stc.get("stance_type", "Semi-Open Stance"),
-                "leg_drive_ratio": leg.get("drive_ratio"),
-                "kinematic_sequence_text": f"腿 -> 髋 -> 肩 -> 拍 ({seq.get('sequence_quality', 'OPTIMAL')})",
-            }
+            from realtime_swing_runtime import build_impact_telemetry_card
+            contact_telemetry_map[c_f] = build_impact_telemetry_card(event_dict)
 
         print("=" * 60)
 

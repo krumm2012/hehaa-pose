@@ -17,6 +17,7 @@ class ROIManager:
         self.roi_polygon = None  # ROI多边形
         self.exclusion_polygons = []  # 排除区域多边形列表 [{"polygon": np.ndarray, "label": str}]
         self.is_roi_set = False
+        self.ball_airspace_frame_size = None
         
         # 交互状态
         self.current_point_index = 0
@@ -258,6 +259,31 @@ class ROIManager:
             return False
         return True
     
+    def configure_ball_airspace(self, frame_size: Tuple[int, int]) -> None:
+        """Allow airborne balls above a ground ROI, retaining all exclusion zones."""
+        self.ball_airspace_frame_size = frame_size
+
+    def is_ball_in_roi(self, point: Tuple[float, float]) -> bool:
+        """Apply the ball boundary before trajectory selection and after inference."""
+        if self.is_point_in_exclusion(point):
+            return False
+        if self.is_point_in_roi(point):
+            return True
+        if self.ball_airspace_frame_size is None:
+            return False
+        bbox = self.get_roi_bounding_box()
+        if bbox is None:
+            return False
+        x, y = point
+        width, height = self.ball_airspace_frame_size
+        x1, y1, x2, _ = bbox
+        margin = int(width * 0.05)
+        return (
+            y1 > height * 0.25
+            and 0 <= y < y1
+            and max(0, x1 - margin) <= x <= min(width - 1, x2 + margin)
+        )
+
     def filter_detections_by_roi(self, detections: List[Dict], detection_type: str = "general") -> List[Dict]:
         """
         根据ROI过滤检测结果
@@ -296,11 +322,11 @@ class ROIManager:
                 # 球检测：检查球心是否在ROI内
                 if isinstance(detection, dict) and detection.get("position"):
                     position = detection["position"]
-                    is_inside = self.is_point_in_roi(
+                    is_inside = self.is_ball_in_roi(
                         (int(position[0]), int(position[1]))
                     )
                 elif isinstance(detection, (tuple, list)) and len(detection) >= 2:
-                    is_inside = self.is_point_in_roi((int(detection[0]), int(detection[1])))
+                    is_inside = self.is_ball_in_roi((int(detection[0]), int(detection[1])))
                 
             elif detection_type == "racket":
                 # 球拍检测：检查边界框中心是否在ROI内

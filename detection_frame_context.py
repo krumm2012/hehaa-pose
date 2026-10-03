@@ -36,7 +36,12 @@ class DetectionFrameContext:
                 x1, y1, x2, y2 = roi_bbox
                 margin = int(config.get("roi_settings", {}).get("crop_margin", 12))
                 x1_expanded = max(0, x1 - margin)
-                y1_expanded = max(0, y1 - margin)
+                # 若 ROI 标定在地面（y1 位于画面中下部），为防止裁切击球空中球与人体上半身/球拍，上边界延展至顶部
+                preserve_upper = bool(config.get("roi_settings", {}).get("preserve_upper_airspace", True))
+                if preserve_upper and y1 > 0.25 * frame.shape[0]:
+                    y1_expanded = 0
+                else:
+                    y1_expanded = max(0, y1 - margin)
                 x2_expanded = min(frame.shape[1], x2 + margin)
                 y2_expanded = min(frame.shape[0], y2 + margin)
 

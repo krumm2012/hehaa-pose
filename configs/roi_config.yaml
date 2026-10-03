@@ -19,25 +19,25 @@ streams:
   - - 499
     - 1421
   roi_description: '4-point ROI: [[720, 792], [1598, 811], [1808, 1430], [499, 1421]]'
-  last_updated: '2026-09-28 14:20:27'
+  last_updated: '2026-09-28 16:03:09'
   created_by: Tennis Analyzer ROI Calibration
   version: '2.0'
   mirror_view:
     enabled: true
     reflection_roi:
-    - 0.2541
-    - 0.1034
-    - 0.6125
-    - 0.4832
+    - 0.2863
+    - 0.1622
+    - 0.6438
+    - 0.5567
     polygon:
-    - - 0.2696
-      - 0.1034
-    - - 0.6125
-      - 0.1254
-    - - 0.5908
-      - 0.4832
-    - - 0.2541
-      - 0.4777
+    - - 0.3162
+      - 0.1622
+    - - 0.6438
+      - 0.1978
+    - - 0.6262
+      - 0.5567
+    - - 0.2863
+      - 0.5433
     padding: 0.0
     horizontal_flip: true
     target_size:
@@ -56,10 +56,10 @@ streams:
   front_view:
     enabled: true
     default_roi:
-    - 0.45
-    - 0.08
-    - 0.75
-    - 0.85
+    - 0.34
+    - 0.28
+    - 0.60
+    - 0.88
     bbox_padding: 0.45
     target_size:
     - 540

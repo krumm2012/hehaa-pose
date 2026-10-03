@@ -177,6 +177,14 @@ class LocalRealtimeCoach:
                         evidence={"warning": warning},
                     )
                 ]
+        score_info = event.get("practice_score")
+        if score_info is None:
+            from practice_score_adapter import resolve_practice_score
+            score_info = resolve_practice_score(event)
+        if score_info.get("score") is None:
+            return [self._advice(code="insufficient_technique_evidence", message="动作证据不足需复核",
+                                 category="review", confidence=0.0,
+                                 evidence={"reason": "no_eligible_technique_score"})]
         return [
             self._advice(
                 code="maintain_form",
@@ -242,7 +250,7 @@ class LocalRealtimeCoach:
                 value is None
                 or metric_confidence is None
                 or metric_confidence < self.min_confidence
-                or metric.get("coach_eligible") is False
+                or metric.get("coach_eligible") is not True
                 or value >= threshold
             ):
                 return
@@ -276,7 +284,7 @@ class LocalRealtimeCoach:
                 value is None
                 or metric_confidence is None
                 or metric_confidence < self.min_confidence
-                or metric.get("coach_eligible") is False
+                or metric.get("coach_eligible") is not True
                 or value <= threshold
             ):
                 return
@@ -310,7 +318,7 @@ class LocalRealtimeCoach:
             kseq_val in ("DISCONNECTED", "SUBOPTIMAL")
             and kseq_conf is not None
             and kseq_conf >= self.min_confidence
-            and kseq.get("coach_eligible") is not False
+            and kseq.get("coach_eligible") is True
         ):
             candidates.append(
                 self._ranked_advice(
@@ -384,7 +392,7 @@ class LocalRealtimeCoach:
         if (
             brush_conf is not None
             and brush_conf >= self.min_confidence
-            and brush.get("coach_eligible") is not False
+            and brush.get("coach_eligible") is True
             and (
                 (brush_val is not None and brush_val < min_brush)
                 or (drop_ratio is not None and drop_ratio < min_drop)
@@ -458,7 +466,10 @@ class LocalRealtimeCoach:
     ) -> Dict:
         metric_confidence = float(metric.get("confidence") or 0.0)
         confidence = metric_confidence
-        calibration = event.get("coach_calibration") or {}
+        calibration = event.get("coach_calibration")
+        if calibration is None:
+            from swing_coach_calibration import calibrate_coaching_event
+            calibration = calibrate_coaching_event(event)
         return self._ranked_advice(
             priority=priority,
             code=code,

@@ -649,6 +649,13 @@ class MultiprocessPipeline:
                         candidate.add_exclusion_polygon(ex_poly, label="custom_exclusion")
                     roi_manager = candidate
 
+            if (
+                roi_manager is not None
+                and self.algo2_dual_view
+                and self.config.get("roi_settings", {}).get("preserve_upper_airspace", True)
+            ):
+                roi_manager.configure_ball_airspace((self.width, self.height))
+
             detector = YOLO26nUnifiedDetector(
                 self.config['unified_detection']['model_path'],
                 self.config['unified_detection'],
@@ -739,8 +746,8 @@ class MultiprocessPipeline:
                     dual_frame = dual_view_mgr.split_frame(frame_ptr, frame_id=task['idx'])
                     f1 = executor.submit(
                         detector.detect_unified,
-                        detection_frame,
-                        frame_context.roi_offset if frame_context is not None else (0, 0),
+                        frame_ptr,
+                        (0, 0),
                         (self.width, self.height),
                     )
                     f2 = executor.submit(dual_pose_estimator.estimate_dual_pose, dual_frame)
@@ -756,7 +763,7 @@ class MultiprocessPipeline:
                             bx, by = float(b_pos[0]), float(b_pos[1])
                             if dual_view_mgr is not None and dual_view_mgr.is_point_in_mirror(bx, by, self.width, self.height):
                                 continue
-                            if roi_manager is not None and not roi_manager.is_point_in_roi((bx, by)):
+                            if roi_manager is not None and not roi_manager.is_ball_in_roi((bx, by)):
                                 continue
                             valid_balls.append(b)
                         ball = valid_balls

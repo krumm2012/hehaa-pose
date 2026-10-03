@@ -168,7 +168,7 @@ roi_points: [[1, 2], [30, 2], [30, 40], [1, 40]]
         self.assertTrue(profile_c1.matched)
         self.assertEqual(profile_c1.stream_id, "court01-main")
         self.assertTrue(profile_c1.has_mirror_view)
-        self.assertEqual(profile_c1.mirror_reflection_roi, [0.2541, 0.1034, 0.6125, 0.4832])
+        self.assertEqual(profile_c1.mirror_reflection_roi, [0.2863, 0.1622, 0.6438, 0.5567])
         self.assertEqual(len(profile_c1.mirror_polygon), 4)
         self.assertEqual(len(profile_c1.mirror_mask_polygon), 4)
         self.assertIn("mirror_view", profile_c1.as_metadata())
@@ -239,12 +239,12 @@ roi_points: [[1, 2], [30, 2], [30, 40], [1, 40]]
         self.assertIsNotNone(pixels)
         self.assertEqual(len(pixels), 4)
         # Canonical order TL, TR, BR, BL:
-        # TL (index 0) ~ (0.2696 * 2560, 0.1034 * 1440) -> (690, 149)
-        # BL (index 3) ~ (0.2541 * 2560, 0.4777 * 1440) -> (650, 688)
-        self.assertAlmostEqual(pixels[0][0], int(round(0.2696 * 2560)), delta=2)
-        self.assertAlmostEqual(pixels[0][1], int(round(0.1034 * 1440)), delta=2)
-        self.assertAlmostEqual(pixels[3][0], int(round(0.2541 * 2560)), delta=2)
-        self.assertAlmostEqual(pixels[3][1], int(round(0.4777 * 1440)), delta=2)
+        # TL (index 0) ~ (0.3162 * 2560, 0.1622 * 1440) -> (809, 234)
+        # BL (index 3) ~ (0.2863 * 2560, 0.5433 * 1440) -> (733, 782)
+        self.assertAlmostEqual(pixels[0][0], int(round(0.3162 * 2560)), delta=2)
+        self.assertAlmostEqual(pixels[0][1], int(round(0.1622 * 1440)), delta=2)
+        self.assertAlmostEqual(pixels[3][0], int(round(0.2863 * 2560)), delta=2)
+        self.assertAlmostEqual(pixels[3][1], int(round(0.5433 * 1440)), delta=2)
 
 
 if __name__ == "__main__":

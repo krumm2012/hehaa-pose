@@ -237,12 +237,12 @@ class DualViewManager:
         min_y = min(valid_ys)
         max_y = max(valid_ys)
 
-        # 防镜面虚影污染：若传入关键点中心位于后墙镜面区域内，坚决拒绝污染前景选手追踪
+        # 防镜面虚影污染：若传入关键点完全落在后墙镜面区域内（包括脚底也在镜中），坚决拒绝污染前景选手追踪
         if getattr(self, "_last_frame_shape", None) is not None:
             fh, fw = self._last_frame_shape
             cx = (min_x + max_x) / 2.0
             cy = (min_y + max_y) / 2.0
-            if self.is_point_in_mirror(cx, cy, fw, fh):
+            if self.is_point_in_mirror(cx, max_y, fw, fh) or (self.is_point_in_mirror(cx, cy, fw, fh) and max_y < 0.55 * fh):
                 return self._tracked_player_bbox
 
         # 保护：若关键点缺少下肢（例如被球网遮挡或半身帧），按人体工学比例扩展为全身高度
@@ -314,21 +314,36 @@ class DualViewManager:
         rx1, ry1, rx2, ry2 = self.mirror_reflection_roi_norm
         y1_px = ry1 * frame_h
         y2_px = ry2 * frame_h
+        crop_h = max(10.0, y2_px - y1_px)
+
+        target_w, target_h = self.mirror_target_size or (540, 720)
+        target_aspect = float(target_w) / max(1.0, float(target_h))
+        desired_w = crop_h * target_aspect
+
+        min_mirror_x = rx1 * frame_w
+        max_mirror_x = rx2 * frame_w
+        mirror_span = max(10.0, max_mirror_x - min_mirror_x)
 
         effective_player = player_bbox or self._tracked_player_bbox
         if effective_player is not None:
-            # 物理几何：平面镜成像横向 X 轴投影一致
+            # 物理几何：平面镜成像横向 X 轴投影一致，以选手中心为基准居中
             px1, _, px2, _ = effective_player
-            pw = max(100.0, px2 - px1)
-            min_mirror_x = rx1 * frame_w
-            max_mirror_x = rx2 * frame_w
-            x1_px = max(min_mirror_x, px1 - pw * 0.4)
-            x2_px = min(max_mirror_x, px2 + pw * 0.4)
-            if x2_px <= x1_px + 20:
-                x1_px, x2_px = min_mirror_x, max_mirror_x
+            cx = (px1 + px2) / 2.0
         else:
-            x1_px = rx1 * frame_w
-            x2_px = rx2 * frame_w
+            cx = (min_mirror_x + max_mirror_x) / 2.0
+
+        if desired_w >= mirror_span:
+            x1_px = min_mirror_x
+            x2_px = max_mirror_x
+        else:
+            x1_px = cx - desired_w / 2.0
+            x2_px = cx + desired_w / 2.0
+            if x1_px < min_mirror_x:
+                x2_px = min(max_mirror_x, x2_px + (min_mirror_x - x1_px))
+                x1_px = min_mirror_x
+            if x2_px > max_mirror_x:
+                x1_px = max(min_mirror_x, x1_px - (x2_px - max_mirror_x))
+                x2_px = max_mirror_x
 
         return self._pad_and_clamp_bbox((x1_px, y1_px, x2_px, y2_px), self.mirror_padding, frame_w, frame_h)
 
