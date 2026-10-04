@@ -1,0 +1,96 @@
+{
+  "schema": "tennis.body-window-acceptance.v1",
+  "generated_at": "2026-10-05T04:57:08.342879+08:00",
+  "engineering_source_commit": "36aee5d0ce218fc5c3d946837ebde99de73acb84",
+  "engineering_push_verified": true,
+  "all_items_complete": false,
+  "accuracy_validated": false,
+  "tests": {
+    "passed": 528,
+    "new_regressions": 19,
+    "initial_red_failures": 10,
+    "log": "/tmp/tennis_body_source_release_20261005.log"
+  },
+  "metric_contract": "tennis.metric-contract.v3",
+  "body_window_policy": "body_and_trajectory_windows_v1_source_time",
+  "code_sha256": {
+    "swing_event_analyzer.py": "6db396623ea886fa038e44c77f68f4ed2fc1cd9673251440f40c295d17a17d8c",
+    "swing_biomechanics.py": "912aed1628e8207d73fafe706d6f473814e902de16988dee7e2ccbe59717034c",
+    "kinematic_sequence.py": "e79c3ac65dbf6c41de44e602d07b16ca2d9c45a8faab774d7f1f15a74b435be3",
+    "osd_evidence.py": "049101062bd17bec889f87cdd7a65d241663b16553da8cdb14164ffb99ea22bc",
+    "realtime_swing_pipeline.py": "3b14a34bcbca72ab84eb4729afc92b7dd2f15daacc4270b5446066781cf02118",
+    "swing_motion_features.py": "538599f485a65e240662d14944ac19a0eb1bf14e0e82ee8f20a596e0d9e29a3e",
+    "analysis_metric_delivery.py": "1b3fd4c897d1224d8e20d5e16f2811bd398044f16a140d7bb28b8a5b1f2ca161",
+    "metric_contracts.py": "d1dcc2026f01e9fdcd936b300934e58faf47523c6645577f23bf3888c633c61e",
+    "ball_observation_contract.py": "eab2c82b7c303d879ce98003a1f742cdf33d639425862733f71a3b3127881525",
+    "frame_processor.py": "f55f126d1aeb3960522991d5aef0b2cc785826a5d710e6a64e2636931980351d",
+    "main_pipe.py": "ca4bb1f07aedf411725c3f3adfb508d9de1b5ad34b50e8d87d3ba79afcc48ebe",
+    "yolo26n_unified_detector.py": "c2410762fdc5f314da5f154576619d899d6272ec0720a7e18fb581c8acbe9964",
+    "event_source_timing.py": "7cd841a3826e2082623c1aa7e72a3d912e0f5efab8b2ca63bb40cfa1a3359221",
+    "local_realtime_coach.py": "35167b842d68f5d8d36d4ddc8ffc5fdfe7699cb0001422589aded53501ea8024",
+    "swing_coach_data_collector.py": "7d2a87fce47449c304280508e0f9fc31159a3e1014234050299769545faa184d",
+    "coach_evidence_policy.py": "a4875c661f5f57384061b273fcf9411006b590097664a078d5ab644c0cf35e99",
+    "deepseek_evidence_view.py": "df4bb2452efcf1ba6ce0d654e950d1377c9ef0c81ad523c78a8cd4a82eb3bb2f",
+    "coach_rule_contract.py": "92401a367bf98f20927ee4a022e3214de960381f7975a233ed3688f47f251ecc",
+    "swing_report_builder.py": "12058acce347d9ecbe6f540df22702086e2d86fffcc2e8f84fcaace435ccf48e",
+    "analysis_provenance.py": "91085adc44cbed62e8653b4da7e292bc47a9e2540c2f44438fa07ac2d44a8b76",
+    "deepseek_realtime_coach.py": "4f5467ac7a48ef4ca8db16574a5e150addd2355b5980da5680fc62a7537cfba8",
+    "manual_review_workflow.py": "3555880db9f2143695ad8eb2385afcb6934e384f64c03312bcc200888e1f78c3",
+    "swing_event_segmenter.py": "c4fbb91732ca36311ef1e78c858a182436b49669bf17a2c23bacf844b9444930",
+    "swing_event_classifier.py": "e83bfb2454d74469163c9abc61b4a1e9220a21298789dd2982d021d4dd735ad6",
+    "motion_time_contract.py": "ff92aa0bb81b4b6a97c680ca044c1d5b7c625686a2f9c1a2a5430bb280c316e5",
+    "image_motion_measurements.py": "a648ae2ce21535d861022f851336fa101f10b37da198bd713489c5e243b8953d",
+    "session_evidence_bundle.py": "0f0c5f6af5af3cdd107fb3df01e055f0552abdc6048eb7d68fc917bc11a19f38",
+    "swing_quality_policy.py": "a4cae94e73a03835dd17abcbfbcbfa0c889625b3a9d104f16b8e6d9b108f2b1d",
+    "metric_source_windows.py": "f962a1aff02def335cab90db68487c4574fc8741b9ad3dcd7cb2d20e80eda63b"
+  },
+  "pixel": {
+    "frame_count": 250,
+    "reader_receipt_fps": 25.134395835240703,
+    "output_submission_fps": 25.30509406787619,
+    "wall_seconds": 18.359,
+    "resource_semantics": "ps process-tree RSS sum can double-count shared memory; CPU is ps-reported average, not instantaneous utilization",
+    "display_semantics": "OpenCV window submission measured; no sensor-to-photon/exposure verification"
+  },
+  "replay": {
+    "semantic_match": true,
+    "biomechanics_value_and_window_match": true,
+    "new_integrity_valid": true,
+    "old_integrity_valid": true,
+    "event_signatures_unchanged": true,
+    "historical_outputs_rewritten": false
+  },
+  "browser_acceptance": {
+    "pixel_report_event_cards": 3,
+    "impact_snapshot_source_frame_ids": [
+      26,
+      110,
+      191
+    ],
+    "arm_extension_values_degrees": [
+      114.91,
+      85.63,
+      95.41
+    ],
+    "control_start_button_present": true,
+    "control_analysis_stopped": true,
+    "control_sse_connected": true,
+    "delivery_report_verified": true,
+    "inventory_rows": 103,
+    "unclosed_filter_rows": 68
+  },
+  "control_service": {
+    "pid": 46067,
+    "analysis_state": "stopped",
+    "analysis_pid": null,
+    "analysis_hash_count": 29,
+    "analysis_and_control_hashes_match": true
+  },
+  "remaining": [
+    "分类触球后固定2帧上下文及其他候选帧级启发式的时间资格",
+    "独立176项连续帧标签仍为空",
+    "坐标尺度、定位误差和阈值校准",
+    "同步三维/曝光验证",
+    "技术评分与RTSP/TTS现场验收"
+  ]
+}

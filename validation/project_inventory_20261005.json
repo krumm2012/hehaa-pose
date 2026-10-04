@@ -1,34 +1,34 @@
 {
-  "schema": "tennis.project-inventory.v4",
-  "generated_at": "2026-10-05T04:16:31.871445+08:00",
-  "git_head": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d",
-  "scope": "当前99条已识别问题/验收覆盖记录，其中30条工程已完成、69条未闭环；相关条目存在交叉，不是99个独立缺陷。另7项可选扩展及1项旧兼容入口。原94条历史清单保留，新增5类已修工程缺陷。",
+  "schema": "tennis.project-inventory.v5",
+  "generated_at": "2026-10-05T04:57:08.342879+08:00",
+  "git_head": "36aee5d0ce218fc5c3d946837ebde99de73acb84",
+  "scope": "103条已识别问题/验收覆盖记录（含交叉），35条工程已完成、68条未闭环；另7项可选扩展及1项旧入口。原94/99条历史快照保留。",
   "all_items_complete": false,
   "accuracy_validated": false,
   "verification": {
-    "test_count": 509,
-    "passed": 509,
+    "test_count": 528,
+    "passed": 528,
     "failures": 0,
-    "log": "/tmp/tennis_motion_source_release_20261005.log",
+    "log": "/tmp/tennis_body_source_release_20261005.log",
     "failure_item": null,
-    "service_pid": 41185,
+    "service_pid": 46067,
     "control_analysis_state": "stopped",
     "loaded_source_hashes_match": true,
-    "remote_head": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d",
+    "remote_head": "36aee5d0ce218fc5c3d946837ebde99de73acb84",
     "independent_plan_frames": 22,
     "independent_plan_points": 176,
     "independent_filled_points": 0,
     "automatic_scoring_validated": false,
-    "repository_code_changed_in_this_inventory": false,
-    "iteration_engineering_changes": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d",
-    "git_head": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d",
+    "repository_code_changed_in_this_inventory": true,
+    "iteration_engineering_changes": "36aee5d0ce218fc5c3d946837ebde99de73acb84",
+    "git_head": "36aee5d0ce218fc5c3d946837ebde99de73acb84",
     "remote_matches_head": true,
-    "loaded_analysis_source_count": 28,
+    "loaded_analysis_source_count": 29,
     "independent_submission_confirmed": false,
     "open_github_issue_count": 0,
-    "test_semantics": "本次清单核验已完成509项全量日志与当前源码/运行哈希；不重复运行测试。",
-    "source_changes_in_this_inventory": false,
-    "service_restarted_in_this_inventory": false
+    "test_semantics": "本轮528项全量实跑、19项新回归及最终代码原像素验收；文件窗口提交不是传感器到屏幕延迟。",
+    "source_changes_in_this_inventory": true,
+    "service_restarted_in_this_inventory": true
   },
   "items": [
     {
@@ -322,11 +322,11 @@
       "priority": "P2",
       "problem": "部分窗口按帧、部分按秒",
       "requirement": "审查剩余指标的窗口契约，避免同名指标口径不一致",
-      "status": "候选源时间已迁移／传统指标窗口未全部完成",
-      "evidence_or_gap": "运动候选、短缺口插值、平滑、触球质量窗与实时等待已用合格PTS；肩髋角、引拍、屈膝、触球位置、身体位移和collector部分球轨迹仍有帧窗口。",
-      "state_group": "部分完成",
-      "remaining": "继续逐项迁移传统身体指标和collector球轨迹窗口，固定公式、单位、坐标、时间范围及缺失理由。",
-      "display_name": "部分窗口按帧、部分按秒"
+      "status": "工程契约迁移通过／准确性另行验收",
+      "evidence_or_gap": "19项源窗口回归、528项全量、新原像素250帧/3事件、指标值与窗口完整重放一致；v3契约及实际窗口来源传播。",
+      "state_group": "工程已完成",
+      "remaining": "本项工程窗口与契约通过；采样、定位、模型误差及教学解释由其他独立验收条目跟踪。",
+      "display_name": "身体与轨迹指标的源时间窗口、单位和契约"
     },
     {
       "id": "C10",
@@ -652,8 +652,8 @@
       "priority": "P1",
       "problem": "当前工作区全量回归未通过",
       "requirement": "隔离本机机位配置与测试夹具，核验视频检测测试，恢复可重复的全绿结果",
-      "status": "509项全量回归通过",
-      "evidence_or_gap": "最新工程源2d3ea5b对应509项测试通过；新增15项源时间回归；本次清单仅核验既有日志与源码哈希。",
+      "status": "528项全量回归通过",
+      "evidence_or_gap": "最新36aee5d工程源528项全量通过，包括19项新源窗口回归。",
       "state_group": "工程已完成",
       "remaining": "工程回归通过；独立准确性与现场验证由其他条目跟踪。",
       "display_name": "测试配置隔离与当前全量回归"
@@ -663,8 +663,8 @@
       "priority": "P2",
       "problem": "原像素会话与事件语义重放",
       "requirement": "补新会话端到端验收；不能用上一版 433 项通过替代当前全量验收",
-      "status": "原像素与同版本语义重放通过",
-      "evidence_or_gap": "冻结原片250帧、3候选事件，新制品完整且语义重放一致；旧制品完整，但新策略结果不同，历史保持不变。",
+      "status": "新原像素与指标/窗口重放通过",
+      "evidence_or_gap": "250帧、3候选事件；制品、事件、指标值及窗口重放一致；历史制品保留。",
       "state_group": "工程已完成",
       "remaining": "同版本重放通过；新旧候选锚点差异需要独立标签判定，不能据此声称准确率提升。",
       "display_name": "原像素会话、制品完整性与语义重放"
@@ -675,7 +675,7 @@
       "problem": "真实实时能力缺少完整统一基线",
       "requirement": "记录输入、处理、显示帧率，丢帧、延迟分位数和资源占用",
       "status": "文件提交基线通过／现场端到端待验收",
-      "evidence_or_gap": "本轮250帧读入25.17fps、窗口提交25.42fps；全流程20.557秒含初始化，不是传感器到显示延迟。",
+      "evidence_or_gap": "当前原像素读入25.13fps，窗口提交25.31fps；不等于端到端显示/曝光延迟。",
       "state_group": "部分完成",
       "remaining": "补实际显示帧率、设备曝光、队列丢帧、长会话及端到端延迟验收。",
       "display_name": "真实实时能力缺少完整统一基线"
@@ -751,8 +751,8 @@
       "priority": "P2",
       "problem": "工程发布与现场运行验收",
       "requirement": "核对提交、远端状态、运行版本和回退方式",
-      "status": "工程推送与服务源码核验通过／现场待验收",
-      "evidence_or_gap": "远端algo-2.0与2d3ea5b一致；服务PID41185，28份分析及控制源码哈希匹配；分析进程未启动。",
+      "status": "工程推送与运行源码通过／现场待验收",
+      "evidence_or_gap": "36aee5d已推送，服务PID46067，29分析模块加控制源码哈希匹配；现场RTSP/TTS未验收。",
       "state_group": "部分完成",
       "remaining": "补RTSP/TTS现场发布、启动停止、故障恢复和回退验收。",
       "display_name": "工程发布与现场运行验收"
@@ -861,10 +861,10 @@
       "priority": "P1",
       "problem": "审查剩余固定FPS与帧窗口消费者",
       "requirement": "审查剩余固定FPS与帧窗口消费者",
-      "status": "源时间候选修复通过／剩余消费者待审",
-      "evidence_or_gap": "15项新回归通过；修改配置FPS、兼容时间、接收时间后生产参数3事件一致；完整指标窗口仍未迁移。",
+      "status": "身体/轨迹消费者通过／分类与其他帧级启发式待审",
+      "evidence_or_gap": "身体邻域、准备、回位、轨迹短窗和插值已迁移；分类器仍在contact+2帧前取证，其他最少观测数量与身份连续性须区分时间阈值。",
       "state_group": "部分完成",
-      "remaining": "审查剩余肩髋角、引拍、屈膝、位置与球轨迹帧窗口；额外验证实际不同采样率及缺帧行为。",
+      "remaining": "继续审查分类触球后2帧窗口及其他候选帧级消费者；观测数量、源身份与缓存容量保持各自契约。",
       "display_name": "审查剩余固定FPS与帧窗口消费者"
     },
     {
@@ -1124,6 +1124,54 @@
       "evidence_or_gap": "legacy angular step half-turn boundary regression",
       "remaining": "工程修复通过；相关测量与教学准确性仍由独立验收条目跟踪。",
       "engineering_source_commit": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d"
+    },
+    {
+      "id": "N10",
+      "priority": "P1",
+      "problem": "身体统计按帧窗口与兼容时间选错观测",
+      "display_name": "身体统计按帧窗口与兼容时间选错观测",
+      "requirement": "按源PTS选择触球/端点、准备、肩线基线及回位；实际窗口、单位与拒绝理由进入v3契约。",
+      "status": "工程回归通过",
+      "state_group": "工程已完成",
+      "evidence_or_gap": "test_body_metric_source_windows.py；当前原像素、实际采集器与重放验收。",
+      "remaining": "相关真实测量与教学准确性继续由独立验收条目跟踪。",
+      "engineering_source_commit": "36aee5d0ce218fc5c3d946837ebde99de73acb84"
+    },
+    {
+      "id": "N11",
+      "priority": "P1",
+      "problem": "采集器跨长缺口插值及借用缺失锚点",
+      "display_name": "采集器跨长缺口插值及借用缺失锚点",
+      "requirement": "精确源锚点；PTS比例、0.12秒及连续帧边界；候选补点保留真实来源。",
+      "status": "工程回归通过",
+      "state_group": "工程已完成",
+      "evidence_or_gap": "test_body_metric_source_windows.py；当前原像素、实际采集器与重放验收。",
+      "remaining": "相关真实测量与教学准确性继续由独立验收条目跟踪。",
+      "engineering_source_commit": "36aee5d0ce218fc5c3d946837ebde99de73acb84"
+    },
+    {
+      "id": "N12",
+      "priority": "P1",
+      "problem": "旧候选信号峰值输出FPS毫秒和OPTIMAL结论",
+      "display_name": "旧候选信号峰值输出FPS毫秒和OPTIMAL结论",
+      "requirement": "只保留legacy_candidate_peak_frames，不再证明动力链顺序或按FPS换算毫秒。",
+      "status": "工程回归通过",
+      "state_group": "工程已完成",
+      "evidence_or_gap": "test_body_metric_source_windows.py；当前原像素、实际采集器与重放验收。",
+      "remaining": "相关真实测量与教学准确性继续由独立验收条目跟踪。",
+      "engineering_source_commit": "36aee5d0ce218fc5c3d946837ebde99de73acb84"
+    },
+    {
+      "id": "N13",
+      "priority": "P1",
+      "problem": "采集器从融合显示骨架测量身体中心",
+      "display_name": "采集器从融合显示骨架测量身体中心",
+      "requirement": "读取measurement_pose新鲜正面点，阻止显示补点/旧点升级为独立测量。",
+      "status": "工程回归通过",
+      "state_group": "工程已完成",
+      "evidence_or_gap": "test_body_metric_source_windows.py；当前原像素、实际采集器与重放验收。",
+      "remaining": "相关真实测量与教学准确性继续由独立验收条目跟踪。",
+      "engineering_source_commit": "36aee5d0ce218fc5c3d946837ebde99de73acb84"
     }
   ],
   "optional_expansion": [
@@ -1164,9 +1212,9 @@
     }
   ],
   "state_counts": {
-    "部分完成": 37,
+    "部分完成": 36,
     "待独立或现场验证": 24,
-    "工程已完成": 30,
+    "工程已完成": 35,
     "待开发或继续优化": 8
   },
   "earlier_repairs": [
@@ -1196,18 +1244,18 @@
     }
   ],
   "evidence_refs": {
-    "engineering_acceptance": "validation/motion_source_acceptance_20261005.json",
-    "test_log": "/tmp/tennis_motion_source_release_20261005.log",
+    "engineering_acceptance": "validation/body_window_acceptance_20261005.json",
+    "test_log": "/tmp/tennis_body_source_release_20261005.log",
     "metric_contract": "docs/METRIC_CALCULATION_CONTRACT.md",
     "source_timing": "docs/EVENT_SOURCE_TIMING.md",
     "independent_labels": "data/analysis_results/kinematic_validation/independent_temporal_plan_v3_20261005/blank_labels.json",
-    "pixel_run": "data/analysis_results/kinematic_validation/motion_time_pixel_20261005/report.html",
+    "pixel_run": "data/analysis_results/kinematic_validation/body_window_release_20261005/report.html",
     "motion_source_timing": "docs/MOTION_SOURCE_TIME.md",
-    "same_input_comparison": "data/analysis_results/kinematic_validation/motion_time_delivery_20261005/comparison.json",
-    "previous_inventory": "data/analysis_results/kinematic_validation/project_backlog_20261005/inventory.json"
+    "same_input_comparison": "data/analysis_results/kinematic_validation/body_window_delivery_20261005/comparison.json",
+    "previous_inventory": "data/analysis_results/kinematic_validation/motion_time_delivery_20261005/inventory.json"
   },
   "priority_order": [
-    "C09/T04：传统指标与球轨迹窗口的源时间、单位和缺失契约",
+    "T04：分类与其他帧级候选消费者；身体/轨迹窗口已通过工程验收",
     "A01/B07/X07：球拍错框、漏检、跳变与来源资格",
     "E02/B01/B02/X01/X02：独立连续帧、完整挥拍及球拍/主球标签",
     "B03/C05/C08：坐标尺度、定位误差及位移阈值校准",
