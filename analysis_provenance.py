@@ -15,6 +15,7 @@ from image_motion_measurements import POLICY_VERSION as IMAGE_MOTION_POLICY
 from observation_policy import POSE_POLICY
 from swing_event_segmenter import PHASE_POLICY_VERSION, MANUAL_ANCHOR_POLICY_VERSION
 from manual_annotation_contract import POLICY_VERSION as MANUAL_ANNOTATION_POLICY
+from evaluation_reference_policy import POLICY_VERSION as EVALUATION_REFERENCE_POLICY
 
 _FILES = ('swing_event_analyzer.py','swing_biomechanics.py','kinematic_sequence.py',
           'osd_evidence.py','realtime_swing_pipeline.py','swing_motion_features.py',
@@ -30,6 +31,7 @@ _FILES += ('swing_event_segmenter.py', 'swing_event_classifier.py',
 _FILES += ('session_evidence_bundle.py', 'swing_quality_policy.py')
 _FILES += ('metric_source_windows.py',)
 _FILES += ('observation_policy.py', 'dual_view_biomechanics.py', 'local_control_panel.html', 'manual_annotation_contract.py')
+_FILES += ('swing_evaluation.py', 'evaluation_reference_policy.py')
 _HASHES = {name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in _FILES}
 
 
@@ -50,4 +52,5 @@ def analysis_build_info():
             'phase_candidate_policy':PHASE_POLICY_VERSION,
             'manual_anchor_policy':MANUAL_ANCHOR_POLICY_VERSION,
             'manual_annotation_policy':MANUAL_ANNOTATION_POLICY,
+            'evaluation_reference_policy':EVALUATION_REFERENCE_POLICY,
             'historical_outputs_rewritten':False, 'accuracy_validated':False}

@@ -58,7 +58,7 @@ class SwingEvaluationTests(unittest.TestCase):
         self.assertEqual(report["summary"]["predicted_event_count"], 2)
         self.assertEqual(report["summary"]["manual_valid_event_count"], 2)
         self.assertEqual(report["summary"]["stroke_type_correct"], 1)
-        self.assertEqual(report["summary"]["stroke_type_accuracy"], 0.5)
+        self.assertEqual(report["summary"]["stroke_type_match_ratio"], 0.5)
         self.assertEqual(report["summary"]["contact_within_tolerance"], 1)
         self.assertEqual(report["summary"]["manual_review_count"], 1)
         self.assertEqual(report["events"][0]["stroke_type_correct"], False)
@@ -100,7 +100,7 @@ class SwingEvaluationTests(unittest.TestCase):
 
             self.assertEqual(output_path, default_evaluation_output_path(str(event_path)))
             saved = json.loads(Path(output_path).read_text(encoding="utf-8"))
-            self.assertEqual(saved["summary"]["stroke_type_accuracy"], 1.0)
+            self.assertEqual(saved["summary"]["stroke_type_match_ratio"], 1.0)
 
     def test_v2_matches_independent_timeline_annotations_and_measures_recall(self):
         event_data = {
@@ -174,8 +174,8 @@ class SwingEvaluationTests(unittest.TestCase):
         self.assertEqual(summary["precision"], 0.6667)
         self.assertEqual(summary["recall"], 0.6667)
         self.assertEqual(summary["f1"], 0.6667)
-        self.assertEqual(summary["stroke_type_accuracy"], 0.5)
-        self.assertEqual(summary["contact_accuracy"], 1.0)
+        self.assertEqual(summary["stroke_type_match_ratio"], 0.5)
+        self.assertEqual(summary["contact_within_tolerance_ratio"], 1.0)
         self.assertEqual(summary["contact_mean_abs_error_frames"], 1.5)
         self.assertEqual(summary["start_mean_abs_error_frames"], 1.5)
         self.assertEqual(summary["end_mean_abs_error_frames"], 1.5)

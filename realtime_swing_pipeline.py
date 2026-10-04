@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 from manual_annotation_contract import annotation_contract_script
+from evaluation_reference_policy import reference_metric_script
 import json
 import math
 import os
@@ -2026,7 +2027,7 @@ class RealtimeSwingOutputManager:
     {session_dashboard}
     <section id="live-coach-feed" class="live-coach-feed" aria-live="polite"><h2>实时 Coach</h2><p>等待第一条建议…</p></section>
     <section id="annotation-workspace" class="annotation-workspace">
-      <h2>人工真值标注 V2</h2>
+      <h2>挥拍边界辅助复核 V2</h2>
       <p class="summary">可修正事件边界；系统漏检的挥拍请单独补录。标注会保存在当前浏览器，页面刷新后仍保留。</p>
       <label class="timeline-review"><input id="timeline-review-complete" type="checkbox"> 已完整检查整段视频（完成后才计算 Precision / Recall / F1）</label>
       <p id="annotation-readiness" class="annotation-readiness"></p>
@@ -2147,7 +2148,7 @@ class RealtimeSwingOutputManager:
       return {{
         schema_version: 'swing_manual_annotations_v2',
         timeline_review_complete: timelineReviewComplete.checked,
-        source: {{ event_json: eventJsonUrl }},
+        source: {{ event_json: eventJsonUrl, reference_method: 'model_assisted_review', model_predictions_visible: true }},
         events: [...document.querySelectorAll('[data-annotation-card]')].map(annotationFromCard)
       }};
     }}
@@ -2164,7 +2165,7 @@ class RealtimeSwingOutputManager:
         annotationReadiness.textContent = '请完整检查整段视频后勾选确认项。';
       }} else {{
         annotationReadiness.dataset.state = 'ready';
-        annotationReadiness.textContent = '已满足正式评估条件，可以下载标注 JSON。';
+        annotationReadiness.textContent = '已满足复核对照条件，可以下载标注 JSON；独立准确性仍需验证。';
       }}
     }}
 
@@ -2283,9 +2284,7 @@ class RealtimeSwingOutputManager:
     restoreAnnotations();
     updateAnnotationReadiness(collectAnnotations());
 
-    function reviewPercent(value) {{
-      return value == null ? '待确认' : `${{(Number(value) * 100).toFixed(1)}}%`;
-    }}
+    {reference_metric_script()}
 
     function setReviewStage(stage) {{
       const order = ['import', 'validate', 'evaluate', 'coach'];
@@ -2334,7 +2333,7 @@ class RealtimeSwingOutputManager:
       const validation = state?.validation || null;
       const summary = state?.evaluation?.summary || null;
       if (status === 'finalized') {{
-        setReviewStatus('已完成人工校准', 'finalized', '评估已定稿，人工 Coach 已按确认边界重新计算。');
+        setReviewStatus('边界复核对照已定稿', 'finalized', '人工 Coach 已按确认边界重新计算；对照定稿不代表独立准确性验证。');
         setReviewStage('coach');
       }} else if (status === 'needs_review') {{
         const pending = validation?.pending_count ?? 0;
@@ -2347,13 +2346,7 @@ class RealtimeSwingOutputManager:
 
       manualReviewMetrics.replaceChildren();
       if (summary) {{
-        const metrics = [
-          ['Precision', reviewPercent(summary.precision)],
-          ['Recall', reviewPercent(summary.recall)],
-          ['F1', reviewPercent(summary.f1)],
-          ['类型准确率', reviewPercent(summary.stroke_type_accuracy)],
-          ['触球准确率', reviewPercent(summary.contact_accuracy)],
-        ];
+        const metrics = reviewMetricRows(state.evaluation);
         for (const [label, value] of metrics) {{
           const item = document.createElement('div');
           const caption = document.createElement('span');
@@ -2363,6 +2356,9 @@ class RealtimeSwingOutputManager:
           item.append(caption, number);
           manualReviewMetrics.append(item);
         }}
+        const note = document.createElement('p');
+        note.textContent = reviewReferenceNote(state.evaluation);
+        manualReviewMetrics.append(note);
         manualReviewMetrics.hidden = false;
       }} else {{
         manualReviewMetrics.hidden = true;
@@ -2479,7 +2475,7 @@ class RealtimeSwingOutputManager:
         setReviewStatus(
           pending ? '导入完成，仍需复核' : '导入完成',
           pending ? 'needs_review' : 'waiting',
-          `已读取 ${{payload.events.length}} 条标注；${{pending ? `其中 ${{pending}} 条仍需复核。` : '可以生成正式评估。'}}`,
+          `已读取 ${{payload.events.length}} 条标注；${{pending ? `其中 ${{pending}} 条仍需复核。` : '可以生成复核对照。'}}`,
         );
         setReviewStage('import');
       }} catch (error) {{

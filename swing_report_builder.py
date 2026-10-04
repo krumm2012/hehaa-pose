@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from manual_annotation_contract import annotation_contract_script
+from evaluation_reference_policy import comparison_metric_rows, reference_note
 import html
 import json
 import math
@@ -938,7 +939,8 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       <div class="evaluation-summary">
         <h2>Evaluation Summary</h2>
         <p><strong>status {html.escape(status_text)}</strong></p>
-        <p>precision {_percent_text(evaluation_summary.get('precision'))} · recall {_percent_text(evaluation_summary.get('recall'))} · F1 {_percent_text(evaluation_summary.get('f1'))} · stroke accuracy {_percent_text(evaluation_summary.get('stroke_type_accuracy'))} · contact accuracy {_percent_text(evaluation_summary.get('contact_accuracy'))}</p>
+        <p>{' · '.join(html.escape(label + ' ' + value) for label, value in comparison_metric_rows(evaluation))}</p>
+        <p>{html.escape(reference_note(evaluation))}</p>
       </div>
         """
     session_dashboard_block = _session_dashboard_html(
@@ -1484,7 +1486,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       return {{
         schema_version: 'swing_manual_annotations_v2',
         timeline_review_complete: timelineReviewComplete.checked,
-        source: data.paths,
+        source: {{...data.paths, reference_method: 'model_assisted_review', model_predictions_visible: true}},
         summary: data.summary,
         events: Array.from(document.querySelectorAll('[data-annotation-card]')).map(annotationFromCard)
       }};
@@ -1501,7 +1503,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         annotationReadiness.textContent = '请完整检查整段视频后勾选确认项。';
       }} else {{
         annotationReadiness.dataset.state = 'ready';
-        annotationReadiness.textContent = '已满足正式评估条件，可以下载标注 JSON。';
+        annotationReadiness.textContent = '已满足复核对照条件，可以下载标注 JSON；独立准确性仍需验证。';
       }}
     }}
     function refreshAnnotations() {{

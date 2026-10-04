@@ -8,6 +8,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
+from evaluation_reference_policy import qualify_reference_comparison
 
 
 UNCLEAR_LABELS = {"", "Unclear", "Unknown", "No Swing", None}
@@ -584,20 +585,22 @@ def evaluate_swing_events(
     match_contact_tolerance_frames: int = 12,
     min_event_iou: float = 0.10,
 ) -> Dict:
-    """Evaluate V1 card annotations or V2 independent timeline truth."""
+    """Compare references; completed review does not verify independent accuracy."""
     if annotation_data.get("schema_version") == "swing_manual_annotations_v2":
-        return _evaluate_v2(
+        report = _evaluate_v2(
             event_data,
             annotation_data,
             contact_tolerance_frames=contact_tolerance_frames,
             match_contact_tolerance_frames=match_contact_tolerance_frames,
             min_event_iou=min_event_iou,
         )
-    return _evaluate_v1(
-        event_data,
-        annotation_data,
-        contact_tolerance_frames=contact_tolerance_frames,
-    )
+    else:
+        report = _evaluate_v1(
+            event_data,
+            annotation_data,
+            contact_tolerance_frames=contact_tolerance_frames,
+        )
+    return qualify_reference_comparison(report, annotation_data)
 
 
 def write_evaluation_report(
