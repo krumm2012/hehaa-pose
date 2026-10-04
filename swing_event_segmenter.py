@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Tuple
 from swing_event_classifier import classify_swing_event
 from motion_time_contract import (REFERENCE_HZ, SMOOTH_SECONDS, candidate_timeline,
                                   attach_candidate_timing)
+from metric_source_windows import MetricWindowContext
 from swing_quality_policy import (
     BALL_CONTACT_WINDOW_RADIUS,
     ball_tracking_requires_capture,
@@ -518,22 +519,33 @@ def _evaluate_swing_kinematic_bounds(
     return wrist_sweep, arm_range
 
 
-def _best_contact_frame(features: List[Dict], start_idx: int, end_idx: int, peak_idx: int) -> int:
+def _best_contact_frame(features: List[Dict], start_idx: int, end_idx: int,
+                        peak_idx: int, evidence: Optional[Dict] = None) -> int:
     event_features = features[start_idx : end_idx + 1]
-    scored = [f for f in event_features if f.get("contact_score") is not None]
-    if not scored:
-        return int(features[peak_idx]["frame_id"])
+    windows = MetricWindowContext(event_features)
+    scored = [f for f in event_features
+              if type(f.get('contact_score')) in (int, float)
+              and math.isfinite(f['contact_score']) and f['contact_score'] > 0]
     peak_frame = int(features[peak_idx]["frame_id"])
-    best = max(
-        scored,
-        key=lambda f: (
-            float(f.get("contact_score") or 0.0),
-            -abs(int(f.get("frame_id", peak_frame)) - peak_frame),
-        ),
-    )
-    if float(best.get("contact_score") or 0.0) <= 0.0:
-        return int(features[peak_idx]["frame_id"])
-    return int(best["frame_id"])
+    qualified = windows.qualified and peak_frame in windows.times
+    def distance(feature):
+        fid = int(feature['frame_id'])
+        return abs(windows.times[fid] - windows.times[peak_frame]) if qualified else abs(fid - peak_frame)
+    best = max(scored, key=lambda f: (float(f['contact_score']), -distance(f))) if scored else None
+    selected = int(best['frame_id']) if best else peak_frame
+    if evidence is not None:
+        evidence.update(policy_version='contact_candidate_selection_v2_source_time',
+            source_time_qualified=qualified,
+            tie_break_basis='media_pts' if qualified else 'source_frame_offsets_unverified',
+            tie_break_semantics='nearest_motion_peak_among_equal_candidate_scores',
+            selected_source_frame_id=selected, peak_source_frame_id=peak_frame,
+            selected_score=best['contact_score'] if best else None,
+            tied_candidate_frame_ids=[f['frame_id'] for f in scored
+                if best and f['contact_score'] == best['contact_score']],
+            reasons=list(windows.reasons) + ([] if qualified else ['candidate_window_time_unverified'])
+                + ([] if best else ['no_positive_contact_score_using_motion_peak_candidate']),
+            accuracy_validated=False, sensor_exposure_verified=False, coach_eligible=False)
+    return selected
 
 
 def _event_quality_flags(features: List[Dict], start_idx: int, end_idx: int, classification: Dict, contact_frame: int) -> Dict:
@@ -833,7 +845,8 @@ def _segment_by_peaks(
             if min_arm_extension_range > 0.0 and arm_range is not None and arm_range < min_arm_extension_range:
                 continue
         event_id = len(events) + 1
-        contact_frame = _best_contact_frame(features, start_idx, end_idx, peak_idx)
+        contact_selection = {}
+        contact_frame = _best_contact_frame(features, start_idx, end_idx, peak_idx, contact_selection)
         contact_idx = next(
             (
                 idx
@@ -850,6 +863,7 @@ def _segment_by_peaks(
             fps,
         )
         classification["evidence"]["start_boundary"] = boundary_evidence
+        classification['evidence']['contact_anchor_selection'] = contact_selection
         quality_flags = _event_quality_flags(features, start_idx, end_idx, classification, contact_frame)
         phase_counts, event_frame_phases = _phase_counts(
             features,
@@ -1014,7 +1028,8 @@ def segment_swing_events(
         event_id = len(events) + 1
         peak_rel = segment_energy.index(peak_energy) if segment_energy else 0
         peak_idx = start_idx + peak_rel
-        contact_frame = _best_contact_frame(features, start_idx, end_idx, peak_idx)
+        contact_selection = {}
+        contact_frame = _best_contact_frame(features, start_idx, end_idx, peak_idx, contact_selection)
         contact_idx = next(
             (
                 idx
@@ -1035,6 +1050,7 @@ def segment_swing_events(
             "confidence": "medium",
             "onset_frame": int(features[start_idx]["frame_id"]),
         }
+        classification['evidence']['contact_anchor_selection'] = contact_selection
         quality_flags = _event_quality_flags(features, start_idx, end_idx, classification, contact_frame)
         phase_counts, event_frame_phases = _phase_counts(
             features,

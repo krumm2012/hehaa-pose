@@ -10,6 +10,8 @@ from event_source_timing import POLICY_VERSION as PHASE_TIME_POLICY
 from coach_rule_contract import POLICY_VERSION as AUTOMATIC_COACH_POLICY
 from motion_time_contract import POLICY_VERSION as MOTION_TIME_POLICY
 from metric_source_windows import POLICY_VERSION as BODY_WINDOW_POLICY
+from swing_event_classifier import POLICY_VERSION as CLASSIFICATION_POLICY
+from image_motion_measurements import POLICY_VERSION as IMAGE_MOTION_POLICY
 
 _FILES = ('swing_event_analyzer.py','swing_biomechanics.py','kinematic_sequence.py',
           'osd_evidence.py','realtime_swing_pipeline.py','swing_motion_features.py',
@@ -38,4 +40,6 @@ def analysis_build_info():
             'automatic_coach_policy':AUTOMATIC_COACH_POLICY,
             'motion_time_policy':MOTION_TIME_POLICY,
             'body_window_policy':BODY_WINDOW_POLICY,
+            'classification_policy':CLASSIFICATION_POLICY,
+            'image_motion_policy':IMAGE_MOTION_POLICY,
             'historical_outputs_rewritten':False, 'accuracy_validated':False}

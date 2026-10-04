@@ -7,6 +7,7 @@ from copy import deepcopy
 from statistics import median
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 from metric_source_windows import MetricWindowContext, attach_window, combine_windows
+from image_motion_measurements import POLICY_VERSION as IMAGE_MOTION_POLICY
 
 
 Point = Tuple[float, float]
@@ -497,7 +498,7 @@ def _calculate_extended_tier_biomechanics(
             "max_px_s": image_peak,
             "sample_count": len(speed_samples),
             "source_frames": [f["frame_id"] for f in speed_samples],
-            "measurement_policy": "image_motion_v1_source_time",
+            "measurement_policy": IMAGE_MOTION_POLICY,
             "status": "uncalibrated",
             "contact_time_basis": contact_f.get("racket_speed_time_basis"),
             "confidence": 0.0,

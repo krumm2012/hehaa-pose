@@ -94,3 +94,12 @@ clocks abstain, while legacy windows remain disclosed as unverified. Capacity,
 observation counts and source identity checks remain frame-based invariants.
 Legacy per-observation peak maxima are audit candidates only, without FPS
 latencies or OPTIMAL/DISCONNECTED conclusions. See the v3 metric contract.
+
+Classification now selects stroke evidence from candidate contact -0.56 to
++0.08 source seconds, and contact geometry separately within +/-0.12 seconds.
+Fewer than three stroke observations abstain rather than restoring the whole
+event. Missing/unqualified clocks retain explicitly unverified, bounded
+candidate heuristics; missing anchors or duplicate source identities abstain.
+Equal finite positive contact scores use distance to the motion peak in
+qualified source PTS, with source-frame fallback disclosed for unverified clocks.
+This changes candidate selection, not independent classification/contact truth.

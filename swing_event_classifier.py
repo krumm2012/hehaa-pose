@@ -4,11 +4,68 @@
 from __future__ import annotations
 
 from collections import Counter
+import math
 from statistics import median
-from typing import Dict, List
+from typing import Dict, List, Optional
+
+from metric_source_windows import MetricWindowContext
 
 
 SWING_TYPES = {"Forehand", "Backhand", "Two-Handed Backhand"}
+POLICY_VERSION = "player_camera_swing_v3_source_windows"
+
+
+def _classification_windows(rows, contact_frame):
+    """Separate bounded stroke and contact candidates, with disclosed clocks.
+
+    Invalid stream/legacy clocks retain source-frame candidate heuristics. They
+    never authorize measured timing, exposure, accuracy or technical scoring.
+    """
+    context = MetricWindowContext(rows)
+
+    def select(before, after, legacy_before, legacy_after):
+        request = {'anchor_frame_id': contact_frame, 'before_seconds': before,
+                   'after_seconds': after}
+        reasons = list(context.reasons)
+        basis = context.basis
+        qualified = context.qualified and contact_frame is not None
+        identity_invalid = 'invalid_or_duplicate_source_frame_identity' in reasons
+        if contact_frame is None:
+            selected = list(rows)
+            qualified = False
+            reasons.append('contact_anchor_not_supplied')
+        elif (identity_invalid or type(contact_frame) is not int
+              or contact_frame < 0 or contact_frame not in context.by_id):
+            selected = []
+            qualified = False
+            reasons.append('missing_or_invalid_contact_anchor')
+        elif context.timed:
+            window = context.around(contact_frame, before=before, after=after)
+            selected = [context.by_id[fid] for fid in window.frame_ids]
+        else:
+            selected = [context.by_id[fid] for fid in context.ids
+                        if contact_frame - legacy_before <= fid <= contact_frame + legacy_after]
+            basis = 'source_frame_offsets_unverified'
+            request['legacy_candidate_offsets'] = [-legacy_before, legacy_after]
+        if not qualified:
+            reasons.append('candidate_window_time_unverified')
+        ids = [r.get('frame_id') for r in selected]
+        evidence = {'policy_version': POLICY_VERSION, 'basis': basis,
+            'source_time_qualified': qualified, 'requested_window': request,
+            'source_frame_ids': ids, 'sample_count': len(selected),
+            'observation_frame_gaps': [[a, b] for a, b in zip(ids, ids[1:])
+                if type(a) is int and type(b) is int and b != a + 1],
+            'reasons': list(dict.fromkeys(reasons)),
+            'actual_time_range_seconds': ([context.times[ids[0]], context.times[ids[-1]]]
+                if ids and context.timed and all(fid in context.times for fid in ids) else None),
+            'accuracy_validated': False, 'sensor_exposure_verified': False,
+            'coach_eligible': False,
+            'coverage_semantics': 'retained_sample_availability_not_temporal_coverage'}
+        return selected, evidence
+
+    stroke_rows, stroke_window = select(.56, .08, 14, 2)
+    contact_rows, contact_window = select(.12, .12, 3, 3)
+    return stroke_rows, contact_rows, stroke_window, contact_window
 
 
 def _dominant_hand(event_features: List[Dict]) -> str:
@@ -142,25 +199,8 @@ def classify_swing_event(
     Frame labels are treated as one signal, not as the source of truth.
     Two-handed backhand needs sustained close-hand evidence within the event.
     """
-    if not event_features:
-        return {
-            "stroke_type": "Unknown",
-            "confidence": 0.0,
-            "contact_status": "unknown",
-            "is_shadow_swing": False,
-            "is_valid_contact": False,
-            "evidence": {},
-        }
-
-    # 若指定了触球帧，严格限定在触球瞬间及之前 (Pre-impact & Contact Window) 进行定性，
-    # 坚决剔除击球后的随挥收拍帧 (Follow-through)，避免正手随挥扫过对侧胸前被误导。
-    if contact_frame is not None:
-        active_features = [
-            f for f in event_features
-            if f.get("frame_id") is None or f["frame_id"] <= contact_frame + 2
-        ]
-        if len(active_features) >= 3:
-            event_features = active_features
+    event_features, contact_features, stroke_window, contact_window = _classification_windows(
+        event_features, contact_frame)
 
     label_counts = Counter(f.get("raw_swing_type", "Unknown") for f in event_features)
     swing_label_counts = {k: label_counts.get(k, 0) for k in sorted(SWING_TYPES)}
@@ -280,20 +320,18 @@ def classify_swing_event(
         decision_rule = "label_fallback_backhand"
 
     # Contact & Shadow swing analysis (物理触球与空挥判定)
-    ball_pts = [f["ball"] for f in event_features if f.get("ball") is not None]
-    has_ball_in_event = len(ball_pts) >= 2 or any(f.get("has_ball") for f in event_features)
+    ball_pts = [f["ball"] for f in contact_features if f.get("ball") is not None]
+    has_ball_in_event = len(ball_pts) >= 2 or any(f.get("has_ball") for f in contact_features)
 
     min_ball_distance = None
     closest_contact_feature = None
-    for f in event_features:
-        if contact_frame is not None and abs(int(f.get("frame_id", contact_frame)) - contact_frame) > 3:
-            continue
+    for f in contact_features:
         d = f.get("ball_racket_distance")
         if d is None and f.get("ball") is not None and f.get("wrist") is not None:
             bx, by = f["ball"]
             wx, wy = f["wrist"]
             d = ((bx - wx) ** 2 + (by - wy) ** 2) ** 0.5
-        if d is not None:
+        if type(d) in (int, float) and math.isfinite(d) and d >= 0:
             if min_ball_distance is None or d < min_ball_distance:
                 min_ball_distance = d
                 closest_contact_feature = f
@@ -313,8 +351,10 @@ def classify_swing_event(
     contact_status = "candidate" if is_valid_contact else "unknown"
     if stroke_type == "Forehand" and two_hand_ratio >= .6 and side != "forehand":
         stroke_type, confidence, decision_rule = "Unknown", 0.0, "two_hand_direction_conflict"
-    if confidence < .55:
+    if len(event_features) < 3 or confidence < .55:
         stroke_type, confidence, decision_rule = "Unknown", 0.0, "insufficient_classification_evidence"
+        if len(event_features) < 3:
+            stroke_window['reasons'].append('insufficient_classification_samples')
 
     return {
         "stroke_type": stroke_type,
@@ -332,7 +372,9 @@ def classify_swing_event(
             "backhand_side_frames": int(swing_side["backhand_side_frames"]),
             "forehand_side_frames": int(swing_side["forehand_side_frames"]),
             "classification_context": {
-                "policy_version": "player_camera_swing_v2_abstention",
+                "policy_version": POLICY_VERSION,
+                "window_evidence": stroke_window,
+                "confidence_semantics": "uncalibrated_heuristic_evidence_not_accuracy_probability",
                 "player": {
                     "dominant_hand": dominant_hand,
                     "source": "configured",
@@ -348,9 +390,10 @@ def classify_swing_event(
                     "two_handed_frames": int(dv_two_handed_count),
                 } if dv_evidence_count > 0 else None,
                 "contact_analysis": {
+                    "window_evidence": contact_window,
                     "observation_policy": "fresh_selected_ball_v1; legacy_XY_unverified",
-                    "fresh_ball_frame_count": sum(f.get('ball_provenance_status') == 'fresh_model_observation' for f in event_features),
-                    "legacy_unverified_ball_frame_count": sum(f.get('ball') is not None and f.get('ball_provenance_status') != 'fresh_model_observation' for f in event_features),
+                    "fresh_ball_frame_count": sum(f.get('ball_provenance_status') == 'fresh_model_observation' for f in contact_features),
+                    "legacy_unverified_ball_frame_count": sum(f.get('ball') is not None and f.get('ball_provenance_status') != 'fresh_model_observation' for f in contact_features),
                     "closest_evidence_frame": (closest_contact_feature or {}).get('frame_id'),
                     "closest_geometry": (closest_contact_feature or {}).get('contact_geometry') or 'legacy_geometry_unverified',
                     "distance_threshold_px": 180.0,
@@ -361,6 +404,7 @@ def classify_swing_event(
                     "contact_status": contact_status,
                     "min_ball_distance": round(float(min_ball_distance), 2) if min_ball_distance is not None else None,
                     "has_trajectory_rebound": bool(has_trajectory_rebound),
+                    "trajectory_rebound_semantics": "image_vertical_steps_not_verified_contact_or_bounce",
                 },
                 "decision_rule": decision_rule,
             },
