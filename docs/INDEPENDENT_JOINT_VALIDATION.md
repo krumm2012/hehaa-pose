@@ -59,3 +59,7 @@ venv/bin/python scripts/evaluate_joint_labels.py \
 单独检查分辨率一致性。输出资格包含当前源帧、原图坐标边界和模型分数；
 所有已接受可见点保留在分母中。原分辨率与其自身预标注零偏移仅为数据一致性。
 本次半分辨率正面保留 69/69 点，背面保留 49/61 点；暂不据此修改实时默认分辨率。
+
+### 2026-10-05 标注计划修订
+
+最新无模型提示连续帧页：`data/analysis_results/kinematic_validation/independent_temporal_plan_v3_20261005/index.html`。源帧175–196共22帧，显式 `requested_joints` 为左右肩、左右髋；双视角计划176项，空草稿评估状态为 `pending_independent_confirmation`。旧v2页面缺计划字段，评估会使用传统十二关节分母；保留旧页，最终四关节采集使用v3，不能把空草稿视为已确认标签。
