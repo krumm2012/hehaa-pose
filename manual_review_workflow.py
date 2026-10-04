@@ -168,7 +168,9 @@ def _annotation_frames(annotation: Dict) -> Tuple[int, int, int]:
         raise ValueError(
             f"标注 {annotation.get('annotation_id') or '?'} 缺少开始/触球/结束帧"
         )
-    return int(start), int(contact), int(end)
+    if any(type(fid) is not int or fid < 0 for fid in (start, contact, end)):
+        raise ValueError('开始/触球/结束帧必须是非负整数源帧号，不能转换小数、布尔值或字符串')
+    return start, contact, end
 
 
 def validate_manual_annotations(
@@ -331,6 +333,8 @@ def derive_manual_coach_events(
             classification_evidence=(original or {}).get("evidence") or {},
         )
         event.update({key: value for key, value in summary.items() if key != "frame_phases"})
+        if summary['manual_anchor_evidence']['anchors']['contact_frame']['status'] != 'observed':
+            event['contact_status'] = 'unknown'
         event['timing'] = {'latency_scope': 'manual_recomputation'}
         event.pop('candidate_runtime_timing', None)
         event['phase_timing'] = analyze_event_source_timing(event, frame_records,

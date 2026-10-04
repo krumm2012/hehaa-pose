@@ -17,6 +17,22 @@ from swing_quality_policy import (
     ball_tracking_requires_capture,
 )
 
+PHASE_POLICY_VERSION = 'model_phase_labels_v2_source_recovery'
+MANUAL_ANCHOR_POLICY_VERSION = 'manual_event_anchors_v2_preserve_reference'
+RECOVERY_SUPPORT_SECONDS = 2 / REFERENCE_HZ
+
+
+def _phase_policy(features):
+    qualified = bool(features) and all(f.get('candidate_timing', {}).get('source_time_qualified') for f in features)
+    return {'policy_version': PHASE_POLICY_VERSION,
+            'basis': 'media_pts' if qualified else 'observation_order_unverified',
+            'source_time_qualified': qualified,
+            'recovery_support_seconds': RECOVERY_SUPPORT_SECONDS if qualified else None,
+            'minimum_recovery_observations': 3,
+            'legacy_recovery_observations': 3,
+            'accuracy_validated': False, 'coach_eligible': False,
+            'semantics': 'candidate_energy_labels_not_independent_phase_truth'}
+
 
 def _smooth(values: List[float], window: int = 3, times=None) -> List[float]:
     if not values:
@@ -431,6 +447,8 @@ def _phase_counts(
     motion_started = False
     forward_started = False
     recovered = False
+    source_timed = _phase_policy(features)['source_time_qualified']
+    times = [f['timestamp'] for f in features] if source_timed else None
     for idx in range(start_idx, end_idx + 1):
         feature = features[idx]
         energy_value = float(energy[idx])
@@ -452,8 +470,13 @@ def _phase_counts(
             phase = "forward_swing"
         else:
             if not recovered:
-                recovery_horizon = energy[idx : min(end_idx + 1, idx + 3)]
-                recovered = len(recovery_horizon) >= 3 and all(
+                stop = (bisect_left(times, times[idx]+RECOVERY_SUPPORT_SECONDS-1e-9, idx, end_idx+1)
+                        if source_timed else idx+2)
+                recovery_horizon = energy[idx:stop+1] if stop <= end_idx else []
+                continuous = stop <= end_idx and (not source_timed or all(
+                    features[j+1]['frame_id'] == features[j]['frame_id']+1
+                    for j in range(idx, stop)))
+                recovered = continuous and len(recovery_horizon) >= 3 and all(
                     float(value) < ready_threshold for value in recovery_horizon
                 )
             phase = "ready" if recovered else "follow_through"
@@ -571,7 +594,9 @@ def _event_quality_flags(features: List[Dict], start_idx: int, end_idx: int, cla
     contact_feature = next((f for f in event_features if int(f.get('frame_id', -1)) == contact_frame), None)
     source_timed = bool(contact_feature and contact_feature.get('candidate_timing', {}).get('source_time_qualified'))
     radius_seconds = BALL_CONTACT_WINDOW_RADIUS / REFERENCE_HZ
-    if source_timed:
+    if contact_feature is None:
+        contact_window = []
+    elif source_timed:
         contact_window = [f for f in event_features
                           if abs(f['timestamp']-contact_feature['timestamp']) <= radius_seconds+1e-9]
     else:
@@ -589,7 +614,8 @@ def _event_quality_flags(features: List[Dict], start_idx: int, end_idx: int, cla
         "ball_contact_window_ratio": contact_window_ratio,
         "ball_contact_window_frames": len(contact_window),
         "ball_contact_window_detection_frames": contact_window_ball_frames,
-        "ball_contact_window_basis": 'media_pts' if source_timed else 'source_frame_identity_heuristic',
+        "ball_contact_window_basis": 'unavailable' if contact_feature is None else ('media_pts' if source_timed else 'source_frame_identity_heuristic'),
+        "ball_contact_window_reasons": ['contact_anchor_observation_missing'] if contact_feature is None else [],
         "ball_contact_window_seconds": [-radius_seconds, radius_seconds] if source_timed else None,
         "ball_contact_window_frame_ids": [int(f['frame_id']) for f in contact_window],
         "ball_contact_window_coverage_semantics": 'ratio_among_retained_observations_not_time_coverage',
@@ -633,7 +659,8 @@ def _event_quality_flags(features: List[Dict], start_idx: int, end_idx: int, cla
         "ball_contact_window_frames": len(contact_window),
         "ball_contact_window_detection_frames": contact_window_ball_frames,
         "racket_frame_ratio": round(racket_ratio, 4),
-        "ball_contact_window_basis": 'media_pts' if source_timed else 'source_frame_identity_heuristic',
+        "ball_contact_window_basis": ball_quality['ball_contact_window_basis'],
+        "ball_contact_window_reasons": ball_quality['ball_contact_window_reasons'],
         "ball_contact_window_seconds": [-radius_seconds, radius_seconds] if source_timed else None,
         "ball_contact_window_frame_ids": [int(f['frame_id']) for f in contact_window],
         "ball_contact_window_coverage_semantics": 'ratio_among_retained_observations_not_time_coverage',
@@ -661,9 +688,8 @@ def summarize_manual_event_range(
         raise ValueError("Cannot summarize a manual event without frame features")
     features, timing = candidate_timeline(features)
 
-    start_frame = int(start_frame)
-    contact_frame = int(contact_frame)
-    end_frame = int(end_frame)
+    if any(type(fid) is not int or fid < 0 for fid in (start_frame, contact_frame, end_frame)):
+        raise ValueError('Manual anchors must be nonnegative integer source identities')
     if not start_frame <= contact_frame <= end_frame:
         raise ValueError("Manual event must satisfy start <= contact <= end")
 
@@ -675,11 +701,14 @@ def summarize_manual_event_range(
     if not indices:
         raise ValueError("Manual event range does not contain any frame features")
     start_idx, end_idx = indices[0], indices[-1]
-    contact_idx = min(
-        indices,
-        key=lambda index: abs(int(features[index].get("frame_id", -1)) - contact_frame),
-    )
-    effective_contact_frame = int(features[contact_idx]["frame_id"])
+    requested = {'start_frame':start_frame, 'contact_frame':contact_frame, 'end_frame':end_frame}
+    anchors = {}
+    for key, fid in requested.items():
+        matches = [idx for idx in indices if features[idx]['frame_id'] == fid]
+        anchors[key] = {'source_frame_id':fid, 'record_count':len(matches),
+                        'status':'observed' if len(matches)==1 else ('missing' if not matches else 'ambiguous')}
+    contacts = [idx for idx in indices if features[idx]['frame_id'] == contact_frame]
+    contact_idx = contacts[0] if len(contacts)==1 else None
     energy = _smooth([_motion_energy(feature) for feature in features], window=3,
                      times=[f['timestamp'] for f in features] if timing['source_time_qualified'] else None)
     peak_idx = max(indices, key=lambda index: float(energy[index]))
@@ -691,7 +720,7 @@ def summarize_manual_event_range(
         start_idx,
         end_idx,
         classification,
-        effective_contact_frame,
+        contact_frame,
     )
     phase_counts, frame_phases = _phase_counts(
         features,
@@ -699,16 +728,27 @@ def summarize_manual_event_range(
         start_idx,
         end_idx,
         contact_idx,
-    )
+    ) if contact_idx is not None else ({}, {})
+    anchor_reasons = [f'manual_{key}_{anchor["status"]}' for key, anchor in anchors.items()
+                      if anchor['status'] != 'observed']
+    quality_flags['warnings'].extend(anchor_reasons)
+    phase_evidence = _phase_policy(features)
+    if contact_idx is None:
+        phase_evidence.update(status='unavailable', reasons=['manual_contact_observation_missing_or_ambiguous'])
     return {
-        "start_frame": int(features[start_idx]["frame_id"]),
-        "contact_frame": effective_contact_frame,
-        "end_frame": int(features[end_idx]["frame_id"]),
-        "duration_frames": int(end_idx - start_idx + 1),
+        **requested,
+        "duration_frames": end_frame-start_frame+1,
         "peak_frame": int(features[peak_idx]["frame_id"]),
         "peak_energy": round(float(energy[peak_idx]), 4),
         "quality_flags": quality_flags,
         "candidate_timing": timing,
+        "manual_anchor_evidence": {'policy_version':MANUAL_ANCHOR_POLICY_VERSION,
+            'anchors':anchors, 'reasons':anchor_reasons,
+            'observed_frame_count':len(indices),
+            'observed_source_frame_ids':[features[idx]['frame_id'] for idx in indices],
+            'duration_frame_semantics':'inclusive_requested_source_id_span_not_observation_count',
+            'reference_semantics':'human_annotation_preserved_not_sensor_or_geometry_confirmation'},
+        "phase_evidence": phase_evidence,
         "phase_counts": dict(sorted(phase_counts.items())),
         "frame_phases": {
             str(frame_id): phase
@@ -903,6 +943,8 @@ def _segment_by_peaks(
 def _build_result(features: List[Dict], energy: List[float], events: List[Dict], frame_to_event: Dict[int, int], frame_phases: Optional[Dict[int, str]] = None) -> Dict:
     frame_trace = []
     frame_phases = frame_phases or {}
+    for event in events:
+        event['phase_evidence'] = _phase_policy(features)
     for idx, feature in enumerate(features):
         event_id = frame_to_event.get(feature["frame_id"])
         phase = (

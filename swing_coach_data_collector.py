@@ -79,7 +79,17 @@ def _phase_durations(traces: List[Dict]) -> Dict[str, int]:
 
 
 def _best_contact_frame(event: Dict, event_features: List[Dict]) -> Tuple[int, str, float]:
-    scored = [f for f in event_features if f.get("contact_score") is not None]
+    declared = event.get('contact_frame')
+    if declared is not None:
+        if type(declared) is not int or declared < 0:
+            raise ValueError('Declared contact must be a nonnegative integer source identity')
+        matches = [f for f in event_features if f.get('frame_id') == declared]
+        score = finite_number(matches[0].get('contact_score')) if len(matches)==1 else None
+        score = score if score is not None and 0 <= score <= 1 else 0.
+        status = 'observed' if len(matches)==1 else ('missing' if not matches else 'ambiguous')
+        return declared, f'event_contact_anchor_{status}', score
+    scored = [f for f in event_features if finite_number(f.get('contact_score')) is not None
+              and 0 <= f['contact_score'] <= 1]
     if scored:
         best = max(scored, key=lambda f: float(f.get("contact_score") or 0.0))
         if float(best.get("contact_score") or 0.0) > 0.0:
@@ -353,6 +363,7 @@ def _event_frames(event: Dict, event_features: List[Dict], event_traces: List[Di
         "contact": contact_frame,
         "contact_frame": contact_frame,
         "contact_source": contact_source,
+        "contact_anchor_policy": 'event_contact_anchor_v2_no_reselection',
         "contact_confidence": round(contact_confidence, 4),
         "peak": int(event.get("peak_frame", contact_frame)),
         "peak_frame": int(event.get("peak_frame", contact_frame)),

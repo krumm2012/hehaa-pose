@@ -48,6 +48,14 @@ def _build_event_source_timing_html(timing: Dict, runtime=None) -> str:
     elapsed = f'{seconds:.3f} s' if qualified else '源时间不可核验'
     notice = ('<p>源视频结束时尚未完成等待确认；请复核动作是否完整。</p>'
               if isinstance(runtime, dict) and runtime.get('completion_status') == 'source_end_unsettled_candidate' else '')
+    reasons = list(timing.get('reasons') or []) + list(timing.get('phase_reasons') or [])
+    explanations = {'missing_event_anchor_record': '缺少事件锚点源帧；保持原指定帧号，不借邻帧计算',
+                    'source_time_contract_missing': '缺少源时间记录',
+                    'source_frame_gap_cannot_bridge_phase_labels': '源帧存在缺口，不能跨缺口累计阶段标签',
+                    'duplicate_frame_identity': '源帧身份重复，观测无法唯一对应'}
+    details = list(dict.fromkeys(explanations[reason] for reason in reasons if reason in explanations))
+    if details:
+        notice += '<p>' + html.escape('；'.join(details)) + '</p>'
     labels = {'backswing': '引拍', 'forward_swing': '前挥', 'contact_candidate': '触球候选',
               'follow_through': '随挥', 'recovery': '恢复', 'ready': '准备'}
     phases = ((timing.get('phase_durations_seconds') or {})

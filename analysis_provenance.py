@@ -13,6 +13,7 @@ from metric_source_windows import POLICY_VERSION as BODY_WINDOW_POLICY
 from swing_event_classifier import POLICY_VERSION as CLASSIFICATION_POLICY
 from image_motion_measurements import POLICY_VERSION as IMAGE_MOTION_POLICY
 from observation_policy import POSE_POLICY
+from swing_event_segmenter import PHASE_POLICY_VERSION, MANUAL_ANCHOR_POLICY_VERSION
 
 _FILES = ('swing_event_analyzer.py','swing_biomechanics.py','kinematic_sequence.py',
           'osd_evidence.py','realtime_swing_pipeline.py','swing_motion_features.py',
@@ -45,4 +46,6 @@ def analysis_build_info():
             'classification_policy':CLASSIFICATION_POLICY,
             'image_motion_policy':IMAGE_MOTION_POLICY,
             'pose_measurement_policy':POSE_POLICY,
+            'phase_candidate_policy':PHASE_POLICY_VERSION,
+            'manual_anchor_policy':MANUAL_ANCHOR_POLICY_VERSION,
             'historical_outputs_rewritten':False, 'accuracy_validated':False}
