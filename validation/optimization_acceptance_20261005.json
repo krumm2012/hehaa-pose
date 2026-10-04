@@ -582,8 +582,8 @@
     }
   ],
   "validation": {
-    "full_test_count": 570,
-    "log": "/tmp/tennis_finite_observation_full_20261005.log",
+    "full_test_count": 581,
+    "log": "/tmp/tennis_manual_anchor_phase_full_20261005.log",
     "semantic_replay": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/semantic_replay.json",
     "audit": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/audit.json",
     "pixel_run": "data/analysis_results/kinematic_validation/pixel_acceptance_v2_20261005/run.json",
@@ -592,11 +592,12 @@
     "phase_coach": "validation/phase_coach_acceptance_20261005.json",
     "motion_source": "validation/motion_source_acceptance_20261005.json",
     "current_project_inventory": "validation/project_inventory_20261005.json",
-    "current_semantic_replay": "data/analysis_results/kinematic_validation/finite_observation_delivery_20261005/semantic_replay.json",
-    "current_pixel_run": "data/analysis_results/kinematic_validation/finite_observation_release_20261005/run.json",
+    "current_semantic_replay": "data/analysis_results/kinematic_validation/manual_anchor_phase_delivery_20261005/semantic_replay.json",
+    "current_pixel_run": "data/analysis_results/kinematic_validation/manual_anchor_phase_release_20261005/run.json",
     "body_windows": "validation/body_window_acceptance_20261005.json",
     "classifier_windows": "validation/classifier_window_acceptance_20261005.json",
-    "finite_observations": "validation/finite_observation_acceptance_20261005.json"
+    "finite_observations": "validation/finite_observation_acceptance_20261005.json",
+    "manual_anchor_phase": "validation/manual_anchor_phase_acceptance_20261005.json"
   },
   "constraints": [
     "automatic validated rubrics remain empty",
@@ -622,9 +623,9 @@
     },
     {
       "id": "T04",
-      "status": "分类、触球及身体/轨迹窗口通过／其余消费者待审",
+      "status": "后端人工锚点、采集器与回位候选通过／前端取整及其他消费者待审",
       "requirement": "审查剩余固定FPS与帧窗口消费者",
-      "evidence": "合格PTS窗口与不足样本降级已通过；继续审查人工摘要缺帧锚点、阶段帧级规则及其他候选消费者，观测数量和缓存容量不冒充时间契约。"
+      "evidence": "581项回归及原像素/受控缺帧验收通过；Math.round页面导出逻辑和剩余候选消费者继续跟踪。"
     },
     {
       "id": "T05",
@@ -638,14 +639,14 @@
     }
   ],
   "delivery": {
-    "engineering_commit": "8c56e96f3c0b4f553cdc203a5a05d2044f1b731b",
+    "engineering_commit": "05911b61965dc034d88ec7610183c9b08b67cc80",
     "branch": "algo-2.0",
     "remote": "origin-paused",
     "engineering_push_verified": true,
     "control_server_restarted": true,
-    "control_server_pid": 53895,
+    "control_server_pid": 56633,
     "source_hashes_match": true,
-    "restart_semantics": "finite observations and evidence display release; analysis remains stopped"
+    "restart_semantics": "manual anchor and phase candidate source support; analysis remains stopped"
   },
   "additional_regressions": [
     {
@@ -782,6 +783,27 @@
       "status": "工程验收通过",
       "requirement": "新增3个源码哈希及pose策略；重启后核对32个分析源码哈希和控制源码。",
       "evidence": "570项全量及25项新回归；250帧/3次挥拍原像素、实际采集器、重放、页面和32个分析源码哈希核验；独立准确性未验证。"
+    },
+    {
+      "id": "N24",
+      "problem": "人工重算借用最近触球观测或强制转换参考帧号",
+      "status": "工程验收通过",
+      "requirement": "保留非负整数人工源帧号；缺失/重复观测明确标记且停止阶段测量；显示缺失锚点原因。",
+      "evidence": "validation/manual_anchor_phase_acceptance_20261005.json"
+    },
+    {
+      "id": "N25",
+      "problem": "采集器重选高分触球帧覆盖事件及人工参考",
+      "status": "工程验收通过",
+      "requirement": "采集器保持声明的事件触球锚点；缺失/重复对应证据分数为0，仅未声明锚点的旧事件允许候选回退。",
+      "evidence": "validation/manual_anchor_phase_acceptance_20261005.json"
+    },
+    {
+      "id": "N26",
+      "problem": "固定3样本将短静止或跨缺口判为回位候选",
+      "status": "工程验收通过",
+      "requirement": "合格源时间时至少0.08秒、3实际样本且源帧连续；缺时钟明确降为未核验样本顺序；候选阶段规则未经教练验证。",
+      "evidence": "validation/manual_anchor_phase_acceptance_20261005.json"
     }
   ]
 }
