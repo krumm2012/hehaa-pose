@@ -5,10 +5,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 from evaluation_reference_policy import qualify_reference_comparison
+from evaluation_identity_contract import (
+    POLICY_VERSION as EVALUATION_IDENTITY_POLICY,
+    normalize_evaluation_inputs,
+    validate_evaluation_settings,
+)
+from manual_annotation_contract import MAX_SAFE_FRAME_ID
 
 
 UNCLEAR_LABELS = {"", "Unclear", "Unknown", "No Swing", None}
@@ -35,32 +42,16 @@ def _events_by_id(events: Iterable[Dict]) -> Dict[int, Dict]:
         event_id = event.get("event_id")
         if event_id is None:
             continue
-        out[int(event_id)] = event
+        out[event_id] = event
     return out
 
 
 def _manual_contact(annotation: Dict) -> Optional[int]:
-    frames = annotation.get("frames") or {}
-    value = frames.get("contact", annotation.get("contact_frame"))
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
+    return (annotation.get("frames") or {}).get("contact")
 
 
 def _model_contact(event: Dict) -> Optional[int]:
-    value = event.get("contact_frame")
-    if value is None:
-        frames = event.get("frames") or {}
-        value = frames.get("contact_frame") or frames.get("contact")
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
+    return event.get("contact_frame")
 
 
 def _norm_label(value: Optional[str]) -> Optional[str]:
@@ -96,16 +87,7 @@ def _safe_ratio(numerator: int, denominator: int) -> Optional[float]:
 
 
 def _row_frame(row: Dict, name: str) -> Optional[int]:
-    frames = row.get("frames") or {}
-    value = frames.get(name)
-    if value is None:
-        value = row.get(f"{name}_frame")
-    if value is None:
-        return None
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
+    return (row.get("frames") or {}).get(name)
 
 
 def _event_interval(row: Dict) -> Optional[Tuple[int, int]]:
@@ -113,7 +95,7 @@ def _event_interval(row: Dict) -> Optional[Tuple[int, int]]:
     end = _row_frame(row, "end")
     if start is None or end is None:
         return None
-    return min(start, end), max(start, end)
+    return start, end
 
 
 def _interval_iou(left: Dict, right: Dict) -> Optional[float]:
@@ -149,11 +131,8 @@ def _annotation_id(annotation: Dict, index: int) -> str:
 def _temporal_sort_key(row: Dict) -> Tuple[int, int, int]:
     contact = _row_frame(row, "contact")
     interval = _event_interval(row)
-    sentinel = 2**31 - 1
-    try:
-        event_id = int(row.get("event_id") or 0)
-    except (TypeError, ValueError):
-        event_id = 0
+    sentinel = MAX_SAFE_FRAME_ID + 1
+    event_id = row.get("event_id") or 0
     return (
         contact if contact is not None else (interval[0] if interval else sentinel),
         interval[0] if interval else sentinel,
@@ -173,8 +152,8 @@ def _temporal_matches(
         enumerate(annotations),
         key=lambda item: _temporal_sort_key(item[1]),
     )
-    tolerance = max(0, int(match_contact_tolerance_frames))
-    minimum_iou = max(0.0, min(1.0, float(min_event_iou)))
+    tolerance = match_contact_tolerance_frames
+    minimum_iou = min_event_iou
 
     def evidence(model: Dict, annotation: Dict):
         model_contact = _model_contact(model)
@@ -327,7 +306,7 @@ def _evaluate_v1(
             "annotation_schema": annotation_data.get("schema_version"),
         },
         "settings": {
-            "contact_tolerance_frames": int(contact_tolerance_frames),
+            "contact_tolerance_frames": contact_tolerance_frames,
         },
         "summary": {
             "predicted_event_count": len(model_events),
@@ -446,7 +425,7 @@ def _evaluate_v2(
         quality_flags = event.get("quality_flags") or {}
         event_reports.append(
             {
-                "model_event_id": int(event.get("event_id", model_index + 1)),
+                "model_event_id": event["event_id"],
                 "annotation_id": _annotation_id(annotation, annotation_index),
                 "source_event_id": annotation.get("source_event_id"),
                 "matched": True,
@@ -474,7 +453,7 @@ def _evaluate_v2(
         )
 
     unmatched_model_ids = sorted(
-        int(event.get("event_id", index + 1))
+        event["event_id"]
         for index, event in enumerate(model_events)
         if index not in matched_model_indices
     )
@@ -515,7 +494,7 @@ def _evaluate_v2(
     else:
         f1 = round(2 * precision * recall / (precision + recall), 4)
     model_review_ids = [
-        int(event.get("event_id", index + 1))
+        event["event_id"]
         for index, event in enumerate(model_events)
         if (event.get("quality_flags") or {}).get("review_recommended")
     ]
@@ -527,8 +506,8 @@ def _evaluate_v2(
             "annotation_schema": annotation_data.get("schema_version"),
         },
         "settings": {
-            "contact_tolerance_frames": int(contact_tolerance_frames),
-            "match_contact_tolerance_frames": int(match_contact_tolerance_frames),
+            "contact_tolerance_frames": contact_tolerance_frames,
+            "match_contact_tolerance_frames": match_contact_tolerance_frames,
             "min_event_iou": float(min_event_iou),
             "matching": "ordered_temporal_alignment",
         },
@@ -586,6 +565,8 @@ def evaluate_swing_events(
     min_event_iou: float = 0.10,
 ) -> Dict:
     """Compare references; completed review does not verify independent accuracy."""
+    event_data, annotation_data = normalize_evaluation_inputs(event_data, annotation_data)
+    validate_evaluation_settings(contact_tolerance_frames, match_contact_tolerance_frames, min_event_iou)
     if annotation_data.get("schema_version") == "swing_manual_annotations_v2":
         report = _evaluate_v2(
             event_data,
@@ -600,6 +581,7 @@ def evaluate_swing_events(
             annotation_data,
             contact_tolerance_frames=contact_tolerance_frames,
         )
+    report["settings"]["identity_policy"] = EVALUATION_IDENTITY_POLICY
     return qualify_reference_comparison(report, annotation_data)
 
 
@@ -611,6 +593,12 @@ def write_evaluation_report(
     match_contact_tolerance_frames: int = 12,
     min_event_iou: float = 0.10,
 ) -> str:
+    output_path = output_path or default_evaluation_output_path(event_json_path)
+    target = Path(output_path)
+    for original in (Path(event_json_path), Path(annotation_json_path)):
+        if (target.resolve() == original.resolve()
+                or (target.exists() and original.exists() and target.samefile(original))):
+            raise ValueError('输出文件不能覆盖原始事件或参考标注（含符号链接或硬链接）')
     event_data = load_json(event_json_path)
     annotation_data = load_json(annotation_json_path)
     report = evaluate_swing_events(
@@ -623,7 +611,6 @@ def write_evaluation_report(
     report["source"]["event_json"] = event_json_path
     report["source"]["annotation_json"] = annotation_json_path
 
-    output_path = output_path or default_evaluation_output_path(event_json_path)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
         f.write("\n")
@@ -647,14 +634,18 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
-    output_path = write_evaluation_report(
-        args.events,
-        args.annotations,
-        output_path=args.output,
-        contact_tolerance_frames=args.contact_tolerance_frames,
-        match_contact_tolerance_frames=args.match_contact_tolerance_frames,
-        min_event_iou=args.min_event_iou,
-    )
+    try:
+        output_path = write_evaluation_report(
+            args.events,
+            args.annotations,
+            output_path=args.output,
+            contact_tolerance_frames=args.contact_tolerance_frames,
+            match_contact_tolerance_frames=args.match_contact_tolerance_frames,
+            min_event_iou=args.min_event_iou,
+        )
+    except ValueError as error:
+        print(f"Evaluation rejected: {error}", file=sys.stderr)
+        return 2
     print(f"Wrote swing evaluation: {output_path}")
     return 0
 

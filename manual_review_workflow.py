@@ -26,6 +26,7 @@ from local_realtime_coach import LocalRealtimeCoach
 from swing_biomechanics import aggregate_event_biomechanics
 from swing_coach_calibration import calibrate_coaching_event
 from swing_evaluation import evaluate_swing_events
+from evaluation_identity_contract import normalize_evaluation_inputs
 from swing_event_segmenter import summarize_manual_event_range
 from swing_motion_features import extract_motion_features
 from swing_session_quality import build_session_quality_dashboard
@@ -183,6 +184,7 @@ def validate_manual_annotations(
     frame_records: Iterable[Dict],
     event_path: Optional[Path] = None,
 ) -> Dict:
+    validated_events, _ = normalize_evaluation_inputs(event_document, annotation_document)
     if annotation_document.get("schema_version") != "swing_manual_annotations_v2":
         raise ValueError("只支持 swing_manual_annotations_v2")
     annotations = annotation_document.get("events")
@@ -202,15 +204,16 @@ def validate_manual_annotations(
         raise ValueError("标注 session_id 与当前会话不匹配")
 
     model_ids = {
-        int(event["event_id"])
-        for event in event_document.get("events") or []
-        if event.get("event_id") is not None
+        event["event_id"] for event in validated_events["events"]
     }
-    frame_ids = [
-        int(record["frame_id"])
-        for record in frame_records
-        if record.get("frame_id") is not None
-    ]
+    frame_ids = []
+    for index, record in enumerate(frame_records):
+        if not isinstance(record, dict):
+            raise ValueError(f'逐帧证据[{index + 1}]必须是对象')
+        try:
+            frame_ids.append(require_manual_frame_id(record.get('frame_id')))
+        except ValueError as error:
+            raise ValueError(f'逐帧证据[{index + 1}].frame_id: {error}') from error
     if not frame_ids:
         raise ValueError("当前会话没有可用于 Coach 重算的逐帧证据")
     min_frame, max_frame = min(frame_ids), max(frame_ids)
@@ -228,7 +231,6 @@ def validate_manual_annotations(
 
         source_event_id = annotation.get("source_event_id")
         if source_event_id is not None:
-            source_event_id = int(source_event_id)
             if source_event_id not in model_ids:
                 raise ValueError(f"标注 {annotation_id} 引用了不存在的事件 #{source_event_id}")
             if source_event_id in seen_source_ids:
@@ -299,17 +301,20 @@ def derive_manual_coach_events(
     annotation_document: Dict,
     frame_records: List[Dict],
 ) -> Dict:
+    validate_manual_annotations(event_document, annotation_document, frame_records)
     summary = event_document.get("summary") or {}
     dominant_hand = (summary.get("thresholds") or {}).get("dominant_hand", "right")
     coach_configuration = summary.get("coach_configuration")
     features = extract_motion_features(frame_records, dominant_hand=dominant_hand)
     model_by_id = {
-        int(event["event_id"]): event
+        event["event_id"]: event
         for event in event_document.get("events") or []
         if event.get("event_id") is not None
     }
     coach = LocalRealtimeCoach.from_configuration(coach_configuration)
     annotation_hash = _sha256_json(annotation_document)
+    # Phase maps have JSON string keys; resolve them against validated observations.
+    phase_source_ids = {str(record['frame_id']): record['frame_id'] for record in frame_records}
     manual_events = []
 
     sortable = []
@@ -324,10 +329,10 @@ def derive_manual_coach_events(
         start=1,
     ):
         source_event_id = annotation.get("source_event_id")
-        original = model_by_id.get(int(source_event_id)) if source_event_id is not None else None
+        original = model_by_id.get(source_event_id) if source_event_id is not None else None
         event = deepcopy(original or {})
         event["event_id"] = manual_id
-        event["source_event_id"] = int(source_event_id) if source_event_id is not None else None
+        event["source_event_id"] = source_event_id
         event["stroke_type"] = str(annotation.get("actual_stroke_type") or "Unclear")
         summary = summarize_manual_event_range(
             features,
@@ -342,7 +347,7 @@ def derive_manual_coach_events(
         event['timing'] = {'latency_scope': 'manual_recomputation'}
         event.pop('candidate_runtime_timing', None)
         event['phase_timing'] = analyze_event_source_timing(event, frame_records,
-            [{'frame': int(fid), 'event_id': manual_id, 'phase': phase}
+            [{'frame': phase_source_ids[str(fid)], 'event_id': manual_id, 'phase': phase}
              for fid, phase in summary['frame_phases'].items()])
         event["biomechanics"] = aggregate_event_biomechanics(event, frame_records, features)
         from practice_scoring import attach_score
@@ -384,14 +389,14 @@ def derive_manual_coach_events(
 
 def _comparison_rows(event_document: Dict, manual_document: Optional[Dict]) -> List[Dict]:
     original_by_id = {
-        int(event["event_id"]): event
+        event["event_id"]: event
         for event in event_document.get("events") or []
         if event.get("event_id") is not None
     }
     rows = []
     for manual in (manual_document or {}).get("events") or []:
         source_id = manual.get("source_event_id")
-        original = original_by_id.get(int(source_id)) if source_id is not None else None
+        original = original_by_id.get(source_id) if source_id is not None else None
         rows.append(
             {
                 "event_id": manual.get("event_id"),
