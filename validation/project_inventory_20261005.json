@@ -1,34 +1,35 @@
 {
-  "schema": "tennis.project-inventory.v5",
-  "generated_at": "2026-10-05T04:57:08.342879+08:00",
-  "git_head": "36aee5d0ce218fc5c3d946837ebde99de73acb84",
-  "scope": "103条已识别问题/验收覆盖记录（含交叉），35条工程已完成、68条未闭环；另7项可选扩展及1项旧入口。原94/99条历史快照保留。",
+  "schema": "tennis.project-inventory.v6",
+  "generated_at": "2026-10-05T05:24:47.412444+08:00",
+  "git_head": "9adcd67c4d9199706fa6d6cdd0e85e909c85597f",
+  "scope": "107条已识别问题/验收覆盖记录（含交叉），39条工程已完成、68条未闭环；另7项可选扩展及1项旧入口。原94/99/103条历史快照保留。",
   "all_items_complete": false,
   "accuracy_validated": false,
   "verification": {
-    "test_count": 528,
-    "passed": 528,
+    "test_count": 545,
+    "passed": 545,
     "failures": 0,
-    "log": "/tmp/tennis_body_source_release_20261005.log",
+    "log": "/tmp/tennis_classifier_source_full_20261005.log",
     "failure_item": null,
-    "service_pid": 46067,
+    "service_pid": 49175,
     "control_analysis_state": "stopped",
     "loaded_source_hashes_match": true,
-    "remote_head": "36aee5d0ce218fc5c3d946837ebde99de73acb84",
+    "remote_head": "9adcd67c4d9199706fa6d6cdd0e85e909c85597f",
     "independent_plan_frames": 22,
     "independent_plan_points": 176,
     "independent_filled_points": 0,
     "automatic_scoring_validated": false,
     "repository_code_changed_in_this_inventory": true,
-    "iteration_engineering_changes": "36aee5d0ce218fc5c3d946837ebde99de73acb84",
-    "git_head": "36aee5d0ce218fc5c3d946837ebde99de73acb84",
+    "iteration_engineering_changes": "9adcd67c4d9199706fa6d6cdd0e85e909c85597f",
+    "git_head": "9adcd67c4d9199706fa6d6cdd0e85e909c85597f",
     "remote_matches_head": true,
     "loaded_analysis_source_count": 29,
     "independent_submission_confirmed": false,
     "open_github_issue_count": 0,
-    "test_semantics": "本轮528项全量实跑、19项新回归及最终代码原像素验收；文件窗口提交不是传感器到屏幕延迟。",
+    "test_semantics": "545项全量、17项新回归及250帧原像素验收。窗口提交速率不是传感器到屏幕延迟。",
     "source_changes_in_this_inventory": true,
-    "service_restarted_in_this_inventory": true
+    "service_restarted_in_this_inventory": true,
+    "new_regressions": 17
   },
   "items": [
     {
@@ -765,7 +766,7 @@
       "status": "关键契约已更新／历史文档继续整理",
       "evidence_or_gap": "新增EVENT_SOURCE_TIMING、ADR补充和最新验收记录；完整历史设计整理仍待完成。",
       "state_group": "部分完成",
-      "remaining": "当前关键契约已有；将旧路线图、README、需求基线中的过期实现状态与历史测试数标明。",
+      "remaining": "当前分类、身体和像面测量策略声明已同步；继续标明README、旧路线图和需求基线的历史状态与测试数。",
       "display_name": "当前文档与历史算法结论同步"
     },
     {
@@ -861,10 +862,10 @@
       "priority": "P1",
       "problem": "审查剩余固定FPS与帧窗口消费者",
       "requirement": "审查剩余固定FPS与帧窗口消费者",
-      "status": "身体/轨迹消费者通过／分类与其他帧级启发式待审",
-      "evidence_or_gap": "身体邻域、准备、回位、轨迹短窗和插值已迁移；分类器仍在contact+2帧前取证，其他最少观测数量与身份连续性须区分时间阈值。",
+      "status": "分类/触球几何窗口及同分锚点工程验收通过／其余消费者继续审查",
+      "evidence_or_gap": "分类−0.56/+0.08秒、触球几何±0.12秒；未知时钟为标明来源的有界候选，545项全量与250帧像素验收。",
       "state_group": "部分完成",
-      "remaining": "继续审查分类触球后2帧窗口及其他候选帧级消费者；观测数量、源身份与缓存容量保持各自契约。",
+      "remaining": "继续审查人工摘要缺帧锚点选择、阶段帧级规则及其他候选消费者；观测数量、源身份与缓存容量维持独立契约。",
       "display_name": "审查剩余固定FPS与帧窗口消费者"
     },
     {
@@ -1172,6 +1173,50 @@
       "evidence_or_gap": "test_body_metric_source_windows.py；当前原像素、实际采集器与重放验收。",
       "remaining": "相关真实测量与教学准确性继续由独立验收条目跟踪。",
       "engineering_source_commit": "36aee5d0ce218fc5c3d946837ebde99de73acb84"
+    },
+    {
+      "id": "N14",
+      "priority": "P1",
+      "problem": "分类帧号截窗与样本不足恢复随挥",
+      "requirement": "使用触球−0.56/+0.08秒分类窗口；源ID间隔不改选样，不足3样本返回Unknown。",
+      "status": "工程回归与原像素重放通过",
+      "evidence_or_gap": "test_classifier_source_windows.py；545项全量通过；250帧原像素/3次挥拍及分类、触球窗口重放。独立准确性未验证。",
+      "state_group": "工程已完成",
+      "remaining": "动作、触球和教学准确性仍由独立标签及现场条目跟踪。",
+      "display_name": "分类帧号截窗与样本不足恢复随挥"
+    },
+    {
+      "id": "N15",
+      "priority": "P1",
+      "problem": "分类与触球几何共享窗口导致误用或漏用证据",
+      "requirement": "触球几何独立使用±0.12秒窗口；拒绝非有限/负/布尔距离，仍只输出候选。",
+      "status": "工程回归与原像素重放通过",
+      "evidence_or_gap": "test_classifier_source_windows.py；545项全量通过；250帧原像素/3次挥拍及分类、触球窗口重放。独立准确性未验证。",
+      "state_group": "工程已完成",
+      "remaining": "动作、触球和教学准确性仍由独立标签及现场条目跟踪。",
+      "display_name": "分类与触球几何共享窗口导致误用或漏用证据"
+    },
+    {
+      "id": "N16",
+      "priority": "P1",
+      "problem": "同分触球候选按帧号距离选错时间锚点",
+      "requirement": "合格源PTS按距运动峰时间选取；无合格时钟明确帧启发式及回退原因。",
+      "status": "工程回归与原像素重放通过",
+      "evidence_or_gap": "test_classifier_source_windows.py；545项全量通过；250帧原像素/3次挥拍及分类、触球窗口重放。独立准确性未验证。",
+      "state_group": "工程已完成",
+      "remaining": "动作、触球和教学准确性仍由独立标签及现场条目跟踪。",
+      "display_name": "同分触球候选按帧号距离选错时间锚点"
+    },
+    {
+      "id": "N17",
+      "priority": "P2",
+      "problem": "像面速度策略元数据仍使用过期名称",
+      "requirement": "元数据直接引用实现策略，analysis_build记录分类与像面测量版本。",
+      "status": "工程回归与原像素重放通过",
+      "evidence_or_gap": "test_classifier_source_windows.py；545项全量通过；250帧原像素/3次挥拍及分类、触球窗口重放。独立准确性未验证。",
+      "state_group": "工程已完成",
+      "remaining": "动作、触球和教学准确性仍由独立标签及现场条目跟踪。",
+      "display_name": "像面速度策略元数据仍使用过期名称"
     }
   ],
   "optional_expansion": [
@@ -1214,7 +1259,7 @@
   "state_counts": {
     "部分完成": 36,
     "待独立或现场验证": 24,
-    "工程已完成": 35,
+    "工程已完成": 39,
     "待开发或继续优化": 8
   },
   "earlier_repairs": [
@@ -1244,18 +1289,18 @@
     }
   ],
   "evidence_refs": {
-    "engineering_acceptance": "validation/body_window_acceptance_20261005.json",
-    "test_log": "/tmp/tennis_body_source_release_20261005.log",
+    "engineering_acceptance": "validation/classifier_window_acceptance_20261005.json",
+    "test_log": "/tmp/tennis_classifier_source_full_20261005.log",
     "metric_contract": "docs/METRIC_CALCULATION_CONTRACT.md",
     "source_timing": "docs/EVENT_SOURCE_TIMING.md",
     "independent_labels": "data/analysis_results/kinematic_validation/independent_temporal_plan_v3_20261005/blank_labels.json",
-    "pixel_run": "data/analysis_results/kinematic_validation/body_window_release_20261005/report.html",
+    "pixel_run": "data/analysis_results/kinematic_validation/classifier_window_release_20261005/report.html",
     "motion_source_timing": "docs/MOTION_SOURCE_TIME.md",
-    "same_input_comparison": "data/analysis_results/kinematic_validation/body_window_delivery_20261005/comparison.json",
-    "previous_inventory": "data/analysis_results/kinematic_validation/motion_time_delivery_20261005/inventory.json"
+    "same_input_comparison": "data/analysis_results/kinematic_validation/classifier_window_delivery_20261005/comparison.json",
+    "previous_inventory": "data/analysis_results/kinematic_validation/body_window_delivery_20261005/inventory.json"
   },
   "priority_order": [
-    "T04：分类与其他帧级候选消费者；身体/轨迹窗口已通过工程验收",
+    "T04：剩余候选消费者；分类/触球几何窗口、同分触球锚点及身体/轨迹窗口已通过工程验收",
     "A01/B07/X07：球拍错框、漏检、跳变与来源资格",
     "E02/B01/B02/X01/X02：独立连续帧、完整挥拍及球拍/主球标签",
     "B03/C05/C08：坐标尺度、定位误差及位移阈值校准",

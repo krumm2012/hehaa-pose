@@ -582,8 +582,8 @@
     }
   ],
   "validation": {
-    "full_test_count": 528,
-    "log": "/tmp/tennis_body_source_release_20261005.log",
+    "full_test_count": 545,
+    "log": "/tmp/tennis_classifier_source_full_20261005.log",
     "semantic_replay": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/semantic_replay.json",
     "audit": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/audit.json",
     "pixel_run": "data/analysis_results/kinematic_validation/pixel_acceptance_v2_20261005/run.json",
@@ -592,9 +592,10 @@
     "phase_coach": "validation/phase_coach_acceptance_20261005.json",
     "motion_source": "validation/motion_source_acceptance_20261005.json",
     "current_project_inventory": "validation/project_inventory_20261005.json",
-    "current_semantic_replay": "data/analysis_results/kinematic_validation/body_window_delivery_20261005/semantic_replay.json",
-    "current_pixel_run": "data/analysis_results/kinematic_validation/body_window_release_20261005/run.json",
-    "body_windows": "validation/body_window_acceptance_20261005.json"
+    "current_semantic_replay": "data/analysis_results/kinematic_validation/classifier_window_delivery_20261005/semantic_replay.json",
+    "current_pixel_run": "data/analysis_results/kinematic_validation/classifier_window_release_20261005/run.json",
+    "body_windows": "validation/body_window_acceptance_20261005.json",
+    "classifier_windows": "validation/classifier_window_acceptance_20261005.json"
   },
   "constraints": [
     "automatic validated rubrics remain empty",
@@ -636,14 +637,14 @@
     }
   ],
   "delivery": {
-    "engineering_commit": "36aee5d0ce218fc5c3d946837ebde99de73acb84",
+    "engineering_commit": "9adcd67c4d9199706fa6d6cdd0e85e909c85597f",
     "branch": "algo-2.0",
     "remote": "origin-paused",
     "engineering_push_verified": true,
     "control_server_restarted": true,
-    "control_server_pid": 46067,
+    "control_server_pid": 49175,
     "source_hashes_match": true,
-    "restart_semantics": "body-window engineering service restart with virtualenv executable path preserved"
+    "restart_semantics": "classifier source-window release; analysis remains stopped"
   },
   "additional_regressions": [
     {
@@ -720,6 +721,30 @@
       "status": "工程回归通过",
       "requirement": "读取measurement_pose新鲜正面点，阻止显示补点/旧点升级为独立测量。",
       "evidence": "test_body_metric_source_windows.py；当前原像素、实际采集器与重放验收。"
+    },
+    {
+      "id": "N14",
+      "status": "工程回归通过",
+      "requirement": "使用触球−0.56/+0.08秒分类窗口；源ID间隔不改选样，不足3样本返回Unknown。",
+      "evidence": "test_classifier_source_windows.py；当前250帧原像素与实际分类/几何窗口重放。"
+    },
+    {
+      "id": "N15",
+      "status": "工程回归通过",
+      "requirement": "触球几何独立使用±0.12秒窗口；拒绝非有限/负/布尔距离，仍只输出候选。",
+      "evidence": "test_classifier_source_windows.py；当前250帧原像素与实际分类/几何窗口重放。"
+    },
+    {
+      "id": "N16",
+      "status": "工程回归通过",
+      "requirement": "合格源PTS按距运动峰时间选取；无合格时钟明确帧启发式及回退原因。",
+      "evidence": "test_classifier_source_windows.py；当前250帧原像素与实际分类/几何窗口重放。"
+    },
+    {
+      "id": "N17",
+      "status": "工程回归通过",
+      "requirement": "元数据直接引用实现策略，analysis_build记录分类与像面测量版本。",
+      "evidence": "test_classifier_source_windows.py；当前250帧原像素与实际分类/几何窗口重放。"
     }
   ]
 }

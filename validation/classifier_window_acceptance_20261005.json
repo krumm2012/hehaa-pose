@@ -1,0 +1,143 @@
+{
+  "schema": "tennis.classifier-window-acceptance.v1",
+  "generated_at": "2026-10-05T05:24:47.412444+08:00",
+  "engineering_source_commit": "9adcd67c4d9199706fa6d6cdd0e85e909c85597f",
+  "engineering_push_verified": true,
+  "all_items_complete": false,
+  "accuracy_validated": false,
+  "tests": {
+    "passed": 545,
+    "new_regressions": 17,
+    "initial_red_failures": 9,
+    "anchor_red_failures": 1,
+    "log": "/tmp/tennis_classifier_source_full_20261005.log"
+  },
+  "classification_policy": "player_camera_swing_v3_source_windows",
+  "stroke_window_seconds": [
+    -0.56,
+    0.08
+  ],
+  "contact_geometry_window_seconds": [
+    -0.12,
+    0.12
+  ],
+  "clock_fallback": "bounded_unverified_candidates_only_no_compatibility_measurement_fallback",
+  "minimum_classification_observations": 3,
+  "automatic_technical_rules_approved": [],
+  "pixel": {
+    "frame_count": 250,
+    "reader_receipt_fps": 25.15966790046714,
+    "output_submission_fps": 25.344956048385455,
+    "wall_seconds": 18.926,
+    "display_semantics": "OpenCV window submission measured; no sensor-to-photon/exposure verification",
+    "source_selection": {
+      "reference_source_sha256": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0",
+      "input_source_sha256": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0",
+      "explicit_alternate_input": false,
+      "relationship_to_reference": "same_input_bytes"
+    }
+  },
+  "replay": {
+    "new_integrity_valid": true,
+    "old_integrity_valid": true,
+    "new_semantic_match": true,
+    "previous_semantics_under_current_code": true,
+    "classification_and_contact_windows_match": true,
+    "all_canonical_metrics_match": true,
+    "pixel_event_count": 3,
+    "replay_event_count": 3,
+    "historical_outputs_rewritten": false,
+    "accuracy_validated": false,
+    "canonical_metric_fields_exact": true,
+    "all_metric_metadata_within_float_roundoff": true,
+    "metric_metadata_absolute_roundoff_tolerance": 1e-12,
+    "metric_metadata_float_difference_count": 8
+  },
+  "roundoff_differences": [
+    {
+      "path": "event1.brush_angle.measurement_evidence.reference_width_px",
+      "pixel": 82.59150432989978,
+      "replay": 82.59150432989976,
+      "absolute_difference": 1.4210854715202004e-14
+    },
+    {
+      "path": "event1.stance.measurement_evidence.reference_width_px",
+      "pixel": 82.59150432989978,
+      "replay": 82.59150432989976,
+      "absolute_difference": 1.4210854715202004e-14
+    },
+    {
+      "path": "event1.leg_drive.measurement_evidence.reference_width_px",
+      "pixel": 82.59150432989978,
+      "replay": 82.59150432989976,
+      "absolute_difference": 1.4210854715202004e-14
+    },
+    {
+      "path": "event1.drop_depth_ratio.measurement_evidence.reference_width_px",
+      "pixel": 82.59150432989978,
+      "replay": 82.59150432989976,
+      "absolute_difference": 1.4210854715202004e-14
+    },
+    {
+      "path": "event3.brush_angle.measurement_evidence.reference_width_px",
+      "pixel": 83.80576263329114,
+      "replay": 83.80576263329115,
+      "absolute_difference": 1.4210854715202004e-14
+    },
+    {
+      "path": "event3.stance.measurement_evidence.reference_width_px",
+      "pixel": 83.80576263329114,
+      "replay": 83.80576263329115,
+      "absolute_difference": 1.4210854715202004e-14
+    },
+    {
+      "path": "event3.leg_drive.measurement_evidence.reference_width_px",
+      "pixel": 83.80576263329114,
+      "replay": 83.80576263329115,
+      "absolute_difference": 1.4210854715202004e-14
+    },
+    {
+      "path": "event3.drop_depth_ratio.measurement_evidence.reference_width_px",
+      "pixel": 83.80576263329114,
+      "replay": 83.80576263329115,
+      "absolute_difference": 1.4210854715202004e-14
+    }
+  ],
+  "control_service": {
+    "old_pid": 46067,
+    "new_pid": 49175,
+    "analysis_state": "stopped",
+    "analysis_pid": null,
+    "source_hash_count": 29,
+    "analysis_and_control_hashes_match": true,
+    "classification_policy": "player_camera_swing_v3_source_windows",
+    "log": "/tmp/tennis_control_classifier_window_20261005.log"
+  },
+  "browser_acceptance": {
+    "verified": true,
+    "inventory_rows": 107,
+    "unclosed_rows": 68,
+    "closed_rows_in_unclosed_filter": 0,
+    "search_N14_rows": 1,
+    "pixel_report_event_cards": 3,
+    "media_time_articles": 3,
+    "control_analysis_stopped": true,
+    "control_start_enabled": true,
+    "control_sse_connected": true,
+    "report_links_http200": 6
+  },
+  "inventory_counts": {
+    "部分完成": 36,
+    "待独立或现场验证": 24,
+    "工程已完成": 39,
+    "待开发或继续优化": 8
+  },
+  "unclosed_count": 68,
+  "remaining": [
+    "T04其余候选消费者",
+    "球拍观测和尺度校准",
+    "176项独立关节标签及逐拍参考",
+    "三维/曝光与技术评分校准",
+    "RTSP长会话与TTS现场验收"
+  ]
+}
