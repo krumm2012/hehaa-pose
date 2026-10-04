@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from manual_annotation_contract import require_manual_frame_id
+
 import argparse
 import hashlib
 import json
@@ -160,7 +162,11 @@ def discover_session_paths(session_dir: Path) -> Dict[str, Path]:
 
 
 def _annotation_frames(annotation: Dict) -> Tuple[int, int, int]:
-    frames = annotation.get("frames") or {}
+    frames = annotation.get("frames")
+    if frames is None:
+        frames = {}
+    if not isinstance(frames, dict):
+        raise ValueError('标注frames必须是对象')
     start = frames.get("start", annotation.get("start_frame"))
     contact = frames.get("contact", annotation.get("contact_frame"))
     end = frames.get("end", annotation.get("end_frame"))
@@ -168,9 +174,7 @@ def _annotation_frames(annotation: Dict) -> Tuple[int, int, int]:
         raise ValueError(
             f"标注 {annotation.get('annotation_id') or '?'} 缺少开始/触球/结束帧"
         )
-    if any(type(fid) is not int or fid < 0 for fid in (start, contact, end)):
-        raise ValueError('开始/触球/结束帧必须是非负整数源帧号，不能转换小数、布尔值或字符串')
-    return start, contact, end
+    return tuple(require_manual_frame_id(fid) for fid in (start, contact, end))
 
 
 def validate_manual_annotations(

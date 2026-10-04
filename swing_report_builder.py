@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from manual_annotation_contract import annotation_contract_script
 import html
 import json
 import math
@@ -1453,12 +1454,8 @@ def render_report_html(payload: Dict, output_path: str) -> str:
     const annotationReadiness = document.getElementById('annotation-readiness');
     let manualCounter = 0;
 
-    function integerField(card, field) {{
-      const input = card.querySelector(`[data-field="${{field}}"]`);
-      if (!input || input.value.trim() === '') return null;
-      const value = Number(input.value);
-      return Number.isFinite(value) ? Math.round(value) : null;
-    }}
+    {annotation_contract_script()}
+
     function annotationFromCard(card) {{
       const sourceText = card.dataset.sourceEventId || '';
       const sourceNumber = Number(sourceText);
@@ -1493,6 +1490,8 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       }};
     }}
     function updateAnnotationReadiness(payload) {{
+      try {{ validateAnnotationPayload(payload, true); }}
+      catch (error) {{ showAnnotationError(error); return; }}
       const pending = payload.events.filter(event => event.needs_review).length;
       if (pending > 0) {{
         annotationReadiness.dataset.state = 'blocked';
@@ -1506,13 +1505,22 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       }}
     }}
     function refreshAnnotations() {{
-      const payload = collectAnnotations();
-      updateAnnotationReadiness(payload);
-      document.getElementById('annotation-json').textContent = JSON.stringify(payload, null, 2);
+      try {{
+        const payload = validateAnnotationPayload(collectAnnotations());
+        updateAnnotationReadiness(payload);
+        document.getElementById('annotation-json').textContent = JSON.stringify(payload, null, 2);
+        return payload;
+      }} catch (error) {{ showAnnotationError(error); return null; }}
     }}
     function setField(card, field, value) {{
       const input = card.querySelector(`[data-field="${{field}}"]`);
-      if (!input || value === undefined || value === null) return;
+      if (!input) return;
+      if (['start_frame','contact_frame','end_frame'].includes(field)) {{
+        input.value = value == null ? '' : String(sourceFrameValue(value, '人工帧号'));
+        input.setCustomValidity('');
+        return;
+      }}
+      if (value === undefined || value === null) return;
       if (input.type === 'checkbox') {{
         input.checked = Boolean(value);
       }} else {{
@@ -1528,15 +1536,15 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       }});
     }}
     function applyAnnotationToCard(card, imported) {{
+      const frames = validateAnnotationFrames(imported);
       setField(card, 'actual_stroke_type', imported.actual_stroke_type);
       setField(card, 'count_correct', imported.count_correct);
       setField(card, 'valid_hit', imported.valid_hit);
       setField(card, 'needs_review', imported.needs_review);
       setField(card, 'note', imported.note || '');
-      const frames = imported.frames || {{}};
-      setField(card, 'start_frame', frames.start ?? imported.start_frame);
-      setField(card, 'contact_frame', frames.contact ?? imported.contact_frame);
-      setField(card, 'end_frame', frames.end ?? imported.end_frame);
+      setField(card, 'start_frame', frames.start);
+      setField(card, 'contact_frame', frames.contact);
+      setField(card, 'end_frame', frames.end);
       const tags = new Set(imported.issue_tags || []);
       card.querySelectorAll('[data-tag]').forEach(input => input.checked = tags.has(input.dataset.tag));
     }}
@@ -1591,6 +1599,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       return card;
     }}
     function applyImportedAnnotations(payload) {{
+      validateAnnotationPayload(payload);
       const importedEvents = Array.isArray(payload.events) ? payload.events : [];
       timelineReviewComplete.checked = Boolean(payload.timeline_review_complete);
       manualEvents.replaceChildren();
@@ -1624,8 +1633,11 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       reader.readAsText(file);
     }}
     function downloadAnnotations() {{
-      refreshAnnotations();
-      const blob = new Blob([document.getElementById('annotation-json').textContent], {{type: 'application/json'}});
+      const payload = refreshAnnotations();
+      if (!payload) return;
+      try {{ validateAnnotationPayload(payload, true); }}
+      catch (error) {{ showAnnotationError(error); return; }}
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {{type: 'application/json'}});
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.download = 'swing_manual_annotations_v2.json';

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from manual_annotation_contract import annotation_contract_script
 import json
 import math
 import os
@@ -2115,18 +2116,14 @@ class RealtimeSwingOutputManager:
       }}
     }}
 
-    function integerField(card, field) {{
-      const input = card.querySelector(`[data-field="${{field}}"]`);
-      if (!input || input.value.trim() === '') return null;
-      const value = Number(input.value);
-      return Number.isFinite(value) ? Math.round(value) : null;
-    }}
+    {annotation_contract_script()}
 
     function annotationFromCard(card) {{
       const sourceText = card.dataset.sourceEventId || '';
       const sourceNumber = Number(sourceText);
       const sourceEventId = sourceText === '' ? null : (Number.isFinite(sourceNumber) ? sourceNumber : sourceText);
-      const peakNumber = Number(card.dataset.peakFrame);
+      const peakText = card.dataset.peakFrame || '';
+      const peakNumber = peakText.trim() === '' ? null : Number(peakText);
       return {{
         annotation_id: card.dataset.annotationId,
         source_event_id: sourceEventId,
@@ -2140,7 +2137,7 @@ class RealtimeSwingOutputManager:
         frames: {{
           start: integerField(card, 'start_frame'),
           contact: integerField(card, 'contact_frame'),
-          peak: Number.isFinite(peakNumber) ? peakNumber : null,
+          peak: Number.isSafeInteger(peakNumber) && peakNumber >= 0 ? peakNumber : null,
           end: integerField(card, 'end_frame')
         }}
       }};
@@ -2156,6 +2153,8 @@ class RealtimeSwingOutputManager:
     }}
 
     function updateAnnotationReadiness(payload) {{
+      try {{ validateAnnotationPayload(payload, true); }}
+      catch (error) {{ showAnnotationError(error); return; }}
       const pending = payload.events.filter(event => event.needs_review).length;
       if (pending > 0) {{
         annotationReadiness.dataset.state = 'blocked';
@@ -2171,30 +2170,38 @@ class RealtimeSwingOutputManager:
 
     function saveAnnotations() {{
       lastAnnotationInteraction = Date.now();
-      const payload = collectAnnotations();
-      localStorage.setItem(annotationStorageKey, JSON.stringify(payload));
-      updateAnnotationReadiness(payload);
-      annotationStatus.textContent = `已在浏览器保存 ${{payload.events.length}} 条`;
-      return payload;
+      try {{
+        const payload = validateAnnotationPayload(collectAnnotations());
+        localStorage.setItem(annotationStorageKey, JSON.stringify(payload));
+        updateAnnotationReadiness(payload);
+        annotationStatus.textContent = `已在浏览器保存 ${{payload.events.length}} 条草稿`;
+        return payload;
+      }} catch (error) {{ showAnnotationError(error); return null; }}
     }}
 
     function setAnnotationField(card, field, value) {{
       const input = card.querySelector(`[data-field="${{field}}"]`);
-      if (!input || value === undefined || value === null) return;
+      if (!input) return;
+      if (['start_frame','contact_frame','end_frame'].includes(field)) {{
+        input.value = value == null ? '' : String(sourceFrameValue(value, '人工帧号'));
+        input.setCustomValidity('');
+        return;
+      }}
+      if (value === undefined || value === null) return;
       if (input.type === 'checkbox') input.checked = Boolean(value);
       else input.value = String(value);
     }}
 
     function applyAnnotation(card, imported) {{
+      const frames = validateAnnotationFrames(imported);
       setAnnotationField(card, 'actual_stroke_type', imported.actual_stroke_type);
       setAnnotationField(card, 'count_correct', imported.count_correct);
       setAnnotationField(card, 'valid_hit', imported.valid_hit);
       setAnnotationField(card, 'needs_review', imported.needs_review);
       setAnnotationField(card, 'note', imported.note || '');
-      const frames = imported.frames || {{}};
-      setAnnotationField(card, 'start_frame', frames.start ?? imported.start_frame);
-      setAnnotationField(card, 'contact_frame', frames.contact ?? imported.contact_frame);
-      setAnnotationField(card, 'end_frame', frames.end ?? imported.end_frame);
+      setAnnotationField(card, 'start_frame', frames.start);
+      setAnnotationField(card, 'contact_frame', frames.contact);
+      setAnnotationField(card, 'end_frame', frames.end);
       const tags = new Set(imported.issue_tags || []);
       card.querySelectorAll('[data-tag]').forEach(input => input.checked = tags.has(input.dataset.tag));
     }}
@@ -2239,6 +2246,8 @@ class RealtimeSwingOutputManager:
       try {{ payload = JSON.parse(localStorage.getItem(annotationStorageKey) || 'null'); }}
       catch (_error) {{ payload = null; }}
       if (!payload || !Array.isArray(payload.events)) return;
+      try {{ validateAnnotationPayload(payload); }}
+      catch (error) {{ showAnnotationError(error); return; }}
       timelineReviewComplete.checked = Boolean(payload.timeline_review_complete);
       for (const imported of payload.events) {{
         const sourceId = imported.source_event_id ?? imported.event_id ?? null;
@@ -2251,6 +2260,9 @@ class RealtimeSwingOutputManager:
 
     function downloadAnnotations() {{
       const payload = saveAnnotations();
+      if (!payload) return;
+      try {{ validateAnnotationPayload(payload, true); }}
+      catch (error) {{ showAnnotationError(error); return; }}
       const blob = new Blob([JSON.stringify(payload, null, 2)], {{ type: 'application/json' }});
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
@@ -2259,8 +2271,13 @@ class RealtimeSwingOutputManager:
       URL.revokeObjectURL(link.href);
     }}
 
-    annotationWorkspace.addEventListener('input', saveAnnotations);
-    annotationWorkspace.addEventListener('change', saveAnnotations);
+    function handleAnnotationEdit(event) {{
+      if (event.target?.closest('[data-annotation-card]') || annotationWorkspace.contains(event.target)) {{
+        saveAnnotations();
+      }}
+    }}
+    document.addEventListener('input', handleAnnotationEdit);
+    document.addEventListener('change', handleAnnotationEdit);
     document.getElementById('add-missed-event').addEventListener('click', () => addMissedEvent());
     document.getElementById('download-annotations').addEventListener('click', downloadAnnotations);
     restoreAnnotations();
@@ -2377,6 +2394,8 @@ class RealtimeSwingOutputManager:
 
     function applyImportedReviewToEditor(payload) {{
       if (!payload || !Array.isArray(payload.events)) return;
+      try {{ validateAnnotationPayload(payload); }}
+      catch (error) {{ showAnnotationError(error); return; }}
       timelineReviewComplete.checked = Boolean(payload.timeline_review_complete);
       for (const imported of payload.events) {{
         const sourceId = imported.source_event_id ?? imported.event_id ?? null;
@@ -2412,6 +2431,12 @@ class RealtimeSwingOutputManager:
     }}
 
     async function submitManualReview(payload) {{
+      try {{ validateAnnotationPayload(payload, true); }}
+      catch (error) {{
+        showAnnotationError(error);
+        setReviewStatus('标注校验失败', 'error', error.message);
+        return;
+      }}
       if (location.protocol === 'file:') {{
         setReviewStatus('需要本地服务', 'error', '请运行 manual_review_workflow.py 后从 http://127.0.0.1 打开本页。');
         return;
@@ -2446,8 +2471,9 @@ class RealtimeSwingOutputManager:
         if (payload.schema_version !== 'swing_manual_annotations_v2' || !Array.isArray(payload.events)) {{
           throw new Error('请选择 swing_manual_annotations_v2 JSON');
         }}
-        importedReviewPayload = payload;
+        validateAnnotationPayload(payload);
         applyImportedReviewToEditor(payload);
+        importedReviewPayload = payload;
         const pending = payload.events.filter(item => item.needs_review).length;
         evaluateImportedReview.disabled = false;
         setReviewStatus(
@@ -2463,7 +2489,10 @@ class RealtimeSwingOutputManager:
       }}
     }});
     evaluateImportedReview.addEventListener('click', () => submitManualReview(importedReviewPayload));
-    evaluateCurrentReview.addEventListener('click', () => submitManualReview(collectAnnotations()));
+    evaluateCurrentReview.addEventListener('click', () => {{
+      try {{ submitManualReview(collectAnnotations()); }}
+      catch (error) {{ showAnnotationError(error); setReviewStatus('标注校验失败', 'error', error.message); }}
+    }});
 
     async function loadManualReviewState() {{
       if (location.protocol === 'file:') {{
