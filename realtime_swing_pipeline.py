@@ -26,7 +26,9 @@ from analysis_data_contracts import (
     utc_iso_from_ns,
 )
 from swing_event_analyzer import analyze_frame_records
-from swing_report_builder import _build_radar_svg, _build_kinematic_sequence_html, _build_event_source_timing_html, _impact_freeze_label
+from swing_report_builder import (_build_radar_svg, _build_kinematic_sequence_html,
+    _build_event_source_timing_html, _impact_freeze_label, _evidence_quality_label,
+    _advice_evidence_label, EVIDENCE_QUALITY_NOTE)
 from swing_session_quality import build_session_quality_dashboard
 from video_writer_backend import create_video_writer
 from image_motion_measurements import source_timestamp
@@ -1310,6 +1312,7 @@ class RealtimeSwingOutputManager:
         version_html = '<p class="summary">历史分析版本未记录；需生成新版本后比较，原记录保留。</p>'
         if build:
             version_html = '<details><summary>分析版本 · 原记录保留</summary><p>观测资格：' + html.escape(str(build.get('observation_policy') or '未记录')) + '</p><p>触球测量：保留完整上下文；各指标资格与评分资格分别记录。</p><p>新旧版本请在相同源帧上对比；历史报告不会自动升级。</p></details>'
+        version_html += '<p class="summary">' + EVIDENCE_QUALITY_NOTE + '</p>'
         session_dashboard = self._render_live_session_dashboard(document)
         roi = summary.get("roi") or self.roi_metadata
         stream_content = ""
@@ -1424,15 +1427,11 @@ class RealtimeSwingOutputManager:
                 for index, advice in enumerate(coach_advices[:3], start=1):
                     if not advice.get("message"):
                         continue
-                    confidence = max(
-                        0.0,
-                        min(1.0, float(advice.get("confidence") or 0.0)),
-                    )
                     advice_rows.append(
                         '<li>'
                         f'<span>{index}</span>'
                         f'<strong>{html.escape(str(advice["message"]))}</strong>'
-                        f'<small>{confidence:.0%}</small>'
+                        f'<small>{html.escape(_advice_evidence_label(advice))}</small>'
                         '</li>'
                     )
                 if advice_rows:
@@ -1589,7 +1588,7 @@ class RealtimeSwingOutputManager:
                     '<div class="bio-metric">'
                     f'<span>{html.escape(label)}</span>'
                     f'<strong>{float(metric["value"]):.2f}{unit}</strong>'
-                    f'<small>{float(metric.get("confidence") or 0.0):.0%}</small>'
+                    f'<small title="{EVIDENCE_QUALITY_NOTE}">{html.escape(_evidence_quality_label(metric.get("confidence")))}</small>'
                     '</div>'
                 )
             biomechanics_content = (
@@ -2298,7 +2297,9 @@ class RealtimeSwingOutputManager:
         const message = document.createElement('span');
         message.textContent = advice.message || advice.code || '无建议';
         const confidence = document.createElement('small');
-        confidence.textContent = ` ${{reviewPercent(advice.confidence)}}`;
+        const score = advice.confidence;
+        const value = typeof score === 'number' && Number.isFinite(score) && score >= 0 && score <= 1 ? `${{Math.round(score*100)}}%` : '未提供';
+        confidence.textContent = advice.category === 'review' ? '复核提示' : ` 证据参考 ${{value}} · 未校准`;
         row.append(message, confidence);
         list.append(row);
       }}

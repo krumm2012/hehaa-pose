@@ -8,20 +8,15 @@ from statistics import median
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 from metric_source_windows import MetricWindowContext, attach_window, combine_windows
 from image_motion_measurements import POLICY_VERSION as IMAGE_MOTION_POLICY
+from observation_policy import (finite_number, finite_point, image_joint_angle,
+                                measurement_pose_with_evidence, qualified_front_point)
 
 
 Point = Tuple[float, float]
 
 
 def _point(value) -> Optional[Point]:
-    if (
-        isinstance(value, (list, tuple))
-        and len(value) >= 2
-        and value[0] is not None
-        and value[1] is not None
-    ):
-        return float(value[0]), float(value[1])
-    return None
+    return finite_point(value)
 
 
 def _distance(a: Optional[Point], b: Optional[Point]) -> Optional[float]:
@@ -61,12 +56,12 @@ def _body_width(pose: Dict) -> Optional[float]:
             _point(pose.get("right_hip")),
         ),
     ]
-    valid = [float(value) for value in widths if value is not None and value >= 4.0]
+    valid = [float(value) for value in widths if finite_number(value) is not None and value >= 4.0]
     return median(valid) if valid else None
 
 
 def _bounded(value: float) -> float:
-    return round(max(0.0, min(1.0, float(value))), 4)
+    return round(max(0.0, min(1.0, finite_number(value) or 0.0)), 4)
 
 
 def _metric(
@@ -79,6 +74,8 @@ def _metric(
     coach_eligible: bool = True,
     exclusion_reason: Optional[str] = None,
 ) -> Dict:
+    invalid_value = value is not None and finite_number(value) is None
+    value = finite_number(value)
     result = {
         "value": round(float(value), 4) if value is not None else None,
         "unit": unit,
@@ -90,6 +87,8 @@ def _metric(
     }
     if exclusion_reason:
         result["exclusion_reason"] = exclusion_reason
+    if invalid_value:
+        result['details'] = {'reason': 'nonfinite_or_invalid_metric_value'}
     return result
 
 
@@ -237,15 +236,7 @@ def _event_peak_or_median_feature(
 
 
 def _joint_angle(a: Optional[Point], b: Optional[Point], c: Optional[Point]) -> Optional[float]:
-    if a is None or b is None or c is None:
-        return None
-    left = (a[0] - b[0], a[1] - b[1])
-    right = (c[0] - b[0], c[1] - b[1])
-    denominator = math.hypot(*left) * math.hypot(*right)
-    if denominator <= 0:
-        return None
-    cosine = max(-1.0, min(1.0, (left[0] * right[0] + left[1] * right[1]) / denominator))
-    return math.degrees(math.acos(cosine))
+    return image_joint_angle(a, b, c)
 
 
 def _preparation_knee_flexion_metric(
@@ -564,12 +555,11 @@ def aggregate_event_biomechanics(
     start_frame = int(event["start_frame"])
     end_frame = int(event["end_frame"])
     contact_frame = int(event.get("contact_frame", event.get("peak_frame", start_frame)))
-    from observation_policy import measurement_pose
-    frames_in_event = [
-        {**row, "pose": measurement_pose(row)}
-        for row in frames
-        if start_frame <= int(row.get("frame_id", -1)) <= end_frame
-    ]
+    frames_in_event = []
+    for row in frames:
+        if start_frame <= int(row.get('frame_id', -1)) <= end_frame:
+            pose, qualification = measurement_pose_with_evidence(row)
+            frames_in_event.append({**row, 'pose': pose, 'pose_qualification': qualification})
     features_in_event = [
         row
         for row in features
@@ -586,16 +576,21 @@ def aggregate_event_biomechanics(
         if row.get("frame_id") is not None
     }
     windows = MetricWindowContext(frames_in_event)
-    pose_ratio = float(
-        (event.get("quality_flags") or {}).get("pose_frame_ratio")
-        or (
+    supplied_ratio = (event.get('quality_flags') or {}).get('pose_frame_ratio')
+    pose_ratio = finite_number(supplied_ratio) if supplied_ratio is not None else (
             sum(1 for row in features_in_event if row.get("has_pose"))
             / max(1, len(features_in_event))
-        )
     )
-    observation_scores = [p.get("confidence", 0) for row in frames_in_event
-                          for p in (row.get("pose_observations") or {}).get("front", {}).values()
-                          if p.get("observed") and not p.get("recovered_from_mirror")]
+    pose_ratio = pose_ratio if pose_ratio is not None and 0 <= pose_ratio <= 1 else 0.
+    observation_scores = []
+    for row in frames_in_event:
+        observations = row.get('pose_observations')
+        front = observations.get('front') if isinstance(observations, dict) else None
+        if not isinstance(front, dict): continue
+        for point in front.values():
+            if not isinstance(point, dict) or point.get('observed') is not True or point.get('recovered_from_mirror'): continue
+            value, _ = qualified_front_point(point, row['frame_id'])
+            observation_scores.append(value[2] if value is not None else 0.)
     if any("pose_observations" in row for row in frames_in_event):
         pose_ratio = min(pose_ratio, sum(observation_scores) / max(1, len(observation_scores)))
     body_width_samples = [
@@ -611,7 +606,7 @@ def aggregate_event_biomechanics(
     contact_feature = features_by_frame.get(contact_frame) or {}
     contact_evidence_confidence = max(
         0.0,
-        min(1.0, float(contact_feature.get("contact_score") or 0.0)),
+        min(1.0, finite_number(contact_feature.get("contact_score")) or 0.0),
     )
     peak_frame = int(event.get("peak_frame", contact_frame))
     arm_reference_frame = (
@@ -887,6 +882,31 @@ def aggregate_event_biomechanics(
     from practice_scoring import attach_score
     attach_score({**event, "biomechanics": result})
     from metric_contracts import attach_metric_contracts
+    arm_side = next((f.get('dominant_hand') for f in features_in_event
+                     if f.get('dominant_hand') in ('left', 'right')), 'right')
+    torso = {'left_shoulder', 'right_shoulder', 'left_hip', 'right_hip'}
+    requirements = {
+        'arm_extension': {f'{arm_side}_{joint}' for joint in ('shoulder', 'elbow', 'wrist')},
+        'preparation_knee_flexion': {f'{side}_{joint}' for side in ('left', 'right') for joint in ('hip','knee','ankle')},
+        'shoulder_turn': {'left_shoulder','right_shoulder'},
+        'shoulder_turn_change': {'left_shoulder','right_shoulder'},
+        'hip_shoulder_separation': torso,
+        'weight_transfer': torso, 'balance_drift': torso, 'contact_lateral_distance': torso,
+    }
+    for key, joints in requirements.items():
+        metric = result['metrics'].get(key)
+        if metric is None: continue
+        selected = metric.get('window_evidence', {}).get('source_frame_ids', [])
+        rejected = [{'source_frame_id': row['frame_id'], 'joint': joint, 'reason': reason}
+                    for row in frames_in_event if row['frame_id'] in selected
+                    for joint, reason in row['pose_qualification']['rejected_points'].items() if joint in joints]
+        rejected.extend({'source_frame_id': row['frame_id'], 'joint': None,
+                         'reason': row['pose_qualification']['record_reason']}
+                        for row in frames_in_event if row['frame_id'] in selected
+                        and row['pose_qualification'].get('record_reason'))
+        if rejected:
+            metric['observation_qualification'] = {'policy_version': frames_in_event[0]['pose_qualification']['policy_version'],
+                'rejected_points': rejected, 'accuracy_validated': False}
     attach_metric_contracts(result)
     return result
 

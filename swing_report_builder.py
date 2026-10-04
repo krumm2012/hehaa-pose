@@ -15,6 +15,19 @@ from practice_scoring import POLICY, number
 from practice_score_adapter import resolve_practice_score
 from swing_session_quality import build_session_quality_dashboard
 from event_source_timing import analyze_event_source_timing, source_frame_navigation, POLICY_VERSION as PHASE_TIME_POLICY
+from observation_policy import finite_number
+
+EVIDENCE_QUALITY_NOTE = '证据参考为启发式质量，未经准确率校准，不是技术评分。'
+
+
+def _evidence_quality_label(value):
+    score = finite_number(value)
+    text = f'{score:.0%}' if score is not None and 0 <= score <= 1 else '未提供'
+    return f'证据参考 {text} · 未校准'
+
+
+def _advice_evidence_label(advice):
+    return '复核提示' if advice.get('category') == 'review' else _evidence_quality_label(advice.get('confidence'))
 
 RADAR_AXES = [
     ("shoulder_turn", "转肩"),
@@ -839,7 +852,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
             for adv in advices:
                 msg = adv.get("message") if isinstance(adv, dict) else str(adv)
                 code = adv.get("code") if isinstance(adv, dict) else ""
-                conf = f" ({adv['confidence']*100:.0f}%)" if isinstance(adv, dict) and "confidence" in adv else ""
+                conf = ' · ' + _advice_evidence_label(adv) if isinstance(adv, dict) else ''
                 items.append(
                     f'<li class="coach-advice-item"><span class="advice-bullet">💡</span><strong>{html.escape(str(code))}:</strong> {html.escape(str(msg))}{html.escape(conf)}</li>'
                 )
@@ -858,7 +871,8 @@ def render_report_html(payload: Dict, output_path: str) -> str:
               <div class="frames">{html.escape(calibrated_score_text)}</div>
               <button class="event-jump" type="button" data-event-id="{html.escape(str(event.get('event_id')))}">定位到事件</button>
               <div class="meter"><i style="width:{meter_pct}%"></i></div>
-              <p>confidence {_score_text(event.get('confidence'))} · contact {_score_text(event.get('contact_score'))} · prep {_score_text(event.get('preparation_score'))} · follow {_score_text(event.get('follow_through_score'))}</p>
+              <p>动作候选：{html.escape(_evidence_quality_label(event.get('confidence')))} · 触球参考 {_score_text(event.get('contact_score'))} · 准备参考 {_score_text(event.get('preparation_score'))} · 随挥参考 {_score_text(event.get('follow_through_score'))}</p>
+              <p class="frames">{EVIDENCE_QUALITY_NOTE}</p>
               <p class="tags">{html.escape(', '.join(tags + warnings) or 'no quality warnings')}</p>
               {radar_html}
               {kinematic_html}

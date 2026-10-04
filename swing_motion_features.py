@@ -12,7 +12,8 @@ from __future__ import annotations
 import math
 import re
 from typing import Dict, Iterable, List, Optional, Tuple
-from observation_policy import measurement_pose
+from observation_policy import (measurement_pose_with_evidence, finite_number,
+                                finite_point, image_joint_angle)
 from image_motion_measurements import racket_image_velocity, source_timestamp
 from motion_time_contract import REFERENCE_HZ, RACKET_GAP_SECONDS, POLICY_VERSION
 
@@ -21,9 +22,7 @@ Point = Tuple[float, float]
 
 
 def _point(value) -> Optional[Point]:
-    if isinstance(value, (list, tuple)) and len(value) >= 2 and value[0] is not None and value[1] is not None:
-        return float(value[0]), float(value[1])
-    return None
+    return finite_point(value)
 
 
 def _distance(a: Optional[Point], b: Optional[Point]) -> Optional[float]:
@@ -33,16 +32,7 @@ def _distance(a: Optional[Point], b: Optional[Point]) -> Optional[float]:
 
 
 def _angle(p1: Optional[Point], p2: Optional[Point], p3: Optional[Point]) -> Optional[float]:
-    if p1 is None or p2 is None or p3 is None:
-        return None
-    v1 = (p1[0] - p2[0], p1[1] - p2[1])
-    v2 = (p3[0] - p2[0], p3[1] - p2[1])
-    n1 = math.hypot(v1[0], v1[1])
-    n2 = math.hypot(v2[0], v2[1])
-    if n1 == 0 or n2 == 0:
-        return None
-    dot = v1[0] * v2[0] + v1[1] * v2[1]
-    return math.degrees(math.acos(max(-1.0, min(1.0, dot / (n1 * n2)))))
+    return image_joint_angle(p1, p2, p3)
 
 
 def _vector_angle(a: Optional[Point], b: Optional[Point]) -> Optional[float]:
@@ -53,25 +43,31 @@ def _vector_angle(a: Optional[Point], b: Optional[Point]) -> Optional[float]:
 
 def _parse_number(value) -> Optional[float]:
     if isinstance(value, (int, float)):
-        return float(value)
+        return finite_number(value)
     if isinstance(value, str):
         match = re.search(r"-?\d+(?:\.\d+)?", value)
         if match:
-            return float(match.group(0))
+            return finite_number(float(match.group(0)))
     return None
 
 
 def _racket_center(rackets: Iterable[Dict]) -> Optional[Point]:
-    best = None
+    best, best_score = None, -1.
     for racket in rackets or []:
-        if not isinstance(racket, dict) or not racket.get("box") or racket.get("observed") is False:
+        if not isinstance(racket, dict) or racket.get("observed") is False:
             continue
-        if best is None or racket.get("confidence", 0.0) > best.get("confidence", 0.0):
-            best = racket
-    if not best:
-        return None
-    x1, y1, x2, y2 = [float(x) for x in best["box"]]
-    return (x1 + x2) / 2.0, (y1 + y2) / 2.0
+        box = racket.get('box')
+        if not isinstance(box, (list, tuple)) or len(box) != 4:
+            continue
+        values = [finite_number(v) for v in box]
+        if any(v is None for v in values): continue
+        x1, y1, x2, y2 = values
+        if x2 <= x1 or y2 <= y1: continue
+        score = finite_number(racket.get('confidence', 0.))
+        if score is None or not 0 <= score <= 1: continue
+        if score > best_score:
+            best, best_score = (x1/2+x2/2, y1/2+y2/2), score
+    return best
 
 
 def _metric(metrics: Dict, category: str, key: str) -> Optional[float]:
@@ -147,13 +143,19 @@ def extract_motion_features(
 
     raw_rackets: List[Optional[Point]] = []
     for frame in frames:
-        detections = frame.get("rackets") or []
-        invalid_primary = detections and (detections[0].get("observed") is False or
-            (detections[0].get('source_frame_id') is not None and detections[0]['source_frame_id'] != frame.get('frame_id')))
+        provided_detections = frame.get("rackets")
+        invalid_container = provided_detections is not None and not isinstance(provided_detections, (list, tuple))
+        detections = provided_detections if isinstance(provided_detections, (list, tuple)) else []
+        primary = detections[0] if detections else None
+        invalid_primary = invalid_container or (primary is not None and (not isinstance(primary, dict) or
+            primary.get('observed') is False or
+            ('confidence' in primary and (finite_number(primary['confidence']) is None or not 0 <= primary['confidence'] <= 1)) or
+            (primary.get('source_frame_id') is not None and (type(primary['source_frame_id']) is not int or primary['source_frame_id'] != frame.get('frame_id')))))
         box = None if invalid_primary else frame.get("racket")
         rkt = _racket_center([{"box": box}]) if isinstance(box, (list, tuple)) and len(box) == 4 else _point(box)
         if rkt is None:
-            rkt = _racket_center([d for d in detections if d.get('source_frame_id') is None or d['source_frame_id'] == frame.get('frame_id')])
+            rkt = _racket_center([d for d in detections if isinstance(d, dict) and
+                (d.get('source_frame_id') is None or (type(d['source_frame_id']) is int and d['source_frame_id'] == frame.get('frame_id')))])
         raw_rackets.append(rkt)
 
     time_samples = [source_timestamp(row) for row in frames]
@@ -164,7 +166,7 @@ def extract_motion_features(
 
     for idx, frame in enumerate(frames):
         # Uncalibrated mirror recovery is display-only, never a measurement.
-        pose = measurement_pose(frame)
+        pose, pose_qualification = measurement_pose_with_evidence(frame)
         metrics = {} if frame.get("pose_observations") is not None else (frame.get("metrics") or {})
         frame_id = int(frame.get("frame_id", len(features)))
         timestamp, time_basis = time_samples[idx]
@@ -379,6 +381,7 @@ def extract_motion_features(
         }
         if 'source_time' in frame:
             feature['source_time'] = dict(frame['source_time']) if isinstance(frame['source_time'], dict) else frame['source_time']
+        feature['pose_qualification'] = pose_qualification
         features.append(feature)
         prev = {
             "wrist": wrist,

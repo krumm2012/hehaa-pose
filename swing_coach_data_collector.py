@@ -15,15 +15,14 @@ from practice_score_adapter import resolve_practice_score
 from swing_coach_calibration import calibrate_coaching_event
 from event_source_timing import analyze_event_source_timing, PHASE_RULE_EXCLUSION, POLICY_VERSION as PHASE_TIME_POLICY
 from coach_rule_contract import automatic_coach_policy, EXCLUSION_REASON
+from observation_policy import finite_point, finite_number, image_joint_angle
 
 
 Point = Tuple[float, float]
 
 
 def _point(value) -> Optional[Point]:
-    if isinstance(value, (list, tuple)) and len(value) >= 2 and value[0] is not None and value[1] is not None:
-        return float(value[0]), float(value[1])
-    return None
+    return finite_point(value)
 
 
 def _distance(a: Optional[Point], b: Optional[Point]) -> Optional[float]:
@@ -33,16 +32,8 @@ def _distance(a: Optional[Point], b: Optional[Point]) -> Optional[float]:
 
 
 def _angle(p1: Optional[Point], p2: Optional[Point], p3: Optional[Point]) -> Optional[float]:
-    if p1 is None or p2 is None or p3 is None:
-        return None
-    v1 = (p1[0] - p2[0], p1[1] - p2[1])
-    v2 = (p3[0] - p2[0], p3[1] - p2[1])
-    n1 = math.hypot(*v1)
-    n2 = math.hypot(*v2)
-    if n1 == 0 or n2 == 0:
-        return None
-    dot = v1[0] * v2[0] + v1[1] * v2[1]
-    return round(math.degrees(math.acos(max(-1.0, min(1.0, dot / (n1 * n2))))), 4)
+    value = image_joint_angle(p1, p2, p3)
+    return round(value, 4) if value is not None else None
 
 
 def _vector_angle(a: Optional[Point], b: Optional[Point]) -> Optional[float]:
@@ -52,14 +43,14 @@ def _vector_angle(a: Optional[Point], b: Optional[Point]) -> Optional[float]:
 
 
 def _mean(values: Iterable[Optional[float]]) -> Optional[float]:
-    valid = [float(v) for v in values if v is not None]
+    valid = [finite_number(v) for v in values if finite_number(v) is not None]
     if not valid:
         return None
     return round(sum(valid) / len(valid), 4)
 
 
 def _max(values: Iterable[Optional[float]]) -> Optional[float]:
-    valid = [float(v) for v in values if v is not None]
+    valid = [finite_number(v) for v in values if finite_number(v) is not None]
     return round(max(valid), 4) if valid else None
 
 

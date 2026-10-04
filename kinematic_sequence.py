@@ -5,8 +5,9 @@ from statistics import mean, median
 from typing import Dict, List, Optional, Tuple
 
 from practice_scoring import number
+from observation_policy import finite_number
 
-POLICY_VERSION = "kinematic_cross_view_2d_v6_partial_pair_uncertainty"
+POLICY_VERSION = "kinematic_cross_view_2d_v7_finite_observations"
 JOINTS = ("left_hip", "right_hip", "left_shoulder", "right_shoulder")
 MIN_CONFIDENCE = .5
 MIN_LINE_SPAN_PX = 12.0
@@ -47,13 +48,13 @@ def _angle(pose: Dict, segment: str, frame_id: Optional[int] = None) -> Optional
             return None
         if kp.get("observed") is False or kp.get("recovered_from_mirror") or kp.get("confidence_source") == "unavailable":
             return None
-        x, y, confidence = (number(kp.get(key)) for key in ("x", "y", "confidence"))
-        if x is None or y is None or confidence is None or confidence < MIN_CONFIDENCE:
+        x, y, confidence = (finite_number(kp.get(key)) for key in ("x", "y", "confidence"))
+        if x is None or y is None or confidence is None or not MIN_CONFIDENCE <= confidence <= 1:
             return None
         points.append((x, y, min(1.0, confidence)))
     left, right = points
     dx, dy = right[0] - left[0], right[1] - left[1]
-    if math.hypot(dx, dy) < MIN_LINE_SPAN_PX:
+    if not math.isfinite(dx) or not math.isfinite(dy) or math.hypot(dx, dy) < MIN_LINE_SPAN_PX:
         return None
     return math.degrees(math.atan2(dy, dx)), min(left[2], right[2])
 
@@ -189,24 +190,29 @@ def _racket_evidence(rows: List[Dict], times: List[float], cadence: float) -> Di
     segment_id = 0
     for row, timestamp in zip(rows, times):
         detections = row.get("rackets") or []
-        selected = detections[0] if detections else {}
+        selected = detections[0] if isinstance(detections, (list, tuple)) and detections and isinstance(detections[0], dict) else {}
         box = selected.get("box") or row.get("racket")
-        confidence = number(selected.get("confidence")) or 0
-        values = [number(value) for value in box] if isinstance(box, (list, tuple)) else []
+        confidence = finite_number(selected.get("confidence"))
+        values = [finite_number(value) for value in box] if isinstance(box, (list, tuple)) else []
         if (not _source_frame_matches(selected, int(row["frame_id"]))
                 or selected.get("observed") is False or len(values) != 4
-                or None in values or confidence < MIN_CONFIDENCE):
+                or None in values or confidence is None or not MIN_CONFIDENCE <= confidence <= 1
+                or values[2] <= values[0] or values[3] <= values[1]):
             previous = None
             continue
         if previous is None:
             segment_id += 1
-        centre = ((values[0]+values[2])/2, (values[1]+values[3])/2)
+        centre = (values[0]/2+values[2]/2, values[1]/2+values[3]/2)
         if previous is not None:
             old_centre, old_time = previous
             dt = timestamp - old_time
             if 0 < dt <= 3 * cadence:
+                speed = math.dist(centre, old_centre) / dt
+                if not math.isfinite(speed):
+                    previous = None
+                    continue
                 samples.append({"frame_id": int(row["frame_id"]), "time": timestamp,
-                                "speed": math.dist(centre, old_centre) / dt, "segment_id": segment_id})
+                                "speed": speed, "segment_id": segment_id})
             else:
                 segment_id += 1
         previous = centre, timestamp

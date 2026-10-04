@@ -1139,8 +1139,8 @@
                 </select>
               </div>
               <div class="field">
-                <label for="min_confidence">最低置信度</label>
-                <input id="min_confidence" type="number" min="0" max="1" step="0.05" placeholder="0.45" title="推荐 0.45；置信度过高（如>0.8）会导致动作纠错被过滤">
+                <label for="min_confidence">最低证据参考阈值</label>
+                <input id="min_confidence" type="number" min="0" max="1" step="0.05" placeholder="0.45" title="启发式证据过滤阈值，未经准确率校准；它不能批准未经独立验证的技术规则。">
               </div>
             </div>
             <div class="switches">

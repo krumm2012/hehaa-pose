@@ -1,6 +1,6 @@
 # 指标计算契约
 
-版本：`tennis.metric-contract.v3`。实现定义源：`metric_contracts.py`。2026-10-05。
+版本：`tennis.metric-contract.v4`。实现定义源：`metric_contracts.py`。2026-10-05。
 
 本文记录当前程序实际计算，不代表独立准确性验证。JSON 的每项 `contract` 与 OSD `metric_contracts`、报告数据行引用同一份定义。历史输出不自动改写；新分析携带版本。
 
@@ -14,8 +14,13 @@
 - 双视角先还原 ROI 缩放，保持各自镜像方向；肩宽比仍受视角/透视影响，是未标定投影代理。
 - 身体宽度：每帧有效肩宽/髋宽（至少 4px）的中位数，再取事件中位数。
 - `confidence` 是启发式证据质量，不是准确概率；`accuracy_validated=false`。
+- `fresh_front_pose_v2_finite_observations`：新鲜正面观测须提供有限数值坐标、范围为[0,1]的模型分数，并通过原有分数、观测来源和源帧资格。布尔值、数值字符串、NaN和Infinity不授权测量。退化或非有限几何返回null，不把非法余弦夹成0°；关节角先归一化向量再计算点积。原始观测保持不变，旧XY记录仍明确未核验。
+- `observation_qualification`按实际选中窗口保存被拒绝的关节、源帧及原因；整帧容器异常使用`joint=null`和记录级原因。缺值时相应原因进入`contract.missing_reasons`，有其他合格样本时保留拒绝证据，不将它们自动解释为整个指标缺失。
 - 缺失值保持 null；`missing_reasons` 描述缺失，`coaching_exclusion_reason` 单独记录评分禁用原因。旧模块未提供详细原因时明确返回 `insufficient_inputs_or_qualification`，不编造原因。
-- OSD 资格版本 `osd_observation_qualification_v5_field_source_identity`：方向角与上升比分别记录 `fields`。端点重合时方向角为空，合格上升比0保留为独立 canonical metric；已知源帧号不匹配的关节点/球拍框拒绝参与事件测量和OSD。缺来源的历史字段不能充分核验。
+- OSD资格版本`osd_observation_qualification_v6_finite_values`：方向角与上升比分别记录`fields`。端点重合时方向角为空，合格上升比0保留为独立canonical metric；已知源帧号不匹配、非法坐标/分数及容器异常拒绝参与测量。缺来源的历史字段不能充分核验。
+- 球拍框必须是有限的四个数值坐标且宽、高为正；声明的模型分数须在[0,1]。异常主观测不能借用兼容框提升测量资格。动力链拍峰仍要求原有>=0.5模型分数，非有限速度断开片段；检测框中心不等于真实拍头。
+- 双视角解析保留`observed`、`recovered_from_mirror`、`source_frame_id`和`confidence_source`；低分、旧点和镜面补点不能因重新包装而成为新鲜测量。该更改不新增推理或三维重建。
+- 报告将证据百分比标为“证据参考…·未校准”，复核建议显示“复核提示”；过滤阈值不能批准未经验证的评分或技术规则。标明含义不等于完成概率校准。
 - 实时分段排除已发布事件尾部，但测量可从有上限的原始帧缓存读取触球窗口；不改变传统事件统计窗口。`analysis_build`记录公式/资格/评分版本、源文件哈希与生成时间，旧报告不自动重写。
 - 控制台统计行按动作、单位、方法分组；行数与指标种类数分开显示，两者都不是独立准确性验收数或五维评分数。五维阻断原因不构成评分规则；自动规则集合仍为空。
 - 身体指标使用`body_and_trajectory_windows_v1_source_time`：触球/端点±0.08秒，准备屈膝取起始至触球的前半媒体时间；肩线基线取前四分之一并限于0.16秒，回位参考选触球后0.40秒最近的事件内实际观测。窗口裁剪到事件，样本中位数不是时间加权中位数。
@@ -29,7 +34,7 @@
 
 运动特征、分段、球质量窗口及实时等待/去重的2026-10-05更新见
 [MOTION_SOURCE_TIME.md](MOTION_SOURCE_TIME.md)。旧位移信号与源时间归一候选分开保存，
-原帧参数明确作为25Hz历史调参单位。下表与v3实现定义保持一致。未标定空间含义和独立准确性仍待验证。
+原帧参数明确作为25Hz历史调参单位。下表与v4实现定义保持一致，并共同应用上述数值资格规则。未标定空间含义和独立准确性仍待验证。
 
 | ID | 公式 | 坐标系 | 窗口 | 有效条件 |
 |---|---|---|---|---|
@@ -54,6 +59,8 @@
 
 ## 验证
 
+`test_measurement_value_validity.py`覆盖NaN关节假0°/180°、非法分数、无效位移、球拍框及拍峰输入、异常容器、双视角来源标记和严格派生测量JSON。`test_evidence_quality_display.py`直接验证实时和独立报告渲染的证据含义与复核状态。严格派生JSON不等于所有历史原始日志已完成数值规范化；原始观测、空间精度和分数校准另行验证。
+
 `test_body_metric_source_windows.py`覆盖非均匀时间窗口、兼容时钟无关性、源帧间隔、准备时间分割、回位、缺失锚点、短缺口补点和旧峰值降级。旧兼容路径只保留`legacy_candidate_peak_frames`，不再输出按FPS换算的峰值毫秒或OPTIMAL/DISCONNECTED技术结论。
 
 
@@ -62,7 +69,7 @@
 旧 `ALGO_2.0_DESIGN_AND_PROGRESS.md` 是历史设计记录；当前操作定义以本契约及实现为准。动力链研究边界参见 `KINEMATIC_SEQUENCE_CROSS_VALIDATION.md`。
 
 
-### 源帧资格补充（v5）
+### 历史源帧资格补充（OSD v5）
 
 动力链髋、肩及球拍观测携带明确 `source_frame_id` 时，必须与当前记录帧号一致；
 冲突即视为无效观测并断开微分片段，即使 `observed=True` 也不能覆盖此条件。

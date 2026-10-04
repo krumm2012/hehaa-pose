@@ -1,7 +1,7 @@
 """Shared, versioned metric definitions; evidence quality is not accuracy."""
 from copy import deepcopy
 
-VERSION = 'tennis.metric-contract.v3'
+VERSION = 'tennis.metric-contract.v4'
 # formula, coordinate system, window, qualification; operational definitions only.
 DEFINITIONS = {
     'hip_shoulder_separation': ('abs(wrap180(shoulder_line_angle-hip_line_angle)); sample median', 'front image plane', 'contact source PTS +/-0.08s, clipped to event', 'observed shoulder and hip endpoints; reported source time; projected separation only'),
@@ -30,6 +30,10 @@ def metric_contract(key, metric):
     evidence = metric.get('measurement_evidence') or {}
     window_evidence = deepcopy(metric.get('window_evidence') or {})
     reasons = list(dict.fromkeys(list(evidence.get('reasons') or []) + list(window_evidence.get('reasons') or [])))
+    qualification = deepcopy(metric.get('observation_qualification') or {})
+    rejection_reasons = list(dict.fromkeys(p['reason'] for p in qualification.get('rejected_points', [])))
+    if metric.get('value') is None:
+        reasons = list(dict.fromkeys(reasons + rejection_reasons))
     if metric.get('value') is None and not reasons:
         details = metric.get('details') or {}
         reasons = [details.get('reason') or 'insufficient_inputs_or_qualification']
@@ -37,6 +41,8 @@ def metric_contract(key, metric):
             'coordinate_system': coordinates, 'unit': metric.get('unit'),
             'window': window, 'valid_conditions': conditions,
             'window_evidence': window_evidence,
+            'observation_qualification': qualification,
+            'numeric_validity': 'finite_numeric_coordinates; model_point_scores_in_0_1; invalid_or_degenerate_geometry_abstains',
             'legacy_compatibility': 'legacy windows explicitly unverified; declared invalid source clocks abstain',
             'missing_reasons': reasons if metric.get('value') is None else [],
             'evidence_reasons': reasons, 'source_frames': list(metric.get('source_frames') or []),

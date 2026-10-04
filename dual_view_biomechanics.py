@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+from observation_policy import finite_number, finite_point
 
 # 常量定义（与 Tennis-Vision 完全对齐）
 FOREHAND = "Forehand"
@@ -121,6 +122,11 @@ class DualViewBiomechanicsEngine:
         """将不同格式的姿态输出（字典、COCO 17x3 数组等）统一转换为 Dict[str, Keypoint]。"""
         parsed: Dict[str, Keypoint] = {}
 
+        def add(name, x, y, conf, **metadata):
+            xy, score = finite_point((x, y)), finite_number(conf)
+            if xy is not None and score is not None and 0 <= score <= 1:
+                parsed[name] = Keypoint(xy[0], xy[1], score, **metadata)
+
         if isinstance(raw_pose, dict):
             # 形式为 {"left_shoulder": [x, y, conf], ...} 或 {"left_shoulder": (x, y)}
             for k, v in raw_pose.items():
@@ -129,21 +135,33 @@ class DualViewBiomechanicsEngine:
                 name = k.lower()
                 if isinstance(v, (list, tuple)):
                     if len(v) >= 3:
-                        parsed[name] = Keypoint(float(v[0]), float(v[1]), float(v[2]))
+                        add(name, v[0], v[1], v[2])
                     elif len(v) == 2:
-                        parsed[name] = Keypoint(float(v[0]), float(v[1]), 1.0)
+                        add(name, v[0], v[1], 1.0, confidence_source='legacy_xy_unverified')
                 elif hasattr(v, "x") and hasattr(v, "y"):
                     conf = getattr(v, "conf", 1.0)
-                    parsed[name] = Keypoint(float(v.x), float(v.y), float(conf))
+                    add(name, v.x, v.y, conf, z=getattr(v, 'z', None),
+                        observed=getattr(v, 'observed', True),
+                        recovered_from_mirror=getattr(v, 'recovered_from_mirror', False),
+                        source_frame_id=getattr(v, 'source_frame_id', None),
+                        confidence_source=getattr(v, 'confidence_source', 'provided'))
         elif isinstance(raw_pose, (list, np.ndarray)):
             arr = np.array(raw_pose)
-            if arr.ndim == 2 and arr.shape[0] == 17:
+            if arr.ndim == 2 and arr.shape[0] == 17 and arr.shape[1] >= 2:
                 for idx, name in COCO_KEYPOINTS.items():
-                    x, y = float(arr[idx, 0]), float(arr[idx, 1])
-                    conf = float(arr[idx, 2]) if arr.shape[1] > 2 else 1.0
-                    parsed[name] = Keypoint(x, y, conf)
+                    x, y = arr[idx, 0], arr[idx, 1]
+                    conf = arr[idx, 2] if arr.shape[1] > 2 else 1.0
+                    add(name, x, y, conf, confidence_source='provided' if arr.shape[1] > 2 else 'legacy_xy_unverified')
 
         return parsed
+
+    def _measurement_pose(self, pose):
+        return {name: point for name, point in pose.items()
+                if point.observed is True and not point.recovered_from_mirror
+                and point.confidence_source != 'unavailable'
+                and finite_point(point.pt) is not None
+                and finite_number(point.conf) is not None
+                and self.min_keypoint_conf <= point.conf <= 1.}
 
     def heal_occluded_pose(
         self,
@@ -241,6 +259,7 @@ class DualViewBiomechanicsEngine:
         移植自 Tennis-Vision 的正反手与双手击球判定算法：
         基于躯干轴投影中线跨越法则，支持双手握拍识别与接触点距离门控。
         """
+        pose = self._measurement_pose(pose)
         l_sh = pose.get("left_shoulder")
         r_sh = pose.get("right_shoulder")
 
@@ -383,8 +402,8 @@ class DualViewBiomechanicsEngine:
         """
         全量计算前后双视角融合网球生物力学指标
         """
-        f_pose = self.parse_pose_dict(front_pose_raw)
-        b_pose = self.parse_pose_dict(back_pose_raw)
+        f_pose = self._measurement_pose(self.parse_pose_dict(front_pose_raw))
+        b_pose = self._measurement_pose(self.parse_pose_dict(back_pose_raw))
 
         # 1. 遮挡自愈
         fused_pose, healed_points = self.heal_occluded_pose(f_pose, b_pose)

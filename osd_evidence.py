@@ -2,8 +2,9 @@
 import math
 from statistics import median
 from image_motion_measurements import source_timestamp
+from observation_policy import qualified_front_point, finite_number
 
-POLICY = 'osd_observation_qualification_v5_field_source_identity'
+POLICY = 'osd_observation_qualification_v6_finite_values'
 PARAMETERS = {'minimum_coverage': .8, 'minimum_point_score': .5,
               'minimum_ankle_span_body_width': .2, 'maximum_foot_range_deg': 10,
               'hip_motion_floor_body_width': .04}
@@ -12,16 +13,15 @@ FIELDS = {'brush_angle': ('low_to_high_angle_deg','drop_depth_px','drop_depth_ra
 
 
 def _points(row, names):
+    observations = row.get('pose_observations')
+    front = observations.get('front') if isinstance(observations, dict) else None
+    if not isinstance(front, dict):
+        return None
     result=[]
     for name in names:
-        p=((row.get('pose_observations') or {}).get('front') or {}).get(name,{})
-        if p.get('observed') is not True or p.get('recovered_from_mirror') or p.get('confidence_source') == 'unavailable':
-            return None
-        if p.get('source_frame_id') is not None and p['source_frame_id'] != row.get('frame_id'):
-            return None
-        values=[p.get(k) for k in ('x','y','confidence')]
-        if not all(isinstance(v,(int,float)) and not isinstance(v,bool) and math.isfinite(v) for v in values) or values[2]<.5:
-            return None
+        p=front.get(name, {})
+        values, _ = qualified_front_point(p, row.get('frame_id'), minimum_score=.5)
+        if values is None: return None
         result.append(values)
     return result
 
@@ -80,8 +80,9 @@ def qualify_extended_observations(ext, event, frames, features, scale):
     valid=[]
     for i in ids:
         detections=rows[i].get('rackets') or []
-        d=detections[0] if detections else {}
-        if feats.get(i,{}).get('racket_measurement_point') is not None and d.get('observed') is True and (d.get('confidence') or 0)>=.5 and (d.get('source_frame_id') is None or d['source_frame_id'] == i):
+        d=detections[0] if isinstance(detections, (list, tuple)) and detections and isinstance(detections[0], dict) else {}
+        score = finite_number(d.get('confidence'))
+        if feats.get(i,{}).get('racket_measurement_point') is not None and d.get('observed') is True and score is not None and .5<=score<=1 and (d.get('source_frame_id') is None or (type(d['source_frame_id']) is int and d['source_frame_id'] == i)):
             valid.append(i)
     reasons=list(anchor_reasons)
     if len(valid)<5: reasons.append('too_few_racket_observations')
