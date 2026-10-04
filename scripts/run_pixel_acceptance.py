@@ -9,7 +9,29 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from session_evidence_bundle import verify_evidence_manifest
+from session_evidence_bundle import sha256_file, verify_evidence_manifest
+
+
+def select_source(manifest_path, source_entry, roi, input_source=None):
+    reference = (Path(manifest_path).parent / Path(source_entry['path'])).resolve()
+    if input_source is None:
+        if not reference.is_file() or sha256_file(reference) != source_entry.get('sha256'):
+            raise ValueError('Frozen source video is missing or its SHA256 differs from the evidence manifest')
+        return reference
+    candidate = Path(input_source).resolve()
+    if not candidate.is_file():
+        raise ValueError('Alternate pixel source must be an existing local video')
+    import cv2
+    capture = cv2.VideoCapture(str(candidate))
+    try:
+        if not capture.isOpened():
+            raise ValueError('Alternate pixel source cannot be decoded')
+        size = [int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)), int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))]
+        if size != roi['frame_size']:
+            raise ValueError('Alternate source dimensions differ from frozen ROI; supply a matching geometry fixture')
+    finally:
+        capture.release()
+    return candidate
 
 
 def main():
@@ -18,15 +40,17 @@ def main():
     parser.add_argument('--output',required=True)
     parser.add_argument('--python',default='venv_yolo26/bin/python')
     parser.add_argument('--max-frames',type=int,default=250)
+    parser.add_argument('--input-source', help='Explicit alternate local input; preserves reference evidence and does not establish original-frame mapping')
     args=parser.parse_args();out=Path(args.output).resolve()
     if out.exists(): raise FileExistsError('Choose a new session directory')
     manifest=Path(args.manifest).resolve()
     verification=verify_evidence_manifest(str(manifest))
     if not verification['replayable']: raise ValueError('Frozen input verification failed')
-    doc=json.loads(manifest.read_text());roi=doc['capture']['roi'];out.mkdir(parents=True)
-    config=yaml.safe_load(Path('configs/yolo26_tennis_config.yaml').read_text())
+    doc=json.loads(manifest.read_text());roi=doc['capture']['roi']
     source=next(a for a in doc['artifacts'] if a['role']=='source_video')
-    source_path=(manifest.parent/Path(source['path'])).resolve()
+    source_path=select_source(manifest,source,roi,args.input_source)
+    out.mkdir(parents=True)
+    config=yaml.safe_load(Path('configs/yolo26_tennis_config.yaml').read_text())
     fixture={'streams':[{'stream_id':'acceptance-frozen','stream_source':str(source_path),'default':True,
                         'roi_enabled':True,'frame_size':roi['frame_size'],'roi_points':roi['points'],
                         'mirror_view':roi['mirror_view'],'front_view':roi['front_view']}]}
@@ -73,6 +97,10 @@ def main():
          'resource_semantics':'ps process-tree RSS sum can double-count shared memory; CPU is ps-reported average, not instantaneous utilization',
          'display_semantics':'OpenCV window submission measured; no sensor-to-photon/exposure verification',
          'frozen_manifest_verification':verification}
+    input_digest=sha256_file(source_path)
+    run['source_selection']={'reference_source_sha256':source['sha256'],'input_source_sha256':input_digest,
+                            'explicit_alternate_input':args.input_source is not None,
+                            'relationship_to_reference':'same_input_bytes' if input_digest==source['sha256'] else 'unverified_derived_relationship'}
     if (out/'frames.jsonl').exists():
         frames=[json.loads(line) for line in (out/'frames.jsonl').read_text().splitlines() if line.strip()]
         run['frame_count']=len(frames)
