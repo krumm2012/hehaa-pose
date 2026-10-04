@@ -1,0 +1,63 @@
+{
+  "schema": "tennis.adjudication-engineering-acceptance.v1",
+  "date": "2026-10-05",
+  "source_commit": "a8fa995254d73f96acbbe031bf7ec00845a45337",
+  "accuracy_validated": false,
+  "full_suite": {
+    "count": 462,
+    "failures": 0,
+    "command": "venv/bin/python -m unittest discover",
+    "log": "/tmp/tennis_adjudication_release_20261005.log"
+  },
+  "adjudication_tests": {
+    "count": 9,
+    "synthetic_data_only": true,
+    "validated_behaviors": [
+      "generated script parses with PLAN_HASH and script-closing text in user input",
+      "zero coordinate and unidentifiable labels preserved",
+      "all nonzero disagreements need explicit human decision; no averaging",
+      "model-assisted and malformed independence declarations rejected",
+      "changed originals or plan invalidate confirmation",
+      "missing and visibility disagreements need source-reviewed decision",
+      "source/frame/joint/bounds contracts checked",
+      "CLI source hash mismatch and existing output paths rejected without changing originals",
+      "final labels feed independent evaluator with declared joint denominator"
+    ]
+  },
+  "browser_acceptance": {
+    "synthetic_data_only": true,
+    "accepted_B_point": {
+      "x": 10,
+      "y": 20
+    },
+    "source_viewBox": [
+      0,
+      0,
+      160,
+      120
+    ],
+    "zero_coordinate_A_preserved": true,
+    "refresh_restores_decision_and_confirmation": true,
+    "editing_clears_confirmation": true,
+    "unidentifiable_points_have_no_coordinates": true
+  },
+  "control_service": {
+    "previous_pid": 59691,
+    "new_pid": 9851,
+    "state": "stopped",
+    "source_hashes_match": true,
+    "config_unchanged": true,
+    "control_source_sha256": "639482532e6040417f0ab28e11532e0d39df6ecf886c019eacf49c68a1e6837f",
+    "loaded_at_unix_ns": 1791133928858686000,
+    "status_build_contract": "tennis.control-service-build.v1",
+    "frontend_http": 200,
+    "frontend_sse_connected": true
+  },
+  "remaining": [
+    "two genuinely independent confirmed human references are still absent",
+    "measurement error and confidence calibration not validated",
+    "real RTSP/TTS and hardware calibration not accepted",
+    "complete optimization scope is not finished"
+  ],
+  "automatic_scoring_opened": false
+}

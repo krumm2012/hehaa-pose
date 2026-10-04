@@ -322,7 +322,7 @@
       "problem": "缺少独立连续帧关节参考",
       "requirement": "不看模型点标注；记录遮挡、左右语义及标注不确定性",
       "status": "工具通过／独立标签待提供",
-      "evidence_or_gap": "22帧无模型点页保留；新版支持草稿恢复"
+      "evidence_or_gap": "v3无模型提示22帧、双视角四关节176项；空稿仍未确认。"
     },
     {
       "id": "E03",
@@ -383,10 +383,10 @@
     {
       "id": "E10",
       "priority": "P2",
-      "problem": "缺少多人标注与分歧仲裁流程",
+      "problem": "双人独立标注对照及人工分歧仲裁",
       "requirement": "增加双人对照、差异定位和最终确认记录",
-      "status": "流程待实现及数据",
-      "evidence_or_gap": "双人原稿可分别导出；多人分歧定位和仲裁界面未实现"
+      "status": "工程与浏览器通过／真实双人标签待提供",
+      "evidence_or_gap": "原帧分歧对照、显式裁决、计划与原稿哈希绑定、草稿恢复、修改撤销确认、最终标签到独立evaluator通过；合成验收不证明真实准确性。"
     },
     {
       "id": "F01",
@@ -455,15 +455,15 @@
     {
       "id": "G01",
       "priority": "P1",
-      "problem": "最近全量测试仍有三项环境／ROI 相关失败",
+      "problem": "全量回归的可重复性与测试环境隔离",
       "requirement": "隔离本机机位配置与测试夹具，核验视频检测测试，恢复可重复的全绿结果",
       "status": "全量通过",
-      "evidence_or_gap": "452项测试通过；测试ROI与用户机位隔离；两个模型后端核验旧测试机位"
+      "evidence_or_gap": "当前462项全量测试通过；日志/tmp/tennis_adjudication_release_20261005.log。"
     },
     {
       "id": "G02",
       "priority": "P2",
-      "problem": "最新窗口修复相关 82 项测试通过",
+      "problem": "原像素端到端、证据完整性与事件重放",
       "requirement": "补新会话端到端验收；不能用上一版 433 项通过替代当前全量验收",
       "status": "新像素会话与回放通过",
       "evidence_or_gap": "CoreML双视角250帧、3事件、退出0；全部制品哈希通过，重放事件语义一致"
@@ -519,23 +519,23 @@
     {
       "id": "G09",
       "priority": "P2",
-      "problem": "当前工作区有大量修改和历史制品删除",
+      "problem": "代码、用户配置与历史制品的提交范围",
       "requirement": "区分本轮代码、用户配置和既有删除，再整理提交",
-      "status": "提交范围整理通过",
-      "evidence_or_gap": "只提交代码、测试、文档和小型验收数据；用户机位配置、历史删除及视频制品留在工作区"
+      "status": "代码提交范围整理通过",
+      "evidence_or_gap": "仲裁工具、服务版本身份、测试及文档单独提交；两份用户配置、51份既有历史删除和视频制品保持工作区现状。"
     },
     {
       "id": "G10",
       "priority": "P2",
-      "problem": "本轮整体尚未完成正式发布验收",
+      "problem": "代码远端、运行版本与现场发布验收",
       "requirement": "核对提交、远端状态、运行版本和回退方式",
-      "status": "工程提交推送通过／服务更新与现场发布待验收",
-      "evidence_or_gap": "9798cb8普通推送到algo-2.0；452项测试通过；控制服务尚未重启加载新Python，RTSP/TTS现场发布待验收"
+      "status": "工程推送与服务更新通过／现场发布待验收",
+      "evidence_or_gap": "a8fa995普通推送到algo-2.0；控制服务已重启为PID9851，导入时源码哈希与当前文件匹配、SSE连接；RTSP/TTS现场仍待验收。"
     },
     {
       "id": "G11",
       "priority": "P2",
-      "problem": "部分旧算法文档表述已落后",
+      "problem": "当前算法与历史文档的版本区分",
       "requirement": "更新当前公式、限制与修复状态，标识历史结论",
       "status": "当前关键契约更新",
       "evidence_or_gap": "源时间ADR/指标/标注文档更新；旧历史结论保留为历史"
@@ -582,11 +582,12 @@
     }
   ],
   "validation": {
-    "full_test_count": 452,
-    "log": "/tmp/tennis-release-tests.log",
+    "full_test_count": 462,
+    "log": "/tmp/tennis_adjudication_release_20261005.log",
     "semantic_replay": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/semantic_replay.json",
     "audit": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/audit.json",
-    "pixel_run": "data/analysis_results/kinematic_validation/pixel_acceptance_v2_20261005/run.json"
+    "pixel_run": "data/analysis_results/kinematic_validation/pixel_acceptance_v2_20261005/run.json",
+    "adjudication": "validation/adjudication_acceptance_20261005.json"
   },
   "constraints": [
     "automatic validated rubrics remain empty",
@@ -627,10 +628,12 @@
     }
   ],
   "delivery": {
-    "engineering_commit": "9798cb8",
+    "engineering_commit": "a8fa995254d73f96acbbe031bf7ec00845a45337",
     "branch": "algo-2.0",
     "remote": "origin-paused",
     "engineering_push_verified": true,
-    "control_server_restarted": false
+    "control_server_restarted": true,
+    "control_server_pid": 9851,
+    "source_hashes_match": true
   }
 }
