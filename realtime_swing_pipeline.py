@@ -25,7 +25,7 @@ from analysis_data_contracts import (
     utc_iso_from_ns,
 )
 from swing_event_analyzer import analyze_frame_records
-from swing_report_builder import _build_radar_svg, _build_kinematic_sequence_html
+from swing_report_builder import _build_radar_svg, _build_kinematic_sequence_html, _build_event_source_timing_html, _impact_freeze_label
 from swing_session_quality import build_session_quality_dashboard
 from video_writer_backend import create_video_writer
 
@@ -297,7 +297,11 @@ class RealtimeSwingEventEngine:
         min_arm_extension_range: float = 0.0,
         coach=None,
         session_metadata: Optional[Dict] = None,
+        execution_mode: str = 'live',
     ):
+        if execution_mode not in ('live', 'replay'):
+            raise ValueError('Unsupported event engine execution mode')
+        self.execution_mode = execution_mode
         self.fps = max(1.0, float(fps or 25.0))
         self.analysis_interval_frames = max(1, int(analysis_interval_frames))
         self.settle_frames = max(
@@ -372,7 +376,8 @@ class RealtimeSwingEventEngine:
                 "coach_configuration": (
                     self.coach.configuration() if self.coach is not None else None
                 ),
-                "realtime": True,
+                "realtime": self.execution_mode == 'live',
+                "execution_mode": self.execution_mode,
                 "settle_frames": self.settle_frames,
                 "analysis_interval_frames": self.analysis_interval_frames,
                 "window_frames": self.window_frames,
@@ -415,6 +420,7 @@ class RealtimeSwingEventEngine:
             analysis_frames,
             measurement_frames=list(self._frames) if self._events else None,
             session_metadata=self.session_metadata,
+            execution_mode=self.execution_mode,
             **self.options,
         )
         emitted = []
@@ -442,8 +448,9 @@ class RealtimeSwingEventEngine:
                 event,
                 session=self.session_metadata,
                 emitted_at_unix_ns=time.time_ns(),
-                contact_frame_record=contact_record,
+                contact_frame_record=contact_record if self.execution_mode == 'live' else None,
             )
+            event['timing']['latency_scope'] = 'live_receipt_to_publication' if self.execution_mode == 'live' else 'offline_replay'
             if self.coach is not None:
                 if hasattr(self.coach, "advise_all"):
                     coach_advices = self.coach.advise_all(event) or []
@@ -468,7 +475,7 @@ class RealtimeSwingEventEngine:
                         "captured_at_unix_ns"
                     )
                 )
-                if isinstance(contact_capture_ns, int) and contact_capture_ns > 0:
+                if self.execution_mode == 'live' and isinstance(contact_capture_ns, int) and contact_capture_ns > 0:
                     timing["contact_capture_to_coach_ms"] = round(
                         max(0, coach_generated_ns - contact_capture_ns) / 1_000_000,
                         3,
@@ -909,7 +916,7 @@ class RealtimeSwingOutputManager:
             writer.release()
 
         # Extract and save contact frame freeze snapshot if available
-        contact_fid = int(event.get("contact_frame") or event.get("start_frame") or 0)
+        contact_fid = int(event.get('contact_frame') if event.get('contact_frame') is not None else event.get('start_frame', 0))
         freeze_fid = contact_fid
         target_bytes = None
         for fid, fbytes in frames:
@@ -945,6 +952,7 @@ class RealtimeSwingOutputManager:
             "frame_count": len(frames),
             "missing_frames": missing_frame_ids,
             "impact_freeze_path": freeze_rel,
+            "impact_freeze_source_frame_id": freeze_fid if freeze_rel else None,
             "clip_telemetry_event_id": int(event["event_id"]) if renderer is not None else None,
         }
 
@@ -961,6 +969,7 @@ class RealtimeSwingOutputManager:
             }
             if result.get("impact_freeze_path"):
                 updates["impact_freeze_path"] = result["impact_freeze_path"]
+                updates['impact_freeze_source_frame_id'] = result.get('impact_freeze_source_frame_id')
                 updates["snapshots"] = {"impact_freeze": result["impact_freeze_path"]}
         except Exception as exc:
             updates = {
@@ -1314,14 +1323,7 @@ class RealtimeSwingOutputManager:
             snapshot_html = ""
             c_frame = event.get("contact_frame")
             snap_path = event.get("impact_freeze_path") or (event.get("snapshots") or {}).get("impact_freeze")
-            if not snap_path and c_frame is not None:
-                cand_files = list(self.output_json.parent.glob(f"*{c_frame}*.jpg"))
-                if cand_files:
-                    try:
-                        snap_path = os.path.relpath(cand_files[0], self.output_html.parent).replace(os.sep, "/")
-                    except ValueError:
-                        snap_path = cand_files[0].name
-            elif snap_path:
+            if snap_path:
                 try:
                     full_p = self.output_json.parent / snap_path
                     if full_p.exists():
@@ -1329,11 +1331,12 @@ class RealtimeSwingOutputManager:
                 except ValueError:
                     pass
             if snap_path:
+                freeze_label = html.escape(_impact_freeze_label(event))
                 snapshot_html = f"""
                 <div class="impact-freeze-container">
                   <a href="{html.escape(snap_path)}" target="_blank" class="impact-freeze-link" title="点击查看击球瞬间定格特写">
                     <img src="{html.escape(snap_path)}" alt="击球瞬间定格特写" loading="lazy" class="impact-freeze-img" />
-                    <span class="impact-freeze-badge">⚡ 击球瞬间定格特写 (第 {c_frame} 帧)</span>
+                    <span class="impact-freeze-badge">{freeze_label}</span>
                   </a>
                 </div>
                 """
@@ -1422,6 +1425,7 @@ class RealtimeSwingOutputManager:
                 or {}
             )
             kinematic_html = _build_kinematic_sequence_html(seq)
+            phase_time_html = _build_event_source_timing_html(event.get('phase_timing'))
 
             # 击球遥测指标网格
             rkt = (
@@ -1607,6 +1611,7 @@ class RealtimeSwingOutputManager:
                   {coach_tts_content}
                   {radar_html}
                   {kinematic_html}
+                  {phase_time_html}
                   {telemetry_html}
                   {biomechanics_content}
                   {deepseek_content}

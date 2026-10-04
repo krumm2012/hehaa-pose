@@ -13,6 +13,8 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from swing_event_analyzer import analyze_frame_records
 from practice_score_adapter import resolve_practice_score
 from swing_coach_calibration import calibrate_coaching_event
+from event_source_timing import analyze_event_source_timing, PHASE_RULE_EXCLUSION, POLICY_VERSION as PHASE_TIME_POLICY
+from coach_rule_contract import automatic_coach_policy, EXCLUSION_REASON
 
 
 Point = Tuple[float, float]
@@ -256,24 +258,8 @@ def _interpolate_point(features_by_frame: Dict[int, Dict], frame_id: int, key: s
     return (round(point[0], 4), round(point[1], 4)), "interpolated", round(confidence, 4)
 
 
-def _score_from_ratio(value: Optional[float], low: float, high: float) -> Optional[float]:
-    if value is None:
-        return None
-    if high == low:
-        return None
-    return round(max(0.0, min(1.0, (float(value) - low) / (high - low))), 4)
-
-
 def _quality_scores(event: Dict, body: Dict, racket: Dict, ball: Dict, timing: Dict) -> Dict:
     contact_score = ball.get("contact_confidence")
-    racket_speed = None
-    if float(racket.get("racket_continuity_ratio") or 0.0) >= 0.35:
-        racket_speed = (
-            racket.get("racket_speed_at_contact")
-            or racket.get("max_racket_speed")
-        )
-    follow_frames = timing.get("phase_durations_frames", {}).get("follow_through", 0)
-    preparation_frames = timing.get("phase_durations_frames", {}).get("backswing", 0)
     calibration = calibrate_coaching_event(event)
 
     scores = {
@@ -282,9 +268,11 @@ def _quality_scores(event: Dict, body: Dict, racket: Dict, ball: Dict, timing: D
             if contact_score is not None and float(contact_score) > 0.0
             else None
         ),
-        "racket_speed_score": _score_from_ratio(racket_speed, 5.0, 80.0),
-        "preparation_score": _score_from_ratio(preparation_frames, 2.0, 12.0),
-        "follow_through_score": _score_from_ratio(follow_frames, 4.0, 18.0),
+        "racket_speed_score": None,
+        "racket_speed_score_exclusion_reason": EXCLUSION_REASON,
+        "preparation_score": None,
+        "follow_through_score": None,
+        "phase_score_exclusion_reason": PHASE_RULE_EXCLUSION,
         "power_transfer_score": None,
     }
     scores["practice_score"] = resolve_practice_score(event)
@@ -303,28 +291,11 @@ def _diagnosis_tags(scores: Dict, body: Dict, racket: Dict, ball: Dict, timing: 
     tags = []
     if (ball.get("contact_confidence") or 0.0) < 0.2:
         tags.append("low_contact_confidence")
-    if (
-        float(racket.get("racket_continuity_ratio") or 0.0) >= 0.35
-        and (racket.get("max_racket_speed") or 0.0) < 10.0
-    ):
-        tags.append("low_racket_speed")
-    if (timing.get("phase_durations_frames", {}).get("follow_through", 0)) < 4:
-        tags.append("short_follow_through")
     if body.get("contact_point_relative_to_body") is None:
         tags.append("missing_contact_body_reference")
     if body.get("hip_shoulder_separation_at_contact") is None:
         tags.append("missing_hip_shoulder_separation")
     return tags
-
-
-def _unit_turn_quality(shoulder_turn: Optional[float]) -> str:
-    if shoulder_turn is None:
-        return "unknown"
-    if shoulder_turn >= 30:
-        return "strong"
-    if shoulder_turn >= 12:
-        return "adequate"
-    return "limited"
 
 
 def _stance_type(stance_ratio: Optional[float]) -> str:
@@ -475,14 +446,6 @@ def _body_metrics(
     stance = _stance_metrics(contact_pose)
     relative_contact = _relative_point(contact_ball, body_center)
     biomechanical_metrics = (biomechanics or {}).get("metrics") or {}
-    contact_metric = biomechanical_metrics.get("contact_lateral_distance") or {}
-    contact_too_close = (
-        float(contact_metric["value"]) < 0.55
-        if contact_metric.get("value") is not None
-        and contact_metric.get("coach_eligible") is True
-        else None
-    )
-    turn_change = (biomechanical_metrics.get("shoulder_turn_change") or {}).get("value")
     return {
         "body_center_at_contact": body_center,
         "contact_point_relative_to_body": relative_contact,
@@ -503,20 +466,19 @@ def _body_metrics(
         "screen_body_center_motion_start_to_contact": _weight_transfer(center_start_to_contact),
         "screen_body_center_motion_contact_to_end": _balance_state(center_contact_to_end),
         "stance_type": _stance_type(stance.get("stance_width_to_hip_ratio")),
-        "unit_turn_quality": _unit_turn_quality(turn_change),
-        "contact_too_close_to_body": contact_too_close,
+        "unit_turn_quality": "unknown",
+        "unit_turn_quality_exclusion_reason": EXCLUSION_REASON,
+        "contact_too_close_to_body": None,
+        "contact_spacing_exclusion_reason": EXCLUSION_REASON,
         "late_contact": None,
         "late_contact_reason": "front_back_depth_not_observable_single_view",
         **stance,
     }
 
 
-def _timing_metrics(event: Dict, event_frames: Dict, event_traces: List[Dict], fps: float) -> Dict:
-    def seconds(frames: Optional[int]) -> Optional[float]:
-        if frames is None or fps <= 0:
-            return None
-        return round(frames / fps, 4)
-
+def _timing_metrics(event: Dict, event_frames: Dict, event_traces: List[Dict], fps: float,
+                    source_frames: Optional[List[Dict]] = None) -> Dict:
+    # fps stays in the caller signature for compatibility, never for measurement.
     start = event_frames["start"]
     contact = event_frames["contact"]
     end = event_frames["end"]
@@ -530,22 +492,31 @@ def _timing_metrics(event: Dict, event_frames: Dict, event_traces: List[Dict], f
         }
     recovery_frames = phase_counts.get("ready", 0)
     duration = int(event["duration_frames"])
-    start_to_contact = contact - start
-    contact_to_end = end - contact
-    tempo_balance = min(start_to_contact, contact_to_end) / max(1, max(start_to_contact, contact_to_end))
+    media = analyze_event_source_timing({**event, 'start_frame': start, 'contact_frame': contact,
+        'peak_frame': peak, 'end_frame': end}, source_frames or [], event_traces)
+    before, after = media['start_to_contact_seconds'], media['contact_to_end_seconds']
+    tempo_balance = (min(before, after)/max(before, after)
+                     if before is not None and after is not None and max(before, after) > 0 else None)
     return {
         "duration_frames": duration,
-        "duration_seconds": seconds(duration),
+        "duration_seconds": media['duration_seconds'],
         "start_to_contact_frames": contact - start,
         "contact_to_end_frames": end - contact,
         "peak_to_contact_offset_frames": contact - peak,
         "phase_durations_frames": phase_counts,
-        "start_to_contact_seconds": seconds(contact - start),
-        "contact_to_end_seconds": seconds(end - contact),
+        "phase_durations_seconds": media['phase_durations_seconds'],
+        "peak_to_contact_offset_seconds": media['peak_to_contact_offset_seconds'],
+        "start_to_contact_seconds": before,
+        "contact_to_end_seconds": after,
         "recovery_time_frames": recovery_frames,
-        "recovery_time_seconds": seconds(recovery_frames),
-        "preparation_timing_quality": "early" if start_to_contact > duration * 0.55 else "quick" if start_to_contact < duration * 0.25 else "balanced",
-        "tempo_consistency": round(tempo_balance, 4),
+        "recovery_time_seconds": media['recovery_time_seconds'],
+        "preparation_time_fraction": before/media['duration_seconds']
+            if before is not None and media['duration_seconds'] > 0 else None,
+        "preparation_timing_quality": None,
+        "preparation_timing_exclusion_reason": PHASE_RULE_EXCLUSION,
+        "tempo_consistency": round(tempo_balance, 4) if tempo_balance is not None else None,
+        "tempo_consistency_semantics": "before_after_contact_time_balance_not_technical_quality",
+        "source_time_evidence": media,
     }
 
 
@@ -636,7 +607,7 @@ def build_coach_dataset(frame_data: Dict, event_analysis: Dict) -> Dict:
             int(event["end_frame"]),
             event.get("biomechanics") or {},
         )
-        timing = _timing_metrics(event, frame_markers, event_traces, fps)
+        timing = _timing_metrics(event, frame_markers, event_traces, fps, frames)
         scores = _quality_scores(event, body, racket, ball, timing)
         data_quality = _data_quality(event_features, ball, racket, body, timing)
         event_quality_flags = event.get("quality_flags") or {}
@@ -668,7 +639,9 @@ def build_coach_dataset(frame_data: Dict, event_analysis: Dict) -> Dict:
 
     return {
         "metadata": {
-            "schema_version": "coach_dataset_v1.2",
+            "schema_version": "coach_dataset_v1.3",
+            "timing_policy": PHASE_TIME_POLICY,
+            "automatic_coach_policy": automatic_coach_policy(),
             "video_path": video_info.get("path"),
             "fps": fps,
             "resolution": video_info.get("resolution"),

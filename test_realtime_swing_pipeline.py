@@ -91,6 +91,25 @@ class RealtimeSwingEventEngineTests(unittest.TestCase):
         self.assertEqual(len(emitted), 1)
         self.assertEqual(emitted[0]["event_id"], 1)
 
+    def test_offline_replay_never_reports_elapsed_time_since_historical_capture_as_latency(self):
+        engine = RealtimeSwingEventEngine(fps=25, analysis_interval_frames=1,
+            settle_frames=3, window_frames=80, min_peak_energy=8, active_energy=6,
+            min_event_frames=4, max_internal_gap=1, min_event_gap=3,
+            coach=LocalRealtimeCoach(), execution_mode='replay')
+        positions = [0, 0, 0, 10, 25, 45, 65, 80, 90, 95, 95, 95, 95, 95, 95, 95]
+        for fid, x in enumerate(positions):
+            row = frame_record(fid, x)
+            row['timing'] = {'captured_at_unix_ns': 1_000_000_000}
+            engine.push_frame(row)
+        engine.flush()
+        result = engine.snapshot()
+        self.assertTrue(result['events'])
+        self.assertFalse(result['summary']['realtime'])
+        for event in result['events']:
+            self.assertNotIn('contact_capture_to_coach_ms', event['timing'])
+            self.assertNotIn('contact_capture_to_event_ms', event['timing'])
+            self.assertEqual(event['timing']['latency_scope'], 'offline_replay')
+
     def test_suppresses_late_secondary_peak_inside_an_emitted_event(self):
         engine = self.make_engine()
         engine._events.append(

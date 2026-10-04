@@ -223,6 +223,22 @@ class ManualReviewWorkflowTests(unittest.TestCase):
         self.assertEqual(provenance["configuration_source"], "session")
         self.assertLessEqual(len(result["events"][0]["coach_advices"]), 1)
 
+    def test_manual_anchor_changes_recompute_source_time_instead_of_copying_old_cache(self):
+        from manual_review_workflow import derive_manual_coach_events
+        document = _event_document()
+        document['events'][0]['phase_timing'] = {'duration_seconds': 999.}
+        rows = [_frame(i) for i in range(20)]
+        for row in rows:
+            row['source_time'] = {'schema_version': 'tennis.source-time.v1',
+                'source_kind': 'video_file', 'source_frame_id': row['frame_id'],
+                'timestamp_seconds': row['frame_id']*.041,
+                'basis': 'media_pts', 'quality': 'reported'}
+        result = derive_manual_coach_events(document, _annotations(False), rows)
+        event = result['events'][0]
+        self.assertAlmostEqual(event['phase_timing']['duration_seconds'],
+                               (event['end_frame']-event['start_frame'])*.041)
+        self.assertFalse(event['phase_timing']['coach_eligible'])
+
     def _write_session(self, root: Path):
         events = _event_document()
         event_path = root / "final_events.json"

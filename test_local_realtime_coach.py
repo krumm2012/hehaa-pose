@@ -1,10 +1,18 @@
 import unittest
+from unittest.mock import patch
+
+# Synthetic approvals exercise ranking only, never certify production rules.
+SYNTHETIC_RULES = frozenset({
+    "contact_too_close", "limited_arm_extension", "limited_separation",
+    "unstable_balance", "limited_weight_transfer", "limited_knee_flexion",
+    "disconnected_kinetic_chain", "limited_leg_drive", "limited_brush_drop"})
 
 from local_realtime_coach import LocalRealtimeCoach
 
 
 class LocalRealtimeCoachTests(unittest.TestCase):
-    def test_returns_up_to_three_ranked_biomechanical_corrections_with_confidence(self):
+    @patch("coach_rule_contract.VALIDATED_TECHNIQUE_RULES", SYNTHETIC_RULES)
+    def test_returns_up_to_three_ranked_biomechanical_corrections_with_confidence_with_synthetic_rule_approval(self):
         coach = LocalRealtimeCoach(
             max_chars=15,
             max_suggestions=3,
@@ -82,7 +90,8 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         self.assertEqual(len(advices), 1)
         self.assertEqual(advices[0]["code"], "insufficient_technique_evidence")
 
-    def test_moderate_pose_gap_does_not_block_reliable_biomechanics(self):
+    @patch("coach_rule_contract.VALIDATED_TECHNIQUE_RULES", SYNTHETIC_RULES)
+    def test_moderate_pose_gap_does_not_block_reliable_biomechanics_with_synthetic_rule_approval(self):
         coach = LocalRealtimeCoach(max_suggestions=3, min_confidence=0.45)
         event = {
             "event_id": 23,
@@ -109,7 +118,8 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         self.assertEqual(advices[0]["code"], "limited_arm_extension")
         self.assertEqual(advices[0]["category"], "technique")
 
-    def test_gravity_candidates_are_deduplicated_to_one_focus(self):
+    @patch("coach_rule_contract.VALIDATED_TECHNIQUE_RULES", SYNTHETIC_RULES)
+    def test_gravity_candidates_are_deduplicated_to_one_focus_with_synthetic_rule_approval(self):
         coach = LocalRealtimeCoach(max_suggestions=3)
         event = {
             "event_id": 22,
@@ -169,7 +179,8 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         self.assertNotIn("limited_separation", {item["code"] for item in advices})
         self.assertNotIn("unstable_balance", {item["code"] for item in advices})
 
-    def test_visible_knee_flexion_can_drive_lower_body_cue(self):
+    @patch("coach_rule_contract.VALIDATED_TECHNIQUE_RULES", SYNTHETIC_RULES)
+    def test_visible_knee_flexion_can_drive_lower_body_cue_with_synthetic_rule_approval(self):
         coach = LocalRealtimeCoach(max_suggestions=3)
         event = {
             "event_id": 25,
@@ -236,7 +247,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         self.assertLessEqual(len(advice["message"]), 15)
         self.assertEqual(advice["evidence"], {"pose_frame_ratio": 0.55})
 
-    def test_short_follow_through_gets_one_actionable_tip(self):
+    def test_short_follow_through_count_requires_independent_rule_validation(self):
         coach = LocalRealtimeCoach(max_chars=15)
         event = {
             "event_id": 2,
@@ -251,12 +262,13 @@ class LocalRealtimeCoachTests(unittest.TestCase):
 
         advice = coach.advise(event)
 
-        self.assertEqual(advice["code"], "short_follow_through")
-        self.assertEqual(advice["message"], "击球后完成随挥")
+        self.assertEqual(advice["code"], "insufficient_technique_evidence")
+        self.assertEqual(advice["category"], "review")
         self.assertLessEqual(len(advice["message"]), 15)
-        self.assertEqual(advice["evidence"], {"follow_through_frames": 2})
+        self.assertEqual(advice['evidence']['phase_rule_exclusion_reason'],
+                         'phase_duration_rubric_not_independently_validated')
 
-    def test_intermittent_ball_gap_does_not_override_technique_feedback(self):
+    def test_intermittent_ball_gap_does_not_enable_unvalidated_phase_feedback(self):
         coach = LocalRealtimeCoach(max_chars=15)
         event = {
             "event_id": 3,
@@ -274,7 +286,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
 
         self.assertEqual(
             (advice["code"], advice["message"], advice["category"]),
-            ("short_follow_through", "击球后完成随挥", "technique"),
+            ("insufficient_technique_evidence", "动作证据不足需复核", "review"),
         )
 
     def test_severe_ball_gap_still_gets_capture_guidance(self):
@@ -353,7 +365,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
             ("racket_track_gaps", "减少球拍遮挡"),
         )
 
-    def test_racket_gap_does_not_override_short_follow_through(self):
+    def test_unvalidated_short_follow_through_does_not_override_capture_guidance(self):
         coach = LocalRealtimeCoach(max_chars=15)
         event = {
             "event_id": 16,
@@ -370,10 +382,10 @@ class LocalRealtimeCoachTests(unittest.TestCase):
 
         self.assertEqual(
             (advice["code"], advice["message"], advice["category"]),
-            ("short_follow_through", "击球后完成随挥", "technique"),
+            ("racket_track_gaps", "减少球拍遮挡", "capture"),
         )
 
-    def test_short_backswing_gets_early_preparation_tip(self):
+    def test_short_backswing_count_requires_independent_rule_validation(self):
         coach = LocalRealtimeCoach(max_chars=15)
         event = {
             "event_id": 7,
@@ -386,7 +398,7 @@ class LocalRealtimeCoachTests(unittest.TestCase):
 
         self.assertEqual(
             (advice["code"], advice["message"]),
-            ("short_backswing", "提前准备充分引拍"),
+            ("insufficient_technique_evidence", "动作证据不足需复核"),
         )
 
     def test_contact_review_warning_overrides_positive_feedback(self):
@@ -464,7 +476,8 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         self.assertEqual(advices[0]["message"], "动作证据不足需复核")
         self.assertEqual(advices[0]["category"], "review")
 
-    def test_disconnected_kinetic_chain_produces_advice(self):
+    @patch("coach_rule_contract.VALIDATED_TECHNIQUE_RULES", SYNTHETIC_RULES)
+    def test_disconnected_kinetic_chain_produces_advice_with_synthetic_rule_approval(self):
         coach = LocalRealtimeCoach(max_chars=15)
         event = {
             "event_id": 30,
@@ -486,7 +499,8 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         self.assertEqual(advice["message"], "用身体核心带动球拍发力")
         self.assertEqual(advice["category"], "technique")
 
-    def test_limited_leg_drive_produces_advice(self):
+    @patch("coach_rule_contract.VALIDATED_TECHNIQUE_RULES", SYNTHETIC_RULES)
+    def test_limited_leg_drive_produces_advice_with_synthetic_rule_approval(self):
         coach = LocalRealtimeCoach(max_chars=15)
         event = {
             "event_id": 31,
@@ -508,7 +522,8 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         self.assertEqual(advice["message"], "击球瞬间双腿蹬地发力")
         self.assertEqual(advice["category"], "technique")
 
-    def test_limited_brush_drop_produces_advice(self):
+    @patch("coach_rule_contract.VALIDATED_TECHNIQUE_RULES", SYNTHETIC_RULES)
+    def test_limited_brush_drop_produces_advice_with_synthetic_rule_approval(self):
         coach = LocalRealtimeCoach(max_chars=15)
         event = {
             "event_id": 32,
@@ -531,7 +546,8 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         self.assertEqual(advice["message"], "击球前拍头下潜刷球")
         self.assertEqual(advice["category"], "technique")
 
-    def test_capture_warning_does_not_suppress_technique_when_max_suggestions_gt_1(self):
+    @patch("coach_rule_contract.VALIDATED_TECHNIQUE_RULES", SYNTHETIC_RULES)
+    def test_capture_warning_does_not_suppress_technique_when_max_suggestions_gt_1_with_synthetic_rule_approval(self):
         coach = LocalRealtimeCoach(max_chars=15, max_suggestions=3)
         event = {
             "event_id": 33,
@@ -602,4 +618,3 @@ class LocalRealtimeCoachTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

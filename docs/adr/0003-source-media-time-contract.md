@@ -69,3 +69,12 @@ Other event segmentation thresholds and legacy speed metrics that use FPS are
 outside this change. Media PTS is not a claim of independently calibrated
 exposure timing, and unique PTS cannot detect duplicated images/exposures
 introduced before ingestion.
+
+## Consumer update, 2026-10-05
+
+Event/Coach elapsed seconds and model-label interval support now use reported
+file PTS, without a nominal-FPS or receipt-clock measurement fallback. Reports
+use the known input frame-to-PTS map only when the selected video is the declared
+source; an annotated video's encoding clock is a different contract. Independent
+exposure and source/derived mapping remain unverified. Other segmentation and
+frame-window consumers remain separate work. See `docs/EVENT_SOURCE_TIMING.md`.

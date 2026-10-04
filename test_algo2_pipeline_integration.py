@@ -112,7 +112,7 @@ class Algo2PipelineIntegrationTests(unittest.TestCase):
         # Peak value between frame 0 and frame 3: 0.30 + 3 * 0.05 = 0.45
         self.assertAlmostEqual(metrics["takeback_depth"]["value"], 0.45)
 
-    def test_local_realtime_coach_gives_dual_view_guidance(self):
+    def test_dual_view_flags_cannot_approve_unvalidated_projection_guidance(self):
         coach = LocalRealtimeCoach(max_suggestions=3, min_confidence=0.45)
         # Event with shallow takeback and low scapular retraction
         event = {
@@ -147,8 +147,10 @@ class Algo2PipelineIntegrationTests(unittest.TestCase):
 
         advices = coach.advise_all(event)
         codes = [a["code"] for a in advices]
-        self.assertIn("limited_takeback_depth", codes)
-        self.assertIn("limited_scapular_retraction", codes)
+        self.assertNotIn("limited_takeback_depth", codes)
+        self.assertNotIn("limited_scapular_retraction", codes)
+        self.assertEqual(codes, ['insufficient_technique_evidence'])
+        self.assertTrue(all(a['category'] == 'review' for a in advices))
 
         for advice in advices:
             self.assertLessEqual(len(advice["message"]), 15)
@@ -293,4 +295,3 @@ class Algo2PipelineIntegrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

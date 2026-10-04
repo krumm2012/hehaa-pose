@@ -27,6 +27,7 @@ from swing_evaluation import evaluate_swing_events
 from swing_event_segmenter import summarize_manual_event_range
 from swing_motion_features import extract_motion_features
 from swing_session_quality import build_session_quality_dashboard
+from event_source_timing import analyze_event_source_timing
 
 
 MAX_ANNOTATION_BYTES = 5 * 1024 * 1024
@@ -301,7 +302,7 @@ def derive_manual_coach_events(
         for event in event_document.get("events") or []
         if event.get("event_id") is not None
     }
-    coach = LocalRealtimeCoach(**(coach_configuration or {}))
+    coach = LocalRealtimeCoach.from_configuration(coach_configuration)
     annotation_hash = _sha256_json(annotation_document)
     manual_events = []
 
@@ -330,12 +331,16 @@ def derive_manual_coach_events(
             classification_evidence=(original or {}).get("evidence") or {},
         )
         event.update({key: value for key, value in summary.items() if key != "frame_phases"})
+        event['timing'] = {'latency_scope': 'manual_recomputation'}
+        event['phase_timing'] = analyze_event_source_timing(event, frame_records,
+            [{'frame': int(fid), 'event_id': manual_id, 'phase': phase}
+             for fid, phase in summary['frame_phases'].items()])
         event["biomechanics"] = aggregate_event_biomechanics(event, frame_records, features)
         from practice_scoring import attach_score
         attach_score(event)
         advices = coach.advise_all(event)
         event["coach_advices"] = advices
-        event["coach_advice"] = advices[0]
+        event["coach_advice"] = advices[0] if advices else None
         event["review_provenance"] = {
             "dominant_hand": dominant_hand,
             "coach_configuration": coach.configuration(),

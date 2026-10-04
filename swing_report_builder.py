@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 from practice_scoring import POLICY, number
 from practice_score_adapter import resolve_practice_score
 from swing_session_quality import build_session_quality_dashboard
+from event_source_timing import analyze_event_source_timing, source_frame_navigation, POLICY_VERSION as PHASE_TIME_POLICY
 
 RADAR_AXES = [
     ("shoulder_turn", "转肩"),
@@ -22,6 +23,35 @@ RADAR_AXES = [
     ("racket_speed", "挥速"),
     ("leg_drive", "蹬地"),
 ]
+
+
+def _build_event_source_timing_html(timing: Dict) -> str:
+    timing = timing if isinstance(timing, dict) else {}
+    seconds = timing.get('duration_seconds')
+    qualified = (timing.get('policy_version') == PHASE_TIME_POLICY
+                 and timing.get('status') == 'reported_media_time'
+                 and timing.get('basis') == 'media_pts'
+                 and type(seconds) in (int, float) and math.isfinite(seconds) and seconds >= 0)
+    elapsed = f'{seconds:.3f} s' if qualified else '源时间不可核验'
+    labels = {'backswing': '引拍', 'forward_swing': '前挥', 'contact_candidate': '触球候选',
+              'follow_through': '随挥', 'recovery': '恢复', 'ready': '准备'}
+    phases = ((timing.get('phase_durations_seconds') or {})
+              if timing.get('phase_status') == 'model_label_media_time_support' else {})
+    support = ' · '.join(f'{html.escape(labels.get(key, str(key)))} {value:.3f} s'
+        for key, value in phases.items()
+        if type(value) in (int, float) and math.isfinite(value) and value >= 0) if qualified else ''
+    return (f'<div class="phase-time" aria-label="候选事件媒体时长"><strong>候选事件媒体时长：{elapsed}</strong>'
+            f'<p>模型阶段标签覆盖：{support or "缺少连续标签或观测"}</p>'
+            '<small>按输入媒体 PTS 统计；曝光未核验，模型阶段边界需复核，不用于技术评分。</small></div>')
+
+
+def _impact_freeze_label(event):
+    fid = event.get('impact_freeze_source_frame_id')
+    if type(fid) is not int:
+        return '历史定格图片（源帧未核验）'
+    if fid != event.get('contact_frame'):
+        return f'临近候选定格（源帧 {fid}；触球候选 {event.get("contact_frame")}）'
+    return f'触球候选定格（源帧 {fid}）'
 
 
 def _build_kinematic_sequence_html(sequence: Dict) -> str:
@@ -304,10 +334,17 @@ def build_report_payload(
 ) -> Dict:
     event_json_path = event_json_path or default_event_json(frame_json_path)
     coach_json_path = coach_json_path or default_coach_json(frame_json_path)
-    video_path = video_path or default_video_path(frame_json_path)
     evaluation_json_path = evaluation_json_path or default_evaluation_json(frame_json_path)
 
     frame_data = load_json(frame_json_path)
+    declared_source = ((frame_data.get('video_info') or {}).get('path')
+                       or (frame_data.get('session') or {}).get('source'))
+    video_path = video_path or (declared_source if declared_source and Path(declared_source).is_file()
+                               else default_video_path(frame_json_path))
+    navigation = source_frame_navigation(frame_data.get('frames') or [])
+    if not declared_source or Path(video_path).resolve() != Path(declared_source).resolve():
+        navigation.update(status='unavailable', frames=[], reasons=['selected_video_not_bound_to_source'])
+    navigation['video_binding'] = 'declared_source_path_only_not_independent_content_verification'
     event_data = load_json(event_json_path)
     coach_data = load_json(coach_json_path) if coach_json_path and os.path.exists(coach_json_path) else {"events": []}
     evaluation_data = (
@@ -368,7 +405,12 @@ def build_report_payload(
             or event.get("leg_drive")
             or {}
         )
-        advices = event.get("coach_advice") or coach_event.get("coach_advice") or []
+        advices = event.get('coach_advices') or event.get("coach_advice") or coach_event.get("coach_advice") or []
+        if isinstance(advices, dict):
+            advices = [advices]
+        freeze_path = event.get("impact_freeze_path") or (event.get("snapshots") or {}).get("impact_freeze")
+        if freeze_path and not Path(freeze_path).is_absolute():
+            freeze_path = str(Path(event_json_path).parent / freeze_path)
 
         practice = resolve_practice_score({**event, "biomechanics": bio})
         calibration = practice["calibration"]
@@ -381,10 +423,12 @@ def build_report_payload(
                 "stroke_type": event.get("stroke_type"),
                 "confidence": event.get("confidence"),
                 "start_frame": event.get("start_frame"),
-                "contact_frame": event.get("contact_frame") or (coach_event.get("frames") or {}).get("contact_frame"),
+                "contact_frame": event.get("contact_frame") if event.get("contact_frame") is not None else (coach_event.get("frames") or {}).get("contact"),
                 "peak_frame": event.get("peak_frame"),
                 "end_frame": event.get("end_frame"),
                 "phase_counts": event.get("phase_counts") or {},
+                "phase_timing": analyze_event_source_timing(event, frame_data.get('frames') or [],
+                                                            event_data.get('frame_trace') or []),
                 "start_boundary": start_boundary,
                 "classification_context": classification_context,
                 "quality_flags": quality_flags,
@@ -414,7 +458,8 @@ def build_report_payload(
                 "leg_drive": leg,
                 "advice_list": advices,
                 "is_shadow_swing": _is_shadow_swing(event),
-                "impact_freeze_path": event.get("impact_freeze_path") or (event.get("snapshots") or {}).get("impact_freeze"),
+                "impact_freeze_path": freeze_path,
+                "impact_freeze_source_frame_id": event.get('impact_freeze_source_frame_id'),
             }
         )
 
@@ -438,6 +483,7 @@ def build_report_payload(
         ),
         "events": merged_events,
         "timeline": {
+            "source_time_navigation": navigation,
             "fps": (frame_data.get("video_info") or {}).get("fps") or 25.0,
             "total_frames": len(frame_data.get("frames", [])),
             "frame_trace": [
@@ -706,6 +752,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         # 3. 动力学链时序时延条
         seq = event.get("kinematic_sequence") or {}
         kinematic_html = _build_kinematic_sequence_html(seq)
+        phase_time_html = _build_event_source_timing_html(event.get('phase_timing'))
 
         # 4. 击球遥测指标网格
         rkt = event.get("racket_speed") or {}
@@ -756,20 +803,10 @@ def render_report_html(payload: Dict, output_path: str) -> str:
             candidates.append(Path(event["impact_freeze_path"]))
 
         search_dirs = [output_dir, output_dir / "snapshots"]
-        if payload.get("paths", {}).get("video"):
-            search_dirs.append(Path(payload["paths"]["video"]).parent)
-        if payload.get("paths", {}).get("frame_json"):
-            search_dirs.append(Path(payload["paths"]["frame_json"]).parent)
-        scratch_dir = Path("/Users/krum5539/.gemini/antigravity/brain/853db2fd-bbb9-45de-8209-c65d2189b516/scratch")
-        if scratch_dir.exists():
-            search_dirs.append(scratch_dir)
 
         for s_dir in search_dirs:
             if s_dir.exists() and c_frame is not None:
-                candidates.extend(list(s_dir.glob(f"*{c_frame}*impact_freeze.jpg")))
-                candidates.extend(list(s_dir.glob(f"*{c_frame}*.jpg")))
-            if s_dir.exists() and ev_id is not None:
-                candidates.extend(list(s_dir.glob(f"*event_{ev_id}*.jpg")))
+                candidates.extend(list(s_dir.glob(f"*frame_{c_frame}_impact_freeze.jpg")))
 
         for cand in candidates:
             if cand.exists() and cand.is_file():
@@ -778,17 +815,20 @@ def render_report_html(payload: Dict, output_path: str) -> str:
 
         snapshot_html = ""
         if snap_rel:
+            freeze_label = html.escape(_impact_freeze_label(event))
             snapshot_html = f"""
             <div class="impact-freeze-container">
               <a href="{html.escape(snap_rel)}" target="_blank" class="impact-freeze-link" title="点击查看击球瞬间定格特写">
                 <img src="{html.escape(snap_rel)}" alt="击球瞬间定格特写" loading="lazy" class="impact-freeze-img" />
-                <span class="impact-freeze-badge">⚡ 击球瞬间定格特写 (第 {c_frame} 帧)</span>
+                <span class="impact-freeze-badge">{freeze_label}</span>
               </a>
             </div>
             """
 
         # 6. 教练纠错建议
         advices = event.get("advice_list") or []
+        if isinstance(advices, dict):
+            advices = [advices]
         advices_html = ""
         if advices:
             items = []
@@ -818,6 +858,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
               <p class="tags">{html.escape(', '.join(tags + warnings) or 'no quality warnings')}</p>
               {radar_html}
               {kinematic_html}
+              {phase_time_html}
               {telemetry_html}
               {snapshot_html}
               {advices_html}
@@ -1282,18 +1323,42 @@ def render_report_html(payload: Dict, output_path: str) -> str:
     const timeline = document.getElementById('event-timeline');
     const scrubber = document.getElementById('frame-scrubber');
     const timelineStatus = document.getElementById('timeline-status');
-    const fps = Number((data.timeline || {{}}).fps || (data.video_info || {{}}).fps || 25);
+    const navigation = (data.timeline || {{}}).source_time_navigation || {{}};
+    const sourceTimes = navigation.status === 'reported_media_time' ? navigation.frames || [] : [];
+    const timeByFrame = new Map(sourceTimes);
     const maxEventFrame = Math.max(0, ...data.events.flatMap(event => [event.start_frame, event.contact_frame, event.peak_frame, event.end_frame].map(Number).filter(Number.isFinite)));
-    const totalFrames = Math.max(1, Number((data.timeline || {{}}).total_frames || 0), maxEventFrame + 1);
+    const totalFrames = Math.max(1, Number((data.timeline || {{}}).total_frames || 0), maxEventFrame + 1,
+                                sourceTimes.length ? sourceTimes[sourceTimes.length - 1][0] + 1 : 0);
     let activeEventId = data.events.length ? Number(data.events[0].event_id) : null;
     scrubber.max = String(totalFrames - 1);
+    scrubber.disabled = !sourceTimes.length;
+
+    function frameAtMediaTime(seconds) {{
+      if (!sourceTimes.length || seconds < sourceTimes[0][1]) return null;
+      let lo = 0, hi = sourceTimes.length;
+      while (lo < hi) {{
+        const mid = Math.floor((lo + hi) / 2);
+        if (sourceTimes[mid][1] <= seconds) lo = mid + 1; else hi = mid;
+      }}
+      return sourceTimes[Math.max(0, lo - 1)][0];
+    }}
 
     function percentForFrame(frame) {{
       return Math.max(0, Math.min(100, (Number(frame) / Math.max(1, totalFrames - 1)) * 100));
     }}
     function seekFrame(frame, shouldPlay = false) {{
       const safeFrame = Math.max(0, Math.min(totalFrames - 1, Math.round(Number(frame) || 0)));
-      video.currentTime = safeFrame / fps;
+      const seconds = timeByFrame.get(safeFrame);
+      if (seconds === undefined) {{
+        timelineStatus.textContent = `第 ${{safeFrame}} 帧源时间不可核验，无法准确定位。`;
+        return;
+      }}
+      // Stay just inside the requested presentation interval: some media APIs
+      // truncate currentTime to microseconds, otherwise selecting the prior frame.
+      const position = sourceTimes.findIndex(([fid]) => fid === safeFrame);
+      const next = sourceTimes[position + 1]?.[1];
+      const inset = next > seconds ? Math.min(0.000002, (next - seconds) / 4) : 0;
+      video.currentTime = seconds + inset;
       scrubber.value = String(safeFrame);
       updatePlaybackState(safeFrame);
       if (shouldPlay) video.play();
@@ -1336,7 +1401,8 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       const currentEvent = data.events.find(event => currentFrame >= Number(event.start_frame) && currentFrame <= Number(event.end_frame));
       if (currentEvent) selectEvent(currentEvent.event_id, false);
       const phase = ((data.timeline || {{}}).frame_trace || []).find(trace => Number(trace.frame) === currentFrame)?.phase || 'ready';
-      timelineStatus.textContent = `Frame ${{currentFrame}} · ${{(currentFrame / fps).toFixed(2)}}s · ${{phase}}`;
+      const seconds = timeByFrame.get(currentFrame);
+      timelineStatus.textContent = `Frame ${{currentFrame}} · ${{seconds === undefined ? '源时间不可核验' : seconds.toFixed(3) + 's（媒体PTS）'}} · ${{phase}}`;
       timeline.querySelectorAll('.timeline-playhead').forEach(playhead => playhead.style.left = `${{percentForFrame(currentFrame)}}%`);
     }}
     document.getElementById('raw-summary').textContent = JSON.stringify({{
@@ -1592,7 +1658,10 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       }}
     }}
 
-    video.addEventListener('timeupdate', () => updatePlaybackState(Math.round(video.currentTime * fps)));
+    video.addEventListener('timeupdate', () => {{
+      const frame = frameAtMediaTime(video.currentTime);
+      if (frame !== null) updatePlaybackState(frame);
+    }});
     bindAnnotationInputs(document);
     renderTimeline();
     updatePlaybackState(0);

@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Dict, Iterable, List, Optional, Set
 
 from swing_quality_policy import effective_quality_warnings
+from event_source_timing import PHASE_RULE_EXCLUSION
+from coach_rule_contract import automatic_coach_policy, technique_rule_approved
 
 
 BODY_TOPICS = {
@@ -66,6 +68,7 @@ def build_coach_decision_policy(
         coaching_allowed=coaching_allowed,
     )
     blocked_topics.update(SINGLE_VIEW_BLOCKED_TOPICS)
+    blocked_topics.update({'follow_through', 'tempo'})
     allowed_topics = set(BODY_TOPICS) if coaching_allowed else set()
     if "racket_path" not in blocked_topics and coaching_allowed:
         allowed_topics.add("racket_path")
@@ -77,9 +80,15 @@ def build_coach_decision_policy(
         coach_metrics=coach_metrics,
         allowed_topics=allowed_topics,
     )
+    evidence_usable = coaching_allowed
+    coaching_allowed = evidence_usable and bool(candidates)
+    if not coaching_allowed:
+        blocked_topics.update(allowed_topics)
+        allowed_topics = set()
     review_required = bool(
         warnings.intersection(REVIEW_WARNINGS)
         or not aligned
+        or not coaching_allowed
         or (quality.get("review_recommended") and not raw_warnings)
     )
     if coaching_allowed:
@@ -95,6 +104,8 @@ def build_coach_decision_policy(
     )
     return {
         "coaching_allowed": coaching_allowed,
+        "observation_evidence_usable": evidence_usable,
+        "automatic_coach_policy": automatic_coach_policy(),
         "review_required": review_required,
         "effective_warnings": sorted(warnings),
         "tolerated_conditions": tolerated_conditions,
@@ -118,8 +129,10 @@ def build_coach_decision_policy(
             "pixel_values_are_relative_within_this_video",
             "partial_tracking_warnings_only_block_related_topics",
             "use_only_supported_claims",
+            "source_time_qualification_before_elapsed_time_claims",
             "one_actionable_advice",
         ],
+        "phase_rule_exclusion_reason": PHASE_RULE_EXCLUSION,
     }
 
 
@@ -167,6 +180,7 @@ def _prohibited_claims(
         "weight_transfer_from_screen_translation",
         "balance_from_screen_translation",
         "injury_risk_from_single_view",
+        "phase_quality_from_frame_counts",
     }
     for field in missing_fields:
         text = str(field)
@@ -197,10 +211,6 @@ def _advice_candidates(
     coach_metrics: Dict,
     allowed_topics: Set[str],
 ) -> List[Dict]:
-    body = coach_metrics.get("body") or {}
-    timing = coach_metrics.get("timing") or {}
-    scores = coach_metrics.get("scores") or {}
-    diagnosis_tags = set(coach_metrics.get("diagnosis_tags") or [])
     calibration = coach_metrics.get("coach_calibration") or {}
     assessments = calibration.get("assessments") or {}
     contact_frame = (coach_metrics.get("frames") or {}).get("contact")
@@ -211,8 +221,9 @@ def _advice_candidates(
         message_hint: str,
         priority: int,
         evidence_paths: List[str],
+        rule_id: str,
     ) -> None:
-        if focus not in allowed_topics:
+        if focus not in allowed_topics or not technique_rule_approved(rule_id):
             return
         candidate = {
             "focus": focus,
@@ -220,21 +231,12 @@ def _advice_candidates(
             "message_hint": message_hint,
             "priority": priority,
             "evidence_paths": evidence_paths,
+            "rule_id": rule_id,
         }
         if contact_frame is not None:
             candidate["evidence_frames"] = [int(contact_frame)]
         candidates.append(candidate)
 
-    if "short_follow_through" in diagnosis_tags:
-        add(
-            "follow_through",
-            "击球后完成随挥",
-            100,
-            [
-                "coach_metrics.diagnosis_tags.short_follow_through",
-                "coach_metrics.timing.phase_durations_frames.follow_through",
-            ],
-        )
     arm = assessments.get("arm_extension") or {}
     if (
         arm.get("status") == "usable"
@@ -245,6 +247,7 @@ def _advice_candidates(
             "挥拍时手臂再舒展",
             97,
             ["coach_metrics.coach_calibration.assessments.arm_extension"],
+            'limited_arm_extension',
         )
     knee = assessments.get("preparation_knee_flexion") or {}
     if (
@@ -259,6 +262,7 @@ def _advice_candidates(
                 "coach_metrics.coach_calibration.assessments."
                 "preparation_knee_flexion"
             ],
+            'limited_knee_flexion',
         )
     turn = assessments.get("shoulder_turn_change") or {}
     if (
@@ -273,65 +277,7 @@ def _advice_candidates(
                 "coach_metrics.coach_calibration.assessments."
                 "shoulder_turn_change"
             ],
-        )
-    if body.get("unit_turn_quality") == "limited":
-        add(
-            "preparation",
-            "提前转肩充分引拍",
-            95,
-            ["coach_metrics.body.unit_turn_quality"],
-        )
-    if body.get("late_contact") is True:
-        add(
-            "contact_timing",
-            "提前迎球击球",
-            92,
-            ["coach_metrics.body.late_contact"],
-        )
-    if body.get("contact_too_close_to_body") is True:
-        add(
-            "contact_spacing",
-            "击球点离身体远些",
-            90,
-            ["coach_metrics.body.contact_too_close_to_body"],
-        )
-    if body.get("balance_state") == "unstable":
-        add(
-            "balance",
-            "击球后稳住重心",
-            88,
-            ["coach_metrics.body.balance_state"],
-        )
-    power_score = _first_float(scores.get("power_transfer_score"))
-    separation = _first_float(body.get("hip_shoulder_separation_at_contact"))
-    if (
-        power_score is not None
-        and power_score < 0.35
-        and separation is not None
-    ):
-        add(
-            "power_transfer",
-            "加强转髋带动挥拍",
-            85,
-            [
-                "coach_metrics.scores.power_transfer_score",
-                "coach_metrics.body.hip_shoulder_separation_at_contact",
-            ],
-        )
-    if timing.get("preparation_timing_quality") == "quick":
-        add(
-            "preparation",
-            "提前准备充分引拍",
-            80,
-            ["coach_metrics.timing.preparation_timing_quality"],
-        )
-    tempo = _first_float(timing.get("tempo_consistency"))
-    if tempo is not None and tempo < 0.35:
-        add(
-            "tempo",
-            "保持引拍击球节奏",
-            75,
-            ["coach_metrics.timing.tempo_consistency"],
+            'limited_shoulder_turn',
         )
 
     # Multiple evidence paths may support the same coaching focus.  Send the
@@ -345,20 +291,7 @@ def _advice_candidates(
             by_focus[focus] = candidate
     candidates = list(by_focus.values())
     candidates.sort(key=lambda item: (-int(item["priority"]), item["focus"]))
-    if candidates or not allowed_topics:
-        return candidates
-    if any(value is not None for value in body.values()):
-        positive = {
-            "focus": "positive_form",
-            "category": "positive",
-            "message_hint": "保持动作连贯",
-            "priority": 10,
-            "evidence_paths": ["coach_metrics.body", "coach_metrics.timing"],
-        }
-        if contact_frame is not None:
-            positive["evidence_frames"] = [int(contact_frame)]
-        return [positive]
-    return []
+    return candidates
 
 
 def _first_float(*values) -> Optional[float]:

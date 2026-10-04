@@ -35,9 +35,9 @@ class DeepSeekCoachSidecarTests(unittest.TestCase):
                         "message": {
                             "content": json.dumps(
                                 {
-                                    "message": "提前转肩充分引拍",
-                                    "focus": "preparation",
-                                    "category": "technique",
+                                    "message": "本次动作建议复核",
+                                    "focus": "review",
+                                    "category": "review",
                                     "evidence_frames": [31],
                                     "confidence": 0.78,
                                 },
@@ -60,10 +60,10 @@ class DeepSeekCoachSidecarTests(unittest.TestCase):
         event = {
             "event_id": 3,
             "stroke_type": "Forehand",
-            "confidence": 0.87,
+            "confidence": 0.42,
             "phase_counts": {"backswing": 2, "follow_through": 7},
             "quality_flags": {"warnings": []},
-            "coach_advice": {"message": "提前准备充分引拍"},
+            "coach_advice": {"message": "本次动作建议复核"},
         }
         event_frame_records = [
             {
@@ -97,8 +97,8 @@ class DeepSeekCoachSidecarTests(unittest.TestCase):
 
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["status"], "ready")
-        self.assertEqual(results[0]["message"], "提前转肩充分引拍")
-        self.assertEqual(results[0]["category"], "technique")
+        self.assertEqual(results[0]["message"], "本次动作建议复核")
+        self.assertEqual(results[0]["category"], "review")
         self.assertEqual(results[0]["evidence_frames"], [31])
         self.assertLessEqual(len(results[0]["message"]), 15)
         request = transport.requests[0]
@@ -218,7 +218,7 @@ class DeepSeekCoachSidecarTests(unittest.TestCase):
         self.assertEqual(results[0]["status"], "failed")
         self.assertEqual(results[0]["error_type"], "EvidencePolicyError")
 
-    def test_evidence_gate_rejects_review_when_body_coaching_is_available(self):
+    def test_accepts_review_when_legacy_body_fields_do_not_approve_rules(self):
         transport = FakeDeepSeekTransport(
             response={
                 "choices": [
@@ -288,8 +288,8 @@ class DeepSeekCoachSidecarTests(unittest.TestCase):
         )
         sidecar.close()
 
-        self.assertEqual(results[0]["status"], "failed")
-        self.assertEqual(results[0]["error_type"], "EvidencePolicyError")
+        self.assertEqual(results[0]["status"], "ready")
+        self.assertEqual(results[0]["category"], "review")
 
     def test_normalizes_awkward_camera_wording(self):
         transport = FakeDeepSeekTransport(
@@ -345,9 +345,9 @@ class DeepSeekCoachSidecarTests(unittest.TestCase):
                         "message": {
                             "content": json.dumps(
                                 {
-                                    "message": "击球后完成随挥",
-                                    "focus": "follow_through",
-                                    "category": "technique",
+                                    "message": "随挥阶段需复核",
+                                    "focus": "phase_review",
+                                    "category": "review",
                                     "evidence_frames": [12],
                                     "confidence": 0.82,
                                 },

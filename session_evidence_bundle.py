@@ -240,6 +240,7 @@ def replay_evidence_manifest(
         settle_frames=int(replay.get("settle_frames") or 0),
         window_frames=int(replay.get("window_frames") or 200),
         coach=coach,
+        execution_mode='replay',
         session_metadata=document.get("session") or {},
         **(replay.get("swing_options") or {}),
     )

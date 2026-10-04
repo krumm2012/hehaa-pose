@@ -641,7 +641,8 @@ class SwingCoachDataCollectorTests(unittest.TestCase):
         self.assertIn("coach_calibration", event)
         self.assertIn(event["scores"]["status"], {"calibrated", "insufficient_evidence"})
         self.assertIsNotNone(event["timing"]["recovery_time_frames"])
-        self.assertIsNotNone(event["timing"]["tempo_consistency"])
+        self.assertIsNone(event["timing"]["tempo_consistency"])
+        self.assertIsNone(event["timing"]["duration_seconds"])
 
         trace_less_analysis = dict(analysis)
         trace_less_analysis["frame_trace"] = []
@@ -654,10 +655,9 @@ class SwingCoachDataCollectorTests(unittest.TestCase):
             trace_less_event["timing"]["phase_durations_frames"],
             analysis["events"][0]["phase_counts"],
         )
-        self.assertGreater(
-            trace_less_event["scores"]["preparation_score"],
-            0.0,
-        )
+        self.assertIsNone(trace_less_event["scores"]["preparation_score"])
+        self.assertEqual(trace_less_event['scores']['phase_score_exclusion_reason'],
+                         'phase_duration_rubric_not_independently_validated')
 
     def test_default_coach_output_path(self):
         self.assertEqual(default_coach_output_path("data/output_video.json"), "data/output_video_coach_dataset.json")

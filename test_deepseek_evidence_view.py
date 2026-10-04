@@ -105,8 +105,9 @@ class DeepSeekEvidenceViewTests(unittest.TestCase):
 
         policy = build_deepseek_evidence_view(packet)["decision_policy"]
 
-        self.assertTrue(policy["coaching_allowed"])
-        self.assertIn("technique", policy["allowed_advice_categories"])
+        self.assertFalse(policy["coaching_allowed"])
+        self.assertTrue(policy["observation_evidence_usable"])
+        self.assertNotIn("technique", policy["allowed_advice_categories"])
         self.assertIn("power_transfer", policy["blocked_advice_topics"])
         self.assertIn("racket_face", policy["blocked_advice_topics"])
         self.assertIn("ball_trajectory", policy["blocked_advice_topics"])
@@ -158,7 +159,7 @@ class DeepSeekEvidenceViewTests(unittest.TestCase):
             json.dumps(view["frame_sequence"], ensure_ascii=False),
         )
 
-    def test_calibrated_candidates_are_unique_per_coaching_focus(self):
+    def test_legacy_assessments_do_not_approve_coaching_rules(self):
         frame_document, event_document, coach_document = sample_documents()
         coach_event = coach_document["events"][0]
         coach_event["body"]["unit_turn_quality"] = "limited"
@@ -182,7 +183,7 @@ class DeepSeekEvidenceViewTests(unittest.TestCase):
         ]
         focuses = [candidate["focus"] for candidate in candidates]
 
-        self.assertEqual(focuses.count("preparation"), 1)
+        self.assertEqual(focuses, [])
 
     def test_intermittent_ball_detection_is_tolerated_when_contact_is_covered(self):
         frame_document, event_document, coach_document = sample_documents()
@@ -217,10 +218,10 @@ class DeepSeekEvidenceViewTests(unittest.TestCase):
         view = build_deepseek_evidence_view(packet)
         policy = view["decision_policy"]
 
-        self.assertFalse(policy["review_required"])
+        self.assertTrue(policy["review_required"])
         self.assertEqual(
             policy["allowed_advice_categories"],
-            ["technique", "positive", "review"],
+            ["capture", "review"],
         )
         self.assertNotIn("ball_track_gaps", policy["effective_warnings"])
         self.assertIn(

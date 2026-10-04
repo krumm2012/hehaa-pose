@@ -6,6 +6,8 @@ from typing import Dict, List, Optional
 
 from swing_quality_policy import effective_quality_warnings
 from observation_policy import review_reason
+from event_source_timing import PHASE_RULE_EXCLUSION
+from coach_rule_contract import automatic_coach_policy, technique_rule_approved
 
 
 class LocalRealtimeCoach:
@@ -54,7 +56,15 @@ class LocalRealtimeCoach:
             "max_suggestions": self.max_suggestions,
             "min_confidence": self.min_confidence,
             "thresholds": dict(self.thresholds),
+            "phase_rule_exclusion_reason": PHASE_RULE_EXCLUSION,
+            "automatic_coach_policy": automatic_coach_policy(),
         }
+
+    @classmethod
+    def from_configuration(cls, configuration):
+        """Restore tunable inputs; recorded policy metadata cannot approve rules."""
+        return cls(**{key: value for key, value in (configuration or {}).items()
+                      if key in ('max_chars', 'max_suggestions', 'min_confidence', 'thresholds')})
 
     def advise(self, event: Dict) -> Optional[Dict]:
         """Return the primary recommendation for backward compatibility."""
@@ -89,39 +99,8 @@ class LocalRealtimeCoach:
             return [blocker]
 
         candidates = self._biomechanical_candidates(event)
-        phases = event.get("phase_counts") or {}
-        backswing_frames = int(phases.get("backswing") or 0)
-        backswing_confidence = self._phase_evidence_confidence(event, "backswing")
-        if backswing_frames < 2 and backswing_confidence >= self.min_confidence:
-            candidates.append(
-                self._ranked_advice(
-                    priority=84,
-                    code="short_backswing",
-                    message="提前准备充分引拍",
-                    category="technique",
-                    confidence=backswing_confidence,
-                    focus="preparation",
-                    group="preparation",
-                    evidence={"backswing_frames": backswing_frames},
-                    source="local_rules_v1",
-                )
-            )
-        follow_through_frames = int(phases.get("follow_through") or 0)
-        follow_confidence = self._phase_evidence_confidence(event, "follow_through")
-        if follow_through_frames < 4 and follow_confidence >= self.min_confidence:
-            candidates.append(
-                self._ranked_advice(
-                    priority=98,
-                    code="short_follow_through",
-                    message="击球后完成随挥",
-                    category="technique",
-                    confidence=follow_confidence,
-                    focus="follow_through",
-                    group="follow_through",
-                    evidence={"follow_through_frames": follow_through_frames},
-                    source="local_rules_v1",
-                )
-            )
+        # Model phase counts are observations, not a validated technical rubric.
+        # Preserve them in the event; do not turn missing/short counts into cues.
         if candidates:
             candidates.sort(
                 key=lambda item: (
@@ -189,10 +168,12 @@ class LocalRealtimeCoach:
         if score_info is None:
             from practice_score_adapter import resolve_practice_score
             score_info = resolve_practice_score(event)
-        if score_info.get("score") is None:
+        if score_info.get("score") is None or not technique_rule_approved('maintain_form'):
             return [self._advice(code="insufficient_technique_evidence", message="动作证据不足需复核",
                                  category="review", confidence=0.0,
-                                 evidence={"reason": "no_eligible_technique_score"})]
+                                 evidence={"reason": "no_eligible_technique_score",
+                                           "phase_rule_exclusion_reason": PHASE_RULE_EXCLUSION,
+                                           "automatic_coach_policy": automatic_coach_policy()})]
         return [
             self._advice(
                 code="maintain_form",
@@ -255,7 +236,8 @@ class LocalRealtimeCoach:
             metric_confidence = self._float(metric.get("confidence"))
             threshold = float(self.thresholds[threshold_name])
             if (
-                value is None
+                not technique_rule_approved(code)
+                or value is None
                 or metric_confidence is None
                 or metric_confidence < self.min_confidence
                 or metric.get("coach_eligible") is not True
@@ -289,7 +271,8 @@ class LocalRealtimeCoach:
             metric_confidence = self._float(metric.get("confidence"))
             threshold = float(self.thresholds[threshold_name])
             if (
-                value is None
+                not technique_rule_approved(code)
+                or value is None
                 or metric_confidence is None
                 or metric_confidence < self.min_confidence
                 or metric.get("coach_eligible") is not True
@@ -323,7 +306,8 @@ class LocalRealtimeCoach:
         kseq_val = str(kseq.get("value") or "").upper()
         kseq_conf = self._float(kseq.get("confidence"))
         if (
-            kseq_val in ("DISCONNECTED", "SUBOPTIMAL")
+            technique_rule_approved('disconnected_kinetic_chain')
+            and kseq_val in ("DISCONNECTED", "SUBOPTIMAL")
             and kseq_conf is not None
             and kseq_conf >= self.min_confidence
             and kseq.get("coach_eligible") is True
@@ -398,7 +382,8 @@ class LocalRealtimeCoach:
         min_brush = float(self.thresholds.get("min_brush_angle_deg", 15.0))
         min_drop = float(self.thresholds.get("min_drop_depth_ratio", 0.25))
         if (
-            brush_conf is not None
+            technique_rule_approved('limited_brush_drop')
+            and brush_conf is not None
             and brush_conf >= self.min_confidence
             and brush.get("coach_eligible") is True
             and (
@@ -541,23 +526,6 @@ class LocalRealtimeCoach:
             "source": source,
             "evidence": evidence,
         }
-
-    def _phase_evidence_confidence(self, event: Dict, phase: str) -> float:
-        evidence = event.get("evidence") or {}
-        if phase == "backswing":
-            boundary = evidence.get("start_boundary") or {}
-            if not boundary:
-                return float(event.get("confidence") or 0.0)
-            return {
-                "low": 0.25,
-                "medium": 0.65,
-                "high": 0.85,
-            }.get(str(boundary.get("confidence") or "").lower(), 0.35)
-        biomechanics = event.get("biomechanics") or {}
-        quality = biomechanics.get("quality") or {}
-        if "contact_evidence_confidence" not in quality:
-            return float(event.get("confidence") or 0.0)
-        return float(quality.get("contact_evidence_confidence") or 0.0)
 
     @staticmethod
     def _float(value) -> Optional[float]:

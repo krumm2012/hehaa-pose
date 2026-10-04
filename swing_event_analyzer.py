@@ -21,6 +21,7 @@ from swing_coach_calibration import calibrate_coaching_event
 from swing_event_segmenter import segment_swing_events
 from swing_motion_features import extract_motion_features
 from swing_session_quality import build_session_quality_dashboard
+from event_source_timing import analyze_event_source_timing
 
 
 FRAME_FIELDS = [
@@ -196,9 +197,12 @@ def analyze_frame_records(
     min_arm_extension_range: float = 0.0,
     session_metadata: Optional[Dict] = None,
     measurement_frames: Optional[List[Dict]] = None,
+    execution_mode: str = 'offline',
     **kwargs,
 ) -> Dict:
     """Build event-level analysis and auditable frame features."""
+    if execution_mode not in ('live', 'replay', 'offline'):
+        raise ValueError('Unsupported analysis execution mode')
     features = extract_motion_features(frames, dominant_hand=dominant_hand)
     segmentation = segment_swing_events(
         features,
@@ -223,6 +227,8 @@ def analyze_frame_records(
         evidence_features,
     )
     for event in events:
+        event['phase_timing'] = analyze_event_source_timing(
+            event, evidence_frames, segmentation['frame_trace'])
         event["coach_calibration"] = calibrate_coaching_event(event)
         from analysis_metric_delivery import event_analysis_metrics, scoring_blockers
         event['analysis_metrics'] = event_analysis_metrics(event)
@@ -239,8 +245,10 @@ def analyze_frame_records(
             event,
             session=effective_session,
             emitted_at_unix_ns=emitted_at_unix_ns,
-            contact_frame_record=frames_by_id.get(int(event["contact_frame"])),
+            contact_frame_record=frames_by_id.get(int(event["contact_frame"])) if execution_mode == 'live' else None,
         )
+        event['timing']['latency_scope'] = ('live_receipt_to_publication' if execution_mode == 'live'
+                                           else 'offline_replay' if execution_mode == 'replay' else 'offline_analysis')
     type_counts = Counter(event["stroke_type"] for event in events)
 
     thresholds = {

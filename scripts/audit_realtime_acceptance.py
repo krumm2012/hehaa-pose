@@ -71,7 +71,7 @@ def main():
     engine=RealtimeSwingEventEngine(fps=replay.get('fps') or 25,
         analysis_interval_frames=replay.get('analysis_interval_frames') or 5,
         settle_frames=replay.get('settle_frames') or 0, window_frames=replay.get('window_frames') or 200,
-        session_metadata=doc.get('session'),**(replay.get('swing_options') or {}))
+        session_metadata=doc.get('session'),execution_mode='replay',**(replay.get('swing_options') or {}))
     push_ms=[]
     for frame in frames:
         started=time.perf_counter();engine.push_frame(frame);push_ms.append((time.perf_counter()-started)*1000)

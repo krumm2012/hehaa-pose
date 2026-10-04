@@ -183,7 +183,7 @@ class SwingReportBuilderTests(unittest.TestCase):
             self.assertIn("可见动作参考分：证据不足", html)
             self.assertIn("可见动作参考分：证据不足", html)
             self.assertIn("algo2_verified_frame_36_impact_freeze.jpg", html)
-            self.assertIn("击球瞬间定格特写 (第 36 帧)", html)
+            self.assertIn("历史定格图片（源帧未核验）", html)
 
     def test_legacy_backward_compatibility(self):
         with TemporaryDirectory() as tmpdir:

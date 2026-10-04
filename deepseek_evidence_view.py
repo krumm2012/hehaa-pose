@@ -114,6 +114,9 @@ def _compact_frame(frame: Dict, feature: Dict, trace: Dict) -> Dict:
         {
             "frame_id": int(frame.get("frame_id", -1)),
             "timestamp": frame.get("timestamp"),
+            "source_time": deepcopy(frame.get("source_time")),
+            "timestamp_semantics": "compatibility_timestamp_inspect_source_time"
+                if isinstance(frame.get('source_time'), dict) else 'legacy_unverified_not_for_elapsed_time',
             "label": frame.get("swing_type") or feature.get("raw_swing_type"),
             "phase": trace.get("phase"),
             "motion_energy": trace.get("motion_energy"),
