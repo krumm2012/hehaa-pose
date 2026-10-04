@@ -25,7 +25,7 @@ RADAR_AXES = [
 ]
 
 
-def _build_event_source_timing_html(timing: Dict) -> str:
+def _build_event_source_timing_html(timing: Dict, runtime=None) -> str:
     timing = timing if isinstance(timing, dict) else {}
     seconds = timing.get('duration_seconds')
     qualified = (timing.get('policy_version') == PHASE_TIME_POLICY
@@ -33,6 +33,8 @@ def _build_event_source_timing_html(timing: Dict) -> str:
                  and timing.get('basis') == 'media_pts'
                  and type(seconds) in (int, float) and math.isfinite(seconds) and seconds >= 0)
     elapsed = f'{seconds:.3f} s' if qualified else '源时间不可核验'
+    notice = ('<p>源视频结束时尚未完成等待确认；请复核动作是否完整。</p>'
+              if isinstance(runtime, dict) and runtime.get('completion_status') == 'source_end_unsettled_candidate' else '')
     labels = {'backswing': '引拍', 'forward_swing': '前挥', 'contact_candidate': '触球候选',
               'follow_through': '随挥', 'recovery': '恢复', 'ready': '准备'}
     phases = ((timing.get('phase_durations_seconds') or {})
@@ -42,6 +44,7 @@ def _build_event_source_timing_html(timing: Dict) -> str:
         if type(value) in (int, float) and math.isfinite(value) and value >= 0) if qualified else ''
     return (f'<div class="phase-time" aria-label="候选事件媒体时长"><strong>候选事件媒体时长：{elapsed}</strong>'
             f'<p>模型阶段标签覆盖：{support or "缺少连续标签或观测"}</p>'
+            f'{notice}'
             '<small>按输入媒体 PTS 统计；曝光未核验，模型阶段边界需复核，不用于技术评分。</small></div>')
 
 
@@ -427,6 +430,7 @@ def build_report_payload(
                 "peak_frame": event.get("peak_frame"),
                 "end_frame": event.get("end_frame"),
                 "phase_counts": event.get("phase_counts") or {},
+                "candidate_runtime_timing": event.get('candidate_runtime_timing'),
                 "phase_timing": analyze_event_source_timing(event, frame_data.get('frames') or [],
                                                             event_data.get('frame_trace') or []),
                 "start_boundary": start_boundary,
@@ -752,7 +756,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         # 3. 动力学链时序时延条
         seq = event.get("kinematic_sequence") or {}
         kinematic_html = _build_kinematic_sequence_html(seq)
-        phase_time_html = _build_event_source_timing_html(event.get('phase_timing'))
+        phase_time_html = _build_event_source_timing_html(event.get('phase_timing'), event.get('candidate_runtime_timing'))
 
         # 4. 击球遥测指标网格
         rkt = event.get("racket_speed") or {}

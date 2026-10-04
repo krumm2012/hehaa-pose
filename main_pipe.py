@@ -19,6 +19,7 @@ import traceback
 import uuid
 from pathlib import Path
 from typing import Optional
+from motion_time_contract import REFERENCE_HZ, POLICY_VERSION as MOTION_TIME_POLICY
 
 from analysis_data_contracts import (
     SOURCE_TIME_SCHEMA_VERSION,
@@ -1184,12 +1185,12 @@ class MultiprocessPipeline:
             effective_window_frames = (
                 self.realtime_window_frames
                 if self.realtime_window_frames is not None
-                else max(32, int(round(self.fps * 8.0)))
+                else max(32, int(round(REFERENCE_HZ * 8.0)))
             )
             effective_settle_frames = (
                 self.realtime_settle_frames
                 if self.realtime_settle_frames is not None
-                else max(0, int(round(self.fps * 0.6)))
+                else max(0, int(round(REFERENCE_HZ * 0.6)))
             )
             realtime_engine = RealtimeSwingEventEngine(
                 fps=self.fps,
@@ -1753,12 +1754,12 @@ class MultiprocessPipeline:
         effective_settle = (
             self.realtime_settle_frames
             if self.realtime_settle_frames is not None
-            else max(0, int(round(self.fps * 0.6)))
+            else max(0, int(round(REFERENCE_HZ * 0.6)))
         )
         effective_window = (
             self.realtime_window_frames
             if self.realtime_window_frames is not None
-            else max(32, int(round(self.fps * 8.0)))
+            else max(32, int(round(REFERENCE_HZ * 8.0)))
         )
         replay = {
             'engine': 'RealtimeSwingEventEngine',
@@ -1766,6 +1767,8 @@ class MultiprocessPipeline:
             'analysis_interval_frames': self.realtime_analysis_interval,
             'settle_frames': effective_settle,
             'window_frames': effective_window,
+            'window_seconds': 8.,
+            'motion_time_policy': MOTION_TIME_POLICY,
             'swing_options': dict(self.swing_analysis_options),
             'coach': {
                 'enabled': self.realtime_coach,
@@ -1966,9 +1969,9 @@ def build_argument_parser():
     parser.add_argument('--max-internal-gap', type=int, default=3,
                         help='同一挥拍内允许的最大非活跃间隔帧数，默认 3')
     parser.add_argument('--min-event-gap', type=int, default=18,
-                        help='相邻挥拍事件的最小间隔帧数，默认 18')
+                        help='间隔启发式参数：源PTS按25Hz参考换算；无源时钟按帧顺序，默认18')
     parser.add_argument('--refractory-frames', type=int, default=20,
-                        help='挥拍结束后禁止触发新事件的不应期帧数，默认 20 (约 0.8 秒)')
+                        help='不应期参数：源PTS按25Hz参考换算，默认20=0.8秒；无源时钟按帧启发式')
     parser.add_argument('--min-wrist-sweep', type=float, default=120.0,
                         help='有效挥拍手腕最小空间轨迹跨度（像素），默认 120.0')
     parser.add_argument('--min-arm-extension-range', type=float, default=65.0,
@@ -1988,9 +1991,9 @@ def build_argument_parser():
     parser.add_argument('--realtime-analysis-interval', type=int, default=None,
                         help='每隔多少个已处理帧运行一次滚动事件分析，默认 5')
     parser.add_argument('--realtime-settle-frames', type=int, default=None,
-                        help='挥拍结束后等待多少源帧再发布，默认约 0.6 秒')
+                        help='等待参数：源PTS按25Hz参考换算，默认0.6秒；无源时钟按帧启发式')
     parser.add_argument('--realtime-window-frames', type=int, default=None,
-                        help='实时事件分析滚动窗口帧数，默认约 8 秒')
+                        help='滚动FrameRecord数量上限，默认200；源PTS上下文最多8秒，容量不是时间精度')
     parser.add_argument('--realtime-clip-workers', type=int, default=None,
                         help='异步 Swing 片段编码线程数，默认 1')
     parser.add_argument('--realtime-frame-output', action='store_true',

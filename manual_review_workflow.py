@@ -332,6 +332,7 @@ def derive_manual_coach_events(
         )
         event.update({key: value for key, value in summary.items() if key != "frame_phases"})
         event['timing'] = {'latency_scope': 'manual_recomputation'}
+        event.pop('candidate_runtime_timing', None)
         event['phase_timing'] = analyze_event_source_timing(event, frame_records,
             [{'frame': int(fid), 'event_id': manual_id, 'phase': phase}
              for fid, phase in summary['frame_phases'].items()])

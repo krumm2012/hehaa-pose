@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import os
 import queue
 import re
@@ -28,6 +29,8 @@ from swing_event_analyzer import analyze_frame_records
 from swing_report_builder import _build_radar_svg, _build_kinematic_sequence_html, _build_event_source_timing_html, _impact_freeze_label
 from swing_session_quality import build_session_quality_dashboard
 from video_writer_backend import create_video_writer
+from image_motion_measurements import source_timestamp
+from motion_time_contract import REFERENCE_HZ, POLICY_VERSION as MOTION_TIME_POLICY
 
 
 class RealtimeFrameJournal:
@@ -298,6 +301,7 @@ class RealtimeSwingEventEngine:
         coach=None,
         session_metadata: Optional[Dict] = None,
         execution_mode: str = 'live',
+        window_seconds: float = 8.,
     ):
         if execution_mode not in ('live', 'replay'):
             raise ValueError('Unsupported event engine execution mode')
@@ -306,12 +310,14 @@ class RealtimeSwingEventEngine:
         self.analysis_interval_frames = max(1, int(analysis_interval_frames))
         self.settle_frames = max(
             0,
-            int(round(self.fps * 0.6)) if settle_frames is None else int(settle_frames),
+            int(round(REFERENCE_HZ * 0.6)) if settle_frames is None else int(settle_frames),
         )
         self.window_frames = max(
             32,
-            int(round(self.fps * 8.0)) if window_frames is None else int(window_frames),
+            int(round(REFERENCE_HZ * 8.0)) if window_frames is None else int(window_frames),
         )
+        self.window_seconds = max(0., float(window_seconds))
+        self.settle_seconds = self.settle_frames / REFERENCE_HZ
         self.options = {
             "dominant_hand": dominant_hand,
             "min_peak_energy": float(min_peak_energy),
@@ -326,7 +332,7 @@ class RealtimeSwingEventEngine:
             self.refractory_frames = max(0, int(refractory_frames))
         else:
             self.refractory_frames = (
-                max(self.options["min_event_gap"], int(round(self.fps * 0.8)))
+                max(self.options["min_event_gap"], int(round(REFERENCE_HZ * 0.8)))
                 if self.options["min_event_gap"] >= 15
                 else self.options["min_event_gap"]
             )
@@ -335,8 +341,10 @@ class RealtimeSwingEventEngine:
         # between event peaks even when min_event_gap is configured lower.
         self.peak_dedup_frames = max(
             self.options["min_event_gap"],
-            int(round(self.fps * 1.6)),
+            int(round(REFERENCE_HZ * 1.6)),
         )
+        self.peak_dedup_seconds = self.peak_dedup_frames / REFERENCE_HZ
+        self.refractory_seconds = self.refractory_frames / REFERENCE_HZ
         self.coach = coach
         self.session_metadata = deepcopy(session_metadata or {})
         self._frames: Deque[Dict] = deque(maxlen=self.window_frames)
@@ -350,6 +358,14 @@ class RealtimeSwingEventEngine:
         """Consume one frame record and return newly completed events."""
         record = deepcopy(frame_record)
         self._frames.append(record)
+        latest_time, latest_basis = source_timestamp(record)
+        if latest_time is not None and latest_basis == 'media_pts':
+            while len(self._frames) > 1:
+                first_time, first_basis = source_timestamp(self._frames[0])
+                if (first_time is None or first_basis != latest_basis
+                        or latest_time-first_time <= self.window_seconds+1e-9):
+                    break
+                self._frames.popleft()
         self._total_frames += 1
         self._latest_frame_id = int(record.get("frame_id", self._latest_frame_id + 1))
         if self._total_frames % self.analysis_interval_frames:
@@ -383,6 +399,15 @@ class RealtimeSwingEventEngine:
                 "window_frames": self.window_frames,
                 "peak_dedup_frames": self.peak_dedup_frames,
                 "refractory_frames": self.refractory_frames,
+                "candidate_runtime_time_policy": MOTION_TIME_POLICY,
+                "window_seconds": self.window_seconds,
+                "window_frame_limit_semantics": 'independent_storage_capacity_not_duration_or_FPS',
+                "retained_frame_count": len(self._frames),
+                "frame_capacity_reached": len(self._frames) == self.window_frames,
+                "settle_seconds": self.settle_seconds,
+                "peak_dedup_seconds": self.peak_dedup_seconds,
+                "refractory_seconds": self.refractory_seconds,
+                "threshold_reference_hz": REFERENCE_HZ,
                 "session_quality": build_session_quality_dashboard(self._events),
             },
             "events": deepcopy(self._events),
@@ -426,7 +451,13 @@ class RealtimeSwingEventEngine:
         emitted = []
         for candidate in analysis.get("events", []):
             end_frame = int(candidate["end_frame"])
-            if not force and self._latest_frame_id - end_frame < self.settle_frames:
+            end_time = self._event_source_time(candidate, 'end_frame')
+            latest_time, latest_basis = source_timestamp(self._frames[-1])
+            source_wait = (end_time is not None and latest_time is not None
+                           and latest_basis == 'media_pts' and latest_time >= end_time)
+            wait_pending = (latest_time-end_time+1e-9 < self.settle_seconds if source_wait
+                            else self._latest_frame_id-end_frame < self.settle_frames)
+            if not force and wait_pending:
                 continue
             if self._is_duplicate(candidate):
                 continue
@@ -435,6 +466,18 @@ class RealtimeSwingEventEngine:
             event["event_id"] = len(self._events) + 1
             event["emitted_at_frame"] = self._latest_frame_id
             event["latency_frames"] = max(0, self._latest_frame_id - end_frame)
+            event['candidate_runtime_timing'] = {
+                'policy_version': MOTION_TIME_POLICY,
+                'settle_basis': 'media_pts' if source_wait else 'frame_identity_heuristic_unverified',
+                'end_to_emission_media_seconds': latest_time-end_time if source_wait else None,
+                'forced_at_source_end': bool(force),
+                'completion_status': 'source_end_unsettled_candidate' if force and wait_pending else 'settled_candidate',
+                'latency_frames_semantics': 'source_frame_id_distance_not_observed_count_or_seconds',
+                'accuracy_validated': False}
+            if force and wait_pending:
+                quality = event.setdefault('quality_flags', {})
+                quality['warnings'] = sorted(set(quality.get('warnings') or []) | {'source_end_without_settle_confirmation'})
+                quality['review_recommended'] = True
             contact_frame = int(event["contact_frame"])
             contact_record = next(
                 (
@@ -487,14 +530,30 @@ class RealtimeSwingEventEngine:
             emitted.append(deepcopy(event))
         return emitted
 
+    @staticmethod
+    def _event_source_time(event, anchor):
+        timing = event.get('phase_timing') or {}
+        record = (timing.get('anchors') or {}).get(anchor) or {}
+        value = record.get('timestamp_seconds')
+        if (timing.get('status') == 'reported_media_time' and timing.get('basis') == 'media_pts'
+                and type(record.get('source_frame_id')) is int
+                and record['source_frame_id'] == event.get(anchor)
+                and type(value) in (float,int) and math.isfinite(value) and value >= 0):
+            return float(value)
+        return None
+
     def _is_duplicate(self, candidate: Dict) -> bool:
         peak_frame = int(candidate["peak_frame"])
         tolerance = max(1, int(self.peak_dedup_frames))
-        if any(
-            abs(peak_frame - emitted_peak) <= tolerance
-            for emitted_peak in self._emitted_peaks
-        ):
-            return True
+        peak_time = self._event_source_time(candidate, 'peak_frame')
+        events_by_peak = {int(e['peak_frame']):e for e in self._events}
+        for emitted_peak in self._emitted_peaks:
+            old_peak_time = self._event_source_time(events_by_peak.get(emitted_peak, {}), 'peak_frame')
+            duplicate = (abs(peak_time-old_peak_time) <= self.peak_dedup_seconds+1e-9
+                         if peak_time is not None and old_peak_time is not None
+                         else abs(peak_frame-emitted_peak) <= tolerance)
+            if duplicate:
+                return True
 
         # A rolling window can later promote a weaker secondary peak after the
         # original dominant peak leaves the window edge. If that new peak lies
@@ -509,7 +568,14 @@ class RealtimeSwingEventEngine:
             if max(candidate_start, event_start) <= min(candidate_end, event_end):
                 return True
             if self.refractory_frames > 0:
-                if candidate_start <= event_end + 5 and peak_frame < event_end + self.refractory_frames:
+                start_time = self._event_source_time(candidate, 'start_frame')
+                old_end_time = self._event_source_time(event, 'end_frame')
+                if start_time is not None and peak_time is not None and old_end_time is not None:
+                    in_cooldown = (start_time <= old_end_time+.2+1e-9
+                                   and peak_time < old_end_time+self.refractory_seconds)
+                else:
+                    in_cooldown = candidate_start <= event_end+5 and peak_frame < event_end+self.refractory_frames
+                if in_cooldown:
                     return True
         return False
 
@@ -1425,7 +1491,7 @@ class RealtimeSwingOutputManager:
                 or {}
             )
             kinematic_html = _build_kinematic_sequence_html(seq)
-            phase_time_html = _build_event_source_timing_html(event.get('phase_timing'))
+            phase_time_html = _build_event_source_timing_html(event.get('phase_timing'), event.get('candidate_runtime_timing'))
 
             # 击球遥测指标网格
             rkt = (

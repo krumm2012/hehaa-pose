@@ -13,7 +13,8 @@ import math
 import re
 from typing import Dict, Iterable, List, Optional, Tuple
 from observation_policy import measurement_pose
-from image_motion_measurements import racket_image_velocity
+from image_motion_measurements import racket_image_velocity, source_timestamp
+from motion_time_contract import REFERENCE_HZ, RACKET_GAP_SECONDS, POLICY_VERSION
 
 
 Point = Tuple[float, float]
@@ -83,8 +84,10 @@ def _heal_short_racket_gaps(
     raw_rackets: List[Optional[Point]],
     max_gap: int = 2,
     max_step_distance: float = 200.0,
+    times=None,
+    frame_ids=None,
 ) -> List[Tuple[Optional[Point], str]]:
-    """Linearly interpolate short missing gaps in racket detections (<= max_gap frames)."""
+    """Candidate-only interpolation, bounded in source elapsed time when known."""
     n = len(raw_rackets)
     result = [(p, "detected" if p is not None else "missing") for p in raw_rackets]
     i = 0
@@ -100,11 +103,22 @@ def _heal_short_racket_gaps(
         if gap_len <= max_gap and gap_start > 0 and gap_end < n:
             p_prev = result[gap_start - 1][0]
             p_next = result[gap_end][0]
+            interval = None
+            if times is not None:
+                local_times = times[gap_start-1:gap_end+1]
+                local_ids = frame_ids[gap_start-1:gap_end+1]
+                if (any(t is None for t in local_times)
+                        or any(b <= a for a,b in zip(local_times,local_times[1:]))
+                        or any(b != a+1 for a,b in zip(local_ids,local_ids[1:]))
+                        or local_times[-1]-local_times[0] > RACKET_GAP_SECONDS+1e-9):
+                    continue
+                interval = local_times[-1]-local_times[0]
             if p_prev is not None and p_next is not None:
                 dist = _distance(p_prev, p_next)
                 if dist is not None and dist <= max_step_distance * (gap_len + 1):
                     for k in range(gap_len):
-                        alpha = (k + 1) / float(gap_len + 1)
+                        alpha = ((times[gap_start+k]-times[gap_start-1]) / interval
+                                 if interval is not None else (k+1) / float(gap_len+1))
                         interp_x = p_prev[0] + alpha * (p_next[0] - p_prev[0])
                         interp_y = p_prev[1] + alpha * (p_next[1] - p_prev[1])
                         result[gap_start + k] = (
@@ -142,14 +156,18 @@ def extract_motion_features(
             rkt = _racket_center([d for d in detections if d.get('source_frame_id') is None or d['source_frame_id'] == frame.get('frame_id')])
         raw_rackets.append(rkt)
 
-    healed_rackets = _heal_short_racket_gaps(raw_rackets, max_gap=2)
+    time_samples = [source_timestamp(row) for row in frames]
+    declared_source = any('source_time' in row for row in frames)
+    interpolation_times = [t if b == 'media_pts' else None for t,b in time_samples] if declared_source else None
+    healed_rackets = _heal_short_racket_gaps(raw_rackets, max_gap=2,
+        times=interpolation_times, frame_ids=[row.get('frame_id') for row in frames])
 
     for idx, frame in enumerate(frames):
         # Uncalibrated mirror recovery is display-only, never a measurement.
         pose = measurement_pose(frame)
         metrics = {} if frame.get("pose_observations") is not None else (frame.get("metrics") or {})
         frame_id = int(frame.get("frame_id", len(features)))
-        timestamp = float(frame.get("timestamp", frame_id))
+        timestamp, time_basis = time_samples[idx]
 
         wrist = _point(pose.get(wrist_key))
         off_wrist = _point(pose.get(off_wrist_key))
@@ -176,6 +194,27 @@ def extract_motion_features(
         ball_speed = _distance(ball, prev.get("ball")) or 0.0
         wrist_accel = wrist_speed - float(prev.get("wrist_speed", 0.0))
         racket_accel = racket_speed - float(prev.get("racket_speed", 0.0))
+
+        # Raw compatibility fields stay px/observation. Only candidate energy
+        # is normalized to an explicit historical 25Hz tuning reference.
+        dt = None
+        if idx and declared_source:
+            t0, b0 = time_samples[idx-1]
+            if (timestamp is not None and t0 is not None and time_basis == b0
+                    and timestamp > t0 and frame_id == frames[idx-1].get('frame_id', -2)+1):
+                dt = timestamp-t0
+        factor = 1. / (dt*REFERENCE_HZ) if dt is not None else 1.
+        wrist_rate, racket_rate = wrist_speed*factor, racket_speed*factor
+        source_gap = idx and declared_source and frame_id != frames[idx-1].get('frame_id', -2)+1
+        if source_gap:
+            wrist_rate = racket_rate = 0.
+        candidate_motion = {'policy_version': POLICY_VERSION,
+            'wrist_rate': wrist_rate, 'racket_rate': racket_rate,
+            'wrist_accel': wrist_rate-float(prev.get('candidate_wrist_rate', 0.)),
+            'basis': time_basis if dt is not None else 'processing_order_unverified',
+            'units': 'px_per_25hz_reference_interval' if dt is not None else 'px_per_observation',
+            'racket_source': racket_source, 'source_frame_gap': bool(source_gap),
+            'accuracy_validated': False, 'coach_eligible': False}
 
         body_center_x = None
         shoulder_width = _distance(left_shoulder, right_shoulder)
@@ -206,13 +245,13 @@ def extract_motion_features(
         # 动力链角速度 (Hip & Shoulder Angular Rotation Speed)
         prev_hip_angle = prev.get("hip_line_angle")
         hip_rotation_speed = (
-            abs(hip_line_angle - prev_hip_angle)
+            abs((hip_line_angle - prev_hip_angle + 180.) % 360. - 180.)
             if hip_line_angle is not None and prev_hip_angle is not None
             else 0.0
         )
         prev_shoulder_angle = prev.get("shoulder_line_angle")
         shoulder_rotation_speed = (
-            abs(shoulder_line_angle - prev_shoulder_angle)
+            abs((shoulder_line_angle - prev_shoulder_angle + 180.) % 360. - 180.)
             if shoulder_line_angle is not None and prev_shoulder_angle is not None
             else 0.0
         )
@@ -256,6 +295,9 @@ def extract_motion_features(
         feature = {
             "frame_id": frame_id,
             "timestamp": timestamp,
+            "time_basis": time_basis,
+            "candidate_motion": candidate_motion,
+            "legacy_motion_units": 'pixels_or_degrees_per_observation_not_per_second',
             "dominant_hand": dominant_hand,
             "raw_swing_type": frame.get("swing_type", "No Pose"),
             "has_pose": bool(pose),
@@ -335,6 +377,8 @@ def extract_motion_features(
             "hip_rotation_speed": round(hip_rotation_speed, 2),
             "shoulder_rotation_speed": round(shoulder_rotation_speed, 2),
         }
+        if 'source_time' in frame:
+            feature['source_time'] = dict(frame['source_time']) if isinstance(frame['source_time'], dict) else frame['source_time']
         features.append(feature)
         prev = {
             "wrist": wrist,
@@ -343,6 +387,7 @@ def extract_motion_features(
             "timestamp": timestamp,
             "wrist_speed": wrist_speed,
             "racket_speed": racket_speed,
+            "candidate_wrist_rate": wrist_rate,
             "hip_line_angle": hip_line_angle,
             "shoulder_line_angle": shoulder_line_angle,
         }

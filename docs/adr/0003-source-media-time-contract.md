@@ -78,3 +78,12 @@ use the known input frame-to-PTS map only when the selected video is the declare
 source; an annotated video's encoding clock is a different contract. Independent
 exposure and source/derived mapping remain unverified. Other segmentation and
 frame-window consumers remain separate work. See `docs/EVENT_SOURCE_TIMING.md`.
+
+Motion candidates now preserve source identity and ignore compatibility clocks
+when a source contract is declared. Interpolation weights, candidate smoothing,
+motion-island gaps, contact-quality windows and realtime waits/peak suppression
+use qualified file PTS. A fixed 25Hz reference describes old tuning parameters,
+not input FPS. Frame capacity is separate from media context duration. Missing
+clocks retain explicitly unverified candidate heuristics; remaining traditional
+metric windows and independent accuracy are still pending. See
+`docs/MOTION_SOURCE_TIME.md`.

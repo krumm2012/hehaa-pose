@@ -26,6 +26,10 @@
 
 ## 指标目录
 
+运动特征、分段、球质量窗口及实时等待/去重的2026-10-05更新见
+[MOTION_SOURCE_TIME.md](MOTION_SOURCE_TIME.md)。旧位移信号与源时间归一候选分开保存，
+原帧参数明确作为25Hz历史调参单位。下表仍列明尚未迁移的传统帧窗口。
+
 | ID | 公式 | 坐标系 | 窗口 | 有效条件 |
 |---|---|---|---|---|
 | hip_shoulder_separation | abs(wrap180(shoulder_line_angle-hip_line_angle)); median | front image plane | contact +/- 2 frame IDs | observed shoulder and hip endpoints; projected separation only |

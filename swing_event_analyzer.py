@@ -270,6 +270,7 @@ def analyze_frame_records(
             "swing_event_count": len(events),
             "swing_event_type_counts": dict(sorted(type_counts.items())),
             "thresholds": thresholds,
+            "candidate_timing": segmentation.get('candidate_timing'),
             "session_quality": build_session_quality_dashboard(events),
         },
         "events": events,

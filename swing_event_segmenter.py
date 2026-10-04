@@ -4,17 +4,20 @@
 from __future__ import annotations
 
 import math
+from bisect import bisect_left
 from statistics import median
 from typing import Dict, List, Optional, Tuple
 
 from swing_event_classifier import classify_swing_event
+from motion_time_contract import (REFERENCE_HZ, SMOOTH_SECONDS, candidate_timeline,
+                                  attach_candidate_timing)
 from swing_quality_policy import (
     BALL_CONTACT_WINDOW_RADIUS,
     ball_tracking_requires_capture,
 )
 
 
-def _smooth(values: List[float], window: int = 3) -> List[float]:
+def _smooth(values: List[float], window: int = 3, times=None) -> List[float]:
     if not values:
         return []
     w = max(1, int(window))
@@ -22,16 +25,23 @@ def _smooth(values: List[float], window: int = 3) -> List[float]:
         return list(values)
     out = []
     for idx in range(len(values)):
-        lo = max(0, idx - w + 1)
+        lo = (bisect_left(times, times[idx]-SMOOTH_SECONDS-1e-9, 0, idx+1)
+              if times is not None else max(0, idx-w+1))
         chunk = sorted(values[lo : idx + 1])
         out.append(chunk[len(chunk) // 2])
     return out
 
 
 def _motion_energy(feature: Dict) -> float:
-    wrist = float(feature.get("wrist_speed") or 0.0)
-    racket = float(feature.get("racket_speed") or 0.0)
-    accel = max(0.0, float(feature.get("wrist_accel") or 0.0))
+    signal = feature.get('candidate_motion')
+    if isinstance(signal, dict):
+        wrist = float(signal.get('wrist_rate') or 0.)
+        racket = float(signal.get('racket_rate') or 0.)
+        accel = max(0., float(signal.get('wrist_accel') or 0.))
+    else:
+        wrist = float(feature.get("wrist_speed") or 0.0)
+        racket = float(feature.get("racket_speed") or 0.0)
+        accel = max(0.0, float(feature.get("wrist_accel") or 0.0))
     contact = float(feature.get("contact_score") or 0.0) * 10.0
     return max(wrist, racket * 0.75, accel * 0.6, contact)
 
@@ -546,12 +556,15 @@ def _event_quality_flags(features: List[Dict], start_idx: int, end_idx: int, cla
     ball_ratio = ball_frames / total
     racket_ratio = racket_frames / total
     pose_ratio = pose_frames / total
-    contact_window = [
-        feature
-        for feature in event_features
-        if abs(int(feature["frame_id"]) - int(contact_frame))
-        <= BALL_CONTACT_WINDOW_RADIUS
-    ]
+    contact_feature = next((f for f in event_features if int(f.get('frame_id', -1)) == contact_frame), None)
+    source_timed = bool(contact_feature and contact_feature.get('candidate_timing', {}).get('source_time_qualified'))
+    radius_seconds = BALL_CONTACT_WINDOW_RADIUS / REFERENCE_HZ
+    if source_timed:
+        contact_window = [f for f in event_features
+                          if abs(f['timestamp']-contact_feature['timestamp']) <= radius_seconds+1e-9]
+    else:
+        contact_window = [f for f in event_features
+                          if abs(int(f['frame_id'])-int(contact_frame)) <= BALL_CONTACT_WINDOW_RADIUS]
     contact_window_ball_frames = sum(
         1 for feature in contact_window if feature.get("ball") is not None
     )
@@ -564,6 +577,10 @@ def _event_quality_flags(features: List[Dict], start_idx: int, end_idx: int, cla
         "ball_contact_window_ratio": contact_window_ratio,
         "ball_contact_window_frames": len(contact_window),
         "ball_contact_window_detection_frames": contact_window_ball_frames,
+        "ball_contact_window_basis": 'media_pts' if source_timed else 'source_frame_identity_heuristic',
+        "ball_contact_window_seconds": [-radius_seconds, radius_seconds] if source_timed else None,
+        "ball_contact_window_frame_ids": [int(f['frame_id']) for f in contact_window],
+        "ball_contact_window_coverage_semantics": 'ratio_among_retained_observations_not_time_coverage',
     }
     if ball_tracking_requires_capture(ball_quality):
         warnings.append("ball_track_gaps")
@@ -604,6 +621,10 @@ def _event_quality_flags(features: List[Dict], start_idx: int, end_idx: int, cla
         "ball_contact_window_frames": len(contact_window),
         "ball_contact_window_detection_frames": contact_window_ball_frames,
         "racket_frame_ratio": round(racket_ratio, 4),
+        "ball_contact_window_basis": 'media_pts' if source_timed else 'source_frame_identity_heuristic',
+        "ball_contact_window_seconds": [-radius_seconds, radius_seconds] if source_timed else None,
+        "ball_contact_window_frame_ids": [int(f['frame_id']) for f in contact_window],
+        "ball_contact_window_coverage_semantics": 'ratio_among_retained_observations_not_time_coverage',
         "diagnostic_rejection_counts": dict(sorted(diagnostic_counts.items())),
         "continuity_disabled_frames": int(continuity_disabled),
         "warnings": sorted(set(warnings)),
@@ -626,6 +647,7 @@ def summarize_manual_event_range(
     """
     if not features:
         raise ValueError("Cannot summarize a manual event without frame features")
+    features, timing = candidate_timeline(features)
 
     start_frame = int(start_frame)
     contact_frame = int(contact_frame)
@@ -646,7 +668,8 @@ def summarize_manual_event_range(
         key=lambda index: abs(int(features[index].get("frame_id", -1)) - contact_frame),
     )
     effective_contact_frame = int(features[contact_idx]["frame_id"])
-    energy = _smooth([_motion_energy(feature) for feature in features], window=3)
+    energy = _smooth([_motion_energy(feature) for feature in features], window=3,
+                     times=[f['timestamp'] for f in features] if timing['source_time_qualified'] else None)
     peak_idx = max(indices, key=lambda index: float(energy[index]))
     classification = {
         "evidence": dict(classification_evidence or {}),
@@ -673,6 +696,7 @@ def summarize_manual_event_range(
         "peak_frame": int(features[peak_idx]["frame_id"]),
         "peak_energy": round(float(energy[peak_idx]), 4),
         "quality_flags": quality_flags,
+        "candidate_timing": timing,
         "phase_counts": dict(sorted(phase_counts.items())),
         "frame_phases": {
             str(frame_id): phase
@@ -739,12 +763,16 @@ def _segment_by_peaks(
     min_arm_extension_range: float = 0.0,
     dominant_hand: str = "right",
 ) -> Optional[Dict]:
-    if len(features) < 60:
+    source_timed = features[0].get('candidate_timing', {}).get('source_time_qualified', False)
+    if (source_timed and (len(features) < max(3, min_event_frames)
+                         or features[-1]['timestamp']-features[0]['timestamp'] < 2.4)):
+        return None
+    if not source_timed and len(features) < 60:
         return None
 
     peak_floor = _robust_peak_floor(energy, min_peak_energy)
-    peak_min_distance_seconds = max(float(min_event_gap) / fps, 1.6)
-    edge_margin_seconds = max(float(min_event_frames) / fps, 0.35)
+    peak_min_distance_seconds = max(float(min_event_gap) / REFERENCE_HZ, 1.6)
+    edge_margin_seconds = max(float(min_event_frames) / REFERENCE_HZ, 0.35)
     candidates = _local_peak_candidates(
         features,
         energy,
@@ -880,6 +908,9 @@ def _build_result(features: List[Dict], energy: List[float], events: List[Dict],
                 "ball_racket_distance": feature.get("ball_racket_distance"),
                 "contact_score": feature.get("contact_score"),
                 "two_hand_distance": feature.get("two_hand_distance"),
+                "candidate_timestamp_seconds": feature.get('timestamp'),
+                "candidate_time_basis": feature.get('candidate_timing', {}).get('basis'),
+                "candidate_motion": feature.get('candidate_motion'),
             }
         )
     return {"events": events, "frame_trace": frame_trace}
@@ -902,9 +933,14 @@ def segment_swing_events(
     that are likely the same swing's follow-through/recovery.
     """
     if not features:
-        return {"events": [], "frame_trace": []}
+        _, timing = candidate_timeline(features)
+        return attach_candidate_timing({'events': [], 'frame_trace': []}, timing)
 
-    energy = _smooth([_motion_energy(f) for f in features], window=3)
+    features, timing = candidate_timeline(features)
+    source_timed = timing['source_time_qualified']
+    times = [f['timestamp'] for f in features]
+    energy = _smooth([_motion_energy(f) for f in features], window=3,
+                     times=times if source_timed else None)
     fps = _estimate_fps(features)
     if fps:
         peak_result = _segment_by_peaks(
@@ -920,21 +956,25 @@ def segment_swing_events(
             dominant_hand=dominant_hand,
         )
         if peak_result is not None:
-            return peak_result
+            return attach_candidate_timing(peak_result, timing)
 
     active = [e >= active_energy for e in energy]
 
     islands = []
     start = None
     gap = 0
+    last_active = None
     for idx, is_active in enumerate(active):
         if is_active:
             if start is None:
                 start = idx
             gap = 0
+            last_active = idx
         elif start is not None:
             gap += 1
-            if gap > max_internal_gap:
+            gap_exceeded = (times[idx]-times[last_active] > max_internal_gap/REFERENCE_HZ+1e-9
+                            if source_timed else gap > max_internal_gap)
+            if gap_exceeded:
                 islands.append((start, idx - gap))
                 start = None
                 gap = 0
@@ -947,7 +987,9 @@ def segment_swing_events(
             merged.append(list(island))
             continue
         prev = merged[-1]
-        if island[0] - prev[1] <= min_event_gap:
+        merge = (times[island[0]]-times[prev[1]] <= min_event_gap/REFERENCE_HZ+1e-9
+                 if source_timed else island[0]-prev[1] <= min_event_gap)
+        if merge:
             prev[1] = island[1]
         else:
             merged.append(list(island))
@@ -1024,10 +1066,10 @@ def segment_swing_events(
             }
         )
 
-    return _build_result(
+    return attach_candidate_timing(_build_result(
         features,
         energy,
         events,
         frame_to_event,
         frame_phases,
-    )
+    ), timing)

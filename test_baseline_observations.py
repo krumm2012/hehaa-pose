@@ -8,7 +8,8 @@ def frames(factor=1, moving=False):
         points={name:{'x':x*factor,'y':(y+(i*2 if moving else 0))*factor,
                      'confidence':.9,'observed':True,'confidence_source':'model'}
                 for name,x,y in [('left_shoulder',10,10),('right_shoulder',50,10),('left_hip',15,80),('right_hip',45,80)]}
-        rows.append({'frame_id':i,'source_time':{'timestamp_seconds':i*.04,'basis':'media_pts','quality':'reported'},
+        rows.append({'frame_id':i,'source_time':{'schema_version':'tennis.source-time.v1',
+            'source_kind':'video_file','source_frame_id':i,'timestamp_seconds':i*.04,'basis':'media_pts','quality':'reported'},
                      'pose_observations':{'front':points,'back':deepcopy(points)}})
     return rows
 

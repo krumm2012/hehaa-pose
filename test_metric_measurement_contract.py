@@ -4,7 +4,8 @@ from swing_biomechanics import _calculate_extended_tier_biomechanics
 
 
 def frame(i, x, t, width=20):
-    return {'frame_id':i, 'timestamp':t, 'source_time':{'timestamp_seconds':t,'basis':'media_pts','quality':'reported'},
+    return {'frame_id':i, 'timestamp':t, 'source_time':{'schema_version':'tennis.source-time.v1',
+            'source_kind':'video_file','source_frame_id':i,'timestamp_seconds':t,'basis':'media_pts','quality':'reported'},
             'pose':{'left_shoulder':[0,0], 'right_shoulder':[width,0]},
             'racket':[x-10,0,x+10,20]}
 

@@ -386,8 +386,8 @@ pipeline_perf:
 realtime_swing:
   enabled: false                          # 推荐通过 --realtime-swing-events 显式开启
   analysis_interval_frames: 5             # 每5个已处理帧刷新滚动事件分析
-  settle_frames: null                     # null=按输入FPS取约0.6秒，降低事件提前结束
-  window_frames: null                     # null=按输入FPS保留约8秒事件特征
+  settle_frames: null                     # null=源PTS等待0.6秒；显式帧数按25Hz参考换算，缺时钟按帧启发式
+  window_frames: null                     # null=200条记录上限，源PTS上下文最多8秒；容量不是时间精度
   clip_workers: 1                         # 异步片段编码线程，避免阻塞主分析循环
   clip_padding_frames: 8                  # 每个事件片段前后附加帧数
   clip_max_width: 1280                    # 内存中缓存720p级JPEG，不保存1440p原始帧环

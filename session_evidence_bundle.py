@@ -239,6 +239,7 @@ def replay_evidence_manifest(
         analysis_interval_frames=int(replay.get("analysis_interval_frames") or 5),
         settle_frames=int(replay.get("settle_frames") or 0),
         window_frames=int(replay.get("window_frames") or 200),
+        window_seconds=float(replay.get('window_seconds', 8.)),
         coach=coach,
         execution_mode='replay',
         session_metadata=document.get("session") or {},

@@ -57,7 +57,8 @@ class OsdEvidenceGateTests(unittest.TestCase):
         for i in range(16):
             pts={name:{'x':x,'y':y-i,'confidence':.9,'observed':True,'confidence_source':'model'} for name,x,y in [
                 ('left_ankle',0,100),('right_ankle',100,100),('left_hip',0,40),('right_hip',100,40)]}
-            rows.append({'frame_id':i,'source_time':{'timestamp_seconds':i*.04,'basis':'media_pts','quality':'reported'},
+            rows.append({'frame_id':i,'source_time':{'schema_version':'tennis.source-time.v1',
+                'source_kind':'video_file','source_frame_id':i,'timestamp_seconds':i*.04,'basis':'media_pts','quality':'reported'},
                          'pose_observations':{'front':pts},'rackets':[{'confidence':.9,'observed':True}]})
             features.append({'frame_id':i,'racket_measurement_point':[i*10,100-i*2]})
         ext={'brush_angle':{},'stance':{},'leg_drive':{}}
