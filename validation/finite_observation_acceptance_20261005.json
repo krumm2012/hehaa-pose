@@ -1,0 +1,323 @@
+{
+  "schema": "tennis.finite-observation-acceptance.v1",
+  "generated_at": "2026-10-05T06:11:15.410045+08:00",
+  "engineering_source_commit": "8c56e96f3c0b4f553cdc203a5a05d2044f1b731b",
+  "engineering_push_verified": true,
+  "all_items_complete": false,
+  "accuracy_validated": false,
+  "tests": {
+    "passed": 570,
+    "new_regressions": 25,
+    "focused_passed": 77,
+    "log": "/tmp/tennis_finite_observation_full_20261005.log",
+    "initial_numeric_red_log": "/tmp/tennis_value_validity_red_20261005.log",
+    "boundary_red_log": "/tmp/tennis_finite_boundary_red_20261005.log",
+    "presentation_red_log": "/tmp/tennis_evidence_display_red_20261005.log"
+  },
+  "analysis_build": {
+    "schema": "tennis.analysis-build.v1",
+    "code_sha256": {
+      "swing_event_analyzer.py": "6db396623ea886fa038e44c77f68f4ed2fc1cd9673251440f40c295d17a17d8c",
+      "swing_biomechanics.py": "c249c42f5494c29c037b920cc89ce5274aab4caca32429a3098e7da391625de4",
+      "kinematic_sequence.py": "f41545fffebdf9e3399185cbc2d16bdc11540718cc834f82febeab526ef66e36",
+      "osd_evidence.py": "da4662c3270efe6af1bc39a0a18c75c0c40671f855bbca6340db8fdd420b670d",
+      "realtime_swing_pipeline.py": "20e64e98d0891a4ed1ede430a8797eb2ade40303e5bd246831f3230dcf299f59",
+      "swing_motion_features.py": "9e0b5cc84e9d773a8dcd5be959915ea84b2b2820fd82ff9dc0d96b358081f2cf",
+      "analysis_metric_delivery.py": "1b3fd4c897d1224d8e20d5e16f2811bd398044f16a140d7bb28b8a5b1f2ca161",
+      "metric_contracts.py": "cbeda437d1a767626b85a5edc99156bd04eea548019eb851397e01ffce6d0e00",
+      "ball_observation_contract.py": "eab2c82b7c303d879ce98003a1f742cdf33d639425862733f71a3b3127881525",
+      "frame_processor.py": "f55f126d1aeb3960522991d5aef0b2cc785826a5d710e6a64e2636931980351d",
+      "main_pipe.py": "ca4bb1f07aedf411725c3f3adfb508d9de1b5ad34b50e8d87d3ba79afcc48ebe",
+      "yolo26n_unified_detector.py": "c2410762fdc5f314da5f154576619d899d6272ec0720a7e18fb581c8acbe9964",
+      "event_source_timing.py": "7cd841a3826e2082623c1aa7e72a3d912e0f5efab8b2ca63bb40cfa1a3359221",
+      "local_realtime_coach.py": "35167b842d68f5d8d36d4ddc8ffc5fdfe7699cb0001422589aded53501ea8024",
+      "swing_coach_data_collector.py": "7d0749d8e726ed5b1cddd669a0b69a7da81bcc7ae6b16db75e43a652e34d297e",
+      "coach_evidence_policy.py": "a4875c661f5f57384061b273fcf9411006b590097664a078d5ab644c0cf35e99",
+      "deepseek_evidence_view.py": "df4bb2452efcf1ba6ce0d654e950d1377c9ef0c81ad523c78a8cd4a82eb3bb2f",
+      "coach_rule_contract.py": "92401a367bf98f20927ee4a022e3214de960381f7975a233ed3688f47f251ecc",
+      "swing_report_builder.py": "3a45948e7aa5347fe9120179098f9476fba93e6bc93409084e3d97aad2010616",
+      "analysis_provenance.py": "fee674757b10773b1966054d4f1d67095fe93cbf6fc08e835e94cc1d94d2061c",
+      "deepseek_realtime_coach.py": "4f5467ac7a48ef4ca8db16574a5e150addd2355b5980da5680fc62a7537cfba8",
+      "manual_review_workflow.py": "3555880db9f2143695ad8eb2385afcb6934e384f64c03312bcc200888e1f78c3",
+      "swing_event_segmenter.py": "199ba605681abbe1117ae913e6a6ff2278c809b747de442626383075bac9b3bb",
+      "swing_event_classifier.py": "b8a5fdfc89608a641be2286157a2c0c5ff0baa40abd3864d8c67c0a949e423f6",
+      "motion_time_contract.py": "ff92aa0bb81b4b6a97c680ca044c1d5b7c625686a2f9c1a2a5430bb280c316e5",
+      "image_motion_measurements.py": "a648ae2ce21535d861022f851336fa101f10b37da198bd713489c5e243b8953d",
+      "session_evidence_bundle.py": "0f0c5f6af5af3cdd107fb3df01e055f0552abdc6048eb7d68fc917bc11a19f38",
+      "swing_quality_policy.py": "a4cae94e73a03835dd17abcbfbcbfa0c889625b3a9d104f16b8e6d9b108f2b1d",
+      "metric_source_windows.py": "f962a1aff02def335cab90db68487c4574fc8741b9ad3dcd7cb2d20e80eda63b",
+      "observation_policy.py": "432552280e986ce99f40de38a15be7b9066276c1503ce7d79cf871c62bf672f1",
+      "dual_view_biomechanics.py": "3cc7f737474beb9ca75162176d07ce45cb2f3e29a7cbf3de85f85255d1109416",
+      "local_control_panel.html": "3ab609847a12e7445d27e5987469063cc306c11bb10c9a5b78a24ccf28a0250a"
+    },
+    "hash_semantics": "source files at provenance module import; restart required after source edits",
+    "metric_contract": "tennis.metric-contract.v4",
+    "kinematic_policy": "kinematic_cross_view_2d_v7_finite_observations",
+    "observation_policy": "osd_observation_qualification_v6_finite_values",
+    "scoring_policy": "single_view_visible_coach_v4_unvalidated_rubrics_blocked",
+    "window_policy": "realtime_source_time_and_capacity_separated_v3",
+    "ball_observation_contract": "tennis.ball-observation.v1",
+    "phase_time_policy": "event_phase_media_time_v1",
+    "automatic_coach_policy": "automatic_coach_v2_validated_rules_only",
+    "motion_time_policy": "motion_candidates_v1_source_time",
+    "body_window_policy": "body_and_trajectory_windows_v1_source_time",
+    "classification_policy": "player_camera_swing_v3_source_windows",
+    "image_motion_policy": "image_motion_v2_source_identity",
+    "pose_measurement_policy": "fresh_front_pose_v2_finite_observations",
+    "historical_outputs_rewritten": false,
+    "accuracy_validated": false
+  },
+  "pixel": {
+    "frame_count": 250,
+    "reader_receipt_fps": 25.153275880826808,
+    "output_submission_fps": 25.350276684525884,
+    "wall_seconds": 18.914,
+    "source_selection": {
+      "reference_source_sha256": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0",
+      "input_source_sha256": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0",
+      "explicit_alternate_input": false,
+      "relationship_to_reference": "same_input_bytes"
+    },
+    "display_semantics": "OpenCV window submission measured; no sensor-to-photon/exposure verification",
+    "peak_summed_rss_kib": 1865104,
+    "resource_semantics": "ps process-tree RSS sum can double-count shared memory; CPU is ps-reported average, not instantaneous utilization"
+  },
+  "replay": {
+    "new_integrity_valid": true,
+    "old_integrity_valid": true,
+    "new_semantic_match": true,
+    "old_semantics_under_current_code": true,
+    "same_input_bytes": true,
+    "event_count": 3,
+    "replay_event_count": 3,
+    "all_canonical_values_windows_and_qualification_exact": true,
+    "classification_and_contact_context_exact": true,
+    "all_metric_metadata_within_float_roundoff": true,
+    "full_metric_metadata_exact": false,
+    "roundoff_tolerance": 1e-12,
+    "roundoff_difference_count": 8,
+    "loaded_pixel_source_count": 32,
+    "pixel_source_hashes_match_worktree": true,
+    "strict_derived_json": true,
+    "collector_event_count": 3,
+    "historical_outputs_rewritten": false,
+    "accuracy_validated": false
+  },
+  "roundoff_differences": [
+    {
+      "path": "event1.brush_angle.measurement_evidence.reference_width_px",
+      "pixel": 82.59150432989978,
+      "replay": 82.59150432989976,
+      "absolute_difference": 1.4210854715202004e-14
+    },
+    {
+      "path": "event1.stance.measurement_evidence.reference_width_px",
+      "pixel": 82.59150432989978,
+      "replay": 82.59150432989976,
+      "absolute_difference": 1.4210854715202004e-14
+    },
+    {
+      "path": "event1.leg_drive.measurement_evidence.reference_width_px",
+      "pixel": 82.59150432989978,
+      "replay": 82.59150432989976,
+      "absolute_difference": 1.4210854715202004e-14
+    },
+    {
+      "path": "event1.drop_depth_ratio.measurement_evidence.reference_width_px",
+      "pixel": 82.59150432989978,
+      "replay": 82.59150432989976,
+      "absolute_difference": 1.4210854715202004e-14
+    },
+    {
+      "path": "event3.brush_angle.measurement_evidence.reference_width_px",
+      "pixel": 83.80576263329114,
+      "replay": 83.80576263329115,
+      "absolute_difference": 1.4210854715202004e-14
+    },
+    {
+      "path": "event3.stance.measurement_evidence.reference_width_px",
+      "pixel": 83.80576263329114,
+      "replay": 83.80576263329115,
+      "absolute_difference": 1.4210854715202004e-14
+    },
+    {
+      "path": "event3.leg_drive.measurement_evidence.reference_width_px",
+      "pixel": 83.80576263329114,
+      "replay": 83.80576263329115,
+      "absolute_difference": 1.4210854715202004e-14
+    },
+    {
+      "path": "event3.drop_depth_ratio.measurement_evidence.reference_width_px",
+      "pixel": 83.80576263329114,
+      "replay": 83.80576263329115,
+      "absolute_difference": 1.4210854715202004e-14
+    }
+  ],
+  "event_comparison": [
+    {
+      "event_id": 1,
+      "previous_signature": {
+        "event_id": 1,
+        "start_frame": 10,
+        "contact_frame": 26,
+        "peak_frame": 26,
+        "end_frame": 57,
+        "stroke_type": "Forehand",
+        "coach_codes": [
+          "unconfirmed_contact"
+        ]
+      },
+      "current_signature": {
+        "event_id": 1,
+        "start_frame": 10,
+        "contact_frame": 26,
+        "peak_frame": 26,
+        "end_frame": 57,
+        "stroke_type": "Forehand",
+        "coach_codes": [
+          "unconfirmed_contact"
+        ]
+      },
+      "previous_evidence_quality": 0.9309,
+      "current_evidence_quality": 0.9309,
+      "metric_changes": [
+        {
+          "metric": "contact_lateral_distance",
+          "changes": {
+            "confidence": {
+              "previous": 0.4884,
+              "current": 0.4881
+            }
+          }
+        }
+      ],
+      "new_rejection_count": 0,
+      "contact_status": "unknown",
+      "technical_score": null
+    },
+    {
+      "event_id": 2,
+      "previous_signature": {
+        "event_id": 2,
+        "start_frame": 89,
+        "contact_frame": 110,
+        "peak_frame": 106,
+        "end_frame": 137,
+        "stroke_type": "Two-Handed Backhand",
+        "coach_codes": [
+          "stroke_specific_rubric_unvalidated"
+        ]
+      },
+      "current_signature": {
+        "event_id": 2,
+        "start_frame": 89,
+        "contact_frame": 110,
+        "peak_frame": 106,
+        "end_frame": 137,
+        "stroke_type": "Two-Handed Backhand",
+        "coach_codes": [
+          "stroke_specific_rubric_unvalidated"
+        ]
+      },
+      "previous_evidence_quality": 0.6025,
+      "current_evidence_quality": 0.6025,
+      "metric_changes": [],
+      "new_rejection_count": 0,
+      "contact_status": "candidate",
+      "technical_score": null
+    },
+    {
+      "event_id": 3,
+      "previous_signature": {
+        "event_id": 3,
+        "start_frame": 186,
+        "contact_frame": 191,
+        "peak_frame": 195,
+        "end_frame": 226,
+        "stroke_type": "Two-Handed Backhand",
+        "coach_codes": [
+          "stroke_specific_rubric_unvalidated"
+        ]
+      },
+      "current_signature": {
+        "event_id": 3,
+        "start_frame": 186,
+        "contact_frame": 191,
+        "peak_frame": 195,
+        "end_frame": 226,
+        "stroke_type": "Two-Handed Backhand",
+        "coach_codes": [
+          "stroke_specific_rubric_unvalidated"
+        ]
+      },
+      "previous_evidence_quality": 0.7035,
+      "current_evidence_quality": 0.7035,
+      "metric_changes": [
+        {
+          "metric": "contact_lateral_distance",
+          "changes": {
+            "confidence": {
+              "previous": 0.764,
+              "current": 0.7636
+            }
+          }
+        }
+      ],
+      "new_rejection_count": 0,
+      "contact_status": "candidate",
+      "technical_score": null
+    }
+  ],
+  "control_service": {
+    "old_pid": 49175,
+    "new_pid": 53895,
+    "analysis_state": "stopped",
+    "analysis_pid": null,
+    "source_hash_count": 32,
+    "analysis_and_control_hashes_match": true,
+    "metric_contract": "tennis.metric-contract.v4",
+    "kinematic_policy": "kinematic_cross_view_2d_v7_finite_observations",
+    "observation_policy": "osd_observation_qualification_v6_finite_values",
+    "pose_measurement_policy": "fresh_front_pose_v2_finite_observations",
+    "log": "/tmp/tennis_control_finite_observation_20261005.log"
+  },
+  "browser_acceptance": {
+    "pixel_event_cards": 3,
+    "evidence_metric_labels": 9,
+    "bare_metric_percents": 0,
+    "review_zero_percents": 0,
+    "calibration_notice_visible": true,
+    "control_analysis_stopped": true,
+    "control_start_enabled": true,
+    "control_sse_connected": true,
+    "threshold_label": "最低证据参考阈值",
+    "inventory_verified": true,
+    "inventory_rows": 113,
+    "unclosed_rows": 68,
+    "closed_rows_in_unclosed_filter": 0,
+    "search_N18_rows": 1,
+    "report_links_http200": 6
+  },
+  "inventory_counts": {
+    "部分完成": 36,
+    "待独立或现场验证": 24,
+    "工程已完成": 45,
+    "待开发或继续优化": 8
+  },
+  "unclosed_count": 68,
+  "remaining": [
+    "T04：剩余候选消费者；分类/触球几何窗口、同分触球锚点及身体/轨迹窗口已通过工程验收",
+    "A01/B07/X07：球拍错框、漏检、跳变与来源资格",
+    "E02/B01/B02/X01/X02：独立连续帧、完整挥拍及球拍/主球标签",
+    "B03/C05/C08：坐标尺度、定位误差及位移阈值校准",
+    "B08/B09/E03/H03：同步高速、曝光及标定三维参考",
+    "D01–D09/X03/X12：独立教练标准、预定门槛与评分校准",
+    "G03–G07/G10/T01/T03：RTSP、长会话、显示与TTS现场验收"
+  ],
+  "historical_outputs_rewritten": false,
+  "automatic_technical_rules_approved": [],
+  "protected_worktree": {
+    "configs_unchanged": true,
+    "previous_deleted_paths_preserved": 51
+  }
+}

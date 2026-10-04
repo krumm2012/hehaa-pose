@@ -1,35 +1,35 @@
 {
-  "schema": "tennis.project-inventory.v6",
-  "generated_at": "2026-10-05T05:24:47.412444+08:00",
-  "git_head": "9adcd67c4d9199706fa6d6cdd0e85e909c85597f",
-  "scope": "107条已识别问题/验收覆盖记录（含交叉），39条工程已完成、68条未闭环；另7项可选扩展及1项旧入口。原94/99/103条历史快照保留。",
+  "schema": "tennis.project-inventory.v7",
+  "generated_at": "2026-10-05T06:11:15.410045+08:00",
+  "git_head": "8c56e96f3c0b4f553cdc203a5a05d2044f1b731b",
+  "scope": "113条已识别问题/验收覆盖记录（含交叉），45条工程已完成、68条未闭环；另7项可选扩展及1项旧入口。原107条及此前历史快照保留。",
   "all_items_complete": false,
   "accuracy_validated": false,
   "verification": {
-    "test_count": 545,
-    "passed": 545,
+    "test_count": 570,
+    "passed": 570,
     "failures": 0,
-    "log": "/tmp/tennis_classifier_source_full_20261005.log",
+    "log": "/tmp/tennis_finite_observation_full_20261005.log",
     "failure_item": null,
-    "service_pid": 49175,
+    "service_pid": 53895,
     "control_analysis_state": "stopped",
     "loaded_source_hashes_match": true,
-    "remote_head": "9adcd67c4d9199706fa6d6cdd0e85e909c85597f",
+    "remote_head": "8c56e96f3c0b4f553cdc203a5a05d2044f1b731b",
     "independent_plan_frames": 22,
     "independent_plan_points": 176,
     "independent_filled_points": 0,
     "automatic_scoring_validated": false,
     "repository_code_changed_in_this_inventory": true,
-    "iteration_engineering_changes": "9adcd67c4d9199706fa6d6cdd0e85e909c85597f",
-    "git_head": "9adcd67c4d9199706fa6d6cdd0e85e909c85597f",
+    "iteration_engineering_changes": "8c56e96f3c0b4f553cdc203a5a05d2044f1b731b",
+    "git_head": "8c56e96f3c0b4f553cdc203a5a05d2044f1b731b",
     "remote_matches_head": true,
-    "loaded_analysis_source_count": 29,
+    "loaded_analysis_source_count": 32,
     "independent_submission_confirmed": false,
     "open_github_issue_count": 0,
-    "test_semantics": "545项全量、17项新回归及250帧原像素验收。窗口提交速率不是传感器到屏幕延迟。",
+    "test_semantics": "570项全量、25项新回归及250帧原像素验收；窗口提交速率不是传感器到屏幕延迟。",
     "source_changes_in_this_inventory": true,
     "service_restarted_in_this_inventory": true,
-    "new_regressions": 17
+    "new_regressions": 25
   },
   "items": [
     {
@@ -81,8 +81,8 @@
       "priority": "P1",
       "problem": "补点、缓存点与真实观测的传播仍需全链路审查",
       "requirement": "确保显示、统计、评分不会把推断点升级为独立证据",
-      "status": "回归与新像素会话通过／历史受限",
-      "evidence_or_gap": "新ball-observation保留原模型分数、选择分数和源帧；缓存、叠加图形、未知来源和补点不进入触球测量；历史缺来源不可核验",
+      "status": "新鲜点、有限值和双视角解析工程通过／其他消费者及历史受限",
+      "evidence_or_gap": "有限坐标/分数与源身份检查、双视角Keypoint来源保留、异常容器及实际窗口拒绝原因通过；旧记录缺来源不可补成真值。",
       "state_group": "部分完成",
       "remaining": "新鲜源帧与来源资格已有；继续审查其他消费链路，旧数据缺来源维持不可核验。",
       "display_name": "补点、缓存点与真实观测的传播仍需全链路审查"
@@ -587,10 +587,10 @@
       "priority": "P2",
       "problem": "`N/A`、缺拍峰、未观测、未验证容易混淆",
       "requirement": "统一状态词：缺观测、资格不通过、先后未分辨、尚未校准",
-      "status": "缺失状态部分统一／启发式百分比仍需清晰标识",
+      "status": "证据百分比与复核提示口径通过／其他状态和现场待验收",
       "evidence_or_gap": "报告仍有82%、92%、0%等显示；并非经过校准的准确率或教学正确率。",
       "state_group": "部分完成",
-      "remaining": "统一缺观测、资格不通过、先后未分辨、未校准；明确每个百分比含义，避免被当成准确率。",
+      "remaining": "证据百分比已注明启发式且未校准，复核建议不再显示0%；继续统一其他缺观测/资格/先后难辨状态并完成现场验收。",
       "display_name": "`N/A`、缺拍峰、未观测、未验证容易混淆"
     },
     {
@@ -766,7 +766,7 @@
       "status": "关键契约已更新／历史文档继续整理",
       "evidence_or_gap": "新增EVENT_SOURCE_TIMING、ADR补充和最新验收记录；完整历史设计整理仍待完成。",
       "state_group": "部分完成",
-      "remaining": "当前分类、身体和像面测量策略声明已同步；继续标明README、旧路线图和需求基线的历史状态与测试数。",
+      "remaining": "v4数值资格、双视角来源和证据文案已记录；继续同步README、旧路线图、历史需求和现场验收结论。",
       "display_name": "当前文档与历史算法结论同步"
     },
     {
@@ -1217,6 +1217,78 @@
       "state_group": "工程已完成",
       "remaining": "动作、触球和教学准确性仍由独立标签及现场条目跟踪。",
       "display_name": "像面速度策略元数据仍使用过期名称"
+    },
+    {
+      "id": "N18",
+      "priority": "P1",
+      "problem": "无效关节坐标、分数生成假角度或无效位移",
+      "display_name": "无效关节坐标、分数生成假角度或无效位移",
+      "requirement": "有限坐标及[0,1]数值分数；归一化关节角；实际窗口保留逐点拒绝原因，显式零质量不借用存在比例。",
+      "state_group": "工程已完成",
+      "status": "工程回归、原像素重放与运行版本核验通过",
+      "evidence_or_gap": "570项全量及25项新回归；250帧/3次挥拍原像素、实际采集器、重放、页面和32个分析源码哈希核验；独立准确性未验证。",
+      "remaining": "本项工程范围通过；独立定位误差、分数校准、技术正确性和现场验收继续由原未闭环条目跟踪。",
+      "engineering_source_commit": "8c56e96f3c0b4f553cdc203a5a05d2044f1b731b"
+    },
+    {
+      "id": "N19",
+      "priority": "P1",
+      "problem": "非法球拍框、分数及兼容框借用进入测量与峰值",
+      "display_name": "非法球拍框、分数及兼容框借用进入测量与峰值",
+      "requirement": "检查正宽高、有限坐标、源身份及分数；非法值断开拍峰连续片段，不借兼容框提升资格。",
+      "state_group": "工程已完成",
+      "status": "工程回归、原像素重放与运行版本核验通过",
+      "evidence_or_gap": "570项全量及25项新回归；250帧/3次挥拍原像素、实际采集器、重放、页面和32个分析源码哈希核验；独立准确性未验证。",
+      "remaining": "本项工程范围通过；独立定位误差、分数校准、技术正确性和现场验收继续由原未闭环条目跟踪。",
+      "engineering_source_commit": "8c56e96f3c0b4f553cdc203a5a05d2044f1b731b"
+    },
+    {
+      "id": "N20",
+      "priority": "P1",
+      "problem": "双视角重新解析丢失观测、补点及来源标记",
+      "display_name": "双视角重新解析丢失观测、补点及来源标记",
+      "requirement": "保留Keypoint元数据；旧点、恢复点和低分点不能因包装而进入独立测量。",
+      "state_group": "工程已完成",
+      "status": "工程回归、原像素重放与运行版本核验通过",
+      "evidence_or_gap": "570项全量及25项新回归；250帧/3次挥拍原像素、实际采集器、重放、页面和32个分析源码哈希核验；独立准确性未验证。",
+      "remaining": "本项工程范围通过；独立定位误差、分数校准、技术正确性和现场验收继续由原未闭环条目跟踪。",
+      "engineering_source_commit": "8c56e96f3c0b4f553cdc203a5a05d2044f1b731b"
+    },
+    {
+      "id": "N21",
+      "priority": "P1",
+      "problem": "异常关节或球拍容器导致事件OSD汇总崩溃",
+      "display_name": "异常关节或球拍容器导致事件OSD汇总崩溃",
+      "requirement": "对声明容器/主记录做类型检查，缺值并传播记录级拒绝原因，不借旧骨架。",
+      "state_group": "工程已完成",
+      "status": "工程回归、原像素重放与运行版本核验通过",
+      "evidence_or_gap": "570项全量及25项新回归；250帧/3次挥拍原像素、实际采集器、重放、页面和32个分析源码哈希核验；独立准确性未验证。",
+      "remaining": "本项工程范围通过；独立定位误差、分数校准、技术正确性和现场验收继续由原未闭环条目跟踪。",
+      "engineering_source_commit": "8c56e96f3c0b4f553cdc203a5a05d2044f1b731b"
+    },
+    {
+      "id": "N22",
+      "priority": "P2",
+      "problem": "裸证据百分比与复核提示0%易误读为准确率或技术评分",
+      "display_name": "裸证据百分比与复核提示0%易误读为准确率或技术评分",
+      "requirement": "实时/独立报告和人工重算显示证据参考、未校准；复核提示不显示零评分；阈值不批准技术规则。",
+      "state_group": "工程已完成",
+      "status": "工程回归、原像素重放与运行版本核验通过",
+      "evidence_or_gap": "570项全量及25项新回归；250帧/3次挥拍原像素、实际采集器、重放、页面和32个分析源码哈希核验；独立准确性未验证。",
+      "remaining": "本项工程范围通过；独立定位误差、分数校准、技术正确性和现场验收继续由原未闭环条目跟踪。",
+      "engineering_source_commit": "8c56e96f3c0b4f553cdc203a5a05d2044f1b731b"
+    },
+    {
+      "id": "N23",
+      "priority": "P2",
+      "problem": "运行源码快照缺少原始观测门控、双视角模块及页面",
+      "display_name": "运行源码快照缺少原始观测门控、双视角模块及页面",
+      "requirement": "新增3个源码哈希及pose策略；重启后核对32个分析源码哈希和控制源码。",
+      "state_group": "工程已完成",
+      "status": "工程回归、原像素重放与运行版本核验通过",
+      "evidence_or_gap": "570项全量及25项新回归；250帧/3次挥拍原像素、实际采集器、重放、页面和32个分析源码哈希核验；独立准确性未验证。",
+      "remaining": "本项工程范围通过；独立定位误差、分数校准、技术正确性和现场验收继续由原未闭环条目跟踪。",
+      "engineering_source_commit": "8c56e96f3c0b4f553cdc203a5a05d2044f1b731b"
     }
   ],
   "optional_expansion": [
@@ -1259,7 +1331,7 @@
   "state_counts": {
     "部分完成": 36,
     "待独立或现场验证": 24,
-    "工程已完成": 39,
+    "工程已完成": 45,
     "待开发或继续优化": 8
   },
   "earlier_repairs": [
@@ -1289,15 +1361,15 @@
     }
   ],
   "evidence_refs": {
-    "engineering_acceptance": "validation/classifier_window_acceptance_20261005.json",
-    "test_log": "/tmp/tennis_classifier_source_full_20261005.log",
+    "engineering_acceptance": "validation/finite_observation_acceptance_20261005.json",
+    "test_log": "/tmp/tennis_finite_observation_full_20261005.log",
     "metric_contract": "docs/METRIC_CALCULATION_CONTRACT.md",
     "source_timing": "docs/EVENT_SOURCE_TIMING.md",
     "independent_labels": "data/analysis_results/kinematic_validation/independent_temporal_plan_v3_20261005/blank_labels.json",
-    "pixel_run": "data/analysis_results/kinematic_validation/classifier_window_release_20261005/report.html",
+    "pixel_run": "data/analysis_results/kinematic_validation/finite_observation_release_20261005/report.html",
     "motion_source_timing": "docs/MOTION_SOURCE_TIME.md",
-    "same_input_comparison": "data/analysis_results/kinematic_validation/classifier_window_delivery_20261005/comparison.json",
-    "previous_inventory": "data/analysis_results/kinematic_validation/body_window_delivery_20261005/inventory.json"
+    "same_input_comparison": "data/analysis_results/kinematic_validation/finite_observation_delivery_20261005/comparison.json",
+    "previous_inventory": "data/analysis_results/kinematic_validation/classifier_window_delivery_20261005/inventory.json"
   },
   "priority_order": [
     "T04：剩余候选消费者；分类/触球几何窗口、同分触球锚点及身体/轨迹窗口已通过工程验收",
