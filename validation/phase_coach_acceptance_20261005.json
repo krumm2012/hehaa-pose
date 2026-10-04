@@ -1,0 +1,200 @@
+{
+  "schema": "tennis.phase-coach-engineering-acceptance.v1",
+  "generated_at": "2026-10-05T03:12:19.983300+08:00",
+  "engineering_source_commit": "316e6654519b2660bca16a9db62eacef6d4b7abb",
+  "engineering_push_succeeded": true,
+  "all_items_complete": false,
+  "accuracy_validated": false,
+  "tests": {
+    "full_count": 494,
+    "passed": 494,
+    "log": "/tmp/tennis_phase_coach_release_20261005.log",
+    "synthetic_rule_approval_tests": "rule ranking only; production approved rules remain empty"
+  },
+  "code_sha256": {
+    "swing_event_analyzer.py": "6803bd894adb0126337b341ea33f9776e9f3e9d1028bc333831321c795607876",
+    "swing_biomechanics.py": "1e3a0d01b4025628d1d0131e5a351660fad61b8dcddc3feb48b3a5b7d9e5b1a0",
+    "kinematic_sequence.py": "e79c3ac65dbf6c41de44e602d07b16ca2d9c45a8faab774d7f1f15a74b435be3",
+    "osd_evidence.py": "049101062bd17bec889f87cdd7a65d241663b16553da8cdb14164ffb99ea22bc",
+    "realtime_swing_pipeline.py": "2b48983f34f8aadb1f7deaa0eafa67dd5b95a037621f665272b6183b00d3b590",
+    "swing_motion_features.py": "ddffea83a5c8c413b7cf354d76d145750f7119db549ca6f2f7cd35369fb2580c",
+    "analysis_metric_delivery.py": "1b3fd4c897d1224d8e20d5e16f2811bd398044f16a140d7bb28b8a5b1f2ca161",
+    "metric_contracts.py": "9f983ab3031b00f7e5c7c37edd53eb7f990828d9bfc07057cd523d6327272d44",
+    "ball_observation_contract.py": "eab2c82b7c303d879ce98003a1f742cdf33d639425862733f71a3b3127881525",
+    "frame_processor.py": "f55f126d1aeb3960522991d5aef0b2cc785826a5d710e6a64e2636931980351d",
+    "main_pipe.py": "84d4b84484c3d73d84bcfb562abca28a09f5eb50a58c0a2d951b99f3929b1485",
+    "yolo26n_unified_detector.py": "c2410762fdc5f314da5f154576619d899d6272ec0720a7e18fb581c8acbe9964",
+    "event_source_timing.py": "7cd841a3826e2082623c1aa7e72a3d912e0f5efab8b2ca63bb40cfa1a3359221",
+    "local_realtime_coach.py": "35167b842d68f5d8d36d4ddc8ffc5fdfe7699cb0001422589aded53501ea8024",
+    "swing_coach_data_collector.py": "f129d3e8913f65f669a7d07ee19c3147ab17ac021da0358dcec6b2bf7361ff77",
+    "coach_evidence_policy.py": "a4875c661f5f57384061b273fcf9411006b590097664a078d5ab644c0cf35e99",
+    "deepseek_evidence_view.py": "df4bb2452efcf1ba6ce0d654e950d1377c9ef0c81ad523c78a8cd4a82eb3bb2f",
+    "coach_rule_contract.py": "92401a367bf98f20927ee4a022e3214de960381f7975a233ed3688f47f251ecc",
+    "swing_report_builder.py": "28512d9862c10c5a46511d0ea8b39978cbd7c3f7c51bc66330c9b7dc26774334",
+    "analysis_provenance.py": "05a1a30b5fb4251f46b33d99b73edadcadfe6117c50fcbb92491fc733ee4015d",
+    "deepseek_realtime_coach.py": "4f5467ac7a48ef4ca8db16574a5e150addd2355b5980da5680fc62a7537cfba8",
+    "manual_review_workflow.py": "1a902000fbcb2de4a147acc79a4a0d5f2b37601162e022b3e166e345125f55e8"
+  },
+  "source_time": {
+    "policy": "event_phase_media_time_v1",
+    "default_fps_and_receipt_invariance": [
+      10,
+      25,
+      50,
+      240
+    ],
+    "original_replay_semantic_match": true,
+    "durations_seconds": [
+      1.79234375,
+      1.9160156249999991,
+      1.6085156250000008
+    ],
+    "missing_clocks_abstain": true,
+    "phase_durations_are_model_label_support": true,
+    "sensor_exposure_verified": false
+  },
+  "automatic_coaching": {
+    "policy": "automatic_coach_v2_validated_rules_only",
+    "approved_rules": [],
+    "external_flags_cannot_approve_rules": true,
+    "legacy_derived_labels_do_not_approve_rules": true,
+    "automatic_preparation_follow_through_racket_subscores_null": true,
+    "capture_review_guidance_retained": true,
+    "independently_validated_teaching_accuracy": false,
+    "real_DeepSeek_network_tested": false
+  },
+  "pixel_run": {
+    "root": "data/analysis_results/kinematic_validation/pixel_phase_coach_release_20261005",
+    "returncode": 0,
+    "frames": 250,
+    "events": 3,
+    "source_selection": {
+      "reference_source_sha256": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0",
+      "input_source_sha256": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0",
+      "explicit_alternate_input": false,
+      "relationship_to_reference": "same_input_bytes"
+    },
+    "integrity_valid": true,
+    "semantic_match": true,
+    "snapshot_source_frames": [
+      27,
+      110,
+      191
+    ],
+    "source_hashes_match_current_files": true,
+    "reader_receipt_fps": 25.1523332375053,
+    "output_submission_fps": 25.448785239541035,
+    "resource_semantics": "ps process-tree RSS sum can double-count shared memory; CPU is ps-reported average, not instantaneous utilization",
+    "display_semantics": "OpenCV window submission measured; no sensor-to-photon/exposure verification"
+  },
+  "browser_acceptance": {
+    "source_report": "phase_coach_iteration_20261005/source_report_verified.html",
+    "source_video_ready_state": 4,
+    "clicked_contact_source_frame": 110,
+    "recorded_media_pts_seconds": 4.3696875,
+    "observed_player_seconds": 4.369689,
+    "displayed_source_frame": 110,
+    "phase_cards": 3,
+    "actual_advice_rows": 3,
+    "foreign_scratch_images": 0,
+    "annotated_video_source_pts_mapping_refused_by_integration_test": true,
+    "decoded_exposure_verified": false,
+    "fresh_pixel_phase_cards": 3,
+    "fresh_pixel_snapshot_source_frames": [
+      27,
+      110,
+      191
+    ],
+    "control_SSE_connected": true
+  },
+  "control_service": {
+    "previous_pid": 9851,
+    "new_pid": 31173,
+    "analysis_state": "stopped",
+    "all_loaded_hashes_match": true,
+    "analysis_files": 22,
+    "control_source_matches": true,
+    "phase_time_policy": "event_phase_media_time_v1",
+    "automatic_coach_policy": "automatic_coach_v2_validated_rules_only",
+    "log": "/tmp/tennis_control_phase_coach_20261005.log",
+    "service_build": {
+      "schema": "tennis.control-service-build.v1",
+      "pid": 31173,
+      "loaded_at_unix_ns": 1791140868413074000,
+      "control_source_sha256": "639482532e6040417f0ab28e11532e0d39df6ecf886c019eacf49c68a1e6837f",
+      "hash_semantics": "source files at module import; restart required after source edits",
+      "analysis_build": {
+        "schema": "tennis.analysis-build.v1",
+        "code_sha256": {
+          "swing_event_analyzer.py": "6803bd894adb0126337b341ea33f9776e9f3e9d1028bc333831321c795607876",
+          "swing_biomechanics.py": "1e3a0d01b4025628d1d0131e5a351660fad61b8dcddc3feb48b3a5b7d9e5b1a0",
+          "kinematic_sequence.py": "e79c3ac65dbf6c41de44e602d07b16ca2d9c45a8faab774d7f1f15a74b435be3",
+          "osd_evidence.py": "049101062bd17bec889f87cdd7a65d241663b16553da8cdb14164ffb99ea22bc",
+          "realtime_swing_pipeline.py": "2b48983f34f8aadb1f7deaa0eafa67dd5b95a037621f665272b6183b00d3b590",
+          "swing_motion_features.py": "ddffea83a5c8c413b7cf354d76d145750f7119db549ca6f2f7cd35369fb2580c",
+          "analysis_metric_delivery.py": "1b3fd4c897d1224d8e20d5e16f2811bd398044f16a140d7bb28b8a5b1f2ca161",
+          "metric_contracts.py": "9f983ab3031b00f7e5c7c37edd53eb7f990828d9bfc07057cd523d6327272d44",
+          "ball_observation_contract.py": "eab2c82b7c303d879ce98003a1f742cdf33d639425862733f71a3b3127881525",
+          "frame_processor.py": "f55f126d1aeb3960522991d5aef0b2cc785826a5d710e6a64e2636931980351d",
+          "main_pipe.py": "84d4b84484c3d73d84bcfb562abca28a09f5eb50a58c0a2d951b99f3929b1485",
+          "yolo26n_unified_detector.py": "c2410762fdc5f314da5f154576619d899d6272ec0720a7e18fb581c8acbe9964",
+          "event_source_timing.py": "7cd841a3826e2082623c1aa7e72a3d912e0f5efab8b2ca63bb40cfa1a3359221",
+          "local_realtime_coach.py": "35167b842d68f5d8d36d4ddc8ffc5fdfe7699cb0001422589aded53501ea8024",
+          "swing_coach_data_collector.py": "f129d3e8913f65f669a7d07ee19c3147ab17ac021da0358dcec6b2bf7361ff77",
+          "coach_evidence_policy.py": "a4875c661f5f57384061b273fcf9411006b590097664a078d5ab644c0cf35e99",
+          "deepseek_evidence_view.py": "df4bb2452efcf1ba6ce0d654e950d1377c9ef0c81ad523c78a8cd4a82eb3bb2f",
+          "coach_rule_contract.py": "92401a367bf98f20927ee4a022e3214de960381f7975a233ed3688f47f251ecc",
+          "swing_report_builder.py": "28512d9862c10c5a46511d0ea8b39978cbd7c3f7c51bc66330c9b7dc26774334",
+          "analysis_provenance.py": "05a1a30b5fb4251f46b33d99b73edadcadfe6117c50fcbb92491fc733ee4015d",
+          "deepseek_realtime_coach.py": "4f5467ac7a48ef4ca8db16574a5e150addd2355b5980da5680fc62a7537cfba8",
+          "manual_review_workflow.py": "1a902000fbcb2de4a147acc79a4a0d5f2b37601162e022b3e166e345125f55e8"
+        },
+        "hash_semantics": "source files at provenance module import; restart required after source edits",
+        "metric_contract": "tennis.metric-contract.v2",
+        "kinematic_policy": "kinematic_cross_view_2d_v6_partial_pair_uncertainty",
+        "observation_policy": "osd_observation_qualification_v5_field_source_identity",
+        "scoring_policy": "single_view_visible_coach_v4_unvalidated_rubrics_blocked",
+        "window_policy": "realtime_separate_segmentation_and_measurement_context_v2",
+        "ball_observation_contract": "tennis.ball-observation.v1",
+        "phase_time_policy": "event_phase_media_time_v1",
+        "automatic_coach_policy": "automatic_coach_v2_validated_rules_only",
+        "historical_outputs_rewritten": false,
+        "accuracy_validated": false
+      }
+    },
+    "source_commit": "316e6654519b2660bca16a9db62eacef6d4b7abb"
+  },
+  "protected_worktree": {
+    "user_roi_configs_unchanged": true,
+    "existing_deleted_artifacts_unchanged": 51
+  },
+  "remaining": {
+    "traditional_frame_windows_and_segmentation_source_time_audit": true,
+    "original_derived_exposure_map": true,
+    "independent_labels": {
+      "requested_points": 176,
+      "filled_points": 0,
+      "confirmed": false
+    },
+    "true_3d_kinematics_validated": false,
+    "technical_scoring_calibrated": false,
+    "RTSP_TTS_field_acceptance": false
+  },
+  "additional_regressions": [
+    {
+      "id": "N02",
+      "problem": "独立报告跨视频目录猜测定格图，缺少实际截帧身份",
+      "status": "工程修复通过"
+    },
+    {
+      "id": "N03",
+      "problem": "单条Coach字典在报告中被逐字段名渲染",
+      "status": "工程修复通过"
+    },
+    {
+      "id": "N04",
+      "problem": "离线重放将现在减历史接收时刻作为实时延迟",
+      "status": "工程修复通过"
+    }
+  ]
+}

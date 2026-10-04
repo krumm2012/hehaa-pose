@@ -1,0 +1,1227 @@
+{
+  "schema": "tennis.project-inventory.v4",
+  "generated_at": "2026-10-05T04:16:31.871445+08:00",
+  "git_head": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d",
+  "scope": "当前99条已识别问题/验收覆盖记录，其中30条工程已完成、69条未闭环；相关条目存在交叉，不是99个独立缺陷。另7项可选扩展及1项旧兼容入口。原94条历史清单保留，新增5类已修工程缺陷。",
+  "all_items_complete": false,
+  "accuracy_validated": false,
+  "verification": {
+    "test_count": 509,
+    "passed": 509,
+    "failures": 0,
+    "log": "/tmp/tennis_motion_source_release_20261005.log",
+    "failure_item": null,
+    "service_pid": 41185,
+    "control_analysis_state": "stopped",
+    "loaded_source_hashes_match": true,
+    "remote_head": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d",
+    "independent_plan_frames": 22,
+    "independent_plan_points": 176,
+    "independent_filled_points": 0,
+    "automatic_scoring_validated": false,
+    "repository_code_changed_in_this_inventory": false,
+    "iteration_engineering_changes": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d",
+    "git_head": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d",
+    "remote_matches_head": true,
+    "loaded_analysis_source_count": 28,
+    "independent_submission_confirmed": false,
+    "open_github_issue_count": 0,
+    "test_semantics": "本次清单核验已完成509项全量日志与当前源码/运行哈希；不重复运行测试。",
+    "source_changes_in_this_inventory": false,
+    "service_restarted_in_this_inventory": false
+  },
+  "items": [
+    {
+      "id": "A01",
+      "priority": "P1",
+      "problem": "球拍轨迹仍有漏检、断点",
+      "requirement": "分别统计球拍检测覆盖率、错误框、轨迹断裂及触球附近漏检",
+      "status": "覆盖审计已有／漏检及跳变误差未验证",
+      "evidence_or_gap": "最新像面速度峰值约8129至11245px/s；框中心跳变与透视不能证明真实拍头速度，需要独立框/拍头标签。",
+      "state_group": "部分完成",
+      "remaining": "补独立球拍框/拍头标签，评估漏检、错框、轨迹断点与像素峰值离群；保留原观测用于审计。",
+      "display_name": "球拍轨迹仍有漏检、断点"
+    },
+    {
+      "id": "A02",
+      "priority": "P1",
+      "problem": "球拍框中心不是拍头",
+      "requirement": "明确定义框中心轨迹；若需要拍头速度，增加拍头、拍柄或拍面观测",
+      "status": "定义通过／扩展待证据",
+      "evidence_or_gap": "速度与轨迹明确框中心，不代替拍头；真实拍头需额外观测",
+      "state_group": "部分完成",
+      "remaining": "框中心含义已限制；真实拍头测量还需拍头、拍柄或拍面观测。",
+      "display_name": "球拍框中心不是拍头"
+    },
+    {
+      "id": "A03",
+      "priority": "P1",
+      "problem": "高模型分数不等于关节点准确",
+      "requirement": "按关节、视角、遮挡条件建立位置误差与分数校准",
+      "status": "待独立数据",
+      "evidence_or_gap": "按视角/关节位置误差与模型分数校准需要无模型提示标签",
+      "state_group": "待独立或现场验证",
+      "remaining": "按关节、视角、遮挡条件建立位置误差与分数校准",
+      "display_name": "高模型分数不等于关节点准确"
+    },
+    {
+      "id": "A04",
+      "priority": "P1",
+      "problem": "背面容易受前景人物、镜中人物及侧身影响",
+      "requirement": "验证人物身份连续性、误选率和重捕获行为",
+      "status": "回归通过／实测待证据",
+      "evidence_or_gap": "镜区、躯干尺度、重捕获和连续性反例通过；跨球员误选率未知",
+      "state_group": "部分完成",
+      "remaining": "人物选择工程回归已通过；验证跨球员、侧身、遮挡下的身份连续性、误选和重捕获。",
+      "display_name": "背面容易受前景人物、镜中人物及侧身影响"
+    },
+    {
+      "id": "A05",
+      "priority": "P1",
+      "problem": "补点、缓存点与真实观测的传播仍需全链路审查",
+      "requirement": "确保显示、统计、评分不会把推断点升级为独立证据",
+      "status": "回归与新像素会话通过／历史受限",
+      "evidence_or_gap": "新ball-observation保留原模型分数、选择分数和源帧；缓存、叠加图形、未知来源和补点不进入触球测量；历史缺来源不可核验",
+      "state_group": "部分完成",
+      "remaining": "新鲜源帧与来源资格已有；继续审查其他消费链路，旧数据缺来源维持不可核验。",
+      "display_name": "补点、缓存点与真实观测的传播仍需全链路审查"
+    },
+    {
+      "id": "A06",
+      "priority": "P1",
+      "problem": "双视角并不等于已标定三维",
+      "requirement": "实测相机、畸变和镜面几何后，才能验证空间测量",
+      "status": "待硬件标定",
+      "evidence_or_gap": "内参、畸变、镜面平面/相机外参与独立空间参考",
+      "state_group": "待独立或现场验证",
+      "remaining": "实测相机、畸变和镜面几何后，才能验证空间测量",
+      "display_name": "双视角并不等于已标定三维"
+    },
+    {
+      "id": "A07",
+      "priority": "P2",
+      "problem": "镜像左右与惯用手规则存在机位依赖",
+      "requirement": "建立跨机位、左／右手的明确契约和回归样本",
+      "status": "待采集验收",
+      "evidence_or_gap": "左右语义及惯用手保持既有契约；需跨机位左右手独立标签",
+      "state_group": "待独立或现场验证",
+      "remaining": "建立跨机位、左／右手的明确契约和回归样本",
+      "display_name": "镜像左右与惯用手规则存在机位依赖"
+    },
+    {
+      "id": "A08",
+      "priority": "P2",
+      "problem": "输入分辨率改变会影响观测覆盖",
+      "requirement": "对速度、覆盖率、定位偏移联合验收，不能只比较平均偏移",
+      "status": "稳定性审计通过／准确性未知",
+      "evidence_or_gap": "已有250帧原/半分辨率观测审计；需定位参考与推理吞吐联合验收",
+      "state_group": "部分完成",
+      "remaining": "对速度、覆盖率、定位偏移联合验收，不能只比较平均偏移",
+      "display_name": "输入分辨率改变会影响观测覆盖"
+    },
+    {
+      "id": "B01",
+      "priority": "P1",
+      "problem": "触球候选仍可能未确认",
+      "requirement": "标注触球时间区间，验证球—拍接近证据、峰值回退及误差",
+      "status": "来源契约通过／待独立触球标签",
+      "evidence_or_gap": "球拍接近仅用新鲜原始观测；180/220px仍是未校准候选门槛；71帧合格球观测不代表触球已确认",
+      "state_group": "部分完成",
+      "remaining": "标注触球时间区间，验证球—拍接近证据、峰值回退及误差",
+      "display_name": "触球候选仍可能未确认"
+    },
+    {
+      "id": "B02",
+      "priority": "P1",
+      "problem": "事件分段边界尚无充分独立验证",
+      "requirement": "测漏检、误检、起止帧误差及不同动作类型的表现",
+      "status": "待独立完整时间轴",
+      "evidence_or_gap": "事件分段工程重放一致；Precision/Recall、起止误差未知",
+      "state_group": "待独立或现场验证",
+      "remaining": "测漏检、误检、起止帧误差及不同动作类型的表现",
+      "display_name": "事件分段边界尚无充分独立验证"
+    },
+    {
+      "id": "B03",
+      "priority": "P1",
+      "problem": "肩髋角度仍使用 12 px 线长门槛",
+      "requirement": "建立尺度与定位误差相关的资格规则，验证后再替换",
+      "status": "限制保留",
+      "evidence_or_gap": "12px肩髋线启发式不调到理想答案；替换需定位误差标定",
+      "state_group": "部分完成",
+      "remaining": "建立尺度与定位误差相关的资格规则，验证后再替换",
+      "display_name": "肩髋角度仍使用 12 px 线长门槛"
+    },
+    {
+      "id": "B04",
+      "priority": "P1",
+      "problem": "峰值结论对门槛、窗口敏感",
+      "requirement": "固定协议，检验小幅参数变化是否改变有效视角和峰值先后",
+      "status": "敏感性已揭示／稳定协议待验收",
+      "evidence_or_gap": "6/12/24px实验保留；需预定门槛与未见样本",
+      "state_group": "部分完成",
+      "remaining": "固定协议，检验小幅参数变化是否改变有效视角和峰值先后",
+      "display_name": "峰值结论对门槛、窗口敏感"
+    },
+    {
+      "id": "B05",
+      "priority": "P1",
+      "problem": "多峰、宽峰和边界峰无法唯一定位",
+      "requirement": "分开保存候选峰、拒绝原因和时间范围，验证选择规则",
+      "status": "回归通过／误差待校准",
+      "evidence_or_gap": "拒绝多峰、宽峰、边界峰；保存峰区间与采样范围",
+      "state_group": "部分完成",
+      "remaining": "多峰、宽峰、边界峰拒绝与范围已保存；用独立峰值标签验证拒绝、选峰和时间误差。",
+      "display_name": "多峰、宽峰和边界峰无法唯一定位"
+    },
+    {
+      "id": "B06",
+      "priority": "P1",
+      "problem": "双视角可能冲突，或仅单视角可用",
+      "requirement": "保留各视角结果；验证融合条件，不能强行平均得到答案",
+      "status": "回归与冻结重放通过",
+      "evidence_or_gap": "各视角结果保留；第1拍冲突不平均，第3拍证据不足",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "双视角各自结果、冲突与单视角降级"
+    },
+    {
+      "id": "B07",
+      "priority": "P1",
+      "problem": "球拍峰值经常缺失",
+      "requirement": "完善球拍轨迹，再评估肩—拍时序；不能以手腕自动替代拍头",
+      "status": "观测缺口保留",
+      "evidence_or_gap": "触球窗口补足后第三拍仍覆盖不足；不以手腕替代拍头",
+      "state_group": "待开发或继续优化",
+      "remaining": "完善球拍轨迹，再评估肩—拍时序；不能以手腕自动替代拍头",
+      "display_name": "球拍峰值经常缺失"
+    },
+    {
+      "id": "B08",
+      "priority": "P1",
+      "problem": "约 25 fps 的时间分辨率有限",
+      "requirement": "与独立高时间分辨率参考比较；不能靠插帧制造真实精度",
+      "status": "待高速同步参考",
+      "evidence_or_gap": "25fps采样范围不是统计CI；需真实200–240Hz曝光与同步参考",
+      "state_group": "待独立或现场验证",
+      "remaining": "与独立高时间分辨率参考比较；不能靠插帧制造真实精度",
+      "display_name": "约 25 fps 的时间分辨率有限"
+    },
+    {
+      "id": "B09",
+      "priority": "P1",
+      "problem": "当前测的是像面峰值先后",
+      "requirement": "验证真实骨盆、躯干旋转需要独立三维参考",
+      "status": "待独立三维",
+      "evidence_or_gap": "像面峰值不能证明轴向运动；需身体段定义与同步标定三维",
+      "state_group": "待独立或现场验证",
+      "remaining": "验证真实骨盆、躯干旋转需要独立三维参考",
+      "display_name": "当前测的是像面峰值先后"
+    },
+    {
+      "id": "B10",
+      "priority": "P1",
+      "problem": "“动力链”容易被理解为力量传递",
+      "requirement": "明确区分运动学时序与力、力矩、功率；视频时序不能直接证明能量传递",
+      "status": "含义限制通过",
+      "evidence_or_gap": "保持像面运动学时序定义；不宣称力/力矩/能量传递",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "动力链二维时序的含义限制"
+    },
+    {
+      "id": "C01",
+      "priority": "P1",
+      "problem": "肩宽角度代理被误解为真实转肩角",
+      "requirement": "统一名称与解释；无标定时不作为真实转体评分",
+      "status": "命名与评分禁用通过／测量待验证",
+      "evidence_or_gap": "肩宽角度代理；不作为真实转体评分",
+      "state_group": "部分完成",
+      "remaining": "代理命名与评分限制已有；验证它作为二维观测量的稳定性及测量误差。",
+      "display_name": "肩宽角度代理被误解为真实转肩角"
+    },
+    {
+      "id": "C02",
+      "priority": "P1",
+      "problem": "正背肩宽比不能证明肩胛收缩",
+      "requirement": "去除解剖含义过强的命名和规则",
+      "status": "命名与评分禁用通过",
+      "evidence_or_gap": "正背肩宽比；修正遗漏的实时报告肩胛文案",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "正背肩宽比命名与评分限制"
+    },
+    {
+      "id": "C03",
+      "priority": "P1",
+      "problem": "手腕横向偏移不能代表真实引拍深度",
+      "requirement": "限定为像面偏移参考，验证更合适的引拍指标",
+      "status": "定义限制通过／更合适指标待研究",
+      "evidence_or_gap": "镜面手腕偏移比；不作为真实深度",
+      "state_group": "部分完成",
+      "remaining": "像面偏移定义已有；验证更合适且可观测的引拍指标。",
+      "display_name": "手腕横向偏移不能代表真实引拍深度"
+    },
+    {
+      "id": "C04",
+      "priority": "P1",
+      "problem": "球拍“上升比”不是刷球、旋转或下潜能力",
+      "requirement": "统一公式、方向和名称，避免推导球旋转结论",
+      "status": "回归通过",
+      "evidence_or_gap": "像面轨迹与最低点到触球候选上升比；合格0保留，不推导旋转",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "像面球拍轨迹、上升比和合格零值"
+    },
+    {
+      "id": "C05",
+      "priority": "P1",
+      "problem": "髋上移门槛是身体宽度 4% 的启发式",
+      "requirement": "用定位误差与真实样本校准；小位移不等于蹬地不足",
+      "status": "限制保留／待误差标定",
+      "evidence_or_gap": "4%宽度门槛明示启发式，不推断蹬地力量",
+      "state_group": "部分完成",
+      "remaining": "用定位误差与真实样本校准；小位移不等于蹬地不足",
+      "display_name": "髋上移门槛是身体宽度 4% 的启发式"
+    },
+    {
+      "id": "C06",
+      "priority": "P1",
+      "problem": "脚踝连线倾角不等于场地站姿",
+      "requirement": "加入场地坐标参照，才能可靠区分开放／关闭站姿",
+      "status": "限制保留／待场地标定",
+      "evidence_or_gap": "足部连线像面倾角；开放/关闭站姿未知",
+      "state_group": "部分完成",
+      "remaining": "加入场地坐标参照，才能可靠区分开放／关闭站姿",
+      "display_name": "脚踝连线倾角不等于场地站姿"
+    },
+    {
+      "id": "C07",
+      "priority": "P1",
+      "problem": "身体中心像面移动不等于重心转移或平衡",
+      "requirement": "保留观测量，另行验证教学解释",
+      "status": "定义限制通过／教学待验证",
+      "evidence_or_gap": "躯干中心像面位移，不等于重心/平衡",
+      "state_group": "部分完成",
+      "remaining": "保留观测量，另行验证教学解释",
+      "display_name": "身体中心像面移动不等于重心转移或平衡"
+    },
+    {
+      "id": "C08",
+      "priority": "P1",
+      "problem": "身体宽度随侧身变化，归一化可能不稳定",
+      "requirement": "验证稳定基线、冻结尺度和无可靠基线时的降级行为",
+      "status": "部分通过／尺度待校准",
+      "evidence_or_gap": "ROI还原与实验基线保留；侧身宽度稳定性仍需独立误差参考",
+      "state_group": "部分完成",
+      "remaining": "验证稳定基线、冻结尺度和无可靠基线时的降级行为",
+      "display_name": "身体宽度随侧身变化，归一化可能不稳定"
+    },
+    {
+      "id": "C09",
+      "priority": "P2",
+      "problem": "部分窗口按帧、部分按秒",
+      "requirement": "审查剩余指标的窗口契约，避免同名指标口径不一致",
+      "status": "候选源时间已迁移／传统指标窗口未全部完成",
+      "evidence_or_gap": "运动候选、短缺口插值、平滑、触球质量窗与实时等待已用合格PTS；肩髋角、引拍、屈膝、触球位置、身体位移和collector部分球轨迹仍有帧窗口。",
+      "state_group": "部分完成",
+      "remaining": "继续逐项迁移传统身体指标和collector球轨迹窗口，固定公式、单位、坐标、时间范围及缺失理由。",
+      "display_name": "部分窗口按帧、部分按秒"
+    },
+    {
+      "id": "C10",
+      "priority": "P2",
+      "problem": "原始值、合格值、缺失原因分散在不同结构",
+      "requirement": "统一字段级有效性、来源帧和缺失原因，并贯穿 JSON、页面和 OSD",
+      "status": "字段传播回归通过",
+      "evidence_or_gap": "canonical上升比、字段资格、源帧、缺失原因到事件JSON/控制页/OSD/报告",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "指标值、来源、资格、缺失原因的字段传播"
+    },
+    {
+      "id": "D01",
+      "priority": "P1",
+      "problem": "准备与引拍",
+      "requirement": "定义“及时、完整”的可观察标准，建立逐拍教练评分样本",
+      "status": "待教练标注",
+      "evidence_or_gap": "按准备与引拍描述逐拍独立评分",
+      "state_group": "待独立或现场验证",
+      "remaining": "定义“及时、完整”的可观察标准，建立逐拍教练评分样本",
+      "display_name": "准备与引拍"
+    },
+    {
+      "id": "D02",
+      "priority": "P1",
+      "problem": "移动到位",
+      "requirement": "结合来球、场地位置和击球空间，而非仅使用像面位移",
+      "status": "待教练与场地证据",
+      "evidence_or_gap": "来球、移动、场地位置和击球空间参考",
+      "state_group": "待独立或现场验证",
+      "remaining": "结合来球、场地位置和击球空间，而非仅使用像面位移",
+      "display_name": "移动到位"
+    },
+    {
+      "id": "D03",
+      "priority": "P1",
+      "problem": "击球位置",
+      "requirement": "验证触球时刻与球、拍、身体的位置关系",
+      "status": "待触球与教练参考",
+      "evidence_or_gap": "独立触球区间、球拍身体位置及击球位置评分",
+      "state_group": "待独立或现场验证",
+      "remaining": "验证触球时刻与球、拍、身体的位置关系",
+      "display_name": "击球位置"
+    },
+    {
+      "id": "D04",
+      "priority": "P1",
+      "problem": "身体协调",
+      "requirement": "验证连续性、平衡与时序证据，不能直接把 Δt 映射成分数",
+      "status": "待教练与测量验证",
+      "evidence_or_gap": "连续性/平衡/时序不能直接映射分数",
+      "state_group": "待独立或现场验证",
+      "remaining": "验证连续性、平衡与时序证据，不能直接把 Δt 映射成分数",
+      "display_name": "身体协调"
+    },
+    {
+      "id": "D05",
+      "priority": "P1",
+      "problem": "随挥与回位",
+      "requirement": "纳入触球后的完整阶段，以及下一次来球或训练节奏",
+      "status": "待完整阶段与教练参考",
+      "evidence_or_gap": "随挥回位区间、下次来球、练习节奏",
+      "state_group": "待独立或现场验证",
+      "remaining": "纳入触球后的完整阶段，以及下一次来球或训练节奏",
+      "display_name": "随挥与回位"
+    },
+    {
+      "id": "D06",
+      "priority": "P1",
+      "problem": "正手、单反、双反、发球不能共用一套标准",
+      "requirement": "按动作类型建立并验证评分规则",
+      "status": "待分动作标准验证",
+      "evidence_or_gap": "正手、单反、双反、发球分别建立标准；未开放曲线",
+      "state_group": "待独立或现场验证",
+      "remaining": "按动作类型建立并验证评分规则",
+      "display_name": "正手、单反、双反、发球不能共用一套标准"
+    },
+    {
+      "id": "D07",
+      "priority": "P1",
+      "problem": "缺少“观测指标—教练评分”的对应样本",
+      "requirement": "关节点复核之外，还需独立技术等级标注",
+      "status": "待独立技术等级样本",
+      "evidence_or_gap": "坐标标签与技术等级标签分别采集",
+      "state_group": "待独立或现场验证",
+      "remaining": "关节点复核之外，还需独立技术等级标注",
+      "display_name": "缺少“观测指标—教练评分”的对应样本"
+    },
+    {
+      "id": "D08",
+      "priority": "P1",
+      "problem": "缺少评分误差与一致性评估",
+      "requirement": "测模型与教练、教练之间的分歧和重复性",
+      "status": "待双教练一致性样本",
+      "evidence_or_gap": "重复评分、分歧与评分误差",
+      "state_group": "待独立或现场验证",
+      "remaining": "测模型与教练、教练之间的分歧和重复性",
+      "display_name": "缺少评分误差与一致性评估"
+    },
+    {
+      "id": "D09",
+      "priority": "P2",
+      "problem": "评分覆盖率、证据质量、技术水平容易混淆",
+      "requirement": "分开显示，不能让“看得清”变成“打得好”",
+      "status": "展示分离通过／准确性待证据",
+      "evidence_or_gap": "观测覆盖、证据质量、技术评分分别保留",
+      "state_group": "部分完成",
+      "remaining": "展示已区分观测覆盖、证据质量和技术评分；完成各自校准及真实样本验证。",
+      "display_name": "评分覆盖率、证据质量、技术水平容易混淆"
+    },
+    {
+      "id": "D10",
+      "priority": "P2",
+      "problem": "缺少按评分维度展示的阻断清单",
+      "requirement": "页面直接说明每项分数缺触球、缺轨迹，还是规则未验证",
+      "status": "工程通过",
+      "evidence_or_gap": "控制API/JSON/实时报告按五维给出规则未验证、触球未确认和缺观测；诊断缺项不是评分规则",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "五维评分阻断原因清单"
+    },
+    {
+      "id": "E01",
+      "priority": "P1",
+      "problem": "辅助复核与独立真值来源隔离",
+      "requirement": "保留用途边界，不能当独立准确率真值",
+      "status": "来源边界通过",
+      "evidence_or_gap": "辅助schema及改名后仍含模型来源的文件被独立evaluator拒绝；已接收原件保留",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "辅助复核与独立真值的来源隔离"
+    },
+    {
+      "id": "E02",
+      "priority": "P1",
+      "problem": "缺少独立连续帧关节参考",
+      "requirement": "不看模型点标注；记录遮挡、左右语义及标注不确定性",
+      "status": "工具通过／独立标签待提供",
+      "evidence_or_gap": "v3无模型提示22帧、双视角四关节176项；空稿仍未确认。",
+      "state_group": "部分完成",
+      "remaining": "完成22连续帧×2视角×4关节共176项无模型提示的独立标注，包含不可辨认与不确定性。",
+      "display_name": "缺少独立连续帧关节参考"
+    },
+    {
+      "id": "E03",
+      "priority": "P1",
+      "problem": "缺少可靠的同步三维参考",
+      "requirement": "核验来源、标定、时间映射和身体段定义",
+      "status": "待独立同步三维",
+      "evidence_or_gap": "来源/同步/标定/解剖定义缺一不可",
+      "state_group": "待独立或现场验证",
+      "remaining": "核验来源、标定、时间映射和身体段定义",
+      "display_name": "缺少可靠的同步三维参考"
+    },
+    {
+      "id": "E04",
+      "priority": "P1",
+      "problem": "数据主要集中于少量视频与机位",
+      "requirement": "扩展球员、日期、动作、拍摄方向和遮挡条件",
+      "status": "待跨球员采集",
+      "evidence_or_gap": "跨球员、采集日、机位、动作与遮挡",
+      "state_group": "待独立或现场验证",
+      "remaining": "扩展球员、日期、动作、拍摄方向和遮挡条件",
+      "display_name": "数据主要集中于少量视频与机位"
+    },
+    {
+      "id": "E05",
+      "priority": "P1",
+      "problem": "缺少严格开发／校准／测试分组",
+      "requirement": "同一挥拍的帧和双视角必须同组，避免数据泄漏",
+      "status": "协议记录／分组数据待提供",
+      "evidence_or_gap": "同一挥拍全部帧和双视角同组；当前单片段不能建立独立测试集",
+      "state_group": "待独立或现场验证",
+      "remaining": "同一挥拍的帧和双视角必须同组，避免数据泄漏",
+      "display_name": "缺少严格开发／校准／测试分组"
+    },
+    {
+      "id": "E06",
+      "priority": "P1",
+      "problem": "缺少完整分层验收",
+      "requirement": "位置→角度→角速度→峰值→技术评分逐层评估",
+      "status": "协议记录／独立分层验证未通过",
+      "evidence_or_gap": "位置→角度→速度→峰值→技术等级逐层评估",
+      "state_group": "待独立或现场验证",
+      "remaining": "位置→角度→角速度→峰值→技术评分逐层评估",
+      "display_name": "缺少完整分层验收"
+    },
+    {
+      "id": "E07",
+      "priority": "P2",
+      "problem": "标注草稿自动保存与导入续标",
+      "requirement": "增加草稿恢复、版本记录和防误覆盖",
+      "status": "工程与浏览器通过",
+      "evidence_or_gap": "自动保存/恢复/导入源校验/20修订导出/模式隔离/生成器拒绝覆盖",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "标注草稿自动保存、恢复和导入续标"
+    },
+    {
+      "id": "E08",
+      "priority": "P2",
+      "problem": "连续帧逐点标注操作成本高",
+      "requirement": "增加快捷键、前后帧切换、进度和漏标定位",
+      "status": "工程与浏览器通过",
+      "evidence_or_gap": "前后帧、左右键、下一未填项、进度；不自动猜点",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "连续帧标注快捷键、进度和漏标定位"
+    },
+    {
+      "id": "E09",
+      "priority": "P2",
+      "problem": "批量确认与逐点检查的证据强度不同",
+      "requirement": "保留确认方式、修改记录和原始建议，汇总时区分",
+      "status": "工程与浏览器通过",
+      "evidence_or_gap": "原建议不变；单点/批量/人工修改来源与修订历史保留，辅助来源不升级",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "批量/逐点/修改来源与修订历史"
+    },
+    {
+      "id": "E10",
+      "priority": "P2",
+      "problem": "双人标注分歧仲裁",
+      "requirement": "增加双人对照、差异定位和最终确认记录",
+      "status": "工程与浏览器通过；真实双人原稿待提供",
+      "evidence_or_gap": "明确人工裁决、计划/原稿哈希、草稿恢复、修改撤销确认与最终评估通过；实际UI验收为合成样本，不证明真实误差。",
+      "state_group": "部分完成",
+      "remaining": "仲裁工具已完成；提供真实双人独立原稿，评估分歧并完成最终裁决。",
+      "display_name": "双人标注分歧仲裁"
+    },
+    {
+      "id": "F01",
+      "priority": "P2",
+      "problem": "统计行数与独立指标种类区分",
+      "requirement": "改为观测统计数量，并展示去重后的指标种类",
+      "status": "工程通过",
+      "evidence_or_gap": "显示统计行数/去重指标种类；不宣称独立评分数",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "统计行数与去重指标种类区分"
+    },
+    {
+      "id": "F02",
+      "priority": "P2",
+      "problem": "底部 OSD、触球卡片、事件统计口径不同",
+      "requirement": "明确标注“当前帧／触球窗口／事件窗口”",
+      "status": "窗口标注及源结束提示通过／全OSD待现场对照",
+      "evidence_or_gap": "最新报告显示媒体时长、触球定格源帧；EOF未完成等待候选会提示复核；当前帧/触球窗/事件窗仍须逐项对照。",
+      "state_group": "部分完成",
+      "remaining": "统一并现场检查所有OSD、触球卡片和事件统计的窗口；保留源结束动作不完整提示。",
+      "display_name": "底部 OSD、触球卡片、事件统计口径不同"
+    },
+    {
+      "id": "F03",
+      "priority": "P2",
+      "problem": "`N/A`、缺拍峰、未观测、未验证容易混淆",
+      "requirement": "统一状态词：缺观测、资格不通过、先后未分辨、尚未校准",
+      "status": "缺失状态部分统一／启发式百分比仍需清晰标识",
+      "evidence_or_gap": "报告仍有82%、92%、0%等显示；并非经过校准的准确率或教学正确率。",
+      "state_group": "部分完成",
+      "remaining": "统一缺观测、资格不通过、先后未分辨、未校准；明确每个百分比含义，避免被当成准确率。",
+      "display_name": "`N/A`、缺拍峰、未观测、未验证容易混淆"
+    },
+    {
+      "id": "F04",
+      "priority": "P2",
+      "problem": "英文代理名称不容易理解",
+      "requirement": "提供准确中文名称与公式说明",
+      "status": "当前页面与实时报告通过",
+      "evidence_or_gap": "中文投影定义与公式契约；仍保留旧内部字段以兼容历史",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "中文代理名称与公式说明"
+    },
+    {
+      "id": "F05",
+      "priority": "P2",
+      "problem": "历史报告与新算法版本标识",
+      "requirement": "增加算法版本、生成时间、新版本可重算提示",
+      "status": "工程通过",
+      "evidence_or_gap": "新JSON保存analysis_build、策略、源文件哈希、生成时间；报告历史需重算提示",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "历史报告的算法版本与重算提示"
+    },
+    {
+      "id": "F06",
+      "priority": "P2",
+      "problem": "修复后的对比报告与控制台分散",
+      "requirement": "提供同一事件“原始／重算”入口与差异说明",
+      "status": "工程通过",
+      "evidence_or_gap": "同源原始/重算比较页，差异JSON，原记录不变",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "同源原始/重算对照入口"
+    },
+    {
+      "id": "F07",
+      "priority": "P2",
+      "problem": "“有数值”仍容易被误解为“可评分”",
+      "requirement": "显式分开观测值、证据资格、评分资格",
+      "status": "工程通过",
+      "evidence_or_gap": "观测数值/显示资格/准确性未验证/评分资格分别记录",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "观测、显示资格与评分资格分离"
+    },
+    {
+      "id": "F08",
+      "priority": "P2",
+      "problem": "全部复核容易被理解为自动证明正确",
+      "requirement": "保留批量接受来源，明确尚未填写项和辅助复核属性",
+      "status": "工程与浏览器通过",
+      "evidence_or_gap": "批量仅确认已有建议；缺失不填；修改撤销全局确认，单独辅助模式",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "全部复核不填缺失项、保留辅助属性"
+    },
+    {
+      "id": "G01",
+      "priority": "P1",
+      "problem": "当前工作区全量回归未通过",
+      "requirement": "隔离本机机位配置与测试夹具，核验视频检测测试，恢复可重复的全绿结果",
+      "status": "509项全量回归通过",
+      "evidence_or_gap": "最新工程源2d3ea5b对应509项测试通过；新增15项源时间回归；本次清单仅核验既有日志与源码哈希。",
+      "state_group": "工程已完成",
+      "remaining": "工程回归通过；独立准确性与现场验证由其他条目跟踪。",
+      "display_name": "测试配置隔离与当前全量回归"
+    },
+    {
+      "id": "G02",
+      "priority": "P2",
+      "problem": "原像素会话与事件语义重放",
+      "requirement": "补新会话端到端验收；不能用上一版 433 项通过替代当前全量验收",
+      "status": "原像素与同版本语义重放通过",
+      "evidence_or_gap": "冻结原片250帧、3候选事件，新制品完整且语义重放一致；旧制品完整，但新策略结果不同，历史保持不变。",
+      "state_group": "工程已完成",
+      "remaining": "同版本重放通过；新旧候选锚点差异需要独立标签判定，不能据此声称准确率提升。",
+      "display_name": "原像素会话、制品完整性与语义重放"
+    },
+    {
+      "id": "G03",
+      "priority": "P2",
+      "problem": "真实实时能力缺少完整统一基线",
+      "requirement": "记录输入、处理、显示帧率，丢帧、延迟分位数和资源占用",
+      "status": "文件提交基线通过／现场端到端待验收",
+      "evidence_or_gap": "本轮250帧读入25.17fps、窗口提交25.42fps；全流程20.557秒含初始化，不是传感器到显示延迟。",
+      "state_group": "部分完成",
+      "remaining": "补实际显示帧率、设备曝光、队列丢帧、长会话及端到端延迟验收。",
+      "display_name": "真实实时能力缺少完整统一基线"
+    },
+    {
+      "id": "G04",
+      "priority": "P2",
+      "problem": "补足上下文后的长会话代价未充分验证",
+      "requirement": "检查缓存上限、重复扫描和报告生成耗时",
+      "status": "有界原始缓存与扫描基准通过／历史增长待长会话",
+      "evidence_or_gap": "5000空观测帧缓存200；完整事件历史与报告随事件数增长未宣称恒定",
+      "state_group": "部分完成",
+      "remaining": "检查缓存上限、重复扫描和报告生成耗时",
+      "display_name": "补足上下文后的长会话代价未充分验证"
+    },
+    {
+      "id": "G05",
+      "priority": "P2",
+      "problem": "RTSP 长会话、断流恢复及停止流程待现场验收",
+      "requirement": "固定硬件与配置，进行长时间、故障和恢复测试",
+      "status": "待现场硬件验收",
+      "evidence_or_gap": "真实RTSP长时、断流、重连、停机测试；流媒体时间暂无设备时钟",
+      "state_group": "待独立或现场验证",
+      "remaining": "固定硬件与配置，进行长时间、故障和恢复测试",
+      "display_name": "RTSP 长会话、断流恢复及停止流程待现场验收"
+    },
+    {
+      "id": "G06",
+      "priority": "P2",
+      "problem": "视频模型运行环境未完整锁定",
+      "requirement": "固定依赖、模型、后端及版本，验证新环境复现",
+      "status": "运行环境记录通过／新环境待复现",
+      "evidence_or_gap": "两个venv pip freeze、模型后端、源视频/代码/制品SHA保存；全新环境复现仍待验收",
+      "state_group": "部分完成",
+      "remaining": "环境与模型版本快照已有；在新环境复现，冻结干净测试集并验证exp005候选的球拍检出与整管线性能。",
+      "display_name": "视频模型运行环境未完整锁定"
+    },
+    {
+      "id": "G07",
+      "priority": "P2",
+      "problem": "TTS 超时、队列等已有实现，但真实播放验收不完整",
+      "requirement": "测首声延迟、连续播放、取消和真实扬声器表现",
+      "status": "待真实扬声器验收",
+      "evidence_or_gap": "首声/连续播放/取消现场数据，代码测试不替代播放证据",
+      "state_group": "待独立或现场验证",
+      "remaining": "测首声延迟、连续播放、取消和真实扬声器表现",
+      "display_name": "TTS 超时、队列等已有实现，但真实播放验收不完整"
+    },
+    {
+      "id": "G08",
+      "priority": "P2",
+      "problem": "人工重算并发、事务与修订恢复",
+      "requirement": "验证中途 I/O 失败、并发提交、恢复及版本保存",
+      "status": "本轮工程通过",
+      "evidence_or_gap": "跨进程锁、唯一临时文件、完整修订快照、I/O失败回滚、中断恢复；OS进程中断测试不等于断电耐久性",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "人工重算并发、事务和修订恢复"
+    },
+    {
+      "id": "G09",
+      "priority": "P2",
+      "problem": "提交范围与工作区隔离",
+      "requirement": "区分本轮代码、用户配置和既有删除，再整理提交",
+      "status": "本轮提交范围整理通过",
+      "evidence_or_gap": "316e665提交27份工程文件；用户两个机位配置和既有51份制品删除保持未纳入。",
+      "state_group": "工程已完成",
+      "remaining": "本项工程回归通过；完整目标仍有独立准确性及现场验证未完成。",
+      "display_name": "工程提交与用户配置/历史制品隔离"
+    },
+    {
+      "id": "G10",
+      "priority": "P2",
+      "problem": "工程发布与现场运行验收",
+      "requirement": "核对提交、远端状态、运行版本和回退方式",
+      "status": "工程推送与服务源码核验通过／现场待验收",
+      "evidence_or_gap": "远端algo-2.0与2d3ea5b一致；服务PID41185，28份分析及控制源码哈希匹配；分析进程未启动。",
+      "state_group": "部分完成",
+      "remaining": "补RTSP/TTS现场发布、启动停止、故障恢复和回退验收。",
+      "display_name": "工程发布与现场运行验收"
+    },
+    {
+      "id": "G11",
+      "priority": "P2",
+      "problem": "当前文档与历史算法结论同步",
+      "requirement": "更新当前公式、限制与修复状态，标识历史结论",
+      "status": "关键契约已更新／历史文档继续整理",
+      "evidence_or_gap": "新增EVENT_SOURCE_TIMING、ADR补充和最新验收记录；完整历史设计整理仍待完成。",
+      "state_group": "部分完成",
+      "remaining": "当前关键契约已有；将旧路线图、README、需求基线中的过期实现状态与历史测试数标明。",
+      "display_name": "当前文档与历史算法结论同步"
+    },
+    {
+      "id": "H01",
+      "priority": "P2",
+      "problem": "两项目统一源帧、时间、坐标与来源",
+      "requirement": "Analyzer 保持轻量实时；Vision 做离线审计",
+      "status": "源身份工程检查通过／完整共同契约待完成",
+      "evidence_or_gap": "核验输入SHA、Analyzer源帧、Vision tracking索引及实际Viewer元数据；坐标/身体语义、曝光与派生映射仍待验证。",
+      "state_group": "部分完成",
+      "remaining": "输入身份核验已有；补共同坐标、身体段语义、原片/派生帧映射与曝光契约。",
+      "display_name": "两项目统一源帧、时间、坐标与来源"
+    },
+    {
+      "id": "H02",
+      "priority": "P2",
+      "problem": "同一挥拍关联与对照界面",
+      "requirement": "不把 Vision 模型拟合自动视为真值",
+      "status": "离线关联、回放及页面通过／同步定位待完成",
+      "evidence_or_gap": "同一249帧副本的3事件对应源帧通过，像素制品完整且重放一致。原片250帧因不同SHA待逐帧映射；当前手动定位，不宣称自动同步播放器。",
+      "state_group": "部分完成",
+      "remaining": "同源离线关联与手动定位已有；完成原片250帧/派生249帧映射及自动同步播放器。",
+      "display_name": "同一挥拍关联与对照界面"
+    },
+    {
+      "id": "H03",
+      "priority": "P1",
+      "problem": "验证真实／镜中三维、手部和球拍约束的独立误差",
+      "requirement": "拟合一致不等于真实准确",
+      "status": "待独立三维/手拍参考",
+      "evidence_or_gap": "拟合一致性不是误差真值",
+      "state_group": "待独立或现场验证",
+      "remaining": "拟合一致不等于真实准确",
+      "display_name": "验证真实／镜中三维、手部和球拍约束的独立误差"
+    },
+    {
+      "id": "H04",
+      "priority": "P2",
+      "problem": "保留历史拟合与新实验的独立版本",
+      "requirement": "不为追求动力链一致性改写历史结果",
+      "status": "保留通过",
+      "evidence_or_gap": "本轮新版本目录；旧帧/事件/拟合与已接收辅助原件不回写",
+      "state_group": "工程已完成",
+      "remaining": "本项工程范围通过；相关测量准确性和现场验证由其他条目单独跟踪。",
+      "display_name": "保留历史拟合和独立实验版本"
+    },
+    {
+      "id": "H05",
+      "priority": "P3",
+      "problem": "真实拍头速度、拍面姿态、旋转等扩展",
+      "requirement": "需额外观测与标定，不属于当前已具备能力",
+      "status": "待额外观测与标定",
+      "evidence_or_gap": "真实拍头速度、拍面、旋转为扩展，当前不具备",
+      "state_group": "待开发或继续优化",
+      "remaining": "需额外观测与标定，不属于当前已具备能力",
+      "display_name": "真实拍头速度、拍面姿态、旋转等扩展"
+    },
+    {
+      "id": "T01",
+      "priority": "P1",
+      "problem": "核验设备与RTSP时钟及丢帧",
+      "requirement": "核验设备与RTSP时钟及丢帧",
+      "status": "待独立验收",
+      "evidence_or_gap": "ADR0003已区分源媒体时间与读帧接收时间；这些补充要求尚无完整独立验收。",
+      "state_group": "待独立或现场验证",
+      "remaining": "核验设备与RTSP时钟及丢帧",
+      "display_name": "核验设备与RTSP时钟及丢帧"
+    },
+    {
+      "id": "T02",
+      "priority": "P1",
+      "problem": "保存原视频与派生视频逐帧映射",
+      "requirement": "保存原视频与派生视频逐帧映射",
+      "status": "待独立验收",
+      "evidence_or_gap": "ADR0003已区分源媒体时间与读帧接收时间；这些补充要求尚无完整独立验收。",
+      "state_group": "待开发或继续优化",
+      "remaining": "保存并验证原片与裁剪、转码、抽帧视频的逐帧身份/时间映射，记录缺帧和重复曝光。",
+      "display_name": "保存原视频与派生视频逐帧映射"
+    },
+    {
+      "id": "T03",
+      "priority": "P1",
+      "problem": "核验传感器曝光与PTS",
+      "requirement": "核验传感器曝光与PTS",
+      "status": "待独立验收",
+      "evidence_or_gap": "ADR0003已区分源媒体时间与读帧接收时间；这些补充要求尚无完整独立验收。",
+      "state_group": "待独立或现场验证",
+      "remaining": "核验传感器曝光与PTS",
+      "display_name": "核验传感器曝光与PTS"
+    },
+    {
+      "id": "T04",
+      "priority": "P1",
+      "problem": "审查剩余固定FPS与帧窗口消费者",
+      "requirement": "审查剩余固定FPS与帧窗口消费者",
+      "status": "源时间候选修复通过／剩余消费者待审",
+      "evidence_or_gap": "15项新回归通过；修改配置FPS、兼容时间、接收时间后生产参数3事件一致；完整指标窗口仍未迁移。",
+      "state_group": "部分完成",
+      "remaining": "审查剩余肩髋角、引拍、屈膝、位置与球轨迹帧窗口；额外验证实际不同采样率及缺帧行为。",
+      "display_name": "审查剩余固定FPS与帧窗口消费者"
+    },
+    {
+      "id": "T05",
+      "priority": "P1",
+      "problem": "历史缺来源记录持续降级为不可核验",
+      "requirement": "历史缺来源记录持续降级为不可核验",
+      "status": "待独立验收",
+      "evidence_or_gap": "ADR0003已区分源媒体时间与读帧接收时间；这些补充要求尚无完整独立验收。",
+      "state_group": "部分完成",
+      "remaining": "历史缺来源记录持续降级为不可核验",
+      "display_name": "历史缺来源记录持续降级为不可核验"
+    },
+    {
+      "id": "T06",
+      "priority": "P2",
+      "problem": "日常缺观测与队列诊断",
+      "requirement": "日常缺观测与队列诊断",
+      "status": "待独立验收",
+      "evidence_or_gap": "ADR0003已区分源媒体时间与读帧接收时间；这些补充要求尚无完整独立验收。",
+      "state_group": "待开发或继续优化",
+      "remaining": "日常缺观测与队列诊断",
+      "display_name": "日常缺观测与队列诊断"
+    },
+    {
+      "id": "X01",
+      "priority": "P1",
+      "problem": "动作类型识别准确性",
+      "requirement": "按正手、单反、双反、发球及Unknown统计混淆矩阵、错误率和拒绝率；覆盖左右手及不同机位。",
+      "status": "分类已实现；独立准确性待验证",
+      "evidence_or_gap": "未知分类与冲突降级规则已有；规则分数不是校准准确概率。",
+      "state_group": "部分完成",
+      "remaining": "按正手、单反、双反、发球及Unknown统计混淆矩阵、错误率和拒绝率；覆盖左右手及不同机位。",
+      "display_name": "动作类型识别准确性"
+    },
+    {
+      "id": "X02",
+      "priority": "P1",
+      "problem": "主球选择与重捕获准确性",
+      "requirement": "分开验证球检出Precision/Recall、主球选对率、静止锚点误抑制、轨迹支持及8帧重捕获窗口。",
+      "status": "已实现；独立轨迹验收待完成",
+      "evidence_or_gap": "候选检测、主球身份和触球测量是不同层次；新鲜来源71/250并不证明其身份全正确。",
+      "state_group": "部分完成",
+      "remaining": "分开验证球检出Precision/Recall、主球选对率、静止锚点误抑制、轨迹支持及8帧重捕获窗口。",
+      "display_name": "主球选择与重捕获准确性"
+    },
+    {
+      "id": "X03",
+      "priority": "P1",
+      "problem": "本地Coach技术建议独立验证",
+      "requirement": "审查短引拍、短随挥等帧数规则及代理语义；用双教练盲评验证建议正确性、重复性和适用动作。",
+      "status": "自动规则资格工程通过／教学有效性待独立验证",
+      "evidence_or_gap": "本地/DeepSeek共用代码批准规则；集合为空，历史子分/资格旗标不开放建议；帧数、拍速子分与派生转肩解释已限制。",
+      "state_group": "部分完成",
+      "remaining": "未验证规则已退出自动建议；用双教练盲评验证规则正确性、重复性及适用动作后逐条批准。",
+      "display_name": "本地Coach技术建议独立验证"
+    },
+    {
+      "id": "X04",
+      "priority": "P2",
+      "problem": "DeepSeek建议证据与网络验收",
+      "requirement": "验证建议与证据帧一致、失败降级、断网、限流、并发和取消；保留模型/提示/输出版本。",
+      "status": "异步与限制已实现；真实网络及建议验收待完成",
+      "evidence_or_gap": "已有类别及内容资格校验；语言模型返回confidence不作为正确概率。",
+      "state_group": "部分完成",
+      "remaining": "验证建议与证据帧一致、失败降级、断网、限流、并发和取消；保留模型/提示/输出版本。",
+      "display_name": "DeepSeek建议证据与网络验收"
+    },
+    {
+      "id": "X05",
+      "priority": "P2",
+      "problem": "出球方向",
+      "requirement": "验证触球后像面方向的覆盖及错误率；转换球场方向需标定。",
+      "status": "像面候选已实现；准确性待验证",
+      "evidence_or_gap": "swing_coach_data_collector输出shot_direction_space=screen；旧路线图仍把它列为待实现。",
+      "state_group": "部分完成",
+      "remaining": "验证触球后像面方向的覆盖及错误率；转换球场方向需标定。",
+      "display_name": "出球方向"
+    },
+    {
+      "id": "X06",
+      "priority": "P2",
+      "problem": "弹跳候选",
+      "requirement": "用完整球轨迹独立标注验证bounce_frame；区分轨迹拐点、触球和真正落地。",
+      "status": "保守候选已实现；真实弹跳验收待完成",
+      "evidence_or_gap": "已有bounce_frame、bounce_source、bounce_confidence；启发式候选不等于落地真值。",
+      "state_group": "部分完成",
+      "remaining": "用完整球轨迹独立标注验证bounce_frame；区分轨迹拐点、触球和真正落地。",
+      "display_name": "弹跳候选"
+    },
+    {
+      "id": "X07",
+      "priority": "P1",
+      "problem": "手腕—拍框距离与峰值插值",
+      "requirement": "统一racket_lag的像素距离含义；检查插值、观测源与缺失传播；禁止当真实滞拍角或拍头观测。",
+      "status": "来源和时间插值回归通过／物理解释未验证",
+      "evidence_or_gap": "VFR插值按PTS并拒绝身份缺口/长时间断点；原始框中心距离与插值仍不是拍头或真实滞拍角。",
+      "state_group": "部分完成",
+      "remaining": "验证手腕—拍框距离、跳变拒绝及来源传播；不得把补点用于独立测量或真实拍头解释。",
+      "display_name": "手腕—拍框距离与峰值插值"
+    },
+    {
+      "id": "X08",
+      "priority": "P3",
+      "problem": "球场、落点、落区、深度及过网指标",
+      "requirement": "建设场地/网标定与版本管理，验证空间可观测性和独立误差后再开放各项。",
+      "status": "未具备当前可靠测量能力",
+      "evidence_or_gap": "landing_point、landing_zone、shot_depth、net_clearance_px目前为None；旧路线图是扩展方案。",
+      "state_group": "待开发或继续优化",
+      "remaining": "建设场地/网标定与版本管理，验证空间可观测性和独立误差后再开放各项。",
+      "display_name": "球场、落点、落区、深度及过网指标"
+    },
+    {
+      "id": "X09",
+      "priority": "P3",
+      "problem": "真实来球与回球速度",
+      "requirement": "先区分像素速度与真实单位；完善来源时间、轨迹和空间标定，用独立速度参考验收。",
+      "status": "像面速度已有；真实速度待额外证据",
+      "evidence_or_gap": "不能由现有像素移动和未标定比例直接给出可信km/h。",
+      "state_group": "待开发或继续优化",
+      "remaining": "先区分像素速度与真实单位；完善来源时间、轨迹和空间标定，用独立速度参考验收。",
+      "display_name": "真实来球与回球速度"
+    },
+    {
+      "id": "X10",
+      "priority": "P2",
+      "problem": "证据归档、备份及删除影响",
+      "requirement": "核对既有51份制品删除与manifest引用关系；确定原视频、JSONL、标注、模型及配置的保留与恢复策略。",
+      "status": "需逐包核查及恢复演练",
+      "evidence_or_gap": "删除为既有工作区状态；本次未修改。未证明删除造成实际丢失，也未证明所有历史包仍完整。",
+      "state_group": "待开发或继续优化",
+      "remaining": "核对既有51份制品删除与manifest引用关系；确定原视频、JSONL、标注、模型及配置的保留与恢复策略。",
+      "display_name": "证据归档、备份及删除影响"
+    },
+    {
+      "id": "X11",
+      "priority": "P2",
+      "problem": "任务跟踪与历史文档同步",
+      "requirement": "将当前任务拆成有验收标准的GitHub Issues，维护当前与历史文档入口，随实际验收更新状态。",
+      "status": "待整理",
+      "evidence_or_gap": "本次gh issue list --state open --limit100返回[]；没有创建或发送Issue。",
+      "state_group": "待开发或继续优化",
+      "remaining": "建立带验收标准的GitHub任务，统一当前与历史文档；当前开放Issue列表为空。",
+      "display_name": "任务跟踪与历史文档同步"
+    },
+    {
+      "id": "X12",
+      "priority": "P1",
+      "problem": "预先确定正式验收门槛",
+      "requirement": "在独立测试前固定误差容限、最低覆盖率、拒绝与误判率、延迟及资源目标；按挥拍/球员统计。",
+      "status": "仍需先导数据与验收协议",
+      "evidence_or_gap": "10px示例、12px线长、4%身体宽度和历史15FPS目标不自动成为准确性标准。",
+      "state_group": "待独立或现场验证",
+      "remaining": "在独立测试前固定误差容限、最低覆盖率、拒绝与误判率、延迟及资源目标；按挥拍/球员统计。",
+      "display_name": "预先确定正式验收门槛"
+    },
+    {
+      "id": "N01",
+      "priority": "P1",
+      "problem": "默认原视频未校验冻结SHA即可执行像素验收",
+      "requirement": "执行前核对原视频存在且SHA符合manifest；不匹配时拒绝且不创建新结果目录。显式替换输入另记来源。",
+      "status": "已修复并推送",
+      "state_group": "工程已完成",
+      "evidence_or_gap": "默认输入在创建结果目录及启动推理前核对存在与SHA；改写/缺失反例及473项全量通过。",
+      "remaining": "本项工程回归通过；完整目标仍有独立准确性及现场验证未完成。",
+      "display_name": "像素验收启动前验证输入存在及冻结SHA"
+    },
+    {
+      "id": "N02",
+      "problem": "独立报告跨视频目录猜测定格图，缺少实际截帧身份",
+      "status": "工程修复通过",
+      "priority": "P1",
+      "state_group": "工程已完成",
+      "requirement": "限定到当前会话来源，保留实际源帧与执行语义；直接反例及页面/重放验收。",
+      "evidence_or_gap": "494项全量通过，浏览器原视频与新像素报告核验通过。",
+      "remaining": "本项工程范围通过；真实触球时刻与实际曝光对应另由B01/T03验证。",
+      "display_name": "定格图限定本会话并标明实际源帧"
+    },
+    {
+      "id": "N03",
+      "problem": "单条Coach字典在报告中被逐字段名渲染",
+      "status": "工程修复通过",
+      "priority": "P2",
+      "state_group": "工程已完成",
+      "requirement": "限定到当前会话来源，保留实际源帧与执行语义；直接反例及页面/重放验收。",
+      "evidence_or_gap": "494项全量通过，浏览器原视频与新像素报告核验通过。",
+      "remaining": "本项工程范围通过；建议教学正确性由X03/X04单独验证。",
+      "display_name": "单条Coach字典的报告渲染"
+    },
+    {
+      "id": "N04",
+      "problem": "离线重放将现在减历史接收时刻作为实时延迟",
+      "status": "工程修复通过",
+      "priority": "P1",
+      "state_group": "工程已完成",
+      "requirement": "限定到当前会话来源，保留实际源帧与执行语义；直接反例及页面/重放验收。",
+      "evidence_or_gap": "494项全量通过，浏览器原视频与新像素报告核验通过。",
+      "remaining": "本项工程范围通过；实时延迟现场测量由G03/G05验证。",
+      "display_name": "离线回放不冒充实时延迟"
+    },
+    {
+      "id": "N05",
+      "priority": "P1",
+      "problem": "已声明源时间仍受到兼容时钟或错误帧身份影响",
+      "display_name": "已声明源时间仍受到兼容时钟或错误帧身份影响",
+      "requirement": "源时间与身份统一校验；有效源PTS忽略兼容/接收时钟；无效契约不能补出测量时间。",
+      "status": "工程回归通过",
+      "state_group": "工程已完成",
+      "evidence_or_gap": "source-time/identity regression tests; motion_time_contract.py; image_motion_measurements.py",
+      "remaining": "工程修复通过；相关测量与教学准确性仍由独立验收条目跟踪。",
+      "engineering_source_commit": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d"
+    },
+    {
+      "id": "N06",
+      "priority": "P1",
+      "problem": "变帧率球拍补点按行号，跨长断点与源帧缺口",
+      "display_name": "变帧率球拍补点按行号，跨长断点与源帧缺口",
+      "requirement": "补点按PTS比例，限制0.12秒与连续源身份；仅保留候选用途，不升级为原始测量。",
+      "status": "工程回归通过",
+      "state_group": "工程已完成",
+      "evidence_or_gap": "VFR, large elapsed gap, identity gap, duplicate clock regression tests",
+      "remaining": "工程修复通过；相关测量与教学准确性仍由独立验收条目跟踪。",
+      "engineering_source_commit": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d"
+    },
+    {
+      "id": "N07",
+      "priority": "P1",
+      "problem": "缓存、实时等待和峰值去重依赖配置FPS",
+      "display_name": "缓存、实时等待和峰值去重依赖配置FPS",
+      "requirement": "200条容量与8秒上下文分离，等待/去重按合格PTS；源结束未等待完成明确提示复核。",
+      "status": "工程回归通过",
+      "state_group": "工程已完成",
+      "evidence_or_gap": "configured FPS 10/25/50/240 invariant; EOF unsettled candidate regression",
+      "remaining": "工程修复通过；相关测量与教学准确性仍由独立验收条目跟踪。",
+      "engineering_source_commit": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d"
+    },
+    {
+      "id": "N08",
+      "priority": "P1",
+      "problem": "触球质量窗口按固定行数而非源时间",
+      "display_name": "触球质量窗口按固定行数而非源时间",
+      "requirement": "改为候选PTS正负0.16秒，保存实际源帧与时间依据；检出比例不是时间覆盖率。",
+      "status": "工程回归通过",
+      "state_group": "工程已完成",
+      "evidence_or_gap": "source contact quality window regression",
+      "remaining": "工程修复通过；相关测量与教学准确性仍由独立验收条目跟踪。",
+      "engineering_source_commit": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d"
+    },
+    {
+      "id": "N09",
+      "priority": "P1",
+      "problem": "旧肩髋角度步长跨正负180度出现假大跳变",
+      "display_name": "旧肩髋角度步长跨正负180度出现假大跳变",
+      "requirement": "使用最短环形差，179到负179由358度修为2度；仍是像面角度每观测。",
+      "status": "工程回归通过",
+      "state_group": "工程已完成",
+      "evidence_or_gap": "legacy angular step half-turn boundary regression",
+      "remaining": "工程修复通过；相关测量与教学准确性仍由独立验收条目跟踪。",
+      "engineering_source_commit": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d"
+    }
+  ],
+  "optional_expansion": [
+    {
+      "id": "Z01",
+      "name": "多球员追踪",
+      "status": "历史或扩展需求；尚未纳入当前实时测量验收承诺"
+    },
+    {
+      "id": "Z02",
+      "name": "多路视频同时分析",
+      "status": "历史或扩展需求；尚未纳入当前实时测量验收承诺"
+    },
+    {
+      "id": "Z03",
+      "name": "比赛自动计分",
+      "status": "历史或扩展需求；尚未纳入当前实时测量验收承诺"
+    },
+    {
+      "id": "Z04",
+      "name": "批量处理的产品入口",
+      "status": "历史或扩展需求；尚未纳入当前实时测量验收承诺"
+    },
+    {
+      "id": "Z05",
+      "name": "战术分析",
+      "status": "历史或扩展需求；尚未纳入当前实时测量验收承诺"
+    },
+    {
+      "id": "Z06",
+      "name": "云端部署及多用户权限",
+      "status": "历史或扩展需求；尚未纳入当前实时测量验收承诺"
+    },
+    {
+      "id": "Z07",
+      "name": "标注驱动的自动训练与模型发布",
+      "status": "历史或扩展需求；尚未纳入当前实时测量验收承诺"
+    }
+  ],
+  "state_counts": {
+    "部分完成": 37,
+    "待独立或现场验证": 24,
+    "工程已完成": 30,
+    "待开发或继续优化": 8
+  },
+  "earlier_repairs": [
+    {
+      "item": "肩线±180°环形基线",
+      "status": "工程回归通过"
+    },
+    {
+      "item": "遮挡断段后的滤波隔离",
+      "status": "工程回归通过"
+    },
+    {
+      "item": "无效源时间计入覆盖分母",
+      "status": "工程回归通过"
+    },
+    {
+      "item": "肩—拍球拍峰宽传播",
+      "status": "工程回归通过"
+    },
+    {
+      "item": "未经验证代理退出自动技术评分",
+      "status": "工程限制通过；准确性仍待独立样本"
+    },
+    {
+      "item": "低分/旧帧/补点的骨架来源与显示",
+      "status": "来源资格与工程回归通过；真实关节误差待验证"
+    }
+  ],
+  "evidence_refs": {
+    "engineering_acceptance": "validation/motion_source_acceptance_20261005.json",
+    "test_log": "/tmp/tennis_motion_source_release_20261005.log",
+    "metric_contract": "docs/METRIC_CALCULATION_CONTRACT.md",
+    "source_timing": "docs/EVENT_SOURCE_TIMING.md",
+    "independent_labels": "data/analysis_results/kinematic_validation/independent_temporal_plan_v3_20261005/blank_labels.json",
+    "pixel_run": "data/analysis_results/kinematic_validation/motion_time_pixel_20261005/report.html",
+    "motion_source_timing": "docs/MOTION_SOURCE_TIME.md",
+    "same_input_comparison": "data/analysis_results/kinematic_validation/motion_time_delivery_20261005/comparison.json",
+    "previous_inventory": "data/analysis_results/kinematic_validation/project_backlog_20261005/inventory.json"
+  },
+  "priority_order": [
+    "C09/T04：传统指标与球轨迹窗口的源时间、单位和缺失契约",
+    "A01/B07/X07：球拍错框、漏检、跳变与来源资格",
+    "E02/B01/B02/X01/X02：独立连续帧、完整挥拍及球拍/主球标签",
+    "B03/C05/C08：坐标尺度、定位误差及位移阈值校准",
+    "B08/B09/E03/H03：同步高速、曝光及标定三维参考",
+    "D01–D09/X03/X12：独立教练标准、预定门槛与评分校准",
+    "G03–G07/G10/T01/T03：RTSP、长会话、显示与TTS现场验收"
+  ],
+  "legacy_limitations": [
+    {
+      "id": "L01",
+      "name": "旧增强动作捕获入口的关节速度箭头",
+      "status": "尚未实现；非当前main_pipe主线验收范围",
+      "evidence": "main.py导入EnhancedMotionCapture；enhanced_motion_capture.py:627的_draw_velocity_vectors仍为pass。",
+      "remaining": "若继续维护旧入口，需要携带当前关節坐标、观测来源和速度单位后实现；否则在文档明确停用。"
+    }
+  ]
+}

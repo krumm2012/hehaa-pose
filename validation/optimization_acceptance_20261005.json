@@ -9,8 +9,8 @@
       "priority": "P1",
       "problem": "球拍轨迹仍有漏检、断点",
       "requirement": "分别统计球拍检测覆盖率、错误框、轨迹断裂及触球附近漏检",
-      "status": "部分通过",
-      "evidence_or_gap": "audit.json逐拍事件/触球窗口覆盖与断裂统计；错误框/漏检真值未知"
+      "status": "覆盖审计已有／漏检及跳变误差未验证",
+      "evidence_or_gap": "最新像面速度峰值约8129至11245px/s；框中心跳变与透视不能证明真实拍头速度，需要独立框/拍头标签。"
     },
     {
       "id": "A02",
@@ -217,8 +217,8 @@
       "priority": "P2",
       "problem": "部分窗口按帧、部分按秒",
       "requirement": "审查剩余指标的窗口契约，避免同名指标口径不一致",
-      "status": "契约记录通过／统一口径未全部完成",
-      "evidence_or_gap": "传统窗口仍为帧ID，OSD/时序为源秒；不冒充同口径"
+      "status": "候选源时间已迁移／传统指标窗口未全部完成",
+      "evidence_or_gap": "运动候选、短缺口插值、平滑、触球质量窗与实时等待已用合格PTS；肩髋角、引拍、屈膝、触球位置、身体位移和collector部分球轨迹仍有帧窗口。"
     },
     {
       "id": "C10",
@@ -401,16 +401,16 @@
       "priority": "P2",
       "problem": "底部 OSD、触球卡片、事件统计口径不同",
       "requirement": "明确标注“当前帧／触球窗口／事件窗口”",
-      "status": "部分通过",
-      "evidence_or_gap": "实时报告明确事件/触球窗口；当前帧HUD仍需全指标现场对照"
+      "status": "窗口标注及源结束提示通过／全OSD待现场对照",
+      "evidence_or_gap": "最新报告显示媒体时长、触球定格源帧；EOF未完成等待候选会提示复核；当前帧/触球窗/事件窗仍须逐项对照。"
     },
     {
       "id": "F03",
       "priority": "P2",
       "problem": "`N/A`、缺拍峰、未观测、未验证容易混淆",
       "requirement": "统一状态词：缺观测、资格不通过、先后未分辨、尚未校准",
-      "status": "部分通过",
-      "evidence_or_gap": "缺观测、资格不通过、先后难辨、未验证分开；历史页面需新版本重算"
+      "status": "缺失状态部分统一／启发式百分比仍需清晰标识",
+      "evidence_or_gap": "报告仍有82%、92%、0%等显示；并非经过校准的准确率或教学正确率。"
     },
     {
       "id": "F04",
@@ -457,24 +457,24 @@
       "priority": "P1",
       "problem": "全量回归的可重复性与测试环境隔离",
       "requirement": "隔离本机机位配置与测试夹具，核验视频检测测试，恢复可重复的全绿结果",
-      "status": "全量通过",
-      "evidence_or_gap": "当前473项测试通过；11项同源证据/默认源视频拒绝回归通过。/tmp/tennis_cross_project_release_20261005.log"
+      "status": "509项全量回归通过",
+      "evidence_or_gap": "最新工程源2d3ea5b对应509项测试通过；新增15项源时间回归；本次清单仅核验既有日志与源码哈希。"
     },
     {
       "id": "G02",
       "priority": "P2",
       "problem": "原像素端到端、证据完整性与事件重放",
       "requirement": "补新会话端到端验收；不能用上一版 433 项通过替代当前全量验收",
-      "status": "新像素会话与回放通过",
-      "evidence_or_gap": "CoreML双视角250帧、3事件、退出0；全部制品哈希通过，重放事件语义一致"
+      "status": "原像素与同版本语义重放通过",
+      "evidence_or_gap": "冻结原片250帧、3候选事件，新制品完整且语义重放一致；旧制品完整，但新策略结果不同，历史保持不变。"
     },
     {
       "id": "G03",
       "priority": "P2",
       "problem": "真实实时能力缺少完整统一基线",
       "requirement": "记录输入、处理、显示帧率，丢帧、延迟分位数和资源占用",
-      "status": "文件视频基线通过／现场待验收",
-      "evidence_or_gap": "输入接收25.14fps，输出提交25.36fps；接收到输出提交p50 47.04/p95 131.92ms；不是曝光到屏幕光子延迟，RTSP与现场丢帧未知"
+      "status": "文件提交基线通过／现场端到端待验收",
+      "evidence_or_gap": "本轮250帧读入25.17fps、窗口提交25.42fps；全流程20.557秒含初始化，不是传感器到显示延迟。"
     },
     {
       "id": "G04",
@@ -521,24 +521,24 @@
       "priority": "P2",
       "problem": "代码、用户配置与历史制品的提交范围",
       "requirement": "区分本轮代码、用户配置和既有删除，再整理提交",
-      "status": "本轮代码提交范围整理通过",
-      "evidence_or_gap": "d2c4658只提交离线工具、测试及文档；用户机位配置、既有51份历史删除与视频制品未纳入。"
+      "status": "本轮提交范围整理通过",
+      "evidence_or_gap": "316e665提交27份工程文件；用户两个机位配置和既有51份制品删除保持未纳入。"
     },
     {
       "id": "G10",
       "priority": "P2",
       "problem": "代码远端、运行版本与现场发布验收",
       "requirement": "核对提交、远端状态、运行版本和回退方式",
-      "status": "工程推送与运行版本核验通过／现场待验收",
-      "evidence_or_gap": "d2c4658普通推送；控制PID9851与导入模块哈希一致。本轮仅改离线工具，无需重启。RTSP/TTS现场仍待验收。"
+      "status": "工程推送与服务源码核验通过／现场待验收",
+      "evidence_or_gap": "远端algo-2.0与2d3ea5b一致；服务PID41185，28份分析及控制源码哈希匹配；分析进程未启动。"
     },
     {
       "id": "G11",
       "priority": "P2",
       "problem": "当前算法与历史文档的版本区分",
       "requirement": "更新当前公式、限制与修复状态，标识历史结论",
-      "status": "当前关键契约更新",
-      "evidence_or_gap": "源时间ADR/指标/标注文档更新；旧历史结论保留为历史"
+      "status": "关键契约已更新／历史文档继续整理",
+      "evidence_or_gap": "新增EVENT_SOURCE_TIMING、ADR补充和最新验收记录；完整历史设计整理仍待完成。"
     },
     {
       "id": "H01",
@@ -582,13 +582,18 @@
     }
   ],
   "validation": {
-    "full_test_count": 473,
-    "log": "/tmp/tennis_cross_project_release_20261005.log",
+    "full_test_count": 509,
+    "log": "/tmp/tennis_motion_source_release_20261005.log",
     "semantic_replay": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/semantic_replay.json",
     "audit": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/audit.json",
     "pixel_run": "data/analysis_results/kinematic_validation/pixel_acceptance_v2_20261005/run.json",
     "adjudication": "validation/adjudication_acceptance_20261005.json",
-    "cross_project": "validation/cross_project_acceptance_20261005.json"
+    "cross_project": "validation/cross_project_acceptance_20261005.json",
+    "phase_coach": "validation/phase_coach_acceptance_20261005.json",
+    "motion_source": "validation/motion_source_acceptance_20261005.json",
+    "current_project_inventory": "validation/project_inventory_20261005.json",
+    "current_semantic_replay": "data/analysis_results/kinematic_validation/motion_time_delivery_20261005/current_semantic_replay.json",
+    "current_pixel_run": "data/analysis_results/kinematic_validation/motion_time_pixel_20261005/run.json"
   },
   "constraints": [
     "automatic validated rubrics remain empty",
@@ -614,8 +619,9 @@
     },
     {
       "id": "T04",
-      "status": "待独立验收",
-      "requirement": "审查剩余固定FPS与帧窗口消费者"
+      "status": "部分通过／传统指标窗口仍待完成",
+      "requirement": "审查剩余固定FPS与帧窗口消费者",
+      "evidence": "motion candidate source-time fixes in 2d3ea5b; 509 tests; remaining metric/ball windows not fully migrated"
     },
     {
       "id": "T05",
@@ -629,14 +635,14 @@
     }
   ],
   "delivery": {
-    "engineering_commit": "d2c4658c9bd644591a6677b5056f8494dd65eb08",
+    "engineering_commit": "2d3ea5bbb45b2a2498d0fac9b13d60191ac3a21d",
     "branch": "algo-2.0",
     "remote": "origin-paused",
     "engineering_push_verified": true,
-    "control_server_restarted": false,
-    "control_server_pid": 9851,
+    "control_server_restarted": true,
+    "control_server_pid": 41185,
     "source_hashes_match": true,
-    "restart_semantics": "this offline-only iteration; previous server restart remains recorded in adjudication receipt"
+    "restart_semantics": "source-time engineering iteration restart receipt; current inventory did not restart service"
   },
   "additional_regressions": [
     {
@@ -644,6 +650,51 @@
       "status": "工程修复通过",
       "requirement": "像素验收必须在创建目录/启动推理前验证默认源视频存在与冻结SHA一致。",
       "evidence": "直接选择器反例和实际CLI丢失/改写可选源视频回归均通过。"
+    },
+    {
+      "id": "N02",
+      "problem": "独立报告跨视频目录猜测定格图，缺少实际截帧身份",
+      "status": "工程修复通过"
+    },
+    {
+      "id": "N03",
+      "problem": "单条Coach字典在报告中被逐字段名渲染",
+      "status": "工程修复通过"
+    },
+    {
+      "id": "N04",
+      "problem": "离线重放将现在减历史接收时刻作为实时延迟",
+      "status": "工程修复通过"
+    },
+    {
+      "id": "N05",
+      "status": "工程回归通过",
+      "requirement": "源时间与身份统一校验；有效源PTS忽略兼容/接收时钟；无效契约不能补出测量时间。",
+      "evidence": "source-time/identity regression tests; motion_time_contract.py; image_motion_measurements.py"
+    },
+    {
+      "id": "N06",
+      "status": "工程回归通过",
+      "requirement": "补点按PTS比例，限制0.12秒与连续源身份；仅保留候选用途，不升级为原始测量。",
+      "evidence": "VFR, large elapsed gap, identity gap, duplicate clock regression tests"
+    },
+    {
+      "id": "N07",
+      "status": "工程回归通过",
+      "requirement": "200条容量与8秒上下文分离，等待/去重按合格PTS；源结束未等待完成明确提示复核。",
+      "evidence": "configured FPS 10/25/50/240 invariant; EOF unsettled candidate regression"
+    },
+    {
+      "id": "N08",
+      "status": "工程回归通过",
+      "requirement": "改为候选PTS正负0.16秒，保存实际源帧与时间依据；检出比例不是时间覆盖率。",
+      "evidence": "source contact quality window regression"
+    },
+    {
+      "id": "N09",
+      "status": "工程回归通过",
+      "requirement": "使用最短环形差，179到负179由358度修为2度；仍是像面角度每观测。",
+      "evidence": "legacy angular step half-turn boundary regression"
     }
   ]
 }
