@@ -582,8 +582,8 @@
     }
   ],
   "validation": {
-    "full_test_count": 581,
-    "log": "/tmp/tennis_manual_anchor_phase_full_20261005.log",
+    "full_test_count": 593,
+    "log": "/tmp/tennis_frontend_anchor_final_20261005.log",
     "semantic_replay": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/semantic_replay.json",
     "audit": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/audit.json",
     "pixel_run": "data/analysis_results/kinematic_validation/pixel_acceptance_v2_20261005/run.json",
@@ -592,12 +592,13 @@
     "phase_coach": "validation/phase_coach_acceptance_20261005.json",
     "motion_source": "validation/motion_source_acceptance_20261005.json",
     "current_project_inventory": "validation/project_inventory_20261005.json",
-    "current_semantic_replay": "data/analysis_results/kinematic_validation/manual_anchor_phase_delivery_20261005/semantic_replay.json",
+    "current_semantic_replay": "data/analysis_results/kinematic_validation/frontend_anchor_delivery_20261005/semantic_replay.json",
     "current_pixel_run": "data/analysis_results/kinematic_validation/manual_anchor_phase_release_20261005/run.json",
     "body_windows": "validation/body_window_acceptance_20261005.json",
     "classifier_windows": "validation/classifier_window_acceptance_20261005.json",
     "finite_observations": "validation/finite_observation_acceptance_20261005.json",
-    "manual_anchor_phase": "validation/manual_anchor_phase_acceptance_20261005.json"
+    "manual_anchor_phase": "validation/manual_anchor_phase_acceptance_20261005.json",
+    "frontend_anchors": "validation/frontend_anchor_acceptance_20261005.json"
   },
   "constraints": [
     "automatic validated rubrics remain empty",
@@ -623,9 +624,9 @@
     },
     {
       "id": "T04",
-      "status": "后端人工锚点、采集器与回位候选通过／前端取整及其他消费者待审",
+      "status": "人工页面及后端身份通过／其余消费者待审",
       "requirement": "审查剩余固定FPS与帧窗口消费者",
-      "evidence": "581项回归及原像素/受控缺帧验收通过；Math.round页面导出逻辑和剩余候选消费者继续跟踪。"
+      "evidence": "N27–N29工程回归、实际DOM监听及服务请求通过；其他候选消费者继续跟踪。"
     },
     {
       "id": "T05",
@@ -639,14 +640,14 @@
     }
   ],
   "delivery": {
-    "engineering_commit": "05911b61965dc034d88ec7610183c9b08b67cc80",
+    "engineering_commit": "9c58820c543f1883df833fad667124fed791ec7c",
     "branch": "algo-2.0",
     "remote": "origin-paused",
     "engineering_push_verified": true,
     "control_server_restarted": true,
-    "control_server_pid": 56633,
+    "control_server_pid": 58910,
     "source_hashes_match": true,
-    "restart_semantics": "manual anchor and phase candidate source support; analysis remains stopped"
+    "restart_semantics": "strict manual annotation identity editor and backend; analysis remains stopped"
   },
   "additional_regressions": [
     {
@@ -804,6 +805,27 @@
       "status": "工程验收通过",
       "requirement": "合格源时间时至少0.08秒、3实际样本且源帧连续；缺时钟明确降为未核验样本顺序；候选阶段规则未经教练验证。",
       "evidence": "validation/manual_anchor_phase_acceptance_20261005.json"
+    },
+    {
+      "id": "N27",
+      "problem": "前端人工帧号自动取整、导出和评估未严格校验",
+      "status": "工程验收通过",
+      "requirement": "两种报告共用安全整数契约；非法输入不覆盖草稿，不下载旧预览，不提交请求；后台拒绝不安全身份及非法frames容器。",
+      "evidence": "validation/frontend_anchor_acceptance_20261005.json"
+    },
+    {
+      "id": "N28",
+      "problem": "导入空锚点继承兼容旧值，空模型峰值变为0帧",
+      "status": "工程验收通过",
+      "requirement": "导入先验证整文档再修改；显式null清空旧值且优先于兼容字段；空模型峰值保持null，真实0帧仍保留。",
+      "evidence": "validation/frontend_anchor_acceptance_20261005.json"
+    },
+    {
+      "id": "N29",
+      "problem": "事件卡片位于监听容器外，输入不保存或即时校验",
+      "status": "工程验收通过",
+      "requirement": "事件委托覆盖全部标注卡片，过滤无关输入；真实小数错误提示和整数恢复即时更新，合法草稿继续保存。",
+      "evidence": "validation/frontend_anchor_acceptance_20261005.json"
     }
   ]
 }
