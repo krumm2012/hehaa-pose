@@ -27,6 +27,11 @@ venv_yolo26/bin/python local_control_panel.py --open
 
 访问 http://127.0.0.1:8765/ 。页面选 Court 或自定义流，临时填写凭据，检查 ROI 预览，再启动。也可预先设置 `TENNIS_RTSP_USERNAME` 和 `TENNIS_RTSP_PASSWORD` 环境变量。DeepSeek 密钥使用 `DEEPSEEK_API_KEY`；控制台支持从 `.env.local` 读取所配置的密钥变量。不要将真实凭据写入提交或排障记录。
 
+2026-10-05：`GET /api/status` 新增 `service_build`，记录控制进程PID、模块加载时间、
+控制源码SHA256及所加载的指标/时序/观测/评分策略。哈希在模块导入时冻结，修改磁盘
+源码后不会将旧进程伪装成新版；需重启服务再核查。此字段用于运行版本验收，不代表
+模型误差或传感器曝光时间已经标定。分析会话状态仍由顶层`state`与`pid`表示。
+
 初次验证建议开启本地 Coach 和证据包，确认正常后逐项开启 DeepSeek、TTS、HDMI 和录像，以定位资源开销。实际参数由页面提交决定；记录本次生效配置。
 
 停止分析使用页面“停止”，等待进程结束并检查证据清单。关闭控制服务使用其终端 Ctrl+C。TTS 关闭会取消待播请求并回收 worker；停止后的最后一条语音可能被中断，文字结果保留。

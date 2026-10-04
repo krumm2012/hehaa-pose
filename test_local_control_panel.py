@@ -1,4 +1,5 @@
 import json
+import hashlib
 import io
 import os
 import threading
@@ -26,6 +27,32 @@ from roi_stream_config import sanitize_stream_source
 
 
 class LocalControlPanelTests(unittest.TestCase):
+    def test_status_http_identifies_loaded_service_without_rehashing_edited_sources(self):
+        with TemporaryDirectory() as directory:
+            controller = self.make_controller(Path(directory))
+            server = ThreadingHTTPServer(("127.0.0.1", 0), create_handler(controller))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                url = f"http://127.0.0.1:{server.server_port}/api/status"
+                with urllib.request.urlopen(url) as response:
+                    status = json.load(response)
+                build = status['service_build']
+                source = Path(__file__).parent / 'local_control_panel.py'
+                self.assertEqual(build['control_source_sha256'], hashlib.sha256(source.read_bytes()).hexdigest())
+                self.assertEqual(build['schema'], 'tennis.control-service-build.v1')
+                self.assertEqual(build['pid'], os.getpid())
+                self.assertGreater(build['loaded_at_unix_ns'], 0)
+                self.assertFalse(build['analysis_build']['accuracy_validated'])
+                # A running process must report its import-time identity, not files edited later.
+                with patch.object(Path, 'read_bytes', side_effect=AssertionError('status must not rehash sources')):
+                    with urllib.request.urlopen(url) as response:
+                        self.assertEqual(json.load(response)['service_build'], build)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
     def test_video_upload_http_requires_control_token(self):
         with TemporaryDirectory() as directory:
             controller = self.make_controller(Path(directory))

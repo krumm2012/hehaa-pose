@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import mimetypes
 import os
@@ -42,6 +43,7 @@ from manual_review_workflow import (
 from roi_stream_config import sanitize_stream_source
 from swing_session_summary import build_session_coaching_summary
 from analysis_metric_delivery import event_analysis_metrics, scoring_blockers
+from analysis_provenance import analysis_build_info
 
 
 SESSION_NAME_PATTERN = re.compile(r"[^A-Za-z0-9_-]+")
@@ -50,6 +52,8 @@ CUSTOM_STREAM_ID = "custom"
 LOCAL_VIDEO_ID = "local_video"
 MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
 VIDEO_SUFFIXES = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
+_CONTROL_SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+_CONTROL_IMPORTED_AT_UNIX_NS = time.time_ns()
 
 
 def _session_capture_time(path: Path) -> float:
@@ -565,6 +569,14 @@ class LocalPipelineController:
                 "command": list(self._public_command),
                 "logs": list(self._logs),
                 "artifacts": dict(self._artifacts),
+                "service_build": {
+                    "schema": "tennis.control-service-build.v1",
+                    "pid": os.getpid(),
+                    "loaded_at_unix_ns": _CONTROL_IMPORTED_AT_UNIX_NS,
+                    "control_source_sha256": _CONTROL_SOURCE_SHA256,
+                    "hash_semantics": "source files at module import; restart required after source edits",
+                    "analysis_build": analysis_build_info(),
+                },
             }
 
     def preview(self, payload: Dict[str, Any]) -> bytes:

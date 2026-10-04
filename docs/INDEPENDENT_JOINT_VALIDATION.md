@@ -63,3 +63,38 @@ venv/bin/python scripts/evaluate_joint_labels.py \
 ### 2026-10-05 标注计划修订
 
 最新无模型提示连续帧页：`data/analysis_results/kinematic_validation/independent_temporal_plan_v3_20261005/index.html`。源帧175–196共22帧，显式 `requested_joints` 为左右肩、左右髋；双视角计划176项，空草稿评估状态为 `pending_independent_confirmation`。旧v2页面缺计划字段，评估会使用传统十二关节分母；保留旧页，最终四关节采集使用v3，不能把空草稿视为已确认标签。
+
+## 两位标注者的分歧仲裁
+
+`scripts/adjudicate_joint_labels.py` 比较两份独立原稿，生成原帧对照页，并校验最终裁决。
+两份原稿必须对应同一视频哈希、帧尺寸及关节计划；最终发布要求两位不同标注者
+各自确认原稿。模型辅助文件及带模型来源的点不能转换为独立参考。
+
+```sh
+venv/bin/python scripts/adjudicate_joint_labels.py create \
+  --left /absolute/path/reference_A.json \
+  --right /absolute/path/reference_B.json \
+  --source /absolute/path/original_video.mp4 \
+  --output data/analysis_results/kinematic_validation/adjudication_new_version \
+  --tolerance-px 10
+```
+
+这里的10px仅用于查看分歧大小，不是准确性阈值。任何非零坐标差异、可辨认性分歧及
+漏标均需显式裁决；不按容差自动平均。红色为A原稿、蓝色为B原稿、黄色为最终裁决，
+可接受一份原稿、在原帧重新点选或标记不可辨认，并填写依据。两份原稿尚未确认时
+只允许查看，不能发布最终标签。页面支持本地保存、刷新恢复和导入续标；修改裁决或
+仲裁者编号会撤销整体确认。需保存导出的`joint_adjudication_decisions.json`。
+
+```sh
+venv/bin/python scripts/adjudicate_joint_labels.py finalize \
+  --left /absolute/path/reference_A.json \
+  --right /absolute/path/reference_B.json \
+  --plan data/analysis_results/kinematic_validation/adjudication_new_version/plan.json \
+  --decisions /absolute/path/joint_adjudication_decisions.json \
+  --output /absolute/path/adjudicated_labels_new_version.json
+```
+
+最终标签可交给上面的`evaluate_joint_labels.py`。原稿、计划和裁决均以完整JSON的规范化
+SHA256绑定；输入改变后必须重新建立计划并确认。生成器和最终发布拒绝覆盖已有输出，
+原输入保持不变。裁决完成仅说明流程完成，不证明坐标真值、三维动力链或技术评分准确。
+合成数据只用于工程验收，真实双人标签仍待提供。
