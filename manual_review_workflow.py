@@ -9,6 +9,10 @@ import json
 import os
 import threading
 import webbrowser
+import base64
+import fcntl
+import tempfile
+import uuid
 from collections import Counter
 from copy import deepcopy
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -63,12 +67,53 @@ def _load_jsonl(path: Path) -> List[Dict]:
 
 def _atomic_json(path: Path, payload: Dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.tmp")
-    temporary.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    os.replace(temporary, path)
+    _atomic_bytes(path, (json.dumps(payload, ensure_ascii=False, indent=2) + "\n").encode('utf-8'))
+
+
+def _atomic_bytes(path: Path, content: bytes) -> None:
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f'.{path.name}.', delete=False) as stream:
+        temporary = Path(stream.name)
+        stream.write(content)
+        stream.flush()
+        os.fsync(stream.fileno())
+    try:
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _recover_review_publication(paths):
+    journal = paths['session_dir'] / '.manual_review_pending.json'
+    if not journal.exists(): return
+    pending = _load_json(journal)
+    current = _load_json(paths['state']) if paths['state'].exists() else {}
+    if current.get('publication_id') != pending['publication_id']:
+        for key, previous in pending['previous'].items():
+            if key not in ('annotations','evaluation','manual_events','state'):
+                raise ValueError('Invalid review publication recovery key')
+            if previous is None: paths[key].unlink(missing_ok=True)
+            else: _atomic_bytes(paths[key], base64.b64decode(previous))
+    journal.unlink()
+
+
+def _publish_review(paths, documents):
+    publication_id = uuid.uuid4().hex
+    documents['state']['publication_id'] = publication_id
+    revision = paths['session_dir'] / 'manual_review_revisions' / f'{publication_id}.json'
+    documents['state']['revision_snapshot'] = str(revision)
+    # Complete immutable revision first; the state file is the commit marker.
+    _atomic_json(revision, {'publication_id':publication_id, 'documents':documents})
+    journal = paths['session_dir'] / '.manual_review_pending.json'
+    previous = {key:base64.b64encode(paths[key].read_bytes()).decode('ascii')
+                if paths[key].exists() else None for key in ('annotations','evaluation','manual_events','state')}
+    _atomic_json(journal, {'publication_id':publication_id, 'previous':previous})
+    try:
+        for key, document in documents.items():
+            _atomic_json(paths[key], document)
+    except BaseException:
+        _recover_review_publication(paths)
+        raise
+    journal.unlink()
 
 
 def _sha256_json(payload: Dict) -> str:
@@ -353,8 +398,13 @@ def _comparison_rows(event_document: Dict, manual_document: Optional[Dict]) -> L
 
 
 def process_manual_review(paths: Dict[str, Path], annotation_document: Dict) -> Dict:
-    with _REVIEW_LOCK:
-        return _process_manual_review(paths, annotation_document)
+    with _REVIEW_LOCK, (paths['session_dir'] / '.manual_review.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            _recover_review_publication(paths)
+            return _process_manual_review(paths, annotation_document)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def _process_manual_review(paths: Dict[str, Path], annotation_document: Dict) -> Dict:
@@ -392,15 +442,25 @@ def _process_manual_review(paths: Dict[str, Path], annotation_document: Dict) ->
         },
     }
     # Complete validation and all derived calculations before replacing artifacts.
-    _atomic_json(paths["annotations"], annotation_document)
-    _atomic_json(paths["evaluation"], evaluation)
+    documents = {'annotations':annotation_document, 'evaluation':evaluation}
     if manual_document is not None:
-        _atomic_json(paths["manual_events"], manual_document)
-    _atomic_json(paths["state"], state)
+        documents['manual_events'] = manual_document
+    documents['state'] = state
+    _publish_review(paths, documents)
     return state
 
 
 def load_review_state(paths: Dict[str, Path]) -> Dict:
+    with _REVIEW_LOCK, (paths['session_dir'] / '.manual_review.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            _recover_review_publication(paths)
+            return _load_review_state(paths)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def _load_review_state(paths: Dict[str, Path]) -> Dict:
     if paths["state"].exists():
         return _load_json(paths["state"])
     event_document = _load_json(paths["events"])

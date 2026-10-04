@@ -146,6 +146,9 @@ def classify_swing_event(
         return {
             "stroke_type": "Unknown",
             "confidence": 0.0,
+            "contact_status": "unknown",
+            "is_shadow_swing": False,
+            "is_valid_contact": False,
             "evidence": {},
         }
 
@@ -187,8 +190,8 @@ def classify_swing_event(
 
     for f in event_features:
         st = f.get("dual_view_stroke_type")
-        if st in {"Forehand", "Backhand", "Two-Handed Backhand"}:
-            w = max(1.0, float(f.get("wrist_speed") or 1.0))
+        if st in SWING_TYPES and float(f.get("dual_view_confidence") or 0) >= 0.55:
+            w = min(30.0, max(1.0, float(f.get("wrist_speed") or 1.0))) * float(f["dual_view_confidence"])
             dv_stroke_weights[st] += w
             total_dv_weight += w
             if f.get("dual_view_is_two_handed") is True:
@@ -198,9 +201,10 @@ def classify_swing_event(
     dv_evidence_count = sum(
         1
         for f in event_features
-        if f.get("dual_view_stroke_type") in {"Forehand", "Backhand", "Two-Handed Backhand"}
+        if f.get("dual_view_stroke_type") in SWING_TYPES and float(f.get("dual_view_confidence") or 0) >= 0.55
     )
 
+    stroke_type, confidence, decision_rule = "Unknown", 0.0, "insufficient_classification_evidence"
     side = swing_side["side"]
     if dv_evidence_count >= 3:
         top_stroke, top_weight = dv_stroke_weights.most_common(1)[0]
@@ -215,17 +219,17 @@ def classify_swing_event(
                 )
             ):
                 stroke_type = "Two-Handed Backhand"
-                confidence = max(0.90, dv_ratio)
+                confidence = dv_ratio * sum(float(f.get("dual_view_confidence") or 0) for f in event_features if f.get("dual_view_stroke_type") in SWING_TYPES and float(f.get("dual_view_confidence") or 0) >= .55) / dv_evidence_count
                 decision_rule = "dual_view_two_handed_backhand"
             else:
                 stroke_type = top_stroke
-                confidence = max(0.90, dv_ratio)
+                confidence = dv_ratio * sum(float(f.get("dual_view_confidence") or 0) for f in event_features if f.get("dual_view_stroke_type") in SWING_TYPES and float(f.get("dual_view_confidence") or 0) >= .55) / dv_evidence_count
                 decision_rule = "dual_view_transverse_projection"
         elif side == "forehand":
             stroke_type = "Forehand"
             confidence = float(swing_side["confidence"]) * 0.60 + 0.30
             decision_rule = "dual_view_fallback_forehand"
-        else:
+        elif side == "backhand":
             stroke_type = "Backhand"
             confidence = float(swing_side["confidence"]) * 0.60 + 0.30
             decision_rule = "dual_view_fallback_backhand"
@@ -263,14 +267,14 @@ def classify_swing_event(
         stroke_type = "Two-Handed Backhand"
         confidence = max(two_hand_ratio, label_two_hand_ratio)
         decision_rule = "label_fallback_two_hand"
-    elif swing_label_counts.get("Forehand", 0) >= (
+    elif swing_label_counts.get("Forehand", 0) > 0 and swing_label_counts.get("Forehand", 0) >= (
         swing_label_counts.get("Backhand", 0)
         + swing_label_counts.get("Two-Handed Backhand", 0)
     ):
         stroke_type = "Forehand"
         confidence = label_forehand_ratio
         decision_rule = "label_fallback_forehand"
-    else:
+    elif label_backhand_ratio > 0:
         stroke_type = "Backhand"
         confidence = label_backhand_ratio
         decision_rule = "label_fallback_backhand"
@@ -280,7 +284,10 @@ def classify_swing_event(
     has_ball_in_event = len(ball_pts) >= 2 or any(f.get("has_ball") for f in event_features)
 
     min_ball_distance = None
+    closest_contact_feature = None
     for f in event_features:
+        if contact_frame is not None and abs(int(f.get("frame_id", contact_frame)) - contact_frame) > 3:
+            continue
         d = f.get("ball_racket_distance")
         if d is None and f.get("ball") is not None and f.get("wrist") is not None:
             bx, by = f["ball"]
@@ -289,6 +296,7 @@ def classify_swing_event(
         if d is not None:
             if min_ball_distance is None or d < min_ball_distance:
                 min_ball_distance = d
+                closest_contact_feature = f
 
     # 轨迹反弹检验 (Trajectory Rebound Detection)
     has_trajectory_rebound = False
@@ -299,25 +307,21 @@ def classify_swing_event(
         if has_negative and has_positive:
             has_trajectory_rebound = True
 
+    # A distant rebound is not contact evidence; non-detection is not proof of shadow.
     is_shadow_swing = False
-    is_valid_contact = True
-    if has_ball_in_event:
-        if (min_ball_distance is not None and min_ball_distance > 180.0) and not has_trajectory_rebound:
-            is_shadow_swing = True
-            is_valid_contact = False
-        elif has_trajectory_rebound or (min_ball_distance is not None and min_ball_distance <= 180.0):
-            is_shadow_swing = False
-            is_valid_contact = True
-    else:
-        # 全程无球检测：定性为空挥，禁止判定为真实触球
-        is_shadow_swing = True
-        is_valid_contact = False
+    is_valid_contact = min_ball_distance is not None and min_ball_distance <= 180.0
+    contact_status = "candidate" if is_valid_contact else "unknown"
+    if stroke_type == "Forehand" and two_hand_ratio >= .6 and side != "forehand":
+        stroke_type, confidence, decision_rule = "Unknown", 0.0, "two_hand_direction_conflict"
+    if confidence < .55:
+        stroke_type, confidence, decision_rule = "Unknown", 0.0, "insufficient_classification_evidence"
 
     return {
         "stroke_type": stroke_type,
         "confidence": round(float(confidence), 4),
         "is_shadow_swing": is_shadow_swing,
         "is_valid_contact": is_valid_contact,
+        "contact_status": contact_status,
         "min_ball_distance": round(float(min_ball_distance), 2) if min_ball_distance is not None else None,
         "evidence": {
             "label_counts": swing_label_counts,
@@ -328,7 +332,7 @@ def classify_swing_event(
             "backhand_side_frames": int(swing_side["backhand_side_frames"]),
             "forehand_side_frames": int(swing_side["forehand_side_frames"]),
             "classification_context": {
-                "policy_version": "player_camera_swing_v1",
+                "policy_version": "player_camera_swing_v2_abstention",
                 "player": {
                     "dominant_hand": dominant_hand,
                     "source": "configured",
@@ -344,9 +348,17 @@ def classify_swing_event(
                     "two_handed_frames": int(dv_two_handed_count),
                 } if dv_evidence_count > 0 else None,
                 "contact_analysis": {
+                    "observation_policy": "fresh_selected_ball_v1; legacy_XY_unverified",
+                    "fresh_ball_frame_count": sum(f.get('ball_provenance_status') == 'fresh_model_observation' for f in event_features),
+                    "legacy_unverified_ball_frame_count": sum(f.get('ball') is not None and f.get('ball_provenance_status') != 'fresh_model_observation' for f in event_features),
+                    "closest_evidence_frame": (closest_contact_feature or {}).get('frame_id'),
+                    "closest_geometry": (closest_contact_feature or {}).get('contact_geometry') or 'legacy_geometry_unverified',
+                    "distance_threshold_px": 180.0,
+                    "threshold_accuracy_validated": False,
                     "has_ball": bool(has_ball_in_event),
                     "is_shadow_swing": bool(is_shadow_swing),
                     "is_valid_contact": bool(is_valid_contact),
+                    "contact_status": contact_status,
                     "min_ball_distance": round(float(min_ball_distance), 2) if min_ball_distance is not None else None,
                     "has_trajectory_rebound": bool(has_trajectory_rebound),
                 },

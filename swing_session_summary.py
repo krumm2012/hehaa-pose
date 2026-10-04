@@ -16,6 +16,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from practice_scoring import score_review, DIMENSIONS, POLICY_VERSION
 from practice_score_adapter import resolve_practice_score
+from analysis_metric_delivery import session_analysis_metrics
 
 
 def _is_shadow(ev: Dict[str, Any]) -> bool:
@@ -105,6 +106,7 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
             "radar_averages": {key: None for key in DIMENSIONS},
             "scoring_policy_version": POLICY_VERSION,
             "score_series": [],
+            "analysis_metrics": [],
         }
 
     forehand_count = 0
@@ -307,6 +309,7 @@ def build_session_coaching_summary(events: Sequence[Dict[str, Any]]) -> Dict[str
 
     return {
         "total_swings": total_swings,
+        "analysis_metrics": session_analysis_metrics([e for e in ordered if not _is_shadow(e)]),
         "valid_shots_count": valid_shots_count,
         "distribution": {
             "forehand_count": forehand_count,

@@ -8,11 +8,14 @@ import math
 from typing import Dict, List, Optional, Sequence, Tuple
 
 
-CALIBRATION_POLICY_VERSION = "single_view_visible_coach_v2"
+CALIBRATION_POLICY_VERSION = "single_view_visible_coach_v4_unvalidated_rubrics_blocked"
 
 from practice_scoring import POLICY
+from observation_policy import review_reason
 
 VISIBLE_SCORE_CURVES = POLICY["automatic_curves"]
+# Empty until an independently validated rubric is approved in code.
+VALIDATED_AUTOMATIC_RUBRICS = frozenset()
 
 
 def _float(value) -> Optional[float]:
@@ -47,7 +50,7 @@ def calibrate_coaching_event(event: Dict, min_confidence: float = 0.45) -> Dict:
     """
     evidence = event.get("evidence") or {}
     contact = evidence.get("contact_analysis") or (evidence.get("classification_context") or {}).get("contact_analysis") or {}
-    is_shadow_swing = bool(event.get("is_shadow_swing") or contact.get("is_shadow_swing") or contact.get("has_ball") is False)
+    is_shadow_swing = bool(event.get("is_shadow_swing") or contact.get("is_shadow_swing") or (contact.get("contact_status") is None and contact.get("has_ball") is False))
     if is_shadow_swing:
         return {
             "policy_version": CALIBRATION_POLICY_VERSION,
@@ -66,6 +69,13 @@ def calibrate_coaching_event(event: Dict, min_confidence: float = 0.45) -> Dict:
         }
 
     biomechanics = event.get("biomechanics") or {}
+    reason = review_reason(event)
+    if reason:
+        return {"policy_version": CALIBRATION_POLICY_VERSION, "status": "review_required",
+                "visible_technique_score": None, "visible_technique_score_9": None,
+                "uncertainty_9": None, "confidence": 0.0, "metrics_used": [],
+                "assessments": {}, "excluded_metrics": [{"metric": "all", "reason": reason}],
+                "limitations": [reason]}
     metrics = biomechanics.get("metrics") or {}
     assessments = {}
     excluded = []
@@ -83,6 +93,11 @@ def calibrate_coaching_event(event: Dict, min_confidence: float = 0.45) -> Dict:
         elif metric.get("unit") not in POLICY["automatic_units"] or "3d" in str(metric.get("observability", "")).lower():
             status = "excluded"
             reason = "projection_rubric_not_valid_for_this_coordinate_space"
+        elif name not in VALIDATED_AUTOMATIC_RUBRICS:
+            # No automatic curve currently has independent stroke-specific validation.
+            # Input flags cannot certify a rubric; manual review is handled separately.
+            status = "excluded"
+            reason = "automatic_rubric_not_independently_validated"
         elif not eligible:
             status = "excluded"
             reason = reason or "not_coach_eligible"

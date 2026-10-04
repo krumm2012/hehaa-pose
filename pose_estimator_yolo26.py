@@ -197,7 +197,7 @@ class PoseEstimatorYOLO26:
 
         return person_keypoints_list
 
-    def get_keypoints(self, frame: np.ndarray) -> List[Dict]:
+    def get_keypoints(self, frame: np.ndarray, include_confidence: bool = False) -> List[Dict]:
         """
         检测关键点
 
@@ -278,7 +278,7 @@ class PoseEstimatorYOLO26:
                                     scale_y = self.original_size[1] / self.input_size[1]
                                     x = int(kp_x * scale_x)
                                     y = int(kp_y * scale_y)
-                                    valid_kpts[name] = (x, y)
+                                    valid_kpts[name] = (x, y, float(kp_conf)) if include_confidence else (x, y)
                                 else:
                                     valid_kpts[name] = None
 
@@ -310,9 +310,14 @@ class PoseEstimatorYOLO26:
             person_keypoints_list = filtered_keypoints
 
         # 时序平滑（在 ROI 过滤后做，保证输出稳定）
-        person_keypoints_list = self._apply_temporal_smoothing(person_keypoints_list)
+        if not include_confidence:
+            person_keypoints_list = self._apply_temporal_smoothing(person_keypoints_list)
 
         return person_keypoints_list
+
+    def get_keypoints_with_confidence(self, frame: np.ndarray) -> List[Dict]:
+        """Raw detector scores; no temporal replacement or extra inference."""
+        return self.get_keypoints(frame, include_confidence=True)
 
     def _apply_temporal_smoothing(self, person_keypoints_list: List[Dict]) -> List[Dict]:
         """Temporal smoothing for the primary person keypoints."""

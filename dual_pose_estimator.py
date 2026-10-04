@@ -10,8 +10,10 @@ dual_pose_estimator.py
 3. 遮挡自愈与生物力学指标聚合
 """
 from __future__ import annotations
+from dataclasses import replace
 
 import logging
+import math
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,6 +31,12 @@ from dual_view_biomechanics import (
 from dual_view_manager import DualViewCropInfo, DualViewFrame
 
 logger = logging.getLogger("DualPoseEstimator")
+
+
+def measurement_points(points, info):
+    """Undo ROI resize, preserving view handedness and observation metadata."""
+    return {k: replace(v, x=v.x / info.scale_x, y=v.y / info.scale_y)
+            for k, v in points.items() if v.observed}
 
 
 @dataclass
@@ -420,6 +428,76 @@ class DualPoseEstimator:
             return None
         return best_candidate
 
+    def _cached_pose(self, view, crop_info):
+        """Keep held points fixed in source coordinates across moving crops."""
+        points = getattr(self, '_last_valid_'+view+'_pose')
+        previous_crop = getattr(self, '_last_valid_'+view+'_crop', None)
+        if (previous_crop is None) != (crop_info is None):
+            return {}  # Unknown transform cannot be reconstructed safely.
+        result = {}
+        for name, point in points.items():
+            if previous_crop is not None:
+                x,y = previous_crop.map_to_original(point.x,point.y)
+                x,y = crop_info.map_from_original(x,y)
+            else:
+                x,y = point.x,point.y
+            result[name] = replace(point,x=x,y=y,observed=False)
+        return result
+
+    def _select_back_candidate(self, candidates, crop_info, is_point_in_mirror_fn):
+        """Gate fresh torso evidence by mirror geometry and source-space continuity."""
+        ranked = []
+        previous = getattr(self, '_back_identity_anchor', None)
+        if self._back_missing_count >= 3:
+            previous = None
+        for index, pose in enumerate(candidates):
+            shoulders = [pose.get(name) for name in ('left_shoulder','right_shoulder')]
+            if any(p is None or len(p)<3 or p[2]<.5
+                   or not all(math.isfinite(float(v)) for v in p[:3]) for p in shoulders):
+                continue
+            hips = [pose.get(name) for name in ('left_hip','right_hip')]
+            # A partial foreground face/shoulder detection may also lie inside
+            # the mirror polygon. Require an independently observed torso.
+            if any(p is None or len(p)<3 or p[2]<.5
+                   or not all(math.isfinite(float(v)) for v in p[:3]) for p in hips):
+                continue
+            project = crop_info.map_to_original if crop_info else lambda x,y:(x,y)
+            points = [project(p[0],p[1]) for p in shoulders]
+            center = tuple(sum(p[i] for p in points)/2 for i in (0,1))
+            hip_points = [project(p[0], p[1]) for p in hips]
+            hip_center = tuple(sum(p[i] for p in hip_points)/2 for i in (0, 1))
+            # Identity continuity uses torso length: shoulder width collapses
+            # during a side-on turn and a fixed pixel gate changes with input
+            # resolution. This does not grant shoulder-angle eligibility.
+            torso_length = math.dist(center, hip_center)
+            span = max(math.dist(*points), torso_length)
+            if torso_length <= 1e-6:
+                continue
+            if is_point_in_mirror_fn is not None:
+                if not all(is_point_in_mirror_fn(*point) for point in points):
+                    continue
+                hips = [pose.get(n) for n in ('left_hip','right_hip')]
+                if any(p is not None and len(p)>2 and p[2]>=.5
+                       and not is_point_in_mirror_fn(*project(p[0],p[1])) for p in hips):
+                    continue
+            else:
+                # Without mirror geometry, retain conservative face rejection.
+                eyes = [pose.get(n) for n in ('left_eye','right_eye')]
+                if all(p is not None and len(p)>2 and p[2]>=.7 for p in eyes):
+                    continue
+            distance = 0.0
+            if previous is not None:
+                old_center, old_span = previous
+                distance = math.dist(center,old_center)/max(span,old_span)
+                if distance > 2 or not .5 <= span/old_span <= 2:
+                    continue
+            ranked.append((distance if previous else center[1], index, center, span))
+        if not ranked:
+            return None
+        _, index, center, span = min(ranked)
+        self._back_identity_anchor = (center,span)
+        return index
+
     def _predict_single_view(
         self,
         view_frame: np.ndarray,
@@ -440,48 +518,29 @@ class DualPoseEstimator:
             if not results or results[0].keypoints is None or len(results[0].keypoints) == 0:
                 if is_back_view and self._last_valid_back_pose and self._back_missing_count < 3:
                     self._back_missing_count += 1
-                    return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_back_pose.items()}
+                    return self._cached_pose('back', crop_info)
                 elif not is_back_view and self._last_valid_front_pose and self._front_missing_count < 3:
                     self._front_missing_count += 1
-                    return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_front_pose.items()}
+                    return self._cached_pose('front', crop_info)
                 return {}
             kp_data = results[0].keypoints.data.cpu().numpy()  # [N, 17, 3] or [N, 17, 2]
             if len(kp_data) == 0:
                 if is_back_view and self._last_valid_back_pose and self._back_missing_count < 3:
                     self._back_missing_count += 1
-                    return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_back_pose.items()}
+                    return self._cached_pose('back', crop_info)
                 elif not is_back_view and self._last_valid_front_pose and self._front_missing_count < 3:
                     self._front_missing_count += 1
-                    return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_front_pose.items()}
+                    return self._cached_pose('front', crop_info)
                 return {}
 
             best_person = None
             if is_back_view:
                 self._last_back_eyes = self._extract_eye_boxes_from_kp_data(kp_data, h, w)
-                candidates = []
-                for p in kp_data:
-                    ls_y = p[5, 1] if p.shape[0] > 5 and (p.shape[1] <= 2 or p[5, 2] >= self.conf_threshold) else None
-                    rs_y = p[6, 1] if p.shape[0] > 6 and (p.shape[1] <= 2 or p[6, 2] >= self.conf_threshold) else None
-                    sh_ys = [y for y in (ls_y, rs_y) if y is not None]
-
-                    has_le = p.shape[0] > 1 and (p.shape[1] <= 2 or p[1, 2] >= self.conf_threshold)
-                    has_re = p.shape[0] > 2 and (p.shape[1] <= 2 or p[2, 2] >= self.conf_threshold)
-                    has_frontal_face = (has_le and has_re)
-
-                    # 严格排除正面人脸（正面人像不能作为 Backview 背影姿态）
-                    if has_frontal_face:
-                        continue
-
-                    if sh_ys:
-                        candidates.append((min(sh_ys), p))
-                    else:
-                        valid_ys = [p[i, 1] for i in range(len(p)) if p.shape[1] <= 2 or p[i, 2] >= self.conf_threshold]
-                        if valid_ys:
-                            candidates.append((min(valid_ys) + 50.0, p))
-
-                if candidates:
-                    candidates.sort(key=lambda x: x[0])
-                    best_person = candidates[0][1]
+                candidate_maps = [{name: tuple(person[i]) for i,name in COCO_KEYPOINTS.items() if i < len(person)}
+                                  for person in kp_data]
+                index = self._select_back_candidate(candidate_maps, crop_info, is_point_in_mirror_fn)
+                if index is not None:
+                    best_person = kp_data[index]
             else:
                 best_person = self._select_front_candidate_ultralytics(
                     kp_data, h, w, crop_info=crop_info, is_point_in_mirror_fn=is_point_in_mirror_fn
@@ -494,27 +553,29 @@ class DualPoseEstimator:
                     y = float(best_person[idx, 1])
                     conf = float(best_person[idx, 2]) if best_person.shape[1] > 2 else 1.0
                     if conf >= self.conf_threshold:
-                        parsed[name] = Keypoint(x=x, y=y, conf=conf)
+                        parsed[name] = Keypoint(x=x, y=y, conf=conf, source_frame_id=getattr(self, "_source_frame_id", None), confidence_source="model")
 
             if is_back_view:
                 if parsed:
                     self._last_valid_back_pose = parsed
+                    self._last_valid_back_crop = crop_info
                     self._back_missing_count = 0
                     return parsed
                 elif self._last_valid_back_pose and self._back_missing_count < 3:
                     self._back_missing_count += 1
-                    return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_back_pose.items()}
+                    return self._cached_pose('back', crop_info)
                 else:
                     self._back_missing_count += 1
                     return {}
             else:
                 if parsed:
                     self._last_valid_front_pose = parsed
+                    self._last_valid_front_crop = crop_info
                     self._front_missing_count = 0
                     return parsed
                 elif self._last_valid_front_pose and self._front_missing_count < 3:
                     self._front_missing_count += 1
-                    return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_front_pose.items()}
+                    return self._cached_pose('front', crop_info)
                 else:
                     self._front_missing_count += 1
                     return {}
@@ -522,45 +583,24 @@ class DualPoseEstimator:
         # Core ML 分支
         if self.backend == "coreml":
             try:
-                kpts_list = active_model.get_keypoints(view_frame)
+                predict = getattr(active_model, "get_keypoints_with_confidence", active_model.get_keypoints)
+                kpts_list = predict(view_frame)
                 if not kpts_list:
                     if is_back_view and self._last_valid_back_pose and self._back_missing_count < 3:
                         self._back_missing_count += 1
-                        return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_back_pose.items()}
+                        return self._cached_pose('back', crop_info)
                     elif not is_back_view and self._last_valid_front_pose and self._front_missing_count < 3:
                         self._front_missing_count += 1
-                        return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_front_pose.items()}
+                        return self._cached_pose('front', crop_info)
                     return {}
 
                 best = None
                 if is_back_view:
                     # 背面机位提取人脸眼睛遮挡区域（区域判断：仅针对下部真实人脸）
                     self._last_back_eyes = self._extract_eye_boxes_from_kpts_list(kpts_list, h, w)
-                    # 背面镜面机位：严格过滤正面人脸，仅保留背影姿态
-                    candidates = []
-                    for p in kpts_list:
-                        ls = p.get("left_shoulder")
-                        rs = p.get("right_shoulder")
-                        sh_ys = [pt[1] for pt in (ls, rs) if pt is not None]
-
-                        has_le = p.get("left_eye") is not None
-                        has_re = p.get("right_eye") is not None
-                        has_frontal_face = (has_le and has_re)
-
-                        # 严格排除正面人脸（正面人像不能作为 Backview 背影姿态）
-                        if has_frontal_face:
-                            continue
-
-                        if sh_ys:
-                            candidates.append((min(sh_ys), p))
-                        else:
-                            valid_ys = [pt[1] for pt in p.values() if pt is not None]
-                            if valid_ys:
-                                candidates.append((min(valid_ys) + 50.0, p))
-
-                    if candidates:
-                        candidates.sort(key=lambda x: x[0])
-                        best = candidates[0][1]
+                    index = self._select_back_candidate(kpts_list, crop_info, is_point_in_mirror_fn)
+                    if index is not None:
+                        best = kpts_list[index]
                 else:
                     best = self._select_front_candidate_coreml(
                         kpts_list, h, w, crop_info=crop_info, is_point_in_mirror_fn=is_point_in_mirror_fn
@@ -570,27 +610,29 @@ class DualPoseEstimator:
                 if best is not None:
                     for name, pt in best.items():
                         if pt is not None:
-                            parsed[name] = Keypoint(x=float(pt[0]), y=float(pt[1]), conf=0.85)
+                            parsed[name] = Keypoint(x=float(pt[0]), y=float(pt[1]), conf=float(pt[2]) if len(pt) > 2 else 0.0, source_frame_id=getattr(self, "_source_frame_id", None), confidence_source="model" if len(pt) > 2 else "unavailable")
 
                 if is_back_view:
                     if parsed:
                         self._last_valid_back_pose = parsed
+                        self._last_valid_back_crop = crop_info
                         self._back_missing_count = 0
                         return parsed
                     elif self._last_valid_back_pose and self._back_missing_count < 3:
                         self._back_missing_count += 1
-                        return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_back_pose.items()}
+                        return self._cached_pose('back', crop_info)
                     else:
                         self._back_missing_count += 1
                         return {}
                 else:
                     if parsed:
                         self._last_valid_front_pose = parsed
+                        self._last_valid_front_crop = crop_info
                         self._front_missing_count = 0
                         return parsed
                     elif self._last_valid_front_pose and self._front_missing_count < 3:
                         self._front_missing_count += 1
-                        return {k: Keypoint(x=v.x, y=v.y, conf=v.conf * 0.95) for k, v in self._last_valid_front_pose.items()}
+                        return self._cached_pose('front', crop_info)
                     else:
                         self._front_missing_count += 1
                         return {}
@@ -617,6 +659,7 @@ class DualPoseEstimator:
                 conf=kp.conf,
                 z=kp.z,
                 recovered_from_mirror=kp.recovered_from_mirror,
+                observed=kp.observed, source_frame_id=kp.source_frame_id, confidence_source=kp.confidence_source,
             )
         return mapped
 
@@ -632,6 +675,7 @@ class DualPoseEstimator:
         3. 进行生物力学融合、抗侧身塌陷及遮挡自愈
         """
         # 1. 独立并发估计
+        self._source_frame_id = dual_frame.frame_id
         self._last_back_eyes = []
         is_mirror_fn = getattr(dual_frame, "is_point_in_mirror_fn", None)
         if (
@@ -687,10 +731,14 @@ class DualPoseEstimator:
             bx, by = dual_frame.front_info.map_from_original(ball_pos[0], ball_pos[1])
             front_ball_pos = (bx, by)
 
+        # Undo independent ROI resizing while retaining each view's handedness.
+        # Mirror reflection and crop translation do not affect widths/ratios.
+        measurement_ball = (front_ball_pos[0] / dual_frame.front_info.scale_x,
+                            front_ball_pos[1] / dual_frame.front_info.scale_y) if front_ball_pos else None
         biomech_res = self.biomech_engine.calculate_dual_biomechanics(
-            front_pose_raw=front_pose_local,
-            back_pose_raw=back_pose_local,
-            ball_pos=front_ball_pos,
+            front_pose_raw=measurement_points(front_pose_local, dual_frame.front_info),
+            back_pose_raw=measurement_points(back_pose_local, dual_frame.back_info),
+            ball_pos=measurement_ball,
         )
 
         # 4. 生成自愈后的完整正面姿态并映射至全局全景坐标
@@ -713,6 +761,7 @@ class DualPoseEstimator:
     def reset(self):
         """重置内部姿态追踪与时序平滑状态。"""
         self._last_back_eyes = []
+        self._back_identity_anchor = None
         self._last_valid_back_pose = {}
         self._back_missing_count = 0
         self._last_valid_front_pose = {}

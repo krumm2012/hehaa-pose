@@ -25,7 +25,7 @@ from analysis_data_contracts import (
     utc_iso_from_ns,
 )
 from swing_event_analyzer import analyze_frame_records
-from swing_report_builder import _build_radar_svg
+from swing_report_builder import _build_radar_svg, _build_kinematic_sequence_html
 from swing_session_quality import build_session_quality_dashboard
 from video_writer_backend import create_video_writer
 
@@ -361,6 +361,8 @@ class RealtimeSwingEventEngine:
         type_counts = Counter(event["stroke_type"] for event in self._events)
         return {
             **document_contract("swing_events", self.session_metadata),
+            "analysis_build": __import__('analysis_provenance').analysis_build_info(),
+            "generated_at_unix_ns": time.time_ns(),
             "summary": {
                 "total_frames": self._total_frames,
                 "latest_frame": self._latest_frame_id,
@@ -411,6 +413,7 @@ class RealtimeSwingEventEngine:
 
         analysis = analyze_frame_records(
             analysis_frames,
+            measurement_frames=list(self._frames) if self._events else None,
             session_metadata=self.session_metadata,
             **self.options,
         )
@@ -876,6 +879,12 @@ class RealtimeSwingOutputManager:
             frames = self._frames_for_event_locked(event)
         if not frames:
             raise RuntimeError(f"No buffered frames available for Swing event {event['event_id']}")
+        # Buffered realtime overlays may belong to the previous confirmed swing.
+        # Replace the card in the background encoder, using this clip's finalized event.
+        renderer = None
+        if self.is_dual_view:
+            from dual_view_renderer import DualViewRenderer
+            renderer = DualViewRenderer()
         writer = create_video_writer(
             output_path=str(output_path),
             width=self.width,
@@ -894,30 +903,36 @@ class RealtimeSwingOutputManager:
                     raise RuntimeError(
                         f"Unable to decode buffered frame {frame_id} for Swing event {event['event_id']}"
                     )
-                self._draw_event_badge(frame, frame_id, event)
+                frame = self._annotate_event_frame(frame, frame_id, event, renderer)
                 writer.write(frame)
         finally:
             writer.release()
 
         # Extract and save contact frame freeze snapshot if available
         contact_fid = int(event.get("contact_frame") or event.get("start_frame") or 0)
+        freeze_fid = contact_fid
         target_bytes = None
         for fid, fbytes in frames:
             if fid == contact_fid:
                 target_bytes = fbytes
                 break
         if target_bytes is None and frames:
-            target_bytes = min(frames, key=lambda x: abs(x[0] - contact_fid))[1]
+            freeze_fid, target_bytes = min(frames, key=lambda x: abs(x[0] - contact_fid))
 
         freeze_rel = None
         if target_bytes:
             freeze_filename = f"event_{int(event['event_id']):04d}_impact_freeze.jpg"
             freeze_path = output_path.parent / freeze_filename
             try:
-                freeze_path.write_bytes(target_bytes)
+                freeze = cv2.imdecode(np.frombuffer(target_bytes, dtype=np.uint8), cv2.IMREAD_COLOR)
+                if freeze is None:
+                    raise RuntimeError("Unable to decode contact freeze frame")
+                freeze = self._annotate_event_frame(freeze, freeze_fid, event, renderer)
+                if not cv2.imwrite(str(freeze_path), freeze):
+                    raise RuntimeError("Unable to write contact freeze frame")
                 freeze_rel = str(freeze_path.relative_to(self.output_json.parent)).replace(os.sep, "/")
             except Exception:
-                freeze_rel = freeze_filename
+                freeze_rel = None
 
         buffered_frame_ids = {int(frame_id) for frame_id, _ in frames}
         missing_frame_ids = sorted(
@@ -930,6 +945,7 @@ class RealtimeSwingOutputManager:
             "frame_count": len(frames),
             "missing_frames": missing_frame_ids,
             "impact_freeze_path": freeze_rel,
+            "clip_telemetry_event_id": int(event["event_id"]) if renderer is not None else None,
         }
 
     def _finish_clip(self, event_id: int, future: Future) -> None:
@@ -941,6 +957,7 @@ class RealtimeSwingOutputManager:
                 "clip_frame_count": int(result.get("frame_count") or 0),
                 "clip_missing_frame_count": len(missing_frames),
                 "clip_missing_frames": missing_frames,
+                "clip_telemetry_event_id": result.get("clip_telemetry_event_id"),
             }
             if result.get("impact_freeze_path"):
                 updates["impact_freeze_path"] = result["impact_freeze_path"]
@@ -967,6 +984,14 @@ class RealtimeSwingOutputManager:
                 "clip_buffer_dropped_frames"
             ] = self._dropped_compression_frames
             self._queue_live_outputs(self._document)
+
+    def _annotate_event_frame(self, frame, frame_id, event, renderer):
+        if renderer is not None:
+            from realtime_swing_runtime import build_impact_telemetry_card
+            frame = renderer.draw_impact_telemetry_card(
+                frame, build_impact_telemetry_card(event), opacity=1.0)
+        self._draw_event_badge(frame, frame_id, event)
+        return frame
 
     @staticmethod
     def _draw_event_badge(frame, frame_id: int, event: Dict) -> None:
@@ -1206,6 +1231,10 @@ class RealtimeSwingOutputManager:
 
     def _render_live_html(self, document: Dict) -> str:
         summary = document.get("summary") or {}
+        build = document.get('analysis_build') or {}
+        version_html = '<p class="summary">历史分析版本未记录；需生成新版本后比较，原记录保留。</p>'
+        if build:
+            version_html = '<details><summary>分析版本 · 原记录保留</summary><p>观测资格：' + html.escape(str(build.get('observation_policy') or '未记录')) + '</p><p>触球测量：保留完整上下文；各指标资格与评分资格分别记录。</p><p>新旧版本请在相同源帧上对比；历史报告不会自动升级。</p></details>'
         session_dashboard = self._render_live_session_dashboard(document)
         roi = summary.get("roi") or self.roi_metadata
         stream_content = ""
@@ -1313,7 +1342,7 @@ class RealtimeSwingOutputManager:
             if not coach_advices and event.get("coach_advice"):
                 coach_advices = [event["coach_advice"]]
             schema_ver = str(bio.get("schema_version") or "")
-            coach_origin_text = "虚拟双机位解剖自愈动力学" if schema_ver == "dual_view_2d_v1" else "单机位2D估计"
+            coach_origin_text = "双视角二维观测参考" if schema_ver == "dual_view_2d_v1" else "单机位2D估计"
             coach_content = ""
             if is_shadow_swing:
                 coach_content = (
@@ -1392,37 +1421,7 @@ class RealtimeSwingOutputManager:
                 or metrics.get("kinematic_sequence")
                 or {}
             )
-            details = seq.get("details") if isinstance(seq, dict) and isinstance(seq.get("details"), dict) else (seq if isinstance(seq, dict) else {})
-            seq_quality = (seq.get("value") or details.get("sequence_quality") or "未观测") if isinstance(seq, dict) else "未观测"
-            dt_hip_sh = details.get("latency_hip_to_shoulder_ms") if isinstance(details, dict) else None
-            dt_sh_rkt = details.get("latency_shoulder_to_racket_ms") if isinstance(details, dict) else None
-
-            kinematic_html = ""
-            if dt_hip_sh is not None or dt_sh_rkt is not None:
-                dt_hip_sh_val = float(dt_hip_sh or 0.0)
-                dt_sh_rkt_val = float(dt_sh_rkt or 0.0)
-                dt_hip_sh_pct = min(100.0, max(5.0, (dt_hip_sh_val / 80.0) * 100.0))
-                dt_sh_rkt_pct = min(100.0, max(5.0, (dt_sh_rkt_val / 90.0) * 100.0))
-                kinematic_html = f"""
-                <div class="kinematic-box">
-                  <div class="kinematic-header">
-                    <span>动力学链传递: <strong>下肢 ➔ 髋/骨盆 ➔ 肩/躯干 ➔ 球拍</strong></span>
-                    <span class="seq-badge seq-{html.escape(str(seq_quality).lower())}">{html.escape(str(seq_quality))}</span>
-                  </div>
-                  <div class="kinematic-bars">
-                    <div class="kinematic-bar-row">
-                      <span class="k-label">髋-肩时序延时 (Δt_hip_sh):</span>
-                      <span class="k-val">{dt_hip_sh_val:.1f} ms</span>
-                      <div class="k-track"><div class="k-fill" style="width:{dt_hip_sh_pct:.0f}%;"></div></div>
-                    </div>
-                    <div class="kinematic-bar-row">
-                      <span class="k-label">肩-拍时序延时 (Δt_sh_rkt):</span>
-                      <span class="k-val">{dt_sh_rkt_val:.1f} ms</span>
-                      <div class="k-track"><div class="k-fill k-fill-rkt" style="width:{dt_sh_rkt_pct:.0f}%;"></div></div>
-                    </div>
-                  </div>
-                </div>
-                """
+            kinematic_html = _build_kinematic_sequence_html(seq)
 
             # 击球遥测指标网格
             rkt = (
@@ -1453,57 +1452,45 @@ class RealtimeSwingOutputManager:
             scap = metrics.get("scapular_retraction") or {}
             sh_turn = metrics.get("shoulder_turn") or {}
 
-            contact_kmh = rkt.get("contact_kmh") if rkt.get("contact_kmh") is not None else rkt.get("contact_speed_kmh") or (rkt.get("value") if isinstance(rkt, dict) else None)
-            max_kmh = rkt.get("max_kmh") if rkt.get("max_kmh") is not None else rkt.get("max_speed_kmh")
-            brush_angle = brush.get("low_to_high_angle_deg") if brush.get("low_to_high_angle_deg") is not None else brush.get("angle_deg") or (brush.get("value") if isinstance(brush, dict) else None)
-            drop_ratio = brush.get("drop_depth_ratio") if isinstance(brush, dict) else None
-            stance_type = stc.get("stance_type") or (stc.get("value") if isinstance(stc, dict) else None)
-            leg_ratio = leg.get("drive_ratio") or (leg.get("value") if isinstance(leg, dict) else None)
-            tb_val = tb.get("value") if isinstance(tb, dict) else None
-            scap_val = scap.get("value") if isinstance(scap, dict) else None
-            turn_val = sh_turn.get("value") if isinstance(sh_turn, dict) else None
-
-            has_telemetry = any(v is not None for v in [contact_kmh, max_kmh, brush_angle, drop_ratio, stance_type, leg_ratio, tb_val, scap_val, turn_val])
-            telemetry_html = ""
-            if has_telemetry:
-                kmh_text = f"{float(contact_kmh):.1f} / {float(max_kmh):.1f} km/h" if contact_kmh is not None and max_kmh is not None else (f"{float(contact_kmh):.1f} km/h" if contact_kmh is not None else "-")
-                brush_text = f"{float(brush_angle):+.1f}°" if brush_angle is not None else "-"
-                if drop_ratio is not None:
-                    try:
-                        brush_text += f" (下潜 {float(drop_ratio):.2f}x)"
-                    except (ValueError, TypeError):
-                        brush_text += f" (下潜 {drop_ratio})"
-                stance_text = str(stance_type or "-")
-                if leg_ratio is not None:
-                    try:
-                        stance_text += f" · 蹬地 {float(leg_ratio):.2f}x"
-                    except (ValueError, TypeError):
-                        stance_text += f" · 蹬地 {leg_ratio}"
-                dual_back_text = ""
-                if tb_val is not None or scap_val is not None or turn_val is not None:
-                    parts = []
-                    if turn_val is not None:
-                        parts.append(f"转肩 {float(turn_val):.1f}°")
-                    if tb_val is not None:
-                        parts.append(f"引拍 {float(tb_val):.2f}x")
-                    if scap_val is not None:
-                        parts.append(f"肩胛 {float(scap_val):.2f}x")
-                    dual_back_text = " · ".join(parts)
-
-                telemetry_html = f"""
-                <div class="telemetry-grid">
-                  <div class="telem-item"><span class="telem-label">拍头挥速 (击球/峰值)</span><strong class="telem-val">{html.escape(kmh_text)}</strong></div>
-                  <div class="telem-item"><span class="telem-label">刷球仰角与下潜</span><strong class="telem-val">{html.escape(brush_text)}</strong></div>
-                  <div class="telem-item"><span class="telem-label">击球站位与蹬地比</span><strong class="telem-val">{html.escape(stance_text)}</strong></div>
-                  {f'<div class="telem-item"><span class="telem-label">后背视角动力学</span><strong class="telem-val">{html.escape(dual_back_text)}</strong></div>' if dual_back_text else ''}
-                </div>
-                """
+            from osd_evidence import display_value, evidence_label
+            def qualified(section, field):
+                return display_value(section, field) if section.get('measurement_evidence') else None
+            contact_px_s, max_px_s = rkt.get('contact_px_s'), rkt.get('max_px_s')
+            brush_angle = qualified(brush, 'low_to_high_angle_deg')
+            drop_ratio = qualified(brush, 'drop_depth_ratio')
+            foot_angle = qualified(stc, 'image_foot_line_angle_deg')
+            leg_ratio = qualified(leg, 'drive_ratio')
+            speed_text = f"{float(contact_px_s):.0f} px/s" if contact_px_s is not None else '未观测'
+            if max_px_s is not None: speed_text += f" · 事件峰值 {float(max_px_s):.0f} px/s"
+            speed_text += '（框中心二维参考；km/h 未标定）'
+            brush_text = f"{float(brush_angle):+.1f}°" if brush_angle is not None else evidence_label(brush)
+            if drop_ratio is not None: brush_text += f" · 上升比 {float(drop_ratio):.2f}x"
+            foot_text = f"{float(foot_angle):.1f}°（像面）" if foot_angle is not None else evidence_label(stc)
+            if leg_ratio is not None: foot_text += f" · 髋部上移 {float(leg_ratio):.2f}x"
+            else: foot_text += ' · ' + evidence_label(leg)
+            proxy_parts = []
+            for metric, label, unit in ((sh_turn,'肩宽角度代理','°'),(tb,'镜面手腕偏移比','x'),(scap,'正背肩宽比','x')):
+                if metric.get('value') is not None: proxy_parts.append(f"{label} {float(metric['value']):.2f}{unit}")
+            telemetry_html = '<div class="telemetry-grid">' + ''.join(
+                f'<div class="telem-item"><span class="telem-label">{html.escape(label)}</span><strong class="telem-val">{html.escape(value)}</strong></div>'
+                for label,value in [('球拍框中心像素速度 · 事件窗口',speed_text),
+                                    ('球拍像面轨迹 / 上升比 · 触球窗口',brush_text),
+                                    ('足部连线 / 髋部像面上移 · 触球窗口',foot_text),
+                                    ('双视角投影代理 · 未验证',' · '.join(proxy_parts) or '缺观测')]) + '</div>'
+            from analysis_metric_delivery import scoring_blockers
+            reason_labels = {'automatic_rubric_not_independently_validated':'评分标准未独立验证',
+                             'contact_not_confirmed':'触球尚未确认', 'missing_observations':'缺少相关观测', 'shadow_swing':'空挥'}
+            blocks = scoring_blockers(event)
+            if blocks:
+                telemetry_html += '<details><summary>五维自动评分 · 阻断原因</summary>' + ''.join(
+                    '<p>' + html.escape(b['label']) + '：' + '；'.join(html.escape(reason_labels.get(r,r)) for r in b['reasons']) + '</p>'
+                    for b in blocks) + '<small>观测参考与教练确认评分分别保留。</small></details>'
 
             metric_labels = {
-                "shoulder_turn": "抗塌陷转肩",
-                "shoulder_turn_change": "转肩蓄力",
-                "takeback_depth": "后背引拍",
-                "scapular_retraction": "肩胛收紧",
+                "shoulder_turn": "肩宽角度代理",
+                "shoulder_turn_change": "肩部连线角度变化",
+                "takeback_depth": "镜面手腕偏移比",
+                "scapular_retraction": "正背肩宽比",
                 "preparation_knee_flexion": "准备屈膝",
                 "arm_extension": "挥拍舒展",
                 "contact_lateral_distance": "击球点距离",
@@ -1954,7 +1941,7 @@ class RealtimeSwingOutputManager:
 </head>
 <body>
   <header>
-    <div><h1>Live Swing Events</h1><p class="summary">Coach 建议每 200 ms 增量更新。</p></div>
+    <div><h1>Live Swing Events</h1><p class="summary">Coach 建议每 200 ms 增量更新。</p>{version_html}</div>
     <div class="header-tools">
       <strong id="report-summary">{int(summary.get('swing_event_count') or 0)} events · frame {int(summary.get('latest_frame') or -1)}</strong>
       <div class="refresh-controls" role="group" aria-label="页面刷新控制">

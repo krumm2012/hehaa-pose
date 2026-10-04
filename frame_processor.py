@@ -131,6 +131,8 @@ class FrameProcessor:
         healed_pose: Optional[Dict] = None,
         dual_view_biomechanics: Optional[Dict] = None,
         racket: Optional[Tuple[float, float, float, float]] = None,
+        source_time: Optional[Dict] = None,
+        ball_detection: Optional[Dict] = None,
     ) -> Dict:
         record = {
             "frame_id": frame_id,
@@ -141,10 +143,15 @@ class FrameProcessor:
             "pose": poses[0] if poses else None,
             "metrics": phase_metrics,
         }
+        from ball_observation_contract import selected_ball_observation
+        record['ball_observation'] = selected_ball_observation(ball_detection, frame_id, ball_position)
         if racket is not None:
             record["racket"] = list(racket)
         if healed_pose is not None:
             record["healed_pose"] = healed_pose
         if dual_view_biomechanics is not None:
             record["dual_view_biomechanics"] = dual_view_biomechanics
+        if source_time is not None:
+            from analysis_data_contracts import attach_source_time
+            attach_source_time(record, source_time)
         return record

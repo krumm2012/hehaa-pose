@@ -195,6 +195,7 @@ def analyze_frame_records(
     min_wrist_sweep: float = 0.0,
     min_arm_extension_range: float = 0.0,
     session_metadata: Optional[Dict] = None,
+    measurement_frames: Optional[List[Dict]] = None,
     **kwargs,
 ) -> Dict:
     """Build event-level analysis and auditable frame features."""
@@ -210,13 +211,22 @@ def analyze_frame_records(
         min_arm_extension_range=min_arm_extension_range,
         dominant_hand=dominant_hand,
     )
+    # Realtime segmentation can exclude an already published tail while its
+    # raw observations still belong to the next contact measurement window.
+    evidence_frames = frames if measurement_frames is None else measurement_frames
+    evidence_features = features if measurement_frames is None else extract_motion_features(
+        evidence_frames, dominant_hand=dominant_hand
+    )
     events = enrich_events_with_biomechanics(
         segmentation["events"],
-        frames,
-        features,
+        evidence_frames,
+        evidence_features,
     )
     for event in events:
         event["coach_calibration"] = calibrate_coaching_event(event)
+        from analysis_metric_delivery import event_analysis_metrics, scoring_blockers
+        event['analysis_metrics'] = event_analysis_metrics(event)
+        event['scoring_blockers'] = scoring_blockers(event)
     effective_session = dict(session_metadata or inferred_session(frames))
     frames_by_id = {
         int(frame["frame_id"]): frame
@@ -245,6 +255,8 @@ def analyze_frame_records(
     }
     return {
         **document_contract("swing_events", effective_session),
+        "analysis_build": __import__('analysis_provenance').analysis_build_info(),
+        "generated_at_unix_ns": emitted_at_unix_ns,
         "summary": {
             "total_frames": len(frames),
             "swing_event_count": len(events),

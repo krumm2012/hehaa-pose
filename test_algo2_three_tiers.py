@@ -37,7 +37,8 @@ class TestAlgo2ThreeTiers(unittest.TestCase):
             features_in_event.append({
                 "frame_id": f,
                 "has_pose": True,
-                "racket_head_speed_kmh": 60.0 + f * 2.5 if f <= 10 else 75.0,
+                "racket_speed_px_s": 600.0 + f * 25 if f <= 10 else 750.0,
+                "stance_angle": 35.0,
                 "racket_center": (racket_x, racket_y),
                 "hip_vertical_pos": hip_y,
                 "stance_type": "Semi-Open Stance",
@@ -60,15 +61,18 @@ class TestAlgo2ThreeTiers(unittest.TestCase):
 
         # Tier 1: 拍头动力学与刷球角
         self.assertIn("racket_head_speed", ext)
-        self.assertGreater(ext["racket_head_speed"]["max_kmh"], 70.0)
-        self.assertGreater(ext["racket_head_speed"]["contact_kmh"], 70.0)
+        self.assertIsNone(ext["racket_head_speed"]["max_kmh"])
+        self.assertEqual(ext["racket_head_speed"]["max_px_s"], 850)
+        self.assertIsNone(ext["racket_head_speed"]["contact_kmh"])
+        self.assertEqual(ext["racket_head_speed"]["contact_px_s"], 850)
         self.assertIn("brush_angle", ext)
         self.assertGreater(ext["brush_angle"]["low_to_high_angle_deg"], 0.0)
         self.assertIsNotNone(ext["brush_angle"]["drop_depth_ratio"])
 
         # Tier 2: 站位类型与蹬地发力与技术评分
         self.assertIn("stance", ext)
-        self.assertEqual(ext["stance"]["stance_type"], "Semi-Open Stance")
+        self.assertIsNone(ext["stance"]["stance_type"])
+        self.assertEqual(ext["stance"]["image_foot_line_angle_deg"], 35)
         self.assertIn("leg_drive", ext)
         self.assertGreater(ext["leg_drive"]["drive_px"], 0.0)
         self.assertIn("swing_quality_score", ext)

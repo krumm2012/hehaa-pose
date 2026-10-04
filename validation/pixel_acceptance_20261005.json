@@ -1,0 +1,165 @@
+{
+  "schema": "tennis.engineering-acceptance.v1",
+  "accuracy_validated": false,
+  "manifest_sha256": "ef6aee5d50952fdacb37ef28d5fa24df1c8f41336849fb13092f158393429594",
+  "frame_journal_sha256": "debe72b5a6338a5d248028ddec2d429da115cae071729c21e9ffd1dae0ad96a8",
+  "frame_count": 250,
+  "event_count": 3,
+  "timing_ms": {
+    "inference_ms": {
+      "count": 250,
+      "p50": 27.852,
+      "p95": 29.861,
+      "max": 48.878
+    },
+    "analysis_ms": {
+      "count": 250,
+      "p50": 0.138,
+      "p95": 0.206,
+      "max": 12.787
+    },
+    "capture_to_analysis_ms": {
+      "count": 250,
+      "p50": 30.302,
+      "p95": 92.255,
+      "max": 190.323
+    },
+    "render_ms": {
+      "count": 250,
+      "p50": 1.845,
+      "p95": 38.242,
+      "max": 88.288
+    },
+    "output_submit_ms": {
+      "count": 250,
+      "p50": 14.486,
+      "p95": 15.701,
+      "max": 142.081
+    },
+    "capture_to_output_submit_ms": {
+      "count": 250,
+      "p50": 47.044,
+      "p95": 131.919,
+      "max": 209.446
+    },
+    "capture_to_inference_start_ms": {
+      "count": 250,
+      "p50": 0.354,
+      "p95": 1.009,
+      "max": 37.252
+    },
+    "inference_to_analysis_start_ms": {
+      "count": 250,
+      "p50": 0.897,
+      "p95": 63.859,
+      "max": 122.662
+    }
+  },
+  "replay_push_ms": {
+    "count": 250,
+    "p50": 0.114,
+    "p95": 4.407,
+    "max": 5.872
+  },
+  "report_render_ms": 0.48,
+  "synthetic_long_session": {
+    "frames": 5000,
+    "checkpoints": [
+      {
+        "processed": 1000,
+        "cached_frames": 200,
+        "cost_ms": {
+          "count": 1000,
+          "p50": 0.002,
+          "p95": 0.967,
+          "max": 1.084
+        }
+      },
+      {
+        "processed": 2000,
+        "cached_frames": 200,
+        "cost_ms": {
+          "count": 1000,
+          "p50": 0.002,
+          "p95": 0.968,
+          "max": 1.028
+        }
+      },
+      {
+        "processed": 3000,
+        "cached_frames": 200,
+        "cost_ms": {
+          "count": 1000,
+          "p50": 0.002,
+          "p95": 0.975,
+          "max": 1.076
+        }
+      },
+      {
+        "processed": 4000,
+        "cached_frames": 200,
+        "cost_ms": {
+          "count": 1000,
+          "p50": 0.002,
+          "p95": 0.986,
+          "max": 1.683
+        }
+      },
+      {
+        "processed": 5000,
+        "cached_frames": 200,
+        "cost_ms": {
+          "count": 1000,
+          "p50": 0.002,
+          "p95": 1.006,
+          "max": 1.148
+        }
+      }
+    ],
+    "scope": "empty observations; cache and repeated scan only; not detector throughput"
+  },
+  "environment": {
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "python": "3.13.14 (main, Jun 10 2026, 12:24:04) [Clang 21.0.0 (clang-2100.0.123.102)]",
+    "runtime": {
+      "venv/bin/python": {
+        "requirements_file": "venv_requirements.txt",
+        "sha256": "2bdade78c19782b8f6205638b86bfabb69933626bb4c7c9859a40bf53472c372"
+      },
+      "venv_yolo26/bin/python": {
+        "requirements_file": "venv_yolo26_requirements.txt",
+        "sha256": "f5b3f25e422257a97da1845441d0f21a38b5de46a76ea65c6abe7ca443a1f70a"
+      }
+    },
+    "git_head": "57c146f8a5f86ac29147630ddab19aec17b430dd",
+    "code_sha256": {
+      "swing_event_analyzer.py": "7cacc47397093489fe540fd2e979617692d4adaf21e2ab2e3efb6111570ae08d",
+      "swing_biomechanics.py": "1e3a0d01b4025628d1d0131e5a351660fad61b8dcddc3feb48b3a5b7d9e5b1a0",
+      "kinematic_sequence.py": "e79c3ac65dbf6c41de44e602d07b16ca2d9c45a8faab774d7f1f15a74b435be3",
+      "osd_evidence.py": "049101062bd17bec889f87cdd7a65d241663b16553da8cdb14164ffb99ea22bc",
+      "realtime_swing_pipeline.py": "84a49fddd76673bdc5ba191946c0418947d73b6f5af584c0aa988987e4ba3e3f",
+      "analysis_metric_delivery.py": "1b3fd4c897d1224d8e20d5e16f2811bd398044f16a140d7bb28b8a5b1f2ca161",
+      "ball_observation_contract.py": "eab2c82b7c303d879ce98003a1f742cdf33d639425862733f71a3b3127881525",
+      "analysis_data_contracts.py": "076b53fbb89f6e19eb482d63ea4f1d76b0273462aed3cf668690104cf9073213",
+      "frame_processor.py": "f55f126d1aeb3960522991d5aef0b2cc785826a5d710e6a64e2636931980351d",
+      "main_pipe.py": "84d4b84484c3d73d84bcfb562abca28a09f5eb50a58c0a2d951b99f3929b1485",
+      "yolo26n_unified_detector.py": "c2410762fdc5f314da5f154576619d899d6272ec0720a7e18fb581c8acbe9964"
+    }
+  },
+  "limits": [
+    "receipt-to-analysis is not exposure-to-display latency",
+    "display FPS and resource baseline need现场 measurement",
+    "ball freshness is unavailable in legacy selected-ball XY",
+    "missing detections are not independently labelled false negatives"
+  ],
+  "semantic_match": true,
+  "integrity_valid": true,
+  "pixel_run": {
+    "returncode": 0,
+    "frame_count": 250,
+    "reader_receipt_fps": 25.135420865367117,
+    "output_submission_fps": 25.363055846902483
+  },
+  "artifact_root": "data/analysis_results/kinematic_validation/pixel_acceptance_v2_20261005",
+  "test_count": 451
+}

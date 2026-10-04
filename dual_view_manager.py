@@ -219,7 +219,7 @@ class DualViewManager:
         valid_xs = []
         valid_ys = []
         for kp in keypoints_orig.values():
-            if kp is None:
+            if kp is None or not getattr(kp, "observed", True) or getattr(kp, "recovered_from_mirror", False):
                 continue
             conf = getattr(kp, 'conf', 1.0)
             if conf >= min_conf:

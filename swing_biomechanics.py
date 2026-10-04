@@ -45,7 +45,7 @@ def _body_center(pose: Dict) -> Optional[Point]:
     )
     if shoulder is not None and hip is not None:
         return _midpoint(shoulder, hip)
-    return shoulder or hip
+    return None
 
 
 def _body_width(pose: Dict) -> Optional[float]:
@@ -146,15 +146,17 @@ def _shoulder_turn_change_metric(
     pose_ratio: float,
 ) -> Dict:
     samples = [
-        (frame_id, float(row["shoulder_turn_deg"]))
+        (frame_id, float(row.get("shoulder_line_angle_deg", row.get("shoulder_turn_deg"))))
         for frame_id, row in sorted(features_by_frame.items())
         if start_frame <= frame_id <= contact_frame
-        and row.get("shoulder_turn_deg") is not None
+        and row.get("shoulder_line_angle_deg", row.get("shoulder_turn_deg")) is not None
     ]
     if not samples:
         return _metric(None, "deg_2d", 0.0, [], 0)
     baseline_count = min(5, max(2, len(samples) // 4))
-    baseline = median(value for _, value in samples[:baseline_count])
+    anchor = samples[0][1]
+    baseline = anchor + median((value - anchor + 180.0) % 360.0 - 180.0
+                               for _, value in samples[:baseline_count])
     source_frame, value = max(
         samples,
         key=lambda item: _angle_delta(item[1], baseline),
@@ -396,29 +398,11 @@ def _calculate_extended_tier_biomechanics(
     fps: float = 25.0,
 ) -> Dict[str, Any]:
     """计算第一、第二、第三梯队拓展的高级网球生物力学指标。"""
-    # 1. 第一梯队：拍头挥速 (Racket Head Speed in km/h)
-    racket_speeds = [
-        float(f.get("racket_head_speed_kmh") or 0.0)
-        for f in features_in_event
-        if f.get("racket_head_speed_kmh") is not None
-    ]
-    max_racket_speed = max(racket_speeds) if racket_speeds else None
+    # Uncalibrated image speed is a box-centre velocity, not racket-head km/h.
     contact_f = next((f for f in features_in_event if f.get("frame_id") == contact_frame), {})
-    contact_window_feats = [
-        f for f in features_in_event
-        if abs(f.get("frame_id", 0) - contact_frame) <= 3
-    ]
-    contact_speeds = [
-        float(f.get("racket_head_speed_kmh") or 0.0)
-        for f in contact_window_feats
-        if f.get("racket_head_speed_kmh") is not None
-    ]
-    if contact_speeds:
-        contact_racket_speed = max(contact_speeds)
-    elif max_racket_speed is not None:
-        contact_racket_speed = max_racket_speed * 0.88
-    else:
-        contact_racket_speed = None
+    speed_samples = [f for f in features_in_event if f.get("racket_speed_px_s") is not None]
+    image_peak = max((f["racket_speed_px_s"] for f in speed_samples), default=None)
+    contact_image_speed = contact_f.get("racket_speed_px_s")
 
     # 2. 第一梯队：由下向上刷球角与掉拍头下潜深度 (Low-to-High Brush Angle & Drop Depth)
     pre_contact_feats = [
@@ -426,52 +410,32 @@ def _calculate_extended_tier_biomechanics(
         if max(start_frame, contact_frame - 12) <= f.get("frame_id", -1) <= contact_frame
     ]
     racket_centers = [
-        (f["frame_id"], f["racket_center"])
+        (f["frame_id"], f.get("racket_measurement_point", f.get("racket_center")))
         for f in pre_contact_feats
-        if f.get("racket_center") is not None
+        if f.get("racket_measurement_point", f.get("racket_center")) is not None
+        and f.get("racket_center_source", "detected") == "detected"
     ]
     low_to_high_angle = 0.0
     racket_drop_px = 0.0
-    if len(racket_centers) >= 2:
+    contact_racket = contact_f.get("racket_measurement_point", contact_f.get("racket_center"))
+    brush_observed = len(racket_centers) >= 2 and contact_racket is not None and contact_f.get("racket_center_source", "detected") == "detected"
+    if brush_observed:
         lowest_f, lowest_pt = max(racket_centers, key=lambda item: item[1][1])
-        contact_racket = contact_f.get("racket_center") or racket_centers[-1][1]
         dy = lowest_pt[1] - contact_racket[1]
         dx = abs(contact_racket[0] - lowest_pt[0])
-        if dy > 5.0:
+        if dy > 0:
             low_to_high_angle = round(math.degrees(math.atan2(dy, dx + 1e-5)), 1)
             racket_drop_px = round(dy, 1)
-
-    # 若球拍下潜未检出，利用手腕下潜与拉拍轨迹推算
-    if low_to_high_angle <= 0.0 or racket_drop_px <= 0.0:
-        wrist_pts = [
-            (f["frame_id"], f["wrist"])
-            for f in pre_contact_feats
-            if f.get("wrist") is not None
-        ]
-        if len(wrist_pts) >= 2:
-            w_lowest_f, w_lowest_pt = max(wrist_pts, key=lambda item: item[1][1])
-            w_contact = contact_f.get("wrist") or wrist_pts[-1][1]
-            dy_w = w_lowest_pt[1] - w_contact[1]
-            dx_w = abs(w_contact[0] - w_lowest_pt[0])
-            if dy_w > 0:
-                low_to_high_angle = round(math.degrees(math.atan2(dy_w, dx_w + 1e-5)), 1)
-                racket_drop_px = round(dy_w * 1.4, 1)
 
     ref_scale = body_width if (body_width and body_width > 0) else 140.0
     racket_drop_ratio = round(racket_drop_px / ref_scale, 2)
 
     # 3. 第二梯队：步法站位识别 (Stance Type Classification: Open vs Semi-Open vs Closed)
-    stance_samples = [
-        f.get("stance_type")
-        for f in features_in_event
-        if max(start_frame, contact_frame - 6) <= f.get("frame_id", -1) <= min(end_frame, contact_frame + 2)
-        and f.get("stance_type") not in (None, "Unknown")
-    ]
-    if stance_samples:
-        from collections import Counter
-        stance_type = Counter(stance_samples).most_common(1)[0][0]
-    else:
-        stance_type = None
+    foot_angles = [f["stance_angle"] for f in features_in_event
+                   if abs(f.get("frame_id", -100) - contact_frame) <= 3
+                   and f.get("stance_angle") is not None]
+    foot_angle = median(foot_angles) if foot_angles else None
+    stance_type = None
 
     # 4. 第二梯队：垂直蹬地发力率 (Vertical Leg Drive)
     hip_ys = [
@@ -480,9 +444,10 @@ def _calculate_extended_tier_biomechanics(
         if f.get("hip_vertical_pos") is not None and f.get("frame_id", 0) <= contact_frame
     ]
     leg_drive_px = 0.0
-    if hip_ys:
+    contact_hip = contact_f.get("hip_vertical_pos")
+    hip_observed = len(hip_ys) >= 2 and contact_hip is not None
+    if hip_observed:
         lowest_hip = max(hip_ys, key=lambda item: item[1])[1]
-        contact_hip = next((item[1] for item in hip_ys if item[0] == contact_frame), hip_ys[-1][1])
         leg_drive_px = max(0.0, lowest_hip - contact_hip)
     leg_drive_ratio = round(leg_drive_px / ref_scale, 2)
 
@@ -517,27 +482,35 @@ def _calculate_extended_tier_biomechanics(
 
     return {
         "racket_head_speed": {
-            "max_kmh": round(max_racket_speed, 1) if max_racket_speed is not None else None,
-            "contact_kmh": round(contact_racket_speed, 1) if contact_racket_speed is not None else None,
+            "max_kmh": None,
+            "contact_kmh": None,
+            "contact_px_s": contact_image_speed,
+            "max_px_s": image_peak,
+            "sample_count": len(speed_samples),
+            "source_frames": [f["frame_id"] for f in speed_samples],
+            "measurement_policy": "image_motion_v1_source_time",
+            "status": "uncalibrated",
+            "contact_time_basis": contact_f.get("racket_speed_time_basis"),
             "confidence": 0.0,
             "coach_eligible": False,
-            "observability": "racket_center_speed_assumed_body_scale",
+            "observability": "image_box_center_speed",
         },
         "brush_angle": {
-            "low_to_high_angle_deg": low_to_high_angle if len(racket_centers) >= 2 else None,
-            "drop_depth_px": racket_drop_px if len(racket_centers) >= 2 else None,
-            "drop_depth_ratio": racket_drop_ratio if len(racket_centers) >= 2 and body_width else None,
+            "low_to_high_angle_deg": low_to_high_angle if brush_observed else None,
+            "drop_depth_px": racket_drop_px if brush_observed else None,
+            "drop_depth_ratio": racket_drop_ratio if brush_observed and body_width else None,
             "confidence": 0.0,
             "coach_eligible": False,
         },
         "stance": {
             "stance_type": stance_type,
+            "image_foot_line_angle_deg": foot_angle,
             "confidence": 0.0,
             "coach_eligible": False,
         },
         "leg_drive": {
-            "drive_px": round(leg_drive_px, 1) if len(hip_ys) >= 2 else None,
-            "drive_ratio": leg_drive_ratio if len(hip_ys) >= 2 and body_width else None,
+            "drive_px": round(leg_drive_px, 1) if hip_observed else None,
+            "drive_ratio": leg_drive_ratio if hip_observed and body_width else None,
             "confidence": 0.0,
             "coach_eligible": False,
         },
@@ -571,11 +544,14 @@ def aggregate_event_biomechanics(
     width inside the event. They are image-plane estimates, not 3D joint
     kinetics.
     """
+    frames = list(frames)
+    features = list(features)
     start_frame = int(event["start_frame"])
     end_frame = int(event["end_frame"])
     contact_frame = int(event.get("contact_frame", event.get("peak_frame", start_frame)))
+    from observation_policy import measurement_pose
     frames_in_event = [
-        row
+        {**row, "pose": measurement_pose(row)}
         for row in frames
         if start_frame <= int(row.get("frame_id", -1)) <= end_frame
     ]
@@ -601,6 +577,11 @@ def aggregate_event_biomechanics(
             / max(1, len(features_in_event))
         )
     )
+    observation_scores = [p.get("confidence", 0) for row in frames_in_event
+                          for p in (row.get("pose_observations") or {}).get("front", {}).values()
+                          if p.get("observed") and not p.get("recovered_from_mirror")]
+    if any("pose_observations" in row for row in frames_in_event):
+        pose_ratio = min(pose_ratio, sum(observation_scores) / max(1, len(observation_scores)))
     body_width_samples = [
         (int(row["frame_id"]), _body_width(row.get("pose") or {}))
         for row in frames_in_event
@@ -646,9 +627,9 @@ def aggregate_event_biomechanics(
             contact_frame,
             "robust_shoulder_turn_deg",
             pose_ratio,
-            unit="deg_360",
-            confidence_cap=0.88,
-            coach_eligible=True,
+            unit="image_plane_deg",
+            confidence_cap=0.0,
+            coach_eligible=False,
             observability="dual_view_anti_collapse",
         )
     else:
@@ -672,7 +653,8 @@ def aggregate_event_biomechanics(
         pose_ratio,
         unit="ratio",
         use_max=True,
-        coach_eligible=True,
+        coach_eligible=False,
+        confidence_cap=0.0,
         observability="dual_view_mirror_projection",
     )
 
@@ -684,7 +666,8 @@ def aggregate_event_biomechanics(
         pose_ratio,
         unit="ratio",
         use_max=True,
-        coach_eligible=True,
+        coach_eligible=False,
+        confidence_cap=0.0,
         observability="dual_view_mirror_projection",
     )
 
@@ -696,6 +679,23 @@ def aggregate_event_biomechanics(
         body_width=body_width,
         fps=float(event.get("fps") or 25.0),
     )
+    if any(row.get("kinematic_views") for row in frames):
+        from kinematic_sequence import analyze_kinematic_sequence
+        ext["kinematic_sequence"] = analyze_kinematic_sequence(
+            frames, contact_frame, float(event.get("fps") or 25.0),
+        )
+    else:
+        ext["kinematic_sequence"].update(
+            evidence_confidence=0.0,
+            cross_validation={"status": "legacy_single_view",
+                              "reason": "independent_view_records_missing"},
+            validation_status="unvalidated_2d_projection",
+        )
+
+    from osd_evidence import qualify_extended_observations
+    # These measurements define their own source-time windows around contact.
+    # Swing segmentation must not truncate their pre-contact evidence.
+    qualify_extended_observations(ext, {**event, "contact_frame": contact_frame}, frames, features, body_width)
 
     result = {
         "schema_version": "dual_view_2d_v1" if has_dual_view else "single_view_2d_v2",
@@ -772,9 +772,12 @@ def aggregate_event_biomechanics(
             "racket_head_speed": {
                 "coach_eligible": False,
                 "exclusion_reason": "unvalidated_projection_estimate",
-                "value": ext["racket_head_speed"]["contact_kmh"] if pose_ratio > 0 else None,
+                "value": ext["racket_head_speed"]["contact_px_s"],
                 "confidence": ext["racket_head_speed"]["confidence"] if pose_ratio > 0 else 0.0,
-                "unit": "km/h",
+                "unit": "px/s",
+                "observability": "image_box_center_speed",
+                "sample_count": 1 if ext["racket_head_speed"]["contact_px_s"] is not None else 0,
+                "source_frames": [contact_frame-1, contact_frame] if ext["racket_head_speed"]["contact_px_s"] is not None else [],
                 "max_kmh": ext["racket_head_speed"]["max_kmh"] if pose_ratio > 0 else None,
             },
             "brush_angle": {
@@ -788,7 +791,8 @@ def aggregate_event_biomechanics(
             "stance": {
                 "coach_eligible": False,
                 "exclusion_reason": "unvalidated_projection_estimate",
-                "value": ext["stance"]["stance_type"] if pose_ratio > 0 else None,
+                "value": ext["stance"]["image_foot_line_angle_deg"],
+                "unit": "deg_2d",
                 "confidence": ext["stance"]["confidence"] if pose_ratio > 0 else 0.0,
             },
             "leg_drive": {
@@ -801,9 +805,10 @@ def aggregate_event_biomechanics(
             "kinematic_sequence": {
                 "coach_eligible": False,
                 "exclusion_reason": "unvalidated_projection_estimate",
-                "value": ext["kinematic_sequence"]["sequence_quality"] if pose_ratio > 0 else None,
+                "value": ext["kinematic_sequence"]["sequence_quality"],
                 "confidence": 0.0,
-                "details": ext["kinematic_sequence"] if pose_ratio > 0 else {},
+                "evidence_confidence": ext["kinematic_sequence"].get("evidence_confidence", 0),
+                "details": ext["kinematic_sequence"],
             },
             "swing_quality_score": {
                 "value": ext["swing_quality_score"]["overall_score"] if pose_ratio > 0 else None,
@@ -827,8 +832,33 @@ def aggregate_event_biomechanics(
         },
     }
 
+    for key in ("brush_angle", "stance", "leg_drive"):
+        evidence = ext[key]["measurement_evidence"]
+        result["metrics"][key].update(measurement_evidence=evidence,
+            sample_count=evidence["sample_count"], source_frames=evidence["source_frames"])
+
+    # Rise and direction have separate eligibility, including a qualified zero
+    # rise when the chord endpoints coincide and no direction exists.
+    rise_evidence = dict(ext['brush_angle']['measurement_evidence'])
+    rise_evidence.update(rise_evidence.get('fields', {}).get('drop_depth_ratio', {}))
+    result['metrics']['drop_depth_ratio'] = {
+        'value': ext['brush_angle']['drop_depth_ratio'], 'unit': 'ratio',
+        'coach_eligible': False, 'confidence': 0.0,
+        'observability': 'image_plane_proxy_only',
+        'exclusion_reason': 'unvalidated_projection_estimate',
+        'measurement_evidence': rise_evidence,
+        'source_frames': rise_evidence['source_frames'],
+        'sample_count': rise_evidence['sample_count'],
+    }
+
+    from baseline_observations import baseline_profiles, normalized_view_trends
+    baseline = baseline_profiles(frames, start_frame)
+    result['experimental_baseline'] = baseline
+    result['experimental_view_trends'] = normalized_view_trends(frames, baseline, start_frame, end_frame)
     from practice_scoring import attach_score
     attach_score({**event, "biomechanics": result})
+    from metric_contracts import attach_metric_contracts
+    attach_metric_contracts(result)
     return result
 
 
@@ -857,5 +887,7 @@ def enrich_events_with_biomechanics(
             event["swing_grade"] = bio["swing_grade"]
         from practice_scoring import attach_score
         attach_score(event)
+        from metric_contracts import attach_metric_contracts
+        attach_metric_contracts(bio)
         enriched.append(event)
     return enriched

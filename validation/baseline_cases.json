@@ -1,0 +1,21 @@
+{
+  "version": "tennis.fixed-validation.v1",
+  "cases": [
+    {
+      "id": "50.03_250frames_recorded",
+      "files": {
+        "frames": "data/analysis_results/control_panel/osd_evidence_verification_20261004T112705Z_075a63/osd_evidence_verification_frames.jsonl",
+        "events": "data/analysis_results/control_panel/osd_evidence_verification_20261004T112705Z_075a63/osd_evidence_verification_swing_events.json"
+      },
+      "sha256": {
+        "frames": "981412093f09807ae0a718e126d5cb61b78d3848c5e350f939b77b998cd51537",
+        "events": "c134b440d766f484cb3ddd15ca1c02ca793b81f349d30218ba5c353750a44aa5"
+      },
+      "reference_annotations": null
+    }
+  ],
+  "limitations": [
+    "recorded_observations_not_end_to_end_model_resize_validation",
+    "no_independent_ground_truth"
+  ]
+}

@@ -101,7 +101,79 @@ def _annotations(needs_review: bool):
     }
 
 
+def _publish_review_in_child(paths, annotations, results):
+    try:
+        results.put({'publication_id':process_manual_review(paths, annotations)['publication_id']})
+    except Exception as exc:
+        results.put({'error':str(exc)})
+
+
 class ManualReviewWorkflowTests(unittest.TestCase):
+    def test_two_processes_publish_complete_separate_revisions(self):
+        import multiprocessing
+        context = multiprocessing.get_context('spawn')
+        with TemporaryDirectory() as directory:
+            root=Path(directory); self._write_session(root)
+            paths=discover_session_paths(root); queue=context.Queue()
+            first,second=_annotations(False),_annotations(False)
+            second['events'][0]['note']='second process'
+            children=[context.Process(target=_publish_review_in_child,args=(paths,a,queue)) for a in (first,second)]
+            for child in children: child.start()
+            for child in children:
+                child.join(15)
+                if child.is_alive(): child.terminate();child.join();self.fail('review publication timed out')
+                self.assertEqual(child.exitcode,0)
+            outcomes=[queue.get(timeout=2) for _ in children]
+            self.assertTrue(all('publication_id' in r for r in outcomes),outcomes)
+            state=json.loads(paths['state'].read_text())
+            revision=json.loads(Path(state['revision_snapshot']).read_text())
+            for key in ('annotations','evaluation','manual_events','state'):
+                self.assertEqual(json.loads(paths[key].read_text()),revision['documents'][key])
+            self.assertEqual(len(list((root/'manual_review_revisions').glob('*.json'))),2)
+            queue.close();queue.join_thread()
+
+    def test_interrupted_publication_recovers_and_keeps_revision_snapshots(self):
+        import base64
+        from manual_review_workflow import load_review_state
+        with TemporaryDirectory() as directory:
+            root = Path(directory); self._write_session(root)
+            paths = discover_session_paths(root)
+            state = process_manual_review(paths, _annotations(False))
+            keys = ('annotations','evaluation','manual_events','state')
+            before = {k:paths[k].read_bytes() for k in keys}
+            pending = {'publication_id':'interrupted','previous':{k:base64.b64encode(v).decode() for k,v in before.items()}}
+            (root/'.manual_review_pending.json').write_text(json.dumps(pending))
+            paths['annotations'].write_text('{}')
+            self.assertEqual(load_review_state(paths)['publication_id'], state['publication_id'])
+            self.assertEqual(before,{k:paths[k].read_bytes() for k in keys})
+            next_state = process_manual_review(paths, _annotations(True))
+            self.assertNotEqual(state['publication_id'],next_state['publication_id'])
+            self.assertTrue(Path(state['revision_snapshot']).is_file())
+            self.assertTrue(Path(next_state['revision_snapshot']).is_file())
+            self.assertFalse((root/'.manual_review_pending.json').exists())
+
+    def test_publication_io_failure_preserves_previous_revision(self):
+        import os
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_session(root)
+            paths = discover_session_paths(root)
+            process_manual_review(paths, _annotations(False))
+            keys = ('annotations','evaluation','manual_events','state')
+            before = {k:paths[k].read_bytes() for k in keys}
+            changed = _annotations(False)
+            changed['events'][0]['actual_stroke_type'] = 'Forehand'
+            real_replace = os.replace
+            failed = []
+            def replace(source, target):
+                if Path(target) == paths['evaluation'] and not failed:
+                    failed.append(True)
+                    raise OSError('simulated publication failure')
+                return real_replace(source, target)
+            with patch('manual_review_workflow.os.replace', side_effect=replace):
+                with self.assertRaises(OSError): process_manual_review(paths, changed)
+            self.assertEqual(before, {k:paths[k].read_bytes() for k in keys})
+
     def test_rejects_empty_evidence_interval(self):
         annotations = _annotations(False)
         with self.assertRaisesRegex(ValueError, "没有逐帧证据"):

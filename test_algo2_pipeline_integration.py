@@ -7,7 +7,7 @@ from local_realtime_coach import LocalRealtimeCoach
 
 
 class Algo2PipelineIntegrationTests(unittest.TestCase):
-    def test_swing_motion_features_extracts_dual_view_and_healed_pose(self):
+    def test_swing_motion_features_extracts_dual_view_and_raw_pose(self):
         frames = [
             {
                 "frame_id": 10,
@@ -26,8 +26,8 @@ class Algo2PipelineIntegrationTests(unittest.TestCase):
         features = extract_motion_features(frames, dominant_hand="right")
         self.assertEqual(len(features), 1)
         feat = features[0]
-        # Should use healed_pose coordinates for wrist
-        self.assertEqual(feat["wrist"], (105.0, 205.0))
+        # Measurements use raw coordinates; mirror healing is display-only.
+        self.assertEqual(feat["wrist"], (100.0, 200.0))
         self.assertAlmostEqual(feat["robust_shoulder_turn_deg"], 88.5)
         self.assertAlmostEqual(feat["takeback_depth_ratio"], 0.42)
         self.assertAlmostEqual(feat["scapular_retraction_ratio"], 0.28)
@@ -40,6 +40,7 @@ class Algo2PipelineIntegrationTests(unittest.TestCase):
             {
                 "dual_view_stroke_type": "Two-Handed Backhand",
                 "dual_view_is_two_handed": True,
+                "dual_view_confidence": 0.8,
                 "active_wrist_x_offset_body_width": -0.25,
                 "two_hand_distance_body_width": 0.35,
                 "raw_swing_type": "Backhand",
@@ -49,7 +50,7 @@ class Algo2PipelineIntegrationTests(unittest.TestCase):
         ]
         result = classify_swing_event(event_features)
         self.assertEqual(result["stroke_type"], "Two-Handed Backhand")
-        self.assertGreaterEqual(result["confidence"], 0.90)
+        self.assertGreaterEqual(result["confidence"], 0.80)
         self.assertEqual(
             result["evidence"]["classification_context"]["decision_rule"],
             "dual_view_two_handed_backhand",
@@ -98,15 +99,15 @@ class Algo2PipelineIntegrationTests(unittest.TestCase):
         metrics = result["metrics"]
 
         # Shoulder turn should use robust dual-view anti-collapse metric
-        self.assertTrue(metrics["shoulder_turn"]["coach_eligible"])
+        self.assertFalse(metrics["shoulder_turn"]["coach_eligible"])
         self.assertEqual(metrics["shoulder_turn"]["observability"], "dual_view_anti_collapse")
-        self.assertEqual(metrics["shoulder_turn"]["unit"], "deg_360")
+        self.assertEqual(metrics["shoulder_turn"]["unit"], "image_plane_deg")
 
         # Takeback depth and scapular retraction should be present
         self.assertIn("takeback_depth", metrics)
         self.assertIn("scapular_retraction", metrics)
-        self.assertTrue(metrics["takeback_depth"]["coach_eligible"])
-        self.assertTrue(metrics["scapular_retraction"]["coach_eligible"])
+        self.assertFalse(metrics["takeback_depth"]["coach_eligible"])
+        self.assertFalse(metrics["scapular_retraction"]["coach_eligible"])
         self.assertEqual(metrics["takeback_depth"]["observability"], "dual_view_mirror_projection")
         # Peak value between frame 0 and frame 3: 0.30 + 3 * 0.05 = 0.45
         self.assertAlmostEqual(metrics["takeback_depth"]["value"], 0.45)
@@ -171,13 +172,14 @@ class Algo2PipelineIntegrationTests(unittest.TestCase):
         self.assertFalse(res_contact["is_shadow_swing"])
         self.assertTrue(res_contact["is_valid_contact"])
 
-        # 2. 空挥/未触球事件 (球距离拍子远且无反弹)
+        # 2. 远处球不能证明空挥；保留未知触球状态
         shadow_features = [
             {"frame_id": i, "ball": (100.0, 200.0 - i * 20), "racket": (400.0, 150.0), "ball_racket_distance": 320.0}
             for i in range(5)
         ]
         res_shadow = classify_swing_event(shadow_features, contact_frame=2)
-        self.assertTrue(res_shadow["is_shadow_swing"])
+        self.assertFalse(res_shadow["is_shadow_swing"])
+        self.assertEqual(res_shadow["contact_status"], "unknown")
         self.assertFalse(res_shadow["is_valid_contact"])
         self.assertGreater(res_shadow["min_ball_distance"], 180.0)
 

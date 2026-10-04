@@ -11,12 +11,14 @@ import json
 import re
 import secrets
 import time
+import math
 from datetime import datetime, timezone
 from typing import Any, Dict, Mapping, MutableMapping, Optional
 from urllib.parse import urlsplit, urlunsplit
 
 
 FRAME_SCHEMA_VERSION = "tennis.frame.v1"
+SOURCE_TIME_SCHEMA_VERSION = "tennis.source-time.v1"
 SWING_EVENT_SCHEMA_VERSION = "tennis.swing-event.v1"
 FRAME_DOCUMENT_SCHEMA_VERSION = "tennis.frame-document.v1"
 SWING_DOCUMENT_SCHEMA_VERSION = "tennis.swing-document.v1"
@@ -115,6 +117,7 @@ def stamp_frame_record(
     inference_completed_at_unix_ns: int,
     analysis_started_at_unix_ns: int,
     analysis_completed_at_unix_ns: int,
+    source_time: Optional[Mapping[str, Any]] = None,
 ) -> MutableMapping[str, Any]:
     """Attach the v1 frame contract and end-to-end timing measurements in place."""
     frame_id = record.get("frame_id")
@@ -140,7 +143,10 @@ def stamp_frame_record(
 
     record["schema_version"] = FRAME_SCHEMA_VERSION
     record["session_id"] = str(session["session_id"])
+    if source_time is not None:
+        attach_source_time(record, source_time)
     record["timing"] = {
+        "capture_clock_semantics": "reader_receipt_wall_clock_not_exposure",
         "captured_at": utc_iso_from_ns(capture_ns),
         "captured_at_unix_ns": capture_ns,
         "inference_started_at_unix_ns": inference_start_ns,
@@ -154,6 +160,53 @@ def stamp_frame_record(
             3,
         ),
     }
+    return record
+
+
+def stamp_render_output(record, render_completed_at_unix_ns, output_submitted_at_unix_ns):
+    """Render/window/writer submission clocks, never sensor/display exposure."""
+    timing = record.setdefault('timing', {})
+    timing['output_clock_semantics'] = 'render_and_writer_or_window_submission_not_display_photons'
+    timing['render_completed_at_unix_ns'] = render_completed_at_unix_ns
+    timing['output_submitted_at_unix_ns'] = output_submitted_at_unix_ns
+    for key, end, start in (
+        ('render_ms',render_completed_at_unix_ns,timing.get('analysis_completed_at_unix_ns')),
+        ('output_submit_ms',output_submitted_at_unix_ns,render_completed_at_unix_ns),
+        ('capture_to_output_submit_ms',output_submitted_at_unix_ns,timing.get('captured_at_unix_ns')),
+        ('capture_to_inference_start_ms',timing.get('inference_started_at_unix_ns'),timing.get('captured_at_unix_ns')),
+        ('inference_to_analysis_start_ms',timing.get('analysis_started_at_unix_ns'),timing.get('inference_completed_at_unix_ns'))):
+        timing[key] = round((end-start)/1_000_000,3) if isinstance(end,int) and isinstance(start,int) and end>=start else None
+    return record
+
+
+def attach_source_time(record, source_time):
+    """Attach additive source-time provenance; leave null/estimated time explicit."""
+    value = dict(source_time)
+    if value.get("schema_version") != SOURCE_TIME_SCHEMA_VERSION:
+        raise ValueError("Unsupported source time schema")
+    if value.get("source_frame_id") != record["frame_id"]:
+        raise ValueError("Source time frame identity does not match FrameRecord")
+    seconds = value.get("timestamp_seconds")
+    if seconds is not None and (isinstance(seconds, bool) or not isinstance(seconds, (int, float))
+                                or not math.isfinite(seconds) or seconds < 0):
+        raise ValueError("Source timestamp must be finite nonnegative seconds or null")
+    if value.get("basis") not in ("media_pts", "nominal_fps", "unavailable"):
+        raise ValueError("Unsupported source time basis")
+    if value.get("quality") not in ("reported", "estimated", "duplicate", "discontinuous", "unavailable"):
+        raise ValueError("Unsupported source time quality")
+    if value.get("source_kind") not in ("video_file", "stream"):
+        raise ValueError("Unsupported source kind")
+    expected_qualities = {"media_pts": {"reported", "duplicate", "discontinuous"},
+                          "nominal_fps": {"estimated"}, "unavailable": {"unavailable"}}
+    if value["quality"] not in expected_qualities[value["basis"]]:
+        raise ValueError("Source time basis and quality are inconsistent")
+    if (value["basis"] == "unavailable") != (seconds is None):
+        raise ValueError("Source time basis and timestamp are inconsistent")
+    record["source_time"] = value
+    # Legacy consumers retain a numeric timestamp when source time is unavailable.
+    # Measurement code must inspect source_time rather than that compatibility value.
+    if seconds is not None:
+        record["timestamp"] = seconds
     return record
 
 

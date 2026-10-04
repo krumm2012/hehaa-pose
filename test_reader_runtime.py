@@ -1,6 +1,6 @@
 import unittest
 
-from reader_runtime import DeadlinePacer, SourceFrameClock
+from reader_runtime import DeadlinePacer, SourceFrameClock, SourceMediaClock
 
 
 class DeadlinePacerTests(unittest.TestCase):
@@ -37,6 +37,40 @@ class SourceFrameClockTests(unittest.TestCase):
         self.assertEqual(clock.accepted(), 3)
         self.assertEqual(clock.processed_count, 2)
         self.assertEqual(clock.source_count, 4)
+
+
+class SourceMediaClockTests(unittest.TestCase):
+    def test_vfr_pts_and_dropped_frame_ids_do_not_use_nominal_rate(self):
+        clock = SourceMediaClock(25)
+        rows = [clock.observe(i, ms) for i, ms in [(0, 0), (1, 33), (4, 171)]]
+        self.assertEqual([r['timestamp_seconds'] for r in rows], [0, .033, .171])
+        self.assertEqual(rows[-1]['source_frame_id'], 4)
+        self.assertTrue(all(r['quality'] == 'reported' for r in rows))
+        self.assertFalse(rows[-1]['exposure_time_verified'])
+
+    def test_duplicate_and_backward_pts_are_preserved_and_flagged(self):
+        clock = SourceMediaClock(25)
+        clock.observe(0, 0)
+        self.assertEqual(clock.observe(1, 0)['quality'], 'duplicate')
+        clock.observe(2, 80)
+        row = clock.observe(3, 40)
+        self.assertEqual(row['quality'], 'discontinuous')
+        self.assertEqual(row['timestamp_seconds'], .04)
+
+    def test_unavailable_pts_is_explicit_fps_estimate(self):
+        row = SourceMediaClock(25).observe(5, float('nan'))
+        self.assertEqual(row['timestamp_seconds'], .2)
+        self.assertEqual(row['basis'], 'nominal_fps')
+        self.assertEqual(row['quality'], 'estimated')
+
+    def test_stream_never_promotes_reader_or_backend_time_to_exposure(self):
+        row = SourceMediaClock(25, 'stream').observe(5, 200)
+        self.assertIsNone(row['timestamp_seconds'])
+        self.assertEqual(row['basis'], 'unavailable')
+
+    def test_missing_rate_and_pts_stay_unavailable(self):
+        row = SourceMediaClock(0).observe(5, None)
+        self.assertIsNone(row['timestamp_seconds'])
 
 
 if __name__ == "__main__":

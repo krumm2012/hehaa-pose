@@ -23,18 +23,29 @@ def build_impact_telemetry_card(event_dict: Dict) -> Dict:
     stc = ext.get("stance") or {}
     leg = ext.get("leg_drive") or {}
     seq = ext.get("kinematic_sequence") or {}
+    from osd_evidence import display_value, sequence_osd_label, evidence_label
+    sequence_label = sequence_osd_label(seq)
     return {
+        "metric_contracts": {key: contract for section in ext.values() if isinstance(section, dict)
+                             for key, contract in (section.get("metric_contracts") or {}).items()},
         "practice_score": practice,
         "stroke_type": event_dict.get("stroke_type", "FOREHAND"),
         "swing_score": practice["score"],
         "swing_grade": practice["grade"],
         "racket_speed_kmh": rkt.get("contact_kmh"),
+        "racket_speed_px_s": rkt.get("contact_px_s"),
+        "foot_line_angle_deg": display_value(stc, "image_foot_line_angle_deg"),
         "racket_max_speed_kmh": rkt.get("max_kmh"),
-        "brush_angle_deg": brush.get("low_to_high_angle_deg"),
-        "drop_depth_ratio": brush.get("drop_depth_ratio"),
+        "brush_angle_deg": display_value(brush, "low_to_high_angle_deg"),
+        "drop_depth_ratio": display_value(brush, "drop_depth_ratio"),
         "stance_type": stc.get("stance_type"),
-        "leg_drive_ratio": leg.get("drive_ratio"),
-        "kinematic_sequence_text": f"腿 -> 髋 -> 肩 -> 拍 ({seq.get('sequence_quality') or '未观测'})",
+        "brush_evidence_text": evidence_label(brush),
+        "hip_evidence_text": evidence_label(leg),
+        "hip_rise_px": display_value(leg, "drive_px"),
+        "measurement_evidence": {key: (ext.get(key) or {}).get("measurement_evidence") for key in ("brush_angle", "stance", "leg_drive")},
+        "leg_drive_ratio": display_value(leg, "drive_ratio"),
+        "kinematic_sequence_text": sequence_label,
+        "kinematic_evidence_confidence": seq.get("evidence_confidence", 0),
     }
 
 

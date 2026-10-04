@@ -12,14 +12,16 @@ from roi_stream_config import (
 )
 
 
+ROI_FIXTURE = Path(__file__).parent / "tests/fixtures/roi_streams.yaml"
+
+
 class ROIStreamConfigTests(unittest.TestCase):
     def test_repository_config_selects_all_three_courts(self):
         config = yaml.safe_load(
             Path("configs/yolo26_tennis_config.yaml").read_text(encoding="utf-8")
         )
-        roi_document = yaml.safe_load(
-            Path("configs/roi_config.yaml").read_text(encoding="utf-8")
-        )
+        config["roi_settings"]["roi_config_path"] = str(ROI_FIXTURE)
+        roi_document = yaml.safe_load(ROI_FIXTURE.read_text(encoding="utf-8"))
 
         for configured in roi_document["streams"]:
             profile = resolve_roi_stream_profile(
@@ -42,7 +44,7 @@ class ROIStreamConfigTests(unittest.TestCase):
     def test_legacy_roi_manager_loads_default_stream(self):
         manager = ROIManager({"roi_settings": {"enabled": True}})
         roi_document = yaml.safe_load(
-            Path("configs/roi_config.yaml").read_text(encoding="utf-8")
+            ROI_FIXTURE.read_text(encoding="utf-8")
         )
         expected = next(
             item
@@ -50,7 +52,7 @@ class ROIStreamConfigTests(unittest.TestCase):
             if item.get("default", False)
         )
 
-        loaded = manager.load_roi_config("configs/roi_config.yaml")
+        loaded = manager.load_roi_config(str(ROI_FIXTURE))
 
         self.assertTrue(loaded)
         self.assertEqual(
@@ -154,7 +156,7 @@ roi_points: [[1, 2], [30, 2], [30, 40], [1, 40]]
             "roi_settings": {
                 "enabled": True,
                 "auto_load_config": True,
-                "roi_config_path": "configs/roi_config.yaml",
+                "roi_config_path": str(ROI_FIXTURE),
             }
         }
         # 1. 导入视频映射到 court01-main
@@ -229,7 +231,7 @@ roi_points: [[1, 2], [30, 2], [30, 40], [1, 40]]
                 "roi_settings": {
                     "enabled": True,
                     "auto_load_config": True,
-                    "roi_config_path": "configs/roi_config.yaml",
+                    "roi_config_path": str(ROI_FIXTURE),
                 }
             },
             "rtsp://192.168.1.191:554/h264/ch1/main/av_stream",

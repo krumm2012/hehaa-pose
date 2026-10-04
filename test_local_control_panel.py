@@ -643,6 +643,19 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
             self.assertTrue(event["clip_url"].startswith("/artifacts/"))
             self.assertTrue(event["impact_freeze_url"].startswith("/artifacts/"))
 
+    def test_restart_discovers_newest_capture_even_if_old_report_was_modified(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = self.make_controller(root)
+            base = root / "data" / "analysis_results" / "control_panel"
+            old = base / "live_session_20260921T073126Z_aaaa"
+            new = base / "live_session_20261004T064445Z_bbbb"
+            for session in (old, new):
+                session.mkdir(parents=True)
+                (session / "test_swing_events.json").write_text('{"events":[]}')
+            os.utime(old, (time.time() + 100, time.time() + 100))
+            self.assertEqual(controller.session_events()['session_id'], new.name)
+
     def test_http_session_events_and_range_requests(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -854,4 +867,3 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
 
 if __name__ == "__main__":
     unittest.main()
-

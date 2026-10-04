@@ -155,7 +155,8 @@ class SwingBiomechanicsTests(unittest.TestCase):
 
         calibration = calibrate_coaching_event(event)
 
-        self.assertEqual(calibration["status"], "calibrated")
+        self.assertEqual(calibration["status"], "insufficient_evidence")
+        self.assertEqual(calibration["metrics_used"], [])
     def test_kinematic_sequence_ignores_late_follow_through_noise(self):
         from swing_biomechanics import _calculate_extended_tier_biomechanics
 

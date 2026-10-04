@@ -21,12 +21,13 @@ from pathlib import Path
 from typing import Optional
 
 from analysis_data_contracts import (
+    SOURCE_TIME_SCHEMA_VERSION,
     build_session_metadata,
     document_contract,
     normalize_session_id,
     stamp_frame_record,
 )
-from reader_runtime import DeadlinePacer, SourceFrameClock
+from reader_runtime import DeadlinePacer, SourceFrameClock, SourceMediaClock
 from roi_stream_config import resolve_roi_stream_profile, sanitize_stream_source
 from video_overlay_primitives import draw_ball_outline
 
@@ -541,6 +542,7 @@ class MultiprocessPipeline:
             max_lag_intervals=max_lag_intervals,
         )
         frame_clock = SourceFrameClock()
+        media_clock = SourceMediaClock(self.fps, "stream" if self.is_stream_source else "video_file")
         if self.live_mode:
             print(
                 f"⚡ [Reader] 直播缓冲槽: {self.shm_num} | "
@@ -600,12 +602,17 @@ class MultiprocessPipeline:
                     break
 
                 source_frame_id = frame_clock.accepted()
+                source_time = media_clock.observe(
+                    source_frame_id,
+                    cap.get(cv2.CAP_PROP_POS_MSEC) if not self.is_stream_source else None,
+                )
                 shared_frames[slot][:] = frame[:]
                 self.q_inference.put({
                     'idx': source_frame_id,
                     'slot': slot,
                     'captured_at': captured_at,
                     'captured_at_unix_ns': captured_at_unix_ns,
+                    'source_time': source_time,
                 })
 
                 delay = pacer.next_delay()
@@ -753,6 +760,8 @@ class MultiprocessPipeline:
                     f2 = executor.submit(dual_pose_estimator.estimate_dual_pose, dual_frame)
 
                     ball, raw_rackets, _ = f1.result()
+                    from ball_observation_contract import stamp_ball_detections
+                    stamp_ball_detections(ball, task['idx'])
                     # 双重保障：排除镜面反射球与ROI范围外球，防止镜中虚像被锁定追踪
                     if ball:
                         valid_balls = []
@@ -770,6 +779,11 @@ class MultiprocessPipeline:
                     ball_diagnostics = detector.get_last_ball_diagnostics()
                     racket_diagnostics = detector.get_last_racket_diagnostics()
                     pose_res = f2.result()
+                    # Both futures already finished: associate existing observations without inference.
+                    if ball and ball[0].get("position") is not None:
+                        observed_front = {k:v for k,v in pose_res.front_pose_local.items() if v.observed}
+                        position = dual_frame.front_info.map_from_original(*ball[0]["position"])
+                        pose_res.biomechanics.shot_classification = dual_pose_estimator.biomech_engine.classify_shot(observed_front, ball_pos=position)
                     current_player_bbox = None
                     if dual_view_mgr is not None and hasattr(dual_view_mgr, "update_player_from_keypoints"):
                         dual_view_mgr.update_player_from_keypoints(pose_res.front_pose_orig or pose_res.fused_pose_orig)
@@ -813,7 +827,7 @@ class MultiprocessPipeline:
 
                     if valid_rackets:
                         valid_rackets.sort(key=lambda x: x[0])
-                        racket = [item[1] for item in valid_rackets]
+                        racket = [{**item[1], "observed": True, "source_frame_id": task["idx"]} for item in valid_rackets]
                         racket_box = valid_rackets[0][1].get("box")
                         last_racket_box = racket_box
                         last_racket_entry = racket[0]
@@ -823,7 +837,7 @@ class MultiprocessPipeline:
                         racket_missing_count += 1
                         racket_box = list(last_racket_box)
                         decayed = dict(last_racket_entry) if last_racket_entry else {"box": racket_box, "confidence": 0.5}
-                        decayed["confidence"] = float(decayed.get("confidence", 0.5)) * 0.90
+                        decayed["observed"] = False
                         racket = [decayed]
                     else:
                         racket_missing_count += 1
@@ -846,15 +860,18 @@ class MultiprocessPipeline:
                     dual_view_biomech = {
                         "shoulder_turn": {
                             "shoulder_turn_deg": b.robust_shoulder_turn_deg,
-                            "confidence": 0.88,
+                            "confidence": None,
+                            "confidence_source": "unvalidated_proxy",
                         },
                         "takeback_depth": {
                             "takeback_depth_ratio": b.takeback_depth_ratio,
-                            "confidence": 0.85,
+                            "confidence": None,
+                            "confidence_source": "unvalidated_proxy",
                         },
                         "scapular_retraction": {
                             "scapular_retraction_ratio": b.scapular_retraction_ratio,
-                            "confidence": 0.85,
+                            "confidence": None,
+                            "confidence_source": "unvalidated_proxy",
                         },
                         "shot_classification": {
                             "stroke_type": b.shot_classification.shot_type,
@@ -883,6 +900,7 @@ class MultiprocessPipeline:
                         'racket_diagnostics': racket_diagnostics,
                         'captured_at': task.get('captured_at'),
                         'captured_at_unix_ns': task.get('captured_at_unix_ns'),
+                        'source_time': task.get('source_time'),
                         'inference_started_at_unix_ns': inference_started_at_unix_ns,
                         'inference_completed_at_unix_ns': inference_completed_at_unix_ns,
                     })
@@ -897,6 +915,8 @@ class MultiprocessPipeline:
                     f2 = executor.submit(pose_estimator.get_keypoints, pose_detection_frame)
 
                     ball, racket, _ = f1.result()
+                    from ball_observation_contract import stamp_ball_detections
+                    stamp_ball_detections(ball, task['idx'])
                     ball_diagnostics = detector.get_last_ball_diagnostics()
                     racket_diagnostics = detector.get_last_racket_diagnostics()
                     pose = f2.result()
@@ -920,6 +940,7 @@ class MultiprocessPipeline:
                         'racket_diagnostics': racket_diagnostics,
                         'captured_at': task.get('captured_at'),
                         'captured_at_unix_ns': task.get('captured_at_unix_ns'),
+                        'source_time': task.get('source_time'),
                         'inference_started_at_unix_ns': inference_started_at_unix_ns,
                         'inference_completed_at_unix_ns': inference_completed_at_unix_ns,
                     })
@@ -1301,7 +1322,13 @@ class MultiprocessPipeline:
                     healed_pose=healed_pose,
                     dual_view_biomechanics=dv_biomech,
                     racket=racket_box,
+                    source_time=data.get("source_time"),
+                    ball_detection=data['ball'][0] if data['ball'] else None,
                 )
+                if pose_res is not None:
+                    from kinematic_sequence import serialize_kinematic_views
+                    frame_record["kinematic_views"] = serialize_kinematic_views(pose_res)
+                    frame_record["pose_observations"] = serialize_kinematic_views(pose_res, all_joints=True)
                 frame_record["detection_diagnostics"] = data.get("ball_diagnostics") or {}
                 frame_record["racket_detection_diagnostics"] = (
                     data.get("racket_diagnostics") or {}
@@ -1325,19 +1352,6 @@ class MultiprocessPipeline:
                     analysis_started_at_unix_ns=analysis_started_at_unix_ns,
                     analysis_completed_at_unix_ns=analysis_completed_at_unix_ns,
                 )
-            if collect_frame_results and frame_record is not None:
-                if frame_results_fp is not None:
-                    if not first_frame_record:
-                        frame_results_fp.write(',\n')
-                    frame_results_fp.write(json.dumps(frame_record, ensure_ascii=False))
-                    first_frame_record = False
-                diagnostics_records.append({
-                    "frame_id": fid,
-                    "timestamp": round(fid / self.fps, 3) if self.fps else 0.0,
-                    "ball_selected": [norm_ball_pos[0], norm_ball_pos[1]] if norm_ball_pos else None,
-                    "ball_diagnostics": data.get("ball_diagnostics") or {},
-                })
-
             # --- 2. 视觉渲染流程 ---
             if self.algo2_dual_view and dual_view_mgr is not None and dual_view_renderer is not None and pose_res is not None:
                 if norm_ball_pos:
@@ -1398,9 +1412,7 @@ class MultiprocessPipeline:
                 rendered_canvas = canvas
 
             # --- 3. 提交并释放 ---
-            if realtime_runtime is not None and frame_record is not None:
-                realtime_runtime.submit_frame(frame_record)
-                realtime_runtime.record_rendered_frame(fid, rendered_canvas)
+            render_completed_at_unix_ns = time.time_ns()
             if out_writer: out_writer.write(rendered_canvas)
 
             # HDMI 单路输出、双视角全屏输出与双窗口对比显示
@@ -1435,6 +1447,31 @@ class MultiprocessPipeline:
                 key = cv2.waitKey(1) & 0xFF
                 if key == 27:
                     self.stop_event.set()
+
+            if frame_record is not None:
+                from analysis_data_contracts import stamp_render_output
+                stamp_render_output(frame_record, render_completed_at_unix_ns, time.time_ns())
+                queue_depths = {}
+                for name, stage_queue in (('inference', self.q_inference), ('analyzer', self.q_analyzer)):
+                    try: queue_depths[name] = stage_queue.qsize()
+                    except (NotImplementedError, AttributeError): queue_depths[name] = None
+                frame_record['pipeline_queue_depth'] = {'values':queue_depths,
+                    'null_reason':'queue depth unavailable on backend; stage waiting times are recorded separately'}
+            if realtime_runtime is not None and frame_record is not None:
+                realtime_runtime.submit_frame(frame_record)
+                realtime_runtime.record_rendered_frame(fid, rendered_canvas)
+            if collect_frame_results and frame_record is not None:
+                if frame_results_fp is not None:
+                    if not first_frame_record:
+                        frame_results_fp.write(',\n')
+                    frame_results_fp.write(json.dumps(frame_record, ensure_ascii=False))
+                    first_frame_record = False
+                diagnostics_records.append({
+                    "frame_id": fid,
+                    "timestamp": round(fid / self.fps, 3) if self.fps else 0.0,
+                    "ball_selected": [norm_ball_pos[0], norm_ball_pos[1]] if norm_ball_pos else None,
+                    "ball_diagnostics": data.get("ball_diagnostics") or {},
+                })
 
             self.q_free.put(slot) # 释放回池子
 
@@ -1740,6 +1777,8 @@ class MultiprocessPipeline:
         }
         capture = {
             'source_kind': 'stream' if self.is_stream_source else 'video_file',
+            'source_time_schema_version': SOURCE_TIME_SCHEMA_VERSION,
+            'source_time_policy': 'input_media_pts_or_explicit_fps_estimate; stream_device_time_unavailable',
             'source': self.session_metadata.get('source'),
             'fps': self.fps,
             'output_fps': self.output_fps,

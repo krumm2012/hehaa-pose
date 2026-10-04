@@ -77,7 +77,7 @@ class Algo2RealtimePipelineTests(unittest.TestCase):
     def test_build_impact_telemetry_card(self):
         """测试 build_impact_telemetry_card 对第一、二、三梯队指标与评分的规范抽取"""
         event_dict = {
-            "stroke_type": "forehand",
+            "stroke_type": "Forehand",
             "confidence": 0.95,
             "biomechanics": {
                 "extended_biomechanics": {
@@ -106,14 +106,15 @@ class Algo2RealtimePipelineTests(unittest.TestCase):
             }
         }
         card = build_impact_telemetry_card(event_dict)
-        self.assertEqual(card["stroke_type"], "forehand")
+        self.assertEqual(card["stroke_type"], "Forehand")
         self.assertIsNone(card["swing_score"])
         self.assertEqual(card["practice_score"]["status"], "insufficient_evidence")
         self.assertIsNone(card["swing_grade"])
         self.assertEqual(card["racket_speed_kmh"], 76.2)
-        self.assertEqual(card["brush_angle_deg"], 24.5)
+        self.assertIsNone(card["brush_angle_deg"])
         self.assertEqual(card["stance_type"], "Semi-Open")
-        self.assertIn("腿 -> 髋 -> 肩 -> 拍", card["kinematic_sequence_text"])
+        self.assertIn("二维参考", card["kinematic_sequence_text"])
+        self.assertIn("未验证", card["kinematic_sequence_text"])
 
     def test_realtime_runtime_active_display_state(self):
         """测试 RealtimeSwingRuntime 的 get_active_display_state 在无事件与触发事件时的状态变迁与过期控制"""

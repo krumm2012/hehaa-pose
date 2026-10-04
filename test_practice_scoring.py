@@ -40,7 +40,7 @@ class PracticeScoringTests(unittest.TestCase):
             self.assertIsNone(ext["swing_quality_score"]["overall_score"])
         e=evidence()
         for m in e["biomechanics"]["metrics"].values(): m["value"]=0
-        self.assertEqual(score_event(e)["score"], 35)
+        self.assertIsNone(score_event(e)["score"])
         e["biomechanics"]["metrics"]={}
         self.assertIsNone(score_event(e)["score"])
 
@@ -101,12 +101,14 @@ class PracticeScoringTests(unittest.TestCase):
     def test_unknown_radar_and_insufficient_samples(self):
         self.assertTrue(all(v is None for v in calculate_radar_dimensions({}).values()))
         summary=build_session_coaching_summary([evidence()])
-        self.assertEqual(summary["quality_metrics"]["stability_rating"],"INSUFFICIENT_SAMPLES")
+        self.assertEqual(summary["quality_metrics"]["stability_rating"],"INSUFFICIENT_EVIDENCE")
         self.assertTrue(all(v is None for v in summary["radar_averages"].values()))
 
     def test_different_strokes_and_machine_conditions_do_not_mix(self):
         for field,value in [("stroke_type","Backhand"),("practice_context",{"machine":{"spin":"topspin"}})]:
-            first=evidence();second=copy.deepcopy(first);second["event_id"]=2;second[field]=value
+            first=evidence()
+            first["practice_review"] = {"ratings": {key: 4 for key in DIMENSIONS}, "confirmed": True}
+            second=copy.deepcopy(first);second["event_id"]=2;second[field]=value
             summary=build_session_coaching_summary([first,second])
             self.assertIsNone(summary["quality_metrics"]["average_score"])
             self.assertEqual(len(summary["score_series"]),2)
@@ -156,9 +158,9 @@ class PracticeScoringTests(unittest.TestCase):
 
     def test_dashboard_uncertainty_is_on_same_scale_as_score(self):
         dashboard = build_session_quality_dashboard([evidence()])
-        expected = dashboard["quality"]["median_uncertainty_9"] / 9 * 100
-        self.assertAlmostEqual(dashboard["quality"]["median_uncertainty_100"], expected, places=2)
-        self.assertIn(f"启发式范围 ±{expected:.1f}", _session_dashboard_html(dashboard))
+        self.assertIsNone(dashboard['quality']['median_uncertainty_9'])
+        self.assertIsNone(dashboard['quality']['median_uncertainty_100'])
+        self.assertNotIn('启发式范围 ±', _session_dashboard_html(dashboard))
 
     def test_manual_trend_uses_manual_ratings_instead_of_automatic_evidence(self):
         rows = []

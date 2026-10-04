@@ -15,6 +15,8 @@ dual_view_renderer.py
 from __future__ import annotations
 
 import logging
+import math
+from dataclasses import replace
 from typing import Dict, List, Optional, Tuple
 
 import cv2
@@ -100,6 +102,10 @@ class DualViewRenderer:
         """在单个视角画面上绘制人体骨骼与关键点。"""
         canvas = img.copy()
 
+        # Low-confidence joints remain missing, never completed into solid bones.
+        pose_dict = {name: kp for name, kp in pose_dict.items()
+                     if kp.conf >= .5 and kp.confidence_source != 'unavailable'
+                     and all(math.isfinite(v) for v in (kp.x, kp.y, kp.conf))}
         # 1. 绘制连线
         bone_color = COLOR_BACK_BONE if is_back_view else COLOR_FRONT_BONE
 
@@ -111,13 +117,28 @@ class DualViewRenderer:
                 cur_color = COLOR_HEALED_BONE if (kp1.recovered_from_mirror or kp2.recovered_from_mirror) else bone_color
                 pt1 = (int(round(kp1.x)), int(round(kp1.y)))
                 pt2 = (int(round(kp2.x)), int(round(kp2.y)))
-                cv2.line(canvas, pt1, pt2, cur_color, self.line_thickness, cv2.LINE_AA)
+                inferred = kp1.recovered_from_mirror or kp2.recovered_from_mirror
+                cached = not kp1.observed or not kp2.observed
+                if inferred or cached:
+                    color = COLOR_HEALED_BONE if inferred else (140, 140, 140)
+                    length = max(1, int(math.dist(pt1, pt2)))
+                    for offset in range(0, length, 12):
+                        a = offset / length
+                        b = min(offset + 6, length) / length
+                        start = tuple(round(x+(y-x)*a) for x,y in zip(pt1,pt2))
+                        end = tuple(round(x+(y-x)*b) for x,y in zip(pt1,pt2))
+                        cv2.line(canvas, start, end, color, 1, cv2.LINE_AA)
+                else:
+                    cv2.line(canvas, pt1, pt2, cur_color, self.line_thickness, cv2.LINE_AA)
 
         # 2. 绘制关节点
         for name, kp in pose_dict.items():
             pt = (int(round(kp.x)), int(round(kp.y)))
             pt_color = COLOR_JOINT_HEALED if kp.recovered_from_mirror else COLOR_JOINT
-            cv2.circle(canvas, pt, self.point_radius, pt_color, -1, cv2.LINE_AA)
+            if not kp.observed or kp.recovered_from_mirror:
+                pt_color = COLOR_JOINT_HEALED if kp.recovered_from_mirror else (140,140,140)
+            cv2.circle(canvas, pt, self.point_radius, pt_color,
+                       -1 if kp.observed and not kp.recovered_from_mirror else 1, cv2.LINE_AA)
             cv2.circle(canvas, pt, self.point_radius + 1, (255, 255, 255), 1, cv2.LINE_AA)
 
         return canvas
@@ -221,15 +242,15 @@ class DualViewRenderer:
 
         # 5. 底部生物力学指标详情
         # 转肩角与 X-Factor
-        turn_text = f"Turn: {bio.robust_shoulder_turn_deg:.1f} deg"
+        turn_text = f"Width-angle proxy: {bio.robust_shoulder_turn_deg:.1f}" if bio.robust_shoulder_turn_deg is not None else "Width-angle proxy: N/A"
         if bio.shoulder_hip_separation_deg is not None:
-            turn_text += f" | X-Factor: {bio.shoulder_hip_separation_deg:.1f} deg"
+            turn_text += f" | 2D shoulder-hip: {bio.shoulder_hip_separation_deg:.1f} deg"
         cv2.putText(canvas, turn_text, (20, h - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (255, 255, 255), 1, cv2.LINE_AA)
 
         # 后背引拍深度与自愈状态及 3D 相对深度
-        back_text = f"Takeback: {bio.takeback_depth_ratio * 100:.1f}% | Scapular: {bio.scapular_retraction_ratio:.2f}"
-        if getattr(bio, "relative_depth_z", None) is not None:
-            back_text += f" | Z-Disparity: {bio.relative_depth_z:.2f}"
+        depth = f"{bio.takeback_depth_ratio:.2f}x" if bio.takeback_depth_ratio is not None else "N/A"
+        width = f"{bio.scapular_retraction_ratio:.2f}x" if bio.scapular_retraction_ratio is not None else "N/A"
+        back_text = f"Wrist-offset proxy: {depth} | Shoulder-width ratio: {width}"
         if bio.occlusion_healed_points:
             back_text += f" | Healed: {','.join(bio.occlusion_healed_points)}"
         cv2.putText(
@@ -313,6 +334,7 @@ class DualViewRenderer:
         self,
         sbs_canvas: np.ndarray,
         card_data: Dict[str, Any],
+        opacity: float = 0.88,
     ) -> np.ndarray:
         """
         在画面中央/指定位置渲染击球瞬间特写遥测卡片 (Impact Telemetry Card)
@@ -333,19 +355,19 @@ class DualViewRenderer:
         cv2.rectangle(overlay, (x1, y1), (x2, y2), (16, 18, 24), -1)
         # 顶部标题栏背景
         cv2.rectangle(overlay, (x1, y1), (x2, y1 + 38), (28, 35, 48), -1)
-        cv2.addWeighted(overlay, 0.88, canvas, 0.12, 0, canvas)
+        cv2.addWeighted(overlay, opacity, canvas, 1.0 - opacity, 0, canvas)
 
         # 发光外边框 (高科技青蓝色)
         cv2.rectangle(canvas, (x1, y1), (x2, y2), (0, 220, 255), 2, cv2.LINE_AA)
         cv2.line(canvas, (x1, y1 + 38), (x2, y1 + 38), (0, 180, 210), 1, cv2.LINE_AA)
 
         # 标题栏文本
-        title_text = ">> IMPACT TELEMETRY <<"
+        title_text = "2D OBSERVATIONS"
         canvas = self.font_mgr.put_text_with_font(
             canvas,
             title_text,
             (x1 + 16, y1 + 8),
-            font_scale=0.60,
+            font_scale=0.45,
             color=(0, 240, 255),
             thickness=2,
         )
@@ -360,7 +382,7 @@ class DualViewRenderer:
         }
         badge_color = grade_colors.get(grade, (0, 240, 255))
         score_label = "COACH" if (card_data.get("practice_score") or {}).get("method") == "coach_manual" else "VISIBLE"
-        score_badge = f"{score_label}: {score:.1f} [{grade}]" if score is not None else f"{score_label}: N/A"
+        score_badge = f"{score_label}: {score:.1f}" if score is not None else f"{score_label}: N/A"
         canvas = self.font_mgr.put_text_with_font(
             canvas,
             score_badge,
@@ -371,22 +393,22 @@ class DualViewRenderer:
         )
 
         # 4 行遥测核心指标
-        speed_kmh = card_data.get("racket_speed_kmh")
-        max_speed = card_data.get("racket_max_speed_kmh")
+        speed_px_s = card_data.get("racket_speed_px_s")
         brush_deg = card_data.get("brush_angle_deg")
         drop_ratio = card_data.get("drop_depth_ratio")
-        stance_str = str(card_data.get("stance_type") or "未观测")
-        drive_ratio = card_data.get("leg_drive_ratio")
+        foot_angle = card_data.get("foot_line_angle_deg")
+        stance_str = f"{foot_angle:.0f} deg (2D)" if foot_angle is not None else "N/A"
+        hip_rise_px = card_data.get("hip_rise_px")
         seq_text = str(card_data.get("kinematic_sequence_text") or "未观测")
 
-        drive_display = f"+{float(drive_ratio)*100:.1f}%" if drive_ratio is not None else "N/A"
+        drive_display = f"{float(hip_rise_px):.0f}px (2D)" if hip_rise_px is not None else str(card_data.get("hip_evidence_text") or "N/A")
         drop_display = f"{float(drop_ratio):.2f}x" if drop_ratio is not None else "N/A"
 
         items = [
-            ("RACKET SPEED", (f"{speed_kmh:.1f} km/h (proxy)" if speed_kmh is not None else "N/A"), (0, 255, 180)),
-            ("BRUSH & DROP", (f"{brush_deg:+.1f} deg | Drop: {drop_display}" if brush_deg is not None else "N/A"), (0, 220, 255)),
-            ("STANCE & LEG", f"{stance_str} | Drive: {drive_display}", (255, 230, 100)),
-            ("KINETIC CHAIN", f"{seq_text}", (255, 180, 255)),
+            ("RACKET SPEED", (f"{speed_px_s:.0f} px/s (2D centre)" if speed_px_s is not None else "N/A - uncalibrated"), (0, 255, 180)),
+            ("PATH & RISE", (f"{brush_deg:+.1f} deg | Rise: {drop_display}" if brush_deg is not None else str(card_data.get("brush_evidence_text") or "观测证据不足") + f" | Rise: {drop_display}"), (0, 220, 255)),
+            ("ANKLE & HIP", f"{stance_str} | Rise: {drive_display}", (255, 230, 100)),
+            ("2D PEAK ORDER", f"{seq_text}", (255, 180, 255)),
         ]
 
         row_y = y1 + 48
@@ -505,13 +527,7 @@ class DualViewRenderer:
             if source_front and getattr(dual_frame, "front_info", None) is not None:
                 for name, kp in source_front.items():
                     fx, fy = dual_frame.front_info.map_from_original(kp.x, kp.y)
-                    front_pose_to_draw[name] = Keypoint(
-                        x=fx,
-                        y=fy,
-                        conf=kp.conf,
-                        z=kp.z,
-                        recovered_from_mirror=kp.recovered_from_mirror,
-                    )
+                    front_pose_to_draw[name] = replace(kp, x=fx, y=fy)
             else:
                 front_pose_to_draw = pose_result.fused_pose_local
 
@@ -523,13 +539,7 @@ class DualViewRenderer:
             if source_back and getattr(dual_frame, "back_info", None) is not None:
                 for name, kp in source_back.items():
                     bx, by = dual_frame.back_info.map_from_original(kp.x, kp.y)
-                    back_pose_to_draw[name] = Keypoint(
-                        x=bx,
-                        y=by,
-                        conf=kp.conf,
-                        z=kp.z,
-                        recovered_from_mirror=kp.recovered_from_mirror,
-                    )
+                    back_pose_to_draw[name] = replace(kp, x=bx, y=by)
             else:
                 back_pose_to_draw = pose_result.back_pose_local
 

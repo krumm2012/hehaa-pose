@@ -240,7 +240,7 @@ class RealtimeSwingEventEngineTests(unittest.TestCase):
             emitted[0]["coach_advice"],
         )
 
-    def test_emitted_shadow_swing_has_no_coach_advices(self):
+    def test_unconfirmed_contact_only_gets_review_advice(self):
         engine = RealtimeSwingEventEngine(
             fps=25.0,
             analysis_interval_frames=1,
@@ -257,13 +257,14 @@ class RealtimeSwingEventEngineTests(unittest.TestCase):
         emitted = []
 
         for frame_id, wrist_x in enumerate(positions):
-            # All frames have ball far away (wrist_x + 300) -> shadow swing
+            # A distant ball does not establish contact or an intentional shadow swing.
             emitted.extend(engine.push_frame(frame_record(frame_id, wrist_x)))
 
         self.assertEqual(len(emitted), 1)
-        self.assertTrue(emitted[0].get("is_shadow_swing"))
-        self.assertEqual(emitted[0].get("coach_advices"), [])
-        self.assertIsNone(emitted[0].get("coach_advice"))
+        self.assertFalse(emitted[0].get("is_shadow_swing"))
+        self.assertEqual(emitted[0]["contact_status"], "unknown")
+        self.assertTrue(emitted[0]["coach_advices"])
+        self.assertTrue(all(a["category"] == "review" for a in emitted[0]["coach_advices"]))
 
     def test_suppresses_follow_through_tail_within_refractory_cooldown(self):
         engine = RealtimeSwingEventEngine(

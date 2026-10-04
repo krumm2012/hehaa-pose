@@ -12,6 +12,8 @@ from __future__ import annotations
 import math
 import re
 from typing import Dict, Iterable, List, Optional, Tuple
+from observation_policy import measurement_pose
+from image_motion_measurements import racket_image_velocity
 
 
 Point = Tuple[float, float]
@@ -61,7 +63,7 @@ def _parse_number(value) -> Optional[float]:
 def _racket_center(rackets: Iterable[Dict]) -> Optional[Point]:
     best = None
     for racket in rackets or []:
-        if not isinstance(racket, dict) or not racket.get("box"):
+        if not isinstance(racket, dict) or not racket.get("box") or racket.get("observed") is False:
             continue
         if best is None or racket.get("confidence", 0.0) > best.get("confidence", 0.0):
             best = racket
@@ -131,16 +133,21 @@ def extract_motion_features(
 
     raw_rackets: List[Optional[Point]] = []
     for frame in frames:
-        rkt = _point(frame.get("racket"))
+        detections = frame.get("rackets") or []
+        invalid_primary = detections and (detections[0].get("observed") is False or
+            (detections[0].get('source_frame_id') is not None and detections[0]['source_frame_id'] != frame.get('frame_id')))
+        box = None if invalid_primary else frame.get("racket")
+        rkt = _racket_center([{"box": box}]) if isinstance(box, (list, tuple)) and len(box) == 4 else _point(box)
         if rkt is None:
-            rkt = _racket_center(frame.get("rackets") or [])
+            rkt = _racket_center([d for d in detections if d.get('source_frame_id') is None or d['source_frame_id'] == frame.get('frame_id')])
         raw_rackets.append(rkt)
 
     healed_rackets = _heal_short_racket_gaps(raw_rackets, max_gap=2)
 
     for idx, frame in enumerate(frames):
-        pose = frame.get("healed_pose") or frame.get("pose") or {}
-        metrics = frame.get("metrics") or {}
+        # Uncalibrated mirror recovery is display-only, never a measurement.
+        pose = measurement_pose(frame)
+        metrics = {} if frame.get("pose_observations") is not None else (frame.get("metrics") or {})
         frame_id = int(frame.get("frame_id", len(features)))
         timestamp = float(frame.get("timestamp", frame_id))
 
@@ -156,7 +163,9 @@ def extract_motion_features(
         right_knee = _point(pose.get("right_knee"))
         left_ankle = _point(pose.get("left_ankle"))
         right_ankle = _point(pose.get("right_ankle"))
-        ball = _point(frame.get("ball"))
+        from ball_observation_contract import measurement_ball
+        selected_ball, ball_provenance_status = measurement_ball(frame)
+        ball = _point(selected_ball)
         racket, racket_source = healed_rackets[idx]
 
         wrist_speed = _distance(wrist, prev.get("wrist")) or 0.0
@@ -182,18 +191,12 @@ def extract_motion_features(
         # 步法站位分类 (Stance Type Classification: Open vs Semi-Open vs Closed)
         stance_angle = None
         stance_type = "Unknown"
-        ref_p1 = left_ankle or left_knee or left_hip
-        ref_p2 = right_ankle or right_knee or right_hip
-        if ref_p1 is not None and ref_p2 is not None:
-            dx = abs(ref_p2[0] - ref_p1[0])
-            dy = abs(ref_p2[1] - ref_p1[1])
-            stance_angle = math.degrees(math.atan2(dy, dx + 1e-5))
-            if stance_angle < 25.0:
-                stance_type = "Open Stance"
-            elif stance_angle < 55.0:
-                stance_type = "Semi-Open Stance"
-            else:
-                stance_type = "Closed Stance"
+        if left_ankle is not None and right_ankle is not None:
+            dx = abs(right_ankle[0] - left_ankle[0])
+            dy = abs(right_ankle[1] - left_ankle[1])
+            if dx or dy:
+                stance_angle = math.degrees(math.atan2(dy, dx))
+        # Stance type requires a court/player reference, not an image slope.
 
         # 身体质心垂直位置 (Vertical Hip/COM Position)
         hip_vertical_pos = None
@@ -214,15 +217,13 @@ def extract_motion_features(
             else 0.0
         )
 
-        # 真实拍头速度换算 (Racket Head Speed in km/h & m/s)
-        dt = timestamp - float(prev.get("timestamp", timestamp - 0.04))
-        if dt <= 0.001:
-            dt = 0.04  # 默认 25 FPS
-        ppm = (shoulder_width / 0.42) if shoulder_width and shoulder_width > 15.0 else 320.0
-        racket_speed_mps = (racket_speed / ppm) / dt
-        racket_head_speed_kmh = min(180.0, max(0.0, racket_speed_mps * 3.6))
+        # Segmentation keeps its existing px/frame signal. Measurement uses only
+        # raw consecutive detections and source time, never a guessed shoulder scale.
+        image_speed, speed_time_basis = racket_image_velocity(
+            frames[idx-1] if idx else None, frame,
+            raw_rackets[idx-1] if idx else None, raw_rackets[idx])
 
-        ball_racket_distance = _distance(ball, racket)
+        ball_racket_distance = _distance(ball, raw_rackets[idx])
         ball_wrist_distance = _distance(ball, wrist)
         contact_score = 0.0
         if ball_racket_distance is not None:
@@ -265,6 +266,10 @@ def extract_motion_features(
             "racket_center": racket,
             "racket_center_source": racket_source,
             "ball": ball,
+            "ball_provenance_status": ball_provenance_status,
+            "ball_observation": frame.get('ball_observation'),
+            "contact_geometry": 'ball_to_observed_racket_box_center' if ball_racket_distance is not None else 'ball_to_observed_wrist_proxy' if ball_wrist_distance is not None else 'unavailable',
+            "contact_distance_gate": {'racket_px':180,'wrist_px':220,'accuracy_validated':False,'status':'uncalibrated_heuristic_candidate_only'},
             "detection_diagnostics": frame.get("detection_diagnostics") or {},
             "wrist_speed": round(wrist_speed, 4),
             "wrist_accel": round(wrist_accel, 4),
@@ -294,6 +299,7 @@ def extract_motion_features(
                 else None
             ),
             "shoulder_width_px": round(shoulder_width, 4) if shoulder_width else None,
+            "shoulder_line_angle_deg": shoulder_line_angle,
             "arm_extension_deg": (
                 round(arm_extension, 4)
                 if arm_extension is not None
@@ -314,11 +320,15 @@ def extract_motion_features(
                 round(float(scapular_ratio), 4) if scapular_ratio is not None else None
             ),
             "dual_view_stroke_type": dv_stroke_type,
+            "dual_view_confidence": (dv_biomech.get("shot_classification") or {}).get("confidence"),
             "dual_view_is_two_handed": dv_is_two_handed,
             "dual_view_contact_valid": dv_contact_valid,
             "hip_shoulder_sep_deg": round(hip_shoulder_sep, 4) if hip_shoulder_sep is not None else _metric(metrics, "power_indicators", "hip_shoulder_sep"),
-            "racket_head_speed_kmh": round(racket_head_speed_kmh, 1),
-            "racket_speed_mps": round(racket_speed_mps, 2),
+            "racket_head_speed_kmh": None,
+            "racket_speed_mps": None,
+            "racket_speed_px_s": image_speed,
+            "racket_speed_time_basis": speed_time_basis,
+            "racket_measurement_point": raw_rackets[idx],
             "stance_angle": round(stance_angle, 1) if stance_angle is not None else None,
             "stance_type": stance_type,
             "hip_vertical_pos": round(hip_vertical_pos, 2) if hip_vertical_pos is not None else None,

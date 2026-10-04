@@ -361,6 +361,8 @@ class YOLO26nUnifiedDetector:
                         'position': [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2],  # 中心点
                         'box': box,
                         'confidence': float(conf),
+                        'model_confidence': float(conf),
+                        'source': 'model_detection',
                         'radius': int((box[2] - box[0]) / 2)
                     })
                 
@@ -434,6 +436,8 @@ class YOLO26nUnifiedDetector:
                         'position': [(box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0],
                         'box': box,
                         'confidence': ball_conf,
+                        'model_confidence': ball_conf,
+                        'source': 'model_detection',
                         'radius': max(1, int((box[2] - box[0]) / 2.0)),
                     })
 

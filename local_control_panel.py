@@ -20,7 +20,7 @@ import time
 import webbrowser
 from collections import deque
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -41,6 +41,7 @@ from manual_review_workflow import (
 )
 from roi_stream_config import sanitize_stream_source
 from swing_session_summary import build_session_coaching_summary
+from analysis_metric_delivery import event_analysis_metrics, scoring_blockers
 
 
 SESSION_NAME_PATTERN = re.compile(r"[^A-Za-z0-9_-]+")
@@ -49,6 +50,17 @@ CUSTOM_STREAM_ID = "custom"
 LOCAL_VIDEO_ID = "local_video"
 MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
 VIDEO_SUFFIXES = {".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"}
+
+
+def _session_capture_time(path: Path) -> float:
+    """Report edits must not promote an old capture when the server restarts."""
+    match = re.search(r"_(\d{8}T\d{6}Z)_", path.name)
+    if match:
+        try:
+            return datetime.strptime(match.group(1), "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc).timestamp()
+        except ValueError:
+            pass
+    return path.stat().st_mtime
 CUSTOM_STREAM_SCHEMES = {"http", "https", "rtmp", "rtsp", "tcp", "udp"}
 ENVIRONMENT_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -777,7 +789,7 @@ class LocalPipelineController:
             if base_dir.exists():
                 sessions = sorted(
                     [d for d in base_dir.iterdir() if d.is_dir() and not d.name.startswith(".")],
-                    key=lambda d: d.stat().st_mtime,
+                    key=_session_capture_time,
                     reverse=True,
                 )
                 for s in sessions:
@@ -811,6 +823,8 @@ class LocalPipelineController:
         processed_events = []
         for ev in raw_events:
             event_item = dict(ev)
+            event_item["analysis_metrics"] = event_analysis_metrics(ev)
+            event_item["scoring_blockers"] = scoring_blockers(ev)
             clip_rel = ev.get("clip_path")
             if clip_rel and session_dir:
                 clip_path = (session_dir / clip_rel) if not Path(clip_rel).is_absolute() else Path(clip_rel)

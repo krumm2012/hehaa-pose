@@ -56,6 +56,9 @@ class Keypoint:
     conf: float
     z: Optional[float] = None
     recovered_from_mirror: bool = False
+    observed: bool = True
+    source_frame_id: Optional[int] = None
+    confidence_source: str = "provided"
 
     @property
     def pt(self) -> Tuple[float, float]:
@@ -70,7 +73,7 @@ class ShotClassificationResult:
     is_two_handed: bool             # 是否双手握拍
     midline_side_projection: float  # 手腕相对躯干轴投影距离（+为左，-为右）
     wrist_ball_distance: Optional[float] = None
-    is_valid_contact: bool = True   # 是否通过击球物理距离校验
+    is_valid_contact: Optional[bool] = None   # 是否通过击球物理距离校验
     rejection_reason: Optional[str] = None
 
 
@@ -82,12 +85,12 @@ class DualViewBiomechanicsResult:
     # 旋转与转体动力学
     front_shoulder_width: float
     back_shoulder_width: float
-    robust_shoulder_turn_deg: float   # 消除侧身退化后的真实转肩角
+    robust_shoulder_turn_deg: Optional[float]  # Uncalibrated shoulder-width projection proxy
     shoulder_hip_separation_deg: Optional[float] = None  # X-Factor (肩髋分离角)
 
     # 后背特色指标与 3D 相对深度
-    takeback_depth_ratio: float = 0.0       # 引拍深度比率（手腕引拍离后背脊柱距离 / 肩宽）
-    scapular_retraction_ratio: float = 1.0  # 肩胛骨收紧比率
+    takeback_depth_ratio: Optional[float] = None
+    scapular_retraction_ratio: Optional[float] = None
     relative_depth_z: Optional[float] = None  # 双机位前后尺度视差拟合的相对 3D 深度比率
 
     # 姿态自愈记录
@@ -176,6 +179,15 @@ class DualViewBiomechanicsEngine:
             and b_r_sh.conf >= self.min_keypoint_conf
         )
 
+        anchors = (f_l_sh, f_r_sh, b_l_sh, b_r_sh)
+        if not (has_front_sh and has_back_sh) or not all(
+            kp.observed and not kp.recovered_from_mirror and kp.conf >= .5
+            and all(math.isfinite(v) for v in (kp.x, kp.y, kp.conf)) for kp in anchors
+        ):
+            return healed_pose, healed_list
+        frame_ids = {kp.source_frame_id for kp in anchors if kp.source_frame_id is not None}
+        if len(frame_ids) > 1:
+            return healed_pose, healed_list
         if has_front_sh and has_back_sh:
             f_cx = (f_l_sh.x + f_r_sh.x) / 2.0
             f_cy = (f_l_sh.y + f_r_sh.y) / 2.0
@@ -183,7 +195,9 @@ class DualViewBiomechanicsEngine:
             b_cy = (b_l_sh.y + b_r_sh.y) / 2.0
             f_w = math.hypot(f_l_sh.x - f_r_sh.x, f_l_sh.y - f_r_sh.y)
             b_w = math.hypot(b_l_sh.x - b_r_sh.x, b_l_sh.y - b_r_sh.y)
-            scale = (f_w / max(1.0, b_w)) if b_w > 1.0 else 1.0
+            if min(f_w, b_w) < 12:
+                return healed_pose, healed_list
+            scale = f_w / b_w
         else:
             scale = 1.0
             f_cx, f_cy, b_cx, b_cy = 0.0, 0.0, 0.0, 0.0
@@ -193,7 +207,10 @@ class DualViewBiomechanicsEngine:
             b_kp = back_pose.get(joint)
 
             f_valid = f_kp is not None and f_kp.conf >= self.min_keypoint_conf
-            b_valid = b_kp is not None and b_kp.conf >= self.min_keypoint_conf
+            b_valid = (b_kp is not None and b_kp.conf >= max(.5, self.min_keypoint_conf)
+                       and b_kp.observed and not b_kp.recovered_from_mirror
+                       and all(math.isfinite(v) for v in (b_kp.x, b_kp.y, b_kp.conf))
+                       and (not frame_ids or b_kp.source_frame_id in frame_ids))
 
             if not f_valid and b_valid:
                 # 正面丢失但背面有效：以身体解剖尺度进行归一化映射自愈补全
@@ -209,6 +226,7 @@ class DualViewBiomechanicsEngine:
                     y=round(float(mapped_y), 2),
                     conf=round(float(b_kp.conf * 0.9), 3),  # 适度衰减置信度作为融合标记
                     recovered_from_mirror=True,
+                    observed=False, source_frame_id=b_kp.source_frame_id, confidence_source=b_kp.confidence_source,
                 )
                 healed_list.append(joint)
 
@@ -311,10 +329,11 @@ class DualViewBiomechanicsEngine:
 
         # 3. 接触点物理距离校验 (Contact Distance Validation)
         wrist_ball_dist = None
-        is_valid_contact = True
+        is_valid_contact = None
         rejection_reason = None
 
         if ball_pos is not None:
+            is_valid_contact = True
             bx, by = ball_pos
             wrist_ball_dist = math.hypot(hit_x - bx, hit_y - by)
             if self.max_contact_distance is not None and wrist_ball_dist > self.max_contact_distance:
@@ -371,7 +390,7 @@ class DualViewBiomechanicsEngine:
         fused_pose, healed_points = self.heal_occluded_pose(f_pose, b_pose)
 
         # 2. 击球分类与触球校验
-        shot_res = self.classify_shot(fused_pose, ball_pos=ball_pos)
+        shot_res = self.classify_shot(f_pose, ball_pos=ball_pos)
 
         # 3. 消除侧身退化转肩角 (Anti Side-on Collapse)
         # 前视角肩线
@@ -387,7 +406,7 @@ class DualViewBiomechanicsEngine:
         # 结合正面与反面宽度的稳定转体角度估计：
         # 当纯正面正对相机时 f_w 接近最大，侧身 90 度时 f_w 接近最小
         # 同时利用 atan2(f_w, b_w) 在象限内平滑过渡
-        robust_turn_deg = math.degrees(math.atan2(max(1.0, b_w), max(1.0, f_w)))
+        robust_turn_deg = math.degrees(math.atan2(b_w, f_w)) if f_w > 15 and b_w > 15 else None
 
         # 4. 肩髋分离角 (X-Factor)
         f_l_hip = fused_pose.get("left_hip")
@@ -400,7 +419,7 @@ class DualViewBiomechanicsEngine:
 
         # 5. 后背特色指标：引拍深度 (Takeback Depth)
         # 以后背脊柱中线为基准，测算击球手腕向后拉伸的深度
-        takeback_depth_ratio = 0.0
+        takeback_depth_ratio = None
         if b_l_sh and b_r_sh:
             spine_x = (b_l_sh.x + b_r_sh.x) / 2.0
             hitting_wrist_b = b_pose.get("right_wrist") if self.dominant_hand == "right" else b_pose.get("left_wrist")
@@ -409,7 +428,7 @@ class DualViewBiomechanicsEngine:
                 takeback_depth_ratio = min(2.5, max(0.0, raw_ratio))
 
         # 6. 肩胛收缩度 (Scapular Retraction)
-        scapular_ratio = min(3.0, max(0.0, (b_w / max(1.0, f_w)))) if f_w > 15.0 else 1.0
+        scapular_ratio = min(3.0, b_w / f_w) if f_w > 15 and b_w > 15 else None
 
         # 7. 双重视角视差拟合与相对 3D 深度比率推算 (Relative 3D Depth Ratio)
         relative_depth_z = round(float(f_w / max(1.0, b_w)), 3) if (f_w > 15.0 and b_w > 15.0) else None
@@ -418,10 +437,10 @@ class DualViewBiomechanicsEngine:
             shot_classification=shot_res,
             front_shoulder_width=round(f_w, 2),
             back_shoulder_width=round(b_w, 2),
-            robust_shoulder_turn_deg=round(robust_turn_deg, 2),
+            robust_shoulder_turn_deg=round(robust_turn_deg, 2) if robust_turn_deg is not None else None,
             shoulder_hip_separation_deg=round(sep_deg, 2) if sep_deg is not None else None,
-            takeback_depth_ratio=round(takeback_depth_ratio, 4),
-            scapular_retraction_ratio=round(scapular_ratio, 4),
+            takeback_depth_ratio=round(takeback_depth_ratio, 4) if takeback_depth_ratio is not None else None,
+            scapular_retraction_ratio=round(scapular_ratio, 4) if scapular_ratio is not None else None,
             relative_depth_z=relative_depth_z,
             occlusion_healed_points=healed_points,
         )

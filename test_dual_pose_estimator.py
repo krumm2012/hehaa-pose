@@ -30,8 +30,9 @@ class DualPoseEstimatorTests(unittest.TestCase):
         if not Path(video_path).exists():
             self.skipTest("Video 49.35.mp4 not found")
 
-        mgr = DualViewManager()
+        mgr = DualViewManager(config_path=str(Path(__file__).parent / "tests/fixtures/dual_view_49_35.yaml"))
         estimator = DualPoseEstimator(backend="auto")
+        self.addCleanup(estimator.close)
 
         cap = cv2.VideoCapture(video_path)
         cap.set(cv2.CAP_PROP_POS_FRAMES, 20) # 准备挥拍帧

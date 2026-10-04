@@ -405,6 +405,7 @@
     }
     .badge-seq.optimal { background: rgba(48,209,88,0.2); color: #30d158; }
     .badge-seq.disconnected { background: rgba(255,69,58,0.2); color: #ff453a; }
+    .badge-seq.unvalidated { background: rgba(142,142,147,0.16); color: #b4bdcd; }
 
     .swing-coach-box {
       display: flex;
@@ -997,10 +998,10 @@
             </div>
             <div class="actions">
               <div class="swing-filter-toggle" role="group" aria-label="击球过滤模式">
-                <button id="filter-valid-btn" class="filter-btn active" type="button" title="纯净模式：仅显示击中来球的有效击球与针对性教练建议">🎯 仅看有效击球</button>
+                <button id="filter-valid-btn" class="filter-btn active" type="button" title="隐藏已确认空挥；候选仍需人工复核">🎯 查看挥拍候选</button>
                 <button id="filter-all-btn" class="filter-btn" type="button" title="完整记录：显示包含空挥试拍在内的所有检测事件">全部记录</button>
               </div>
-              <span id="swings-count-badge" class="status-pill" style="border-color: var(--blue); color: var(--blue);">0 次有效击球</span>
+              <span id="swings-count-badge" class="status-pill" style="border-color: var(--blue); color: var(--blue);">0 次挥拍候选</span>
               <button id="refresh-swings-btn" class="button" type="button">刷新</button>
             </div>
           </div>
@@ -1609,6 +1610,11 @@
       const title = document.getElementById("modal-clip-title");
       if (modal && video) {
         if (title) title.textContent = `Event #${eventId} · ${strokeText} (质量评分: ${score}分)`;
+        const metrics = document.getElementById("modal-event-metrics");
+        if (metrics) {
+          const event = latestRawEvents.find(e => e.event_id === eventId) || {};
+          metrics.innerHTML = (event.clip_telemetry_event_id !== eventId ? `<p style="color:var(--muted);font-size:12px">历史切片未绑定当前事件遥测，视频卡片可能保留上一拍数值。复核请查看下方当前事件指标。</p>` : "") + renderEventMeasurements(event);
+        }
         video.src = clipUrl;
         video.playbackRate = 0.5;
         modal.hidden = false;
@@ -1680,71 +1686,7 @@
     }
 
     function generateRadarSvg(ev) {
-      const isShadow = isShadowEvent(ev);
-      if (isShadow) {
-        return `
-          <div class="radar-box" style="opacity: 0.35;">
-            <svg class="radar-svg" viewBox="0 0 130 130">
-              <circle cx="65" cy="65" r="40" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1" stroke-dasharray="2,2" />
-              <text x="65" y="69" text-anchor="middle" fill="var(--muted)" font-size="10">空挥试拍</text>
-            </svg>
-          </div>
-        `;
-      }
-
-      const ext = ev.extended_biomechanics || (ev.biomechanics?.extended_biomechanics || {});
-      const speedKmh = parseFloat(ext.racket_head_speed?.contact_kmh || ext.racket_head_speed?.max_kmh || 0);
-      const dimSpeed = Math.min(100, Math.max(20, (speedKmh / 85.0) * 100));
-
-      const angle = parseFloat(ext.brush_angle?.low_to_high_angle_deg || 0);
-      const drop = parseFloat(ext.brush_angle?.drop_depth_ratio || 0);
-      const dimBrush = Math.min(100, Math.max(20, (Math.min(angle, 60) / 60 * 60) + (Math.min(drop, 0.4) / 0.4 * 40)));
-
-      const seqQual = ext.kinematic_sequence?.sequence_quality;
-      const dimSeq = seqQual === "OPTIMAL" ? 92 : (seqQual === "ACCEPTABLE" ? 75 : 45);
-
-      const legRatio = parseFloat(ext.leg_drive?.drive_ratio || 1.0);
-      const dimLeg = Math.min(100, Math.max(25, (legRatio / 1.6) * 85));
-
-      const rawScore = parseFloat(ev.swing_score ?? (ev.biomechanics?.swing_score ?? 60));
-      const dimPrep = Math.min(100, Math.max(20, rawScore * 0.95));
-
-      const values = [dimSpeed, dimBrush, dimSeq, dimLeg, dimPrep];
-      const labels = ["拍速", "刷球", "动链", "蹬地", "准备"];
-      const cx = 65, cy = 65, maxR = 40;
-
-      const getCoord = (idx, ratio) => {
-        const rad = -Math.PI / 2 + idx * (2 * Math.PI / 5);
-        const r = ratio * maxR;
-        return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
-      };
-
-      const ring50 = [0,1,2,3,4].map(i => getCoord(i, 0.5)).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-      const ring100 = [0,1,2,3,4].map(i => getCoord(i, 1.0)).map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-      const spokes = [0,1,2,3,4].map(i => {
-        const outer = getCoord(i, 1.0);
-        return `<line x1="${cx}" y1="${cy}" x2="${outer.x.toFixed(1)}" y2="${outer.y.toFixed(1)}" stroke="rgba(255,255,255,0.12)" stroke-width="1" />`;
-      }).join("");
-
-      const valPoints = values.map((val, i) => getCoord(i, val / 100));
-      const valPoly = valPoints.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-      const labelEls = labels.map((lbl, i) => {
-        const pos = getCoord(i, 1.25);
-        return `<text x="${pos.x.toFixed(1)}" y="${(pos.y + 3).toFixed(1)}" text-anchor="middle" fill="var(--muted)" font-size="8.5">${lbl}</text>`;
-      }).join("");
-
-      return `
-        <div class="radar-box" title="五维技术雷达图: 拍速 ${dimSpeed.toFixed(0)} | 刷球 ${dimBrush.toFixed(0)} | 动链 ${dimSeq.toFixed(0)} | 蹬地 ${dimLeg.toFixed(0)} | 准备 ${dimPrep.toFixed(0)}">
-          <svg class="radar-svg" viewBox="0 0 130 130">
-            <polygon points="${ring100}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
-            <polygon points="${ring50}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1" stroke-dasharray="2,2" />
-            ${spokes}
-            <polygon points="${valPoly}" fill="rgba(0, 240, 255, 0.25)" stroke="#00f0ff" stroke-width="1.8" />
-            ${valPoints.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5" fill="#00f0ff" />`).join("")}
-            ${labelEls}
-          </svg>
-        </div>
-      `;
+      return `<div class="radar-box" style="color:var(--muted);font-size:12px;text-align:center">${isShadowEvent(ev) ? "空挥试拍" : "技术维度请查看教练评分"}</div>`;
     }
 
     function renderSessionSummary(summary, events) {
@@ -1828,16 +1770,16 @@
       const defPills = defs.length > 0 ? defs.map(d => {
         const cls = d.severity === "HIGH" ? "severity-high" : (d.severity === "MEDIUM" ? "severity-medium" : "severity-low");
         return `<span class="deficiency-pill ${cls}">⚠️ ${escapeHtml(d.message)} · <strong>${d.occurrence_rate_percent}%</strong> (${d.count}次)</span>`;
-      }).join("") : `<span style="font-size:12px; color: #00e676;">🌟 表现优异 · 未发现共性技术短板</span>`;
+      }).join("") : `<span style="font-size:12px; color: var(--muted);">当前证据未产生技术纠错建议，仍需复核</span>`;
 
       box.innerHTML = `
         <div class="summary-top-row">
           <div class="summary-title-group">
             <h3>📊 训练会话全景宏观诊断 <span>(Session Coaching Summary)</span></h3>
-            <p>基于当前会话所有击球动作的聚合统计、质量稳定性评估与共性短板处方</p>
+            <p>事件窗口指标统计与教练建议；二维代理指标仅供回放参考</p>
           </div>
           <div class="summary-stats-pills">
-            <span class="stat-pill highlight">有效击球: ${valid}次</span>
+            <span class="stat-pill highlight">可评分击球: ${valid}次</span>
             <span class="stat-pill" style="opacity: 0.85;">空挥试拍: ${dist.shadow_count || 0}次</span>
             <span class="stat-pill highlight">均分: ${qm.average_score != null ? qm.average_score + "分" : "—"}</span>
             <span class="stat-pill success">${escapeHtml(qm.stability_label || "—")}</span>
@@ -1878,6 +1820,7 @@
             </div>
           </div>
         </div>
+        ${renderMeasurementSummary(summary.analysis_metrics || [])}
       `;
     }
 
@@ -1886,7 +1829,7 @@
       const events = data.events || [];
       const summary = data.summary || {};
       latestRawEvents = events;
-      const currentHash = JSON.stringify(events.map(e => e.event_id + "_" + (e.coach_advices?.length || 0)) + "_" + (summary.total_swings || 0) + "_" + filterOnlyValidSwings);
+      const currentHash = JSON.stringify([data.session_id, events, summary, filterOnlyValidSwings]);
       if (!force && currentHash === lastEventsJson) return;
       lastEventsJson = currentHash;
       renderSessionSummary(summary, events);
@@ -1902,6 +1845,96 @@
       } catch (err) {}
     }
 
+    function kinematicDisplay(seq, metric = {}) {
+      const confidence = metric.confidence ?? seq.confidence ?? 0;
+      const qualified = (metric.coach_eligible ?? seq.coach_eligible) === true && confidence > 0;
+      const cross = seq.cross_validation || {};
+      const unresolved = seq.sequence_quality === "UNRESOLVED_AT_FRAME_RATE" || (typeof seq.latency_hip_to_shoulder_ms === "number" && typeof seq.peak_time_uncertainty_ms === "number" && Math.abs(seq.latency_hip_to_shoulder_ms) <= seq.peak_time_uncertainty_ms);
+      const labels = {
+        agree: "双视角一致 · 未验证",
+        disagree: "双视角冲突 · 需复核",
+        single_view: "单视角参考 · 未验证",
+        unavailable: "证据不足",
+        legacy_single_view: "历史单视角 · 未验证",
+      };
+      let label = labels[cross.status] || "未验证 · 需复核";
+      let badgeClass = "unvalidated";
+      if (unresolved) {
+        label = "先后难以分辨" + (cross.status === "single_view" ? " · 单视角" : "");
+      } else if (qualified && ["OPTIMAL", "ACCEPTABLE", "DISCONNECTED"].includes(seq.sequence_quality)) {
+        label = {OPTIMAL: "时序符合已校准规则", ACCEPTABLE: "时序基本符合规则", DISCONNECTED: "时序需复核"}[seq.sequence_quality];
+        badgeClass = seq.sequence_quality === "DISCONNECTED" ? "disconnected" : "optimal";
+      }
+      if (seq.racket_peak_frame === null && seq.latency_hip_to_shoulder_ms != null) label += " · 缺拍峰";
+      const intervals = [];
+      for (const [name, key] of [["髋—肩", "latency_hip_to_shoulder_ms"], ["肩—拍", "latency_shoulder_to_racket_ms"]]) {
+        const value = seq[key];
+        if (typeof value === "number" && Number.isFinite(value)) {
+          intervals.push(`${name} ${value > 0 ? "+" : ""}${value.toFixed(1)} ms`);
+        }
+      }
+      let explanation = "二维峰值参考；未验证结果不用于技术纠错。";
+      if (unresolved) explanation = "峰值落在同帧或定位范围重叠，当前采样无法分辨真实先后；0 ms 不代表动作错误或真实同步。";
+      if (typeof seq.sampling_interval_ms === "number") explanation += ` 采样间隔约 ${seq.sampling_interval_ms.toFixed(1)} ms。`;
+      if (typeof seq.peak_time_uncertainty_ms === "number") explanation += ` 峰值定位范围约 ${seq.peak_time_uncertainty_ms.toFixed(1)} ms（非统计置信区间）。`;
+      const peakReasons = {usable:"峰值可用", boundary_peak:"峰值在窗口边界", ambiguous_peak:"峰值过宽或多峰", discontinuous_evidence:"有效片段不连续", low_coverage:"有效覆盖不足", insufficient_samples:"有效样本不足", insufficient_motion:"未形成明确运动峰值"};
+      for (const [view, title] of [["front","正面"],["back","背面"]]) {
+        const segments = seq.views?.[view]?.segments;
+        if (segments) explanation += ` ${title}：髋 ${peakReasons[segments.hip?.status] || "证据不足"}；肩 ${peakReasons[segments.shoulder?.status] || "证据不足"}。`;
+      }
+      if (seq.racket_evidence) explanation += ` 球拍：${peakReasons[seq.racket_evidence.status] || "证据不足"}。`;
+      for (const [key, title] of [["hip_to_shoulder","髋—肩"],["shoulder_to_racket","肩—拍"]]) {
+        const range = seq.pair_timing?.[key]?.latency_range_ms;
+        if (Array.isArray(range) && range.length === 2 && range.every(Number.isFinite)) explanation += ` ${title}时差范围 ${range[0]}～${range[1]} ms（非统计置信区间）。`;
+      }
+      return {label, badgeClass, intervals: intervals.join(" · ") || "暂无可用峰值间隔", explanation};
+    }
+
+    function observationReason(metric) {
+      const reasons = metric.measurement_evidence?.reasons || [];
+      if (reasons.includes("below_motion_resolution_guard")) return "小位移暂不解读";
+      if (reasons.includes("contact_anchor_unconfirmed")) return "触球候选待确认";
+      if (reasons.includes("path_endpoints_coincide")) return "轨迹方向不明确";
+      return "观测证据不足";
+    }
+
+    function qualifiedObservation(metric, field) {
+      const evidence = metric.measurement_evidence || {};
+      const qualification = evidence.fields?.[field] || evidence;
+      return qualification.display_eligible === true ? metric[field] : null;
+    }
+
+    function measurementValue(value, unit = "") {
+      const units = {image_plane_deg:"°（像面）", deg_360:"°", deg_2d:"°（二维）", deg:"°", ratio:"x", body_width:"投影躯干宽度"};
+      const labels = {UNRESOLVED_AT_FRAME_RATE:"当前帧率下先后难辨",DISCONNECTED:"投影峰值顺序反向（待复核）",OPTIMAL:"投影峰值同序（未验证）"};
+      const text = typeof value === "number" && Number.isFinite(value) ? value.toFixed(2).replace(/\.?0+$/, "") : (labels[value] ?? String(value ?? "—"));
+      return escapeHtml(`${text} ${units[unit] ?? unit}`.trim());
+    }
+
+    function renderEventMeasurements(event) {
+      const rows = event.analysis_metrics || [];
+      if (!rows.length) return "";
+      return `<details class="event-measurements" style="margin:12px 0"><summary>全部分析指标 · 事件窗口统计 (${rows.length}项)</summary>
+        <p style="font-size:12px;color:var(--muted)">来自当前事件 JSON；视频底部为逐帧数值，统计窗口不同。代理指标不直接代表真实力学或技术评分。</p>
+        <div class="swing-telemetry-grid">${rows.map(m => `<div class="telemetry-cell">
+          <span class="t-label">${escapeHtml(m.label || m.key)}</span><span class="t-val">${measurementValue(m.value, m.unit)}</span>
+          <small style="color:var(--muted)" title="${escapeHtml((m.source_frames || []).join(', '))}">${escapeHtml(m.method_label || "观测参考")} · ${m.display_eligible === true ? "观测资格通过 · 准确性未验证" : m.display_eligible === false ? "资格不通过" : "观测未验证"} · ${m.coach_eligible ? "需复核" : "不用于纠错"}${m.sample_count != null ? ` · ${m.sample_count}个样本` : ""}</small>
+        </div>`).join("")}</div></details>`;
+    }
+
+    function renderMeasurementSummary(rows) {
+      if (!rows.length) return "";
+      const metricKinds = new Set(rows.map(m => m.key)).size;
+      return `<details class="session-measurements" open style="margin-top:16px"><summary>观测统计 · ${rows.length}行 / ${metricKinds}种指标</summary>
+        <p style="font-size:12px;color:var(--muted)">排除空挥，每行按动作类型、单位和观测方法分组，同一指标可能有多行。显示中位数与范围；缺失值不补零。指标种类数不代表独立验证或评分维度数量。</p>
+        <div style="overflow:auto"><table style="width:100%;font-size:12px;text-align:left;border-spacing:10px">
+          <thead><tr><th>动作</th><th>指标</th><th>中位数 / 分类计数</th><th>范围</th><th>有数据事件</th></tr></thead><tbody>
+          ${rows.map(m => `<tr><td>${escapeHtml(m.stroke_type)}</td><td title="${escapeHtml(m.observability || '')}">${escapeHtml(m.label)}<small style="display:block;color:var(--muted)">${escapeHtml(m.method_label || "观测参考")}</small></td>
+          <td>${m.median != null ? measurementValue(m.median,m.unit) : escapeHtml(Object.entries(m.categories || {}).map(([k,v])=>`${k}: ${v}次`).join(" · "))}</td>
+          <td>${m.min != null ? `${measurementValue(m.min,m.unit)}–${measurementValue(m.max,m.unit)}` : "—"}</td><td>${m.count}/${m.total_events}</td></tr>`).join("")}
+        </tbody></table></div></details>`;
+    }
+
     function renderSwingsFeed(events) {
       const emptyEl = $("swings-empty");
       const listEl = $("swings-feed-list");
@@ -1915,7 +1948,7 @@
 
       if (badgeEl) {
         if (filterOnlyValidSwings) {
-          badgeEl.textContent = `${validEvents.length} 次有效击球`;
+          badgeEl.textContent = `${validEvents.length} 次挥拍候选`;
           if (shadowCount > 0) {
             badgeEl.title = `共检测到 ${allEvents.length} 次挥拍，已自动过滤 ${shadowCount} 次空挥试拍`;
           } else {
@@ -1956,25 +1989,29 @@
         const strokeType = ev.stroke_type || "Swing";
         const strokeText = strokeType === "Forehand" ? "正手 (Forehand)" : (strokeType === "Backhand" ? "反手 (Backhand)" : strokeType);
         const score = ev.swing_score ?? (ev.biomechanics?.swing_score ?? "—");
-        const grade = ev.swing_grade || (ev.biomechanics?.swing_grade || "DEVELOPING");
+        const grade = ev.swing_grade || (ev.biomechanics?.swing_grade || "REVIEW_REQUIRED");
         const badgeClass = isShadow ? "badge-shadow" : `badge-${grade.toLowerCase()}`;
-        const badgeText = isShadow ? "空挥试拍 · 无来球" : `${grade} · ${score}分`;
+        const badgeText = isShadow ? "空挥试拍 · 无来球" : (score === "—" ? "待复核 · 未评分" : `${grade} · ${score}分`);
 
         const ext = ev.extended_biomechanics || (ev.biomechanics?.extended_biomechanics || {});
+        const reasonNames = {automatic_rubric_not_independently_validated:"评分标准未独立验证", contact_not_confirmed:"触球尚未确认", missing_observations:"缺少相关观测", shadow_swing:"空挥"};
+        const blockersHtml = (ev.scoring_blockers || []).length ? `<details style="margin:12px 0"><summary>五维自动评分 · 阻断原因</summary>${ev.scoring_blockers.map(b => `<p>${escapeHtml(b.label)}：${(b.reasons || []).map(r => escapeHtml(reasonNames[r] || r)).join('；')}${b.missing_observations?.length ? `（${escapeHtml(b.missing_observations.join(', '))}）` : ''}</p>`).join('')}<small>相关观测仅用于说明缺项，不是已验证评分规则。教练确认评分单独保留。</small></details>` : "";
         const speed = ext.racket_head_speed || {};
-        const speedContact = speed.contact_kmh ? `${speed.contact_kmh} <small>km/h (峰值 ${speed.max_kmh || speed.contact_kmh})</small>` : "—";
+        const speedContact = speed.contact_px_s != null ? `${speed.contact_px_s.toFixed(0)} <small>px/s · 候选触球帧<br>原始峰值 ${speed.max_px_s?.toFixed(0) ?? "—"} px/s（未验证）</small>` : "未观测 · km/h 未标定";
         
         const brush = ext.brush_angle || {};
-        const brushText = brush.low_to_high_angle_deg != null ? `+${brush.low_to_high_angle_deg}° <small>(下潜 ${brush.drop_depth_ratio ?? 0}x)</small>` : "—";
+        const brushAngle = qualifiedObservation(brush, 'low_to_high_angle_deg');
+        const riseRatio = qualifiedObservation(brush, 'drop_depth_ratio');
+        const brushDirection = brushAngle != null ? `${brushAngle >= 0 ? "+" : ""}${brushAngle}°` : escapeHtml(observationReason(brush));
+        const brushText = `${brushDirection}<small> · 上升比 ${riseRatio != null ? escapeHtml(String(riseRatio)) + "x" : "未观测"}</small>`;
 
-        const seq = ext.kinematic_sequence || {};
-        const isOptimal = seq.sequence_quality === "OPTIMAL";
-        const seqClass = isOptimal ? "optimal" : "disconnected";
-        const seqQuality = seq.sequence_quality || "—";
-        const seqLatency = seq.latency_shoulder_to_racket_ms != null ? `Δt ${seq.latency_shoulder_to_racket_ms > 0 ? "+" : ""}${seq.latency_shoulder_to_racket_ms}ms` : "";
+        const seqMetric = ev.biomechanics?.metrics?.kinematic_sequence || {};
+        const seq = seqMetric.details || ext.kinematic_sequence || {};
+        const seqDisplay = kinematicDisplay(seq, seqMetric);
 
         const leg = ext.leg_drive || {};
-        const legText = leg.drive_ratio != null ? `${leg.drive_ratio}x` : "—";
+        const hipRise = qualifiedObservation(leg, 'drive_px');
+        const legText = hipRise != null ? `${hipRise} <small>px · 像面髋中心</small>` : escapeHtml(observationReason(leg));
 
         const advices = ev.coach_advices || (ev.coach_advice ? [ev.coach_advice] : []);
         const coachHtml = advices.length > 0 ? `
@@ -2001,35 +2038,38 @@
                 <span class="badge-grade ${badgeClass}">${badgeText}</span>
               </div>
               <div class="swing-frames">
-                第 ${ev.start_frame || 0}–${ev.end_frame || 0} 帧 (触球 ${ev.contact_frame || "—"}F)
+                第 ${ev.start_frame || 0}–${ev.end_frame || 0} 帧 (触球候选 ${ev.contact_frame ?? "—"}F)
               </div>
             </div>
 
+            ${blockersHtml}
             <div class="swing-telemetry-container">
               <div class="swing-telemetry-grid">
                 <div class="telemetry-cell">
-                  <span class="t-label">拍头挥速</span>
+                  <span class="t-label">球拍框中心像素速度</span>
                   <span class="t-val">${speedContact}</span>
                 </div>
                 <div class="telemetry-cell">
-                  <span class="t-label">刷球仰角 / 下潜</span>
+                  <span class="t-label">球拍像面轨迹 / 上升比</span>
                   <span class="t-val">${brushText}</span>
                 </div>
                 <div class="telemetry-cell">
-                  <span class="t-label">动力学链时序</span>
-                  <span class="t-val">
-                    <span class="badge-seq ${seqClass}">${seqQuality}</span>
-                    <small>${seqLatency}</small>
+                  <span class="t-label">动力链峰值时序 · 二维参考</span>
+                  <span class="t-val" title="${escapeHtml(seqDisplay.explanation)}">
+                    <span class="badge-seq ${seqDisplay.badgeClass}">${escapeHtml(seqDisplay.label)}</span>
+                    <small>${escapeHtml(seqDisplay.intervals)}</small>
                   </span>
+                  <details><summary>查看各段证据与时差范围</summary><small>${escapeHtml(seqDisplay.explanation)}</small></details>
                 </div>
                 <div class="telemetry-cell">
-                  <span class="t-label">垂直蹬地发力</span>
+                  <span class="t-label">髋部像面上移</span>
                   <span class="t-val">${legText}</span>
                 </div>
               </div>
               ${generateRadarSvg(ev)}
             </div>
 
+            ${renderEventMeasurements(ev)}
             ${coachHtml}
 
             <div class="swing-media-row">
@@ -3079,6 +3119,7 @@
       </div>
       <div class="clip-modal-body">
         <video id="modal-clip-video" class="modal-video-el" controls loop playsinline></video>
+        <div id="modal-event-metrics"></div>
         <div class="player-controls-bar" style="width: 100%; justify-content: space-between;">
           <div style="display: flex; align-items: center; gap: 6px;">
             <span>慢放倍速：</span>
@@ -3101,4 +3142,3 @@
   </div>
 </body>
 </html>
-

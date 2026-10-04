@@ -7,6 +7,7 @@ from analysis_data_contracts import (
     build_session_metadata,
     stamp_frame_record,
     stamp_swing_event,
+    attach_source_time,
 )
 
 
@@ -27,6 +28,48 @@ class AnalysisDataContractTests(unittest.TestCase):
             "rtsp://192.168.1.191:554/camera",
         )
         self.assertNotIn("secret", self.session["source"])
+
+    def test_source_time_updates_legacy_timestamp_without_losing_provenance(self):
+        from reader_runtime import SourceMediaClock
+        record = {'frame_id': 12, 'timestamp': .48}
+        attach_source_time(record, SourceMediaClock(25).observe(12, 517))
+        self.assertEqual(record['timestamp'], .517)
+        self.assertEqual(record['source_time']['basis'], 'media_pts')
+        with self.assertRaises(ValueError):
+            attach_source_time(record, SourceMediaClock(25).observe(13, 550))
+
+    def test_source_time_rejects_nonfinite_timestamp(self):
+        from reader_runtime import SourceMediaClock
+        source = SourceMediaClock(25).observe(1, 40)
+        source['timestamp_seconds'] = float('nan')
+        with self.assertRaises(ValueError):
+            attach_source_time({'frame_id': 1}, source)
+
+    def test_source_contract_rejects_promoting_unavailable_clock_to_pts(self):
+        from reader_runtime import SourceMediaClock
+        source = SourceMediaClock(25, 'stream').observe(1)
+        source['basis'] = 'media_pts'
+        with self.assertRaises(ValueError):
+            attach_source_time({'frame_id': 1}, source)
+
+    def test_frame_processor_preserves_source_time_and_raw_views_through_stamp(self):
+        import json
+        from frame_processor import FrameProcessor
+        from reader_runtime import SourceMediaClock
+        processor = FrameProcessor.__new__(FrameProcessor)
+        processor.fps = 25
+        source = SourceMediaClock(25).observe(12, 517)
+        record = processor.build_frame_record(12, 'Ready', None, [], [], {}, source_time=source)
+        record['kinematic_views'] = {'front': {'left_hip': {'x': 1, 'y': 2, 'confidence': .8}}, 'back': {}}
+        stamp_frame_record(record, session=self.session,
+                           captured_at_unix_ns=1000000000, inference_started_at_unix_ns=1010000000,
+                           inference_completed_at_unix_ns=1020000000, analysis_started_at_unix_ns=1030000000,
+                           analysis_completed_at_unix_ns=1040000000)
+        replayed = json.loads(json.dumps(record))
+        self.assertEqual(replayed['source_time'], source)
+        self.assertEqual(replayed['timestamp'], .517)
+        self.assertEqual(replayed['kinematic_views'], record['kinematic_views'])
+        self.assertEqual(replayed['timing']['capture_to_analysis_ms'], 40)
 
     def test_frame_contract_is_additive_and_includes_four_stage_timing(self):
         record = {

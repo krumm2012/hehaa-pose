@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 
 from swing_quality_policy import effective_quality_warnings
+from observation_policy import review_reason
 
 
 class LocalRealtimeCoach:
@@ -67,10 +68,17 @@ class LocalRealtimeCoach:
         is_shadow_swing = bool(
             event.get("is_shadow_swing")
             or ca.get("is_shadow_swing")
-            or (ca.get("has_ball") is False)
+            or (ca.get("contact_status") is None and ca.get("has_ball") is False)
         )
         if is_shadow_swing:
             return []
+
+        reason = review_reason(event)
+        if reason:
+            message = {"unknown_stroke_type": "动作类型需复核", "unconfirmed_contact": "触球候选需确认",
+                       "stroke_specific_rubric_unvalidated": "反拍技术规则待复核"}[reason]
+            return [self._advice(code=reason, message=message, category="review", confidence=0.0,
+                                 evidence={"reason": reason})]
 
         is_valid_contact = bool(ca.get("is_valid_contact"))
         event_confidence = float(event.get("confidence") or 0.0)

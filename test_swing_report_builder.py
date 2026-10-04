@@ -96,7 +96,7 @@ class SwingReportBuilderTests(unittest.TestCase):
                                     "low_to_high_angle_deg": 22.5,
                                     "drop_depth_ratio": 1.18,
                                 },
-                                "stance": {"stance_type": "Semi-Open Stance"},
+                                "stance": {"image_foot_line_angle_deg": 35},
                                 "leg_drive": {"drive_ratio": 1.15},
                             },
                         },
@@ -139,11 +139,12 @@ class SwingReportBuilderTests(unittest.TestCase):
             self.assertIn("55.0 ms", html)
 
             # Telemetry grid
-            self.assertIn("86.4 / 93.1 km/h", html)
+            self.assertNotIn("86.4 / 93.1 km/h", html)
+            self.assertIn("km/h 未标定", html)
             self.assertIn("+22.5°", html)
-            self.assertIn("下潜 1.18x", html)
-            self.assertIn("Semi-Open Stance", html)
-            self.assertIn("蹬地 1.15x", html)
+            self.assertIn("上升比 1.18x", html)
+            self.assertIn("35", html)
+            self.assertIn("髋部上移 1.15x", html)
 
             # Coach advice
             self.assertIn("动力学链传递流畅", html)

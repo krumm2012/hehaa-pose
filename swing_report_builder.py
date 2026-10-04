@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from practice_scoring import POLICY
+from practice_scoring import POLICY, number
 from practice_score_adapter import resolve_practice_score
 from swing_session_quality import build_session_quality_dashboard
 
@@ -22,6 +22,119 @@ RADAR_AXES = [
     ("racket_speed", "挥速"),
     ("leg_drive", "蹬地"),
 ]
+
+
+def _build_kinematic_sequence_html(sequence: Dict) -> str:
+    """Show peak intervals with their evidence qualification, never as compute time."""
+    if not isinstance(sequence, dict) or not sequence:
+        return ""
+    details = sequence.get("details")
+    details = details if isinstance(details, dict) else sequence
+    confidence = number(sequence.get("confidence", details.get("confidence"))) or 0.0
+    eligible = sequence.get("coach_eligible", details.get("coach_eligible")) is True
+    qualified = eligible and confidence > 0
+    quality = sequence.get("value") or details.get("sequence_quality")
+    status = str(quality) if qualified and quality else "未验证 · 需复核"
+    badge_class = str(quality).lower() if qualified and quality else "unvalidated"
+    cross = details.get("cross_validation") or {}
+    cross_status = cross.get("status")
+    labels = {
+        "agree": "双视角一致 · 未验证",
+        "disagree": "双视角冲突 · 需复核",
+        "single_view": "单视角参考 · 未验证",
+        "unavailable": "证据不足 · 需复核",
+        "legacy_single_view": "历史单视角 · 未验证",
+    }
+    if not qualified and cross_status in labels:
+        status = labels[cross_status]
+    view_rows = []
+    for view, evidence in (details.get("views") or {}).items():
+        label = {"front": "正面", "back": "背面"}.get(view, str(view))
+        interval = number(evidence.get("latency_hip_to_shoulder_ms"))
+        if evidence.get("status") == "usable" and interval is not None:
+            segments = list((evidence.get("segments") or {}).values())
+            coverage = min(number(s.get("coverage")) or 0 for s in segments) if segments else 0
+            kp_quality = min(number(s.get("keypoint_quality")) or 0 for s in segments) if segments else 0
+            text = (f"{label}髋—肩：{interval:.1f} ms · 有效覆盖 {coverage:.0%}"
+                    f" · 关键点质量 {kp_quality:.2f}/1")
+        else:
+            reasons = {'boundary_peak':'峰值位于窗口边界', 'ambiguous_peak':'峰值过宽或多峰',
+                       'discontinuous_evidence':'有效片段不连续', 'low_coverage':'有效覆盖不足',
+                       'insufficient_samples':'有效样本不足', 'insufficient_motion':'未形成明确运动峰值',
+                       'usable':'峰值可用'}
+            parts = [f"{name}：{reasons.get((evidence.get('segments') or {}).get(key,{}).get('status'),'证据不足')}"
+                     for key,name in (("hip","髋"),("shoulder","肩"))]
+            text = f"{label}：" + "；".join(parts)
+        view_rows.append(f"<div>{html.escape(text)}</div>")
+    evidence_quality = number(details.get("evidence_confidence"))
+    if evidence_quality is not None:
+        view_rows.append(f"<div>交叉验证证据质量：{evidence_quality:.2f}/1（启发式，非准确率）</div>")
+    resolution = number(details.get("sampling_interval_ms"))
+    time_labels = {
+        "media_pts": "输入视频媒体时间（尚未核验传感器曝光）",
+        "nominal_fps": "帧率推算时间（估计）",
+        "legacy_frame_timestamps": "历史帧时间（来源未核验）",
+        "unavailable": "源媒体时间不可用",
+    }
+    if details.get("time_basis") in time_labels:
+        view_rows.append(f"<div>时间来源：{time_labels[details['time_basis']]}</div>")
+    time_reasons = {
+        "source_media_time_unavailable": "无法获取源媒体时间，暂停峰值间隔估计。",
+        "duplicate_or_discontinuous_source_time": "源时间重复或倒退，暂停峰值间隔估计。",
+        "mixed_source_time_bases": "时间来源混用，暂停峰值间隔估计。",
+        "incomplete_source_time_contract": "源时间记录不完整，暂停峰值间隔估计。",
+        "invalid_source_timestamps": "源时间无效，暂停峰值间隔估计。",
+    }
+    if cross.get("reason") in time_reasons:
+        view_rows.append(f"<div>{time_reasons[cross['reason']]}</div>")
+    if resolution is not None:
+        view_rows.append(f"<div>采样间隔：{resolution:.1f} ms；小于峰值定位范围的先后差异不作结论。</div>")
+    if cross_status == "disagree":
+        view_rows.append("<div>两视角峰值时间不一致，已暂停合并估计。</div>")
+    for pair_key, pair_label in (("hip_to_shoulder", "髋—肩"), ("shoulder_to_racket", "肩—拍")):
+        pair = (details.get("pair_timing") or {}).get(pair_key) or {}
+        bounds = pair.get("latency_range_ms")
+        if isinstance(bounds, (list, tuple)) and len(bounds) == 2:
+            low, high = (number(value) for value in bounds)
+            if low is not None and high is not None and low <= high:
+                conclusion = "先后难以分辨" if low <= 0 <= high else "仅表示二维投影先后"
+                view_rows.append(
+                    f"<div>{pair_label}时差范围：{low:+.1f} ～ {high:+.1f} ms · {conclusion}"
+                    "（采样与峰宽范围，非统计置信区间）</div>"
+                )
+    hip_dt = number(details.get("latency_hip_to_shoulder_ms"))
+    uncertainty = number(details.get("peak_time_uncertainty_ms"))
+    if quality == "UNRESOLVED_AT_FRAME_RATE" or (hip_dt is not None and uncertainty is not None and abs(hip_dt) <= uncertainty):
+        view_rows.append("<div>峰值间隔接近时间分辨率，难以分辨先后。</div>")
+    if details.get("racket_peak_frame") is None and hip_dt is not None:
+        racket_reason = {'low_coverage':'有效覆盖不足', 'boundary_peak':'峰值位于窗口边界',
+                         'ambiguous_peak':'峰值过宽或多峰', 'discontinuous_evidence':'有效片段不连续',
+                         'insufficient_samples':'有效样本不足', 'insufficient_motion':'未形成明确运动峰值'}.get(
+                             (details.get('racket_evidence') or {}).get('status'),'证据不足')
+        view_rows.append(f"<div>球拍峰值缺失（{racket_reason}），仅有髋肩投影时序；不能判断完整动力链。</div>")
+    rows = []
+    for label, key, scale, extra_class in [
+        ("髋—肩峰值间隔", "latency_hip_to_shoulder_ms", 80.0, ""),
+        ("肩—拍峰值间隔", "latency_shoulder_to_racket_ms", 90.0, "k-fill-rkt"),
+    ]:
+        value = number(details.get(key))
+        text = f"{value:.1f} ms" if value is not None else "未观测"
+        width = min(100.0, max(5.0, value / scale * 100.0)) if value is not None else 0.0
+        rows.append(
+            '<div class="kinematic-bar-row">'
+            f'<span class="k-label">{label}:</span><span class="k-val">{text}</span>'
+            f'<div class="k-track"><div class="k-fill {extra_class}" '
+            f'style="width:{width:.0f}%;"></div></div></div>'
+        )
+    return (
+        '<div class="kinematic-box"><div class="kinematic-header">'
+        '<span>二维峰值间隔：<strong>髋/骨盆 ➔ 肩/躯干 ➔ 球拍检测点</strong></span>'
+        f'<span class="seq-badge seq-{html.escape(badge_class)}">{html.escape(status)}</span>'
+        '</div><p>表示动作峰值之间的时间差，不代表处理耗时；'
+        '负值表示后项峰值更早。未验证结果不用于技术纠错。</p>'
+        f'<div class="kinematic-evidence">{"".join(view_rows)}</div>'
+        f'<div class="kinematic-bars">{"".join(rows)}</div></div>'
+    )
 
 
 def _is_shadow_swing(ev: Dict) -> bool:
@@ -238,20 +351,20 @@ def build_report_payload(
             or {}
         )
         brush = (
-            metrics.get("brush_angle")
-            or ext.get("brush_angle")
+            ext.get("brush_angle")
+            or metrics.get("brush_angle")
             or event.get("brush_angle")
             or {}
         )
         stc = (
-            metrics.get("stance")
-            or ext.get("stance")
+            ext.get("stance")
+            or metrics.get("stance")
             or event.get("stance")
             or {}
         )
         leg = (
-            metrics.get("leg_drive")
-            or ext.get("leg_drive")
+            ext.get("leg_drive")
+            or metrics.get("leg_drive")
             or event.get("leg_drive")
             or {}
         )
@@ -592,37 +705,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
 
         # 3. 动力学链时序时延条
         seq = event.get("kinematic_sequence") or {}
-        details = seq.get("details") if isinstance(seq, dict) and isinstance(seq.get("details"), dict) else seq
-        seq_quality = (seq.get("value") or details.get("sequence_quality") or "未观测") if isinstance(seq, dict) else "未观测"
-        dt_hip_sh = details.get("latency_hip_to_shoulder_ms") if isinstance(details, dict) else None
-        dt_sh_rkt = details.get("latency_shoulder_to_racket_ms") if isinstance(details, dict) else None
-
-        kinematic_html = ""
-        if dt_hip_sh is not None or dt_sh_rkt is not None:
-            dt_hip_sh_val = float(dt_hip_sh or 0.0)
-            dt_sh_rkt_val = float(dt_sh_rkt or 0.0)
-            dt_hip_sh_pct = min(100.0, max(5.0, (dt_hip_sh_val / 80.0) * 100.0))
-            dt_sh_rkt_pct = min(100.0, max(5.0, (dt_sh_rkt_val / 90.0) * 100.0))
-            kinematic_html = f"""
-            <div class="kinematic-box">
-              <div class="kinematic-header">
-                <span>动力学链传递: <strong>下肢 ➔ 髋/骨盆 ➔ 肩/躯干 ➔ 球拍</strong></span>
-                <span class="seq-badge seq-{html.escape(str(seq_quality).lower())}">{html.escape(str(seq_quality))}</span>
-              </div>
-              <div class="kinematic-bars">
-                <div class="kinematic-bar-row">
-                  <span class="k-label">髋-肩时序延时 (Δt_hip_sh):</span>
-                  <span class="k-val">{dt_hip_sh_val:.1f} ms</span>
-                  <div class="k-track"><div class="k-fill" style="width:{dt_hip_sh_pct:.0f}%;"></div></div>
-                </div>
-                <div class="kinematic-bar-row">
-                  <span class="k-label">肩-拍时序延时 (Δt_sh_rkt):</span>
-                  <span class="k-val">{dt_sh_rkt_val:.1f} ms</span>
-                  <div class="k-track"><div class="k-fill k-fill-rkt" style="width:{dt_sh_rkt_pct:.0f}%;"></div></div>
-                </div>
-              </div>
-            </div>
-            """
+        kinematic_html = _build_kinematic_sequence_html(seq)
 
         # 4. 击球遥测指标网格
         rkt = event.get("racket_speed") or {}
@@ -630,6 +713,8 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         stc = event.get("stance") or {}
         leg = event.get("leg_drive") or {}
 
+        contact_px_s = rkt.get("contact_px_s")
+        max_px_s = rkt.get("max_px_s")
         contact_kmh = rkt.get("contact_kmh") if rkt.get("contact_kmh") is not None else rkt.get("contact_speed_kmh")
         max_kmh = rkt.get("max_kmh") if rkt.get("max_kmh") is not None else rkt.get("max_speed_kmh")
         brush_angle = brush.get("low_to_high_angle_deg") if brush.get("low_to_high_angle_deg") is not None else brush.get("angle_deg")
@@ -637,27 +722,28 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         stance_type = stc.get("stance_type") or stc.get("value")
         leg_ratio = leg.get("drive_ratio") if leg.get("drive_ratio") is not None else leg.get("value")
 
-        has_telemetry = any(v is not None for v in [contact_kmh, max_kmh, brush_angle, drop_ratio, stance_type, leg_ratio])
+        has_telemetry = any(v is not None for v in [contact_px_s, max_px_s, brush_angle, drop_ratio, stance_type, leg_ratio])
         telemetry_html = ""
         if has_telemetry:
-            kmh_text = f"{float(contact_kmh):.1f} / {float(max_kmh):.1f} km/h" if contact_kmh is not None and max_kmh is not None else "-"
+            kmh_text = f"{contact_px_s:.0f} px/s（候选触球帧）；原始峰值 {max_px_s:.0f} px/s（未验证）" if contact_px_s is not None and max_px_s is not None else "未观测；km/h 未标定"
             brush_text = f"{float(brush_angle):+.1f}°" if brush_angle is not None else "-"
             if drop_ratio is not None:
                 try:
-                    brush_text += f" (下潜 {float(drop_ratio):.2f}x)"
+                    brush_text += f" (上升比 {float(drop_ratio):.2f}x)"
                 except (ValueError, TypeError):
-                    brush_text += f" (下潜 {drop_ratio})"
-            stance_text = str(stance_type or "-")
+                    brush_text += f" (上升比 {drop_ratio})"
+            foot_angle = stc.get("image_foot_line_angle_deg", stc.get("value"))
+            stance_text = f"{foot_angle}°（像面）" if foot_angle is not None else "未观测"
             if leg_ratio is not None:
                 try:
-                    stance_text += f" · 蹬地 {float(leg_ratio):.2f}x"
+                    stance_text += f" · 髋部上移 {float(leg_ratio):.2f}x"
                 except (ValueError, TypeError):
-                    stance_text += f" · 蹬地 {leg_ratio}"
+                    stance_text += f" · 髋部上移 {leg_ratio}"
             telemetry_html = f"""
             <div class="telemetry-grid">
-              <div class="telem-item"><span class="telem-label">拍头挥速 (击球/峰值)</span><strong class="telem-val">{html.escape(kmh_text)}</strong></div>
-              <div class="telem-item"><span class="telem-label">刷球仰角与下潜</span><strong class="telem-val">{html.escape(brush_text)}</strong></div>
-              <div class="telem-item"><span class="telem-label">击球站位与蹬地比</span><strong class="telem-val">{html.escape(stance_text)}</strong></div>
+              <div class="telem-item"><span class="telem-label">球拍框中心像素速度</span><strong class="telem-val">{html.escape(kmh_text)}</strong></div>
+              <div class="telem-item"><span class="telem-label">球拍像面轨迹与上升比</span><strong class="telem-val">{html.escape(brush_text)}</strong></div>
+              <div class="telem-item"><span class="telem-label">足部连线倾角与髋部上移比</span><strong class="telem-val">{html.escape(stance_text)}</strong></div>
             </div>
             """
 

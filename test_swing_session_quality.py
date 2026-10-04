@@ -84,8 +84,8 @@ class SwingSessionQualityTests(unittest.TestCase):
             for row in dashboard["drift"]["indicators"]
             if row["name"] == "visible_technique_score"
         )
-        self.assertEqual(score_indicator["status"], "insufficient_events")
-        self.assertLess(score_indicator["delta"], 0.0)
+        self.assertEqual(score_indicator["status"], "unavailable")
+        self.assertIsNone(score_indicator["delta"])
 
     def test_ready_session_separates_technique_and_capture_decline(self):
         dashboard = build_session_quality_dashboard(
@@ -104,10 +104,10 @@ class SwingSessionQualityTests(unittest.TestCase):
         indicators = {
             row["name"]: row for row in dashboard["drift"]["indicators"]
         }
-        self.assertEqual(indicators["visible_technique_score"]["status"], "declining")
+        self.assertEqual(indicators["visible_technique_score"]["status"], "unavailable")
         self.assertEqual(indicators["evidence_quality"]["status"], "declining")
         domains = {alert["domain"] for alert in dashboard["alerts"]}
-        self.assertIn("technique", domains)
+        self.assertNotIn("technique", domains)
         self.assertIn("capture", domains)
 
     def test_camera_scale_shift_confounds_technique_conclusion(self):
@@ -128,7 +128,7 @@ class SwingSessionQualityTests(unittest.TestCase):
         self.assertEqual(indicators["camera_scale"]["status"], "shifted")
         self.assertEqual(
             indicators["visible_technique_score"]["status"],
-            "camera_shift_confounded",
+            "unavailable",
         )
         self.assertTrue(dashboard["drift"]["camera_confounded"])
         self.assertIn(

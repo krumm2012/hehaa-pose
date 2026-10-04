@@ -28,6 +28,8 @@ from swing_event_segmenter import segment_swing_events
 from swing_event_classifier import classify_swing_event
 from swing_biomechanics import aggregate_event_biomechanics
 from local_realtime_coach import LocalRealtimeCoach
+from kinematic_sequence import serialize_kinematic_views
+from reader_runtime import SourceMediaClock
 import yaml
 
 try:
@@ -101,12 +103,14 @@ def main():
     frame_idx = 0
     t0 = time.time()
 
+    media_clock = SourceMediaClock(fps)
     while True:
         ret, frame = cap.read()
         if not ret:
             break
         if args.max_frames and frame_idx >= args.max_frames:
             break
+        source_time = media_clock.observe(frame_idx, cap.get(cv2.CAP_PROP_POS_MSEC))
 
         dual_frame = mgr.split_frame(frame, frame_id=frame_idx)
         pose_res = estimator.estimate_dual_pose(dual_frame)
@@ -158,12 +162,15 @@ def main():
         b = pose_res.biomechanics
         frame_records.append({
             "frame_id": frame_idx,
-            "timestamp": frame_idx / fps,
+            "timestamp": source_time["timestamp_seconds"] if source_time["timestamp_seconds"] is not None else frame_idx / fps,
+            "source_time": source_time,
             "ball": ball_pos,
             "racket": racket_box,
             "rackets": rackets_list,
             "pose": {k: (kp.x, kp.y) for k, kp in pose_res.front_pose_orig.items()},
             "healed_pose": {k: (kp.x, kp.y) for k, kp in pose_res.fused_pose_orig.items()},
+            "kinematic_views": serialize_kinematic_views(pose_res),
+            "pose_observations": serialize_kinematic_views(pose_res, all_joints=True),
             "dual_view_biomechanics": {
                 "shoulder_turn": {
                     "shoulder_turn_deg": b.robust_shoulder_turn_deg,
