@@ -582,8 +582,8 @@
     }
   ],
   "validation": {
-    "full_test_count": 601,
-    "log": "/tmp/tennis_evaluation_reference_full_20261005.log",
+    "full_test_count": 629,
+    "log": "/tmp/tennis_evaluation_identity_full_20261005.log",
     "semantic_replay": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/semantic_replay.json",
     "audit": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/audit.json",
     "pixel_run": "data/analysis_results/kinematic_validation/pixel_acceptance_v2_20261005/run.json",
@@ -599,7 +599,9 @@
     "finite_observations": "validation/finite_observation_acceptance_20261005.json",
     "manual_anchor_phase": "validation/manual_anchor_phase_acceptance_20261005.json",
     "frontend_anchors": "validation/frontend_anchor_acceptance_20261005.json",
-    "reference_evaluation": "validation/reference_evaluation_acceptance_20261005.json"
+    "reference_evaluation": "validation/reference_evaluation_acceptance_20261005.json",
+    "evaluation_identity": "validation/evaluation_identity_acceptance_20261005.json",
+    "current_same_input_comparison": "data/analysis_results/kinematic_validation/evaluation_identity_delivery_20261005/comparison.json"
   },
   "constraints": [
     "automatic validated rubrics remain empty",
@@ -625,9 +627,9 @@
     },
     {
       "id": "T04",
-      "status": "人工页面通过／CLI旧身份转换及其余消费者待审",
+      "status": "CLI与人工重算身份通过／其余消费者待审",
       "requirement": "审查剩余固定FPS与帧窗口消费者",
-      "evidence": "源身份仍不能经CLI的int强制转换丢失参考精度；本轮仅修评估语义与显示资格。"
+      "evidence": "N33–N36严格身份、别名/null/0帧、日志与原件保护通过；报告事件/Coach关联等其他消费者继续跟踪。"
     },
     {
       "id": "T05",
@@ -641,14 +643,14 @@
     }
   ],
   "delivery": {
-    "engineering_commit": "838507a309b926dd7050888e25892689c1562ba6",
+    "engineering_commit": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2",
     "branch": "algo-2.0",
     "remote": "origin-paused",
     "engineering_push_verified": true,
     "control_server_restarted": true,
-    "control_server_pid": 60780,
+    "control_server_pid": 64359,
     "source_hashes_match": true,
-    "restart_semantics": "reference agreement and accuracy qualification policy; analysis remains stopped"
+    "restart_semantics": "evaluation and manual-review source identity validation; analysis remains stopped"
   },
   "additional_regressions": [
     {
@@ -848,6 +850,26 @@
       "status": "工程验收通过",
       "requirement": "两种编辑器标记模型辅助与模型提示可见；输入自行声明仅作为来源声明保存，不能批准独立性或准确性，运行快照新增评估策略与2源码。",
       "evidence": "validation/reference_evaluation_acceptance_20261005.json"
+    },
+    {
+      "id": "N33",
+      "problem": "评估器对声明源帧与事件身份强制转换",
+      "status": "工程回归与同源验收通过"
+    },
+    {
+      "id": "N34",
+      "problem": "重复身份、异常行与区间被静默覆盖或修复",
+      "status": "工程回归与同源验收通过"
+    },
+    {
+      "id": "N35",
+      "problem": "人工重算链接和逐帧日志身份仍int转换",
+      "status": "工程回归与同源验收通过"
+    },
+    {
+      "id": "N36",
+      "problem": "评估输出可覆盖原始输入且缺身份策略快照",
+      "status": "工程回归与同源验收通过"
     }
   ]
 }

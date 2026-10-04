@@ -1,0 +1,225 @@
+{
+  "schema": "tennis.evaluation-identity-acceptance.v1",
+  "engineering_commit": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2",
+  "all_items_complete": false,
+  "accuracy_validated": false,
+  "previous_goal_turn_classification": "progress: public CLI coercion and legacy wrapper gaps reproduced; next action verified",
+  "tests": {
+    "full": 629,
+    "new": 28,
+    "focused": 76,
+    "failures": 0,
+    "full_log": "/tmp/tennis_evaluation_identity_full_20261005.log",
+    "red_logs": [
+      "/tmp/tennis_evaluation_identity_red_20261005.log",
+      "/tmp/tennis_evaluation_identity_boundary_red_20261005.log",
+      "/tmp/tennis_manual_review_identity_red_20261005.log"
+    ]
+  },
+  "same_input": {
+    "frames": 250,
+    "events": 3,
+    "cases": [
+      {
+        "name": "pending_model_assisted",
+        "cli_exit": 0,
+        "matching_and_reference_results_unchanged": true,
+        "manual_measurements_unchanged": null,
+        "workflow_status": "needs_review",
+        "independence_verified": false,
+        "accuracy_fields_null": true,
+        "input_event_sha256": "1388a2356c13df51c8b3ca619d28127bac03fc802dbf25f118c4b6f4196a33b1",
+        "input_frame_sha256": "80ca5d9de340612277b6f7329bc3c57bd107d988436a4d39793eebd59aa9b853"
+      },
+      {
+        "name": "completed_model_assisted",
+        "cli_exit": 0,
+        "matching_and_reference_results_unchanged": true,
+        "manual_measurements_unchanged": true,
+        "workflow_status": "finalized",
+        "independence_verified": false,
+        "accuracy_fields_null": true,
+        "input_event_sha256": "1388a2356c13df51c8b3ca619d28127bac03fc802dbf25f118c4b6f4196a33b1",
+        "input_frame_sha256": "80ca5d9de340612277b6f7329bc3c57bd107d988436a4d39793eebd59aa9b853"
+      },
+      {
+        "name": "claimed_independent",
+        "cli_exit": 0,
+        "matching_and_reference_results_unchanged": true,
+        "manual_measurements_unchanged": true,
+        "workflow_status": "finalized",
+        "independence_verified": false,
+        "accuracy_fields_null": true,
+        "input_event_sha256": "1388a2356c13df51c8b3ca619d28127bac03fc802dbf25f118c4b6f4196a33b1",
+        "input_frame_sha256": "80ca5d9de340612277b6f7329bc3c57bd107d988436a4d39793eebd59aa9b853"
+      }
+    ],
+    "new_inference_run": false,
+    "historical_files_preserved": 35,
+    "controlled_completion_is_not_independent_truth": true
+  },
+  "service": {
+    "old_pid": 60780,
+    "new_pid": 64359,
+    "analysis_state": "stopped",
+    "analysis_pid": null,
+    "source_hash_count": 36,
+    "source_hashes_match": true,
+    "control_hash_match": true,
+    "service_build": {
+      "schema": "tennis.control-service-build.v1",
+      "pid": 64359,
+      "loaded_at_unix_ns": 1791157184232718000,
+      "control_source_sha256": "639482532e6040417f0ab28e11532e0d39df6ecf886c019eacf49c68a1e6837f",
+      "hash_semantics": "source files at module import; restart required after source edits",
+      "analysis_build": {
+        "schema": "tennis.analysis-build.v1",
+        "code_sha256": {
+          "swing_event_analyzer.py": "6db396623ea886fa038e44c77f68f4ed2fc1cd9673251440f40c295d17a17d8c",
+          "swing_biomechanics.py": "c249c42f5494c29c037b920cc89ce5274aab4caca32429a3098e7da391625de4",
+          "kinematic_sequence.py": "f41545fffebdf9e3399185cbc2d16bdc11540718cc834f82febeab526ef66e36",
+          "osd_evidence.py": "da4662c3270efe6af1bc39a0a18c75c0c40671f855bbca6340db8fdd420b670d",
+          "realtime_swing_pipeline.py": "86101c7eddcd78c7cc4de696663f6bf0a2b4141b2308dded715b28ae30d4d062",
+          "swing_motion_features.py": "9e0b5cc84e9d773a8dcd5be959915ea84b2b2820fd82ff9dc0d96b358081f2cf",
+          "analysis_metric_delivery.py": "1b3fd4c897d1224d8e20d5e16f2811bd398044f16a140d7bb28b8a5b1f2ca161",
+          "metric_contracts.py": "cbeda437d1a767626b85a5edc99156bd04eea548019eb851397e01ffce6d0e00",
+          "ball_observation_contract.py": "eab2c82b7c303d879ce98003a1f742cdf33d639425862733f71a3b3127881525",
+          "frame_processor.py": "f55f126d1aeb3960522991d5aef0b2cc785826a5d710e6a64e2636931980351d",
+          "main_pipe.py": "ca4bb1f07aedf411725c3f3adfb508d9de1b5ad34b50e8d87d3ba79afcc48ebe",
+          "yolo26n_unified_detector.py": "c2410762fdc5f314da5f154576619d899d6272ec0720a7e18fb581c8acbe9964",
+          "event_source_timing.py": "7cd841a3826e2082623c1aa7e72a3d912e0f5efab8b2ca63bb40cfa1a3359221",
+          "local_realtime_coach.py": "35167b842d68f5d8d36d4ddc8ffc5fdfe7699cb0001422589aded53501ea8024",
+          "swing_coach_data_collector.py": "90dc9e7810a51aadbfc5bacde36d570e6de00c7b1cb3478b4c1e2e26fa92e396",
+          "coach_evidence_policy.py": "a4875c661f5f57384061b273fcf9411006b590097664a078d5ab644c0cf35e99",
+          "deepseek_evidence_view.py": "df4bb2452efcf1ba6ce0d654e950d1377c9ef0c81ad523c78a8cd4a82eb3bb2f",
+          "coach_rule_contract.py": "92401a367bf98f20927ee4a022e3214de960381f7975a233ed3688f47f251ecc",
+          "swing_report_builder.py": "4b0bc0c2c6dd5c384f4c37a99316fcf06ebafa4cbaa28fd0274c29331751d9ca",
+          "analysis_provenance.py": "a637620a38fe4bd419fbbc2afdfa23c294ddb218d75e9704896dec57ee0605bc",
+          "deepseek_realtime_coach.py": "4f5467ac7a48ef4ca8db16574a5e150addd2355b5980da5680fc62a7537cfba8",
+          "manual_review_workflow.py": "9b64e97d99caf097c5985950d75150a04c79094a42d677ae91b34ddd5e4a75eb",
+          "swing_event_segmenter.py": "70a62a2542f342ef0b82036ad578979a6abfd2eb3d7c71fd2cf9404a38b58e40",
+          "swing_event_classifier.py": "b8a5fdfc89608a641be2286157a2c0c5ff0baa40abd3864d8c67c0a949e423f6",
+          "motion_time_contract.py": "ff92aa0bb81b4b6a97c680ca044c1d5b7c625686a2f9c1a2a5430bb280c316e5",
+          "image_motion_measurements.py": "a648ae2ce21535d861022f851336fa101f10b37da198bd713489c5e243b8953d",
+          "session_evidence_bundle.py": "0f0c5f6af5af3cdd107fb3df01e055f0552abdc6048eb7d68fc917bc11a19f38",
+          "swing_quality_policy.py": "a4cae94e73a03835dd17abcbfbcbfa0c889625b3a9d104f16b8e6d9b108f2b1d",
+          "metric_source_windows.py": "f962a1aff02def335cab90db68487c4574fc8741b9ad3dcd7cb2d20e80eda63b",
+          "observation_policy.py": "432552280e986ce99f40de38a15be7b9066276c1503ce7d79cf871c62bf672f1",
+          "dual_view_biomechanics.py": "3cc7f737474beb9ca75162176d07ce45cb2f3e29a7cbf3de85f85255d1109416",
+          "local_control_panel.html": "3ab609847a12e7445d27e5987469063cc306c11bb10c9a5b78a24ccf28a0250a",
+          "manual_annotation_contract.py": "9f3b91806e3d477a87b36261078582eb0cfd470cfce90d4bacce6ad0a34fa7d3",
+          "swing_evaluation.py": "e51873ce51264514b6064d7c5b685709ab53bedb330c952e571097ebfa873bfe",
+          "evaluation_reference_policy.py": "418a550f2b547f5bdc13e311ec10431b67d9da383f49eb00a877bc78ea97fc5c",
+          "evaluation_identity_contract.py": "d770fb1646e8d079e2ef0cf3f6a600587864765521ae631a4b9166a60ddf79db"
+        },
+        "hash_semantics": "source files at provenance module import; restart required after source edits",
+        "metric_contract": "tennis.metric-contract.v4",
+        "kinematic_policy": "kinematic_cross_view_2d_v7_finite_observations",
+        "observation_policy": "osd_observation_qualification_v6_finite_values",
+        "scoring_policy": "single_view_visible_coach_v4_unvalidated_rubrics_blocked",
+        "window_policy": "realtime_source_time_and_capacity_separated_v3",
+        "ball_observation_contract": "tennis.ball-observation.v1",
+        "phase_time_policy": "event_phase_media_time_v1",
+        "automatic_coach_policy": "automatic_coach_v2_validated_rules_only",
+        "motion_time_policy": "motion_candidates_v1_source_time",
+        "body_window_policy": "body_and_trajectory_windows_v1_source_time",
+        "classification_policy": "player_camera_swing_v3_source_windows",
+        "image_motion_policy": "image_motion_v2_source_identity",
+        "pose_measurement_policy": "fresh_front_pose_v2_finite_observations",
+        "phase_candidate_policy": "model_phase_labels_v2_source_recovery",
+        "manual_anchor_policy": "manual_event_anchors_v2_preserve_reference",
+        "manual_annotation_policy": "manual_annotation_identity_v1_no_coercion",
+        "evaluation_reference_policy": "evaluation_reference_v1_review_agreement",
+        "evaluation_identity_policy": "evaluation_identity_v1_strict_source_frames",
+        "historical_outputs_rewritten": false,
+        "accuracy_validated": false
+      }
+    },
+    "log": "/tmp/tennis_evaluation_identity_control_20261005.log"
+  },
+  "service_requests": {
+    "valid_reference_http_status": 200,
+    "valid_review_status": "needs_review",
+    "source_hash_count": 36,
+    "identity_policy": "evaluation_identity_v1_strict_source_frames",
+    "formal_manual_coach_generated": false,
+    "invalid_controls": [
+      {
+        "name": "fractional_contact",
+        "http_status": 422,
+        "message": "参考标注[2].contact: 帧号必须是非负安全整数，不能转换小数、布尔值或字符串",
+        "previous_publication_preserved": true
+      },
+      {
+        "name": "boolean_contact",
+        "http_status": 422,
+        "message": "参考标注[2].contact: 帧号必须是非负安全整数，不能转换小数、布尔值或字符串",
+        "previous_publication_preserved": true
+      },
+      {
+        "name": "fractional_source_event",
+        "http_status": 422,
+        "message": "参考标注[1].source_event_id: 帧号必须是非负安全整数，不能转换小数、布尔值或字符串",
+        "previous_publication_preserved": true
+      },
+      {
+        "name": "duplicate_annotation",
+        "http_status": 422,
+        "message": "参考标注身份重复: model-3",
+        "previous_publication_preserved": true
+      },
+      {
+        "name": "fractional_journal_frame",
+        "http_status": 422,
+        "message": "逐帧证据[111].frame_id: 帧号必须是非负安全整数，不能转换小数、布尔值或字符串",
+        "previous_publication_preserved": true,
+        "controlled_input_not_actual_capture_fault": true
+      }
+    ],
+    "analysis_state": "stopped",
+    "analysis_pid": null
+  },
+  "browser": {
+    "verified": true,
+    "live_case_count": 3,
+    "standalone_case_count": 3,
+    "pending_ratios_withheld": true,
+    "completed_ratios_are_reference_agreement": true,
+    "declared_independence_unverified": true,
+    "inventory_all": 126,
+    "inventory_pending": 68,
+    "search_unique_problem_count": 1,
+    "search_N33_including_references_count": 4,
+    "artifact_link_http_200": 14,
+    "control_sse": "connected",
+    "control_analysis_state": "stopped"
+  },
+  "inventory_counts": {
+    "部分完成": 36,
+    "待独立或现场验证": 24,
+    "工程已完成": 58,
+    "待开发或继续优化": 8
+  },
+  "remaining_count": 68,
+  "independent_labels": {
+    "filled_points": 0,
+    "planned_points": 176,
+    "confirmed": false
+  },
+  "remaining_specific": [
+    "T04: swing_report_builder的事件/Coach关联、前端链接及其余时间消费者",
+    "原68条未闭环要求全部保留",
+    "独立定位、空间/曝光、评分和现场RTSP/TTS尚未验收"
+  ],
+  "constraints": [
+    "原始事件、逐帧数据、历史报告和Tennis-Vision拟合不改写",
+    "用户两份机位配置及51项既有删除保留",
+    "已验证自动技术规则集合仍为空",
+    "受控坏日志和复核完成标记不是实际采集故障或独立标注"
+  ],
+  "protected_worktree": {
+    "camera_configs_unchanged": true,
+    "existing_deleted_paths_preserved": 51,
+    "historical_source_files_unchanged": 35
+  }
+}

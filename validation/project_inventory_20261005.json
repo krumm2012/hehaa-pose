@@ -1,35 +1,35 @@
 {
-  "schema": "tennis.project-inventory.v10",
-  "generated_at": "2026-10-05T07:09:39.429784+08:00",
-  "git_head": "838507a309b926dd7050888e25892689c1562ba6",
-  "scope": "122条已识别问题/验收覆盖记录（含交叉），54条工程已完成、68条未闭环；另7项可选扩展及1项旧入口。原119条和历史结果保留。",
+  "schema": "tennis.project-inventory.v11",
+  "generated_at": "2026-10-05T07:38:57.756172+08:00",
+  "git_head": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2",
+  "scope": "126条已识别问题/验收记录（含交叉），58条工程已完成、原68条未闭环；另7项可选扩展及2项旧入口。原122条与历史结果保留。",
   "all_items_complete": false,
   "accuracy_validated": false,
   "verification": {
-    "test_count": 601,
-    "passed": 601,
+    "test_count": 629,
+    "passed": 629,
     "failures": 0,
-    "log": "/tmp/tennis_evaluation_reference_full_20261005.log",
+    "log": "/tmp/tennis_evaluation_identity_full_20261005.log",
     "failure_item": null,
-    "service_pid": 60780,
+    "service_pid": 64359,
     "control_analysis_state": "stopped",
     "loaded_source_hashes_match": true,
-    "remote_head": "838507a309b926dd7050888e25892689c1562ba6",
+    "remote_head": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2",
     "independent_plan_frames": 22,
     "independent_plan_points": 176,
     "independent_filled_points": 0,
     "automatic_scoring_validated": false,
     "repository_code_changed_in_this_inventory": true,
-    "iteration_engineering_changes": "838507a309b926dd7050888e25892689c1562ba6",
-    "git_head": "838507a309b926dd7050888e25892689c1562ba6",
+    "iteration_engineering_changes": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2",
+    "git_head": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2",
     "remote_matches_head": true,
-    "loaded_analysis_source_count": 35,
+    "loaded_analysis_source_count": 36,
     "independent_submission_confirmed": false,
     "open_github_issue_count": 0,
-    "test_semantics": "601项全量、8项新增、3类真实记录受控案例、两种页面及运行请求通过；未重新运行推理，不证明独立准确性。",
+    "test_semantics": "629全量、28新增、76聚焦；三类真实记录受控CLI/工作流对比；未重新推理，不证明独立准确性。",
     "source_changes_in_this_inventory": true,
     "service_restarted_in_this_inventory": true,
-    "new_regressions": 8
+    "new_regressions": 28
   },
   "items": [
     {
@@ -753,7 +753,7 @@
       "problem": "工程发布与现场运行验收",
       "requirement": "核对提交、远端状态、运行版本和回退方式",
       "status": "工程推送与运行源码通过／现场待验收",
-      "evidence_or_gap": "36aee5d已推送，服务PID46067，29分析模块加控制源码哈希匹配；现场RTSP/TTS未验收。",
+      "evidence_or_gap": "工程909b140已推送，服务PID64359加载36分析源码及控制源码；真实RTSP/TTS尚未验收。",
       "state_group": "部分完成",
       "remaining": "补RTSP/TTS现场发布、启动停止、故障恢复和回退验收。",
       "display_name": "工程发布与现场运行验收"
@@ -764,7 +764,7 @@
       "problem": "当前文档与历史算法结论同步",
       "requirement": "更新当前公式、限制与修复状态，标识历史结论",
       "status": "关键契约已更新／历史文档继续整理",
-      "evidence_or_gap": "新增参考对照与准确性资格契约，记录旧accuracy字段和复核定稿语义；历史README、路线图和现场文档继续同步。",
+      "evidence_or_gap": "参考对照与身份契约新增输入资格、别名/null/零帧及原件保护；README、旧路线图和现场文档仍待同步。",
       "state_group": "部分完成",
       "remaining": "v4数值资格、双视角来源和证据文案已记录；继续同步README、旧路线图、历史需求和现场验收结论。",
       "display_name": "当前文档与历史算法结论同步"
@@ -862,10 +862,10 @@
       "priority": "P1",
       "problem": "审查剩余固定FPS与帧窗口消费者",
       "requirement": "审查剩余固定FPS与帧窗口消费者",
-      "status": "人工页面及后端整数身份通过／其余候选消费者待审",
-      "evidence_or_gap": "N27–N29严格帧号、null、提交守卫及事件卡片实际监听通过；源时间/身份其余消费者继续审查。",
+      "status": "CLI评估与人工重算身份工程通过／其余消费者待审",
+      "evidence_or_gap": "N33–N36覆盖评估及人工重算；swing_report_builder的事件/Coach关联仍int转换，其他身份及FPS消费者继续审查。",
       "state_group": "部分完成",
-      "remaining": "优先修正CLI评估器_manual_contact/_row_frame等int转换对小数、布尔或字符串身份的误用；继续审查其他固定FPS、候选窗口及身份消费者。",
+      "remaining": "优先审查swing_report_builder的事件/Coach关联、前端事件链接及其余身份与固定FPS消费者；不将本轮局部迁移视为全部时间契约完成。",
       "display_name": "审查剩余固定FPS与帧窗口消费者"
     },
     {
@@ -1299,7 +1299,7 @@
       "state_group": "工程已完成",
       "status": "工程回归、原像素重放与受控缺帧流程通过",
       "evidence_or_gap": "581项全量、11项新增回归；250帧/3事件原像素；受控移除110源帧后人工流程保留110并拒绝阶段时长。受控缺帧不是实际采集故障或独立真值。",
-      "remaining": "本项工程范围通过；前端帧号取整及其余消费者由T04跟踪，阶段及技术准确性由D05/E02等独立验证。",
+      "remaining": "原工程范围通过；前端/参考资格及CLI/人工身份已由后续N记录修复，其他消费者、独立误差和现场验收继续跟踪。",
       "engineering_source_commit": "05911b61965dc034d88ec7610183c9b08b67cc80"
     },
     {
@@ -1311,7 +1311,7 @@
       "state_group": "工程已完成",
       "status": "工程回归、原像素重放与受控缺帧流程通过",
       "evidence_or_gap": "581项全量、11项新增回归；250帧/3事件原像素；受控移除110源帧后人工流程保留110并拒绝阶段时长。受控缺帧不是实际采集故障或独立真值。",
-      "remaining": "本项工程范围通过；前端帧号取整及其余消费者由T04跟踪，阶段及技术准确性由D05/E02等独立验证。",
+      "remaining": "原工程范围通过；前端/参考资格及CLI/人工身份已由后续N记录修复，其他消费者、独立误差和现场验收继续跟踪。",
       "engineering_source_commit": "05911b61965dc034d88ec7610183c9b08b67cc80"
     },
     {
@@ -1323,7 +1323,7 @@
       "state_group": "工程已完成",
       "status": "工程回归、原像素重放与受控缺帧流程通过",
       "evidence_or_gap": "581项全量、11项新增回归；250帧/3事件原像素；受控移除110源帧后人工流程保留110并拒绝阶段时长。受控缺帧不是实际采集故障或独立真值。",
-      "remaining": "本项工程范围通过；前端帧号取整及其余消费者由T04跟踪，阶段及技术准确性由D05/E02等独立验证。",
+      "remaining": "原工程范围通过；前端/参考资格及CLI/人工身份已由后续N记录修复，其他消费者、独立误差和现场验收继续跟踪。",
       "engineering_source_commit": "05911b61965dc034d88ec7610183c9b08b67cc80"
     },
     {
@@ -1335,7 +1335,7 @@
       "state_group": "工程已完成",
       "status": "生成JS回归、真实页面和运行版本核验通过",
       "evidence_or_gap": "593项全量、12项新增生成JS/后台回归；两种页面真实填写与下载阻断、真实服务临时评估保留191/110/26。使用上一轮250帧记录，未重新运行推理，未完成独立准确性验证。",
-      "remaining": "本项工程通过；其余时间消费者、临时评估准确率文案、独立标签及现场验收仍由原未闭环条目跟踪。",
+      "remaining": "原工程范围通过；前端/参考资格及CLI/人工身份已由后续N记录修复，其他消费者、独立误差和现场验收继续跟踪。",
       "engineering_source_commit": "9c58820c543f1883df833fad667124fed791ec7c"
     },
     {
@@ -1347,7 +1347,7 @@
       "state_group": "工程已完成",
       "status": "生成JS回归、真实页面和运行版本核验通过",
       "evidence_or_gap": "593项全量、12项新增生成JS/后台回归；两种页面真实填写与下载阻断、真实服务临时评估保留191/110/26。使用上一轮250帧记录，未重新运行推理，未完成独立准确性验证。",
-      "remaining": "本项工程通过；其余时间消费者、临时评估准确率文案、独立标签及现场验收仍由原未闭环条目跟踪。",
+      "remaining": "原工程范围通过；前端/参考资格及CLI/人工身份已由后续N记录修复，其他消费者、独立误差和现场验收继续跟踪。",
       "engineering_source_commit": "9c58820c543f1883df833fad667124fed791ec7c"
     },
     {
@@ -1359,7 +1359,7 @@
       "state_group": "工程已完成",
       "status": "生成JS回归、真实页面和运行版本核验通过",
       "evidence_or_gap": "593项全量、12项新增生成JS/后台回归；两种页面真实填写与下载阻断、真实服务临时评估保留191/110/26。使用上一轮250帧记录，未重新运行推理，未完成独立准确性验证。",
-      "remaining": "本项工程通过；其余时间消费者、临时评估准确率文案、独立标签及现场验收仍由原未闭环条目跟踪。",
+      "remaining": "原工程范围通过；前端/参考资格及CLI/人工身份已由后续N记录修复，其他消费者、独立误差和现场验收继续跟踪。",
       "engineering_source_commit": "9c58820c543f1883df833fad667124fed791ec7c"
     },
     {
@@ -1371,7 +1371,7 @@
       "state_group": "工程已完成",
       "status": "真实评估、两种页面和运行版本核验通过",
       "evidence_or_gap": "601项全量、8项新增回归；250帧真实记录的3类受控复核案例、6个页面与真实服务请求通过。测试预设复核标记不是独立标注；35源码哈希已加载。",
-      "remaining": "本项工程通过；独立标注、误差校准、其他状态文案及CLI旧身份解析由原待办继续跟踪。",
+      "remaining": "参考资格工程通过；CLI与人工身份由N33–N36通过，其他消费者、独立误差与现场验收保留。",
       "engineering_source_commit": "838507a309b926dd7050888e25892689c1562ba6"
     },
     {
@@ -1383,7 +1383,7 @@
       "state_group": "工程已完成",
       "status": "真实评估、两种页面和运行版本核验通过",
       "evidence_or_gap": "601项全量、8项新增回归；250帧真实记录的3类受控复核案例、6个页面与真实服务请求通过。测试预设复核标记不是独立标注；35源码哈希已加载。",
-      "remaining": "本项工程通过；独立标注、误差校准、其他状态文案及CLI旧身份解析由原待办继续跟踪。",
+      "remaining": "参考资格工程通过；CLI与人工身份由N33–N36通过，其他消费者、独立误差与现场验收保留。",
       "engineering_source_commit": "838507a309b926dd7050888e25892689c1562ba6"
     },
     {
@@ -1395,8 +1395,56 @@
       "state_group": "工程已完成",
       "status": "真实评估、两种页面和运行版本核验通过",
       "evidence_or_gap": "601项全量、8项新增回归；250帧真实记录的3类受控复核案例、6个页面与真实服务请求通过。测试预设复核标记不是独立标注；35源码哈希已加载。",
-      "remaining": "本项工程通过；独立标注、误差校准、其他状态文案及CLI旧身份解析由原待办继续跟踪。",
+      "remaining": "参考资格工程通过；CLI与人工身份由N33–N36通过，其他消费者、独立误差与现场验收保留。",
       "engineering_source_commit": "838507a309b926dd7050888e25892689c1562ba6"
+    },
+    {
+      "id": "N33",
+      "priority": "P1",
+      "problem": "评估器对声明源帧与事件身份强制转换",
+      "display_name": "评估器对声明源帧与事件身份强制转换",
+      "requirement": "完整输入先校验安全整数；不截断小数、不接受布尔或字符串；显式null不借旧值，0帧与合法旧别名保留。",
+      "status": "工程回归、真实CLI与同源工作流对比通过",
+      "state_group": "工程已完成",
+      "evidence_or_gap": "629项全量、28项新增、76项聚焦；同源250帧/3事件的3类受控案例比较通过。未重新推理，独立准确性未验证。",
+      "remaining": "本项工程通过；其他身份消费者、独立标签、空间/曝光、评分及现场验收保留。",
+      "engineering_source_commit": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2"
+    },
+    {
+      "id": "N34",
+      "priority": "P1",
+      "problem": "重复身份、异常行与区间被静默覆盖或修复",
+      "display_name": "重复身份、异常行与区间被静默覆盖或修复",
+      "requirement": "拒绝重复模型/参考身份、异常容器、反序区间、非布尔复核标记与非法容差；V2行标签在过滤前稳定。",
+      "status": "工程回归、真实CLI与同源工作流对比通过",
+      "state_group": "工程已完成",
+      "evidence_or_gap": "629项全量、28项新增、76项聚焦；同源250帧/3事件的3类受控案例比较通过。未重新推理，独立准确性未验证。",
+      "remaining": "本项工程通过；其他身份消费者、独立标签、空间/曝光、评分及现场验收保留。",
+      "engineering_source_commit": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2"
+    },
+    {
+      "id": "N35",
+      "priority": "P1",
+      "problem": "人工重算链接和逐帧日志身份仍int转换",
+      "display_name": "人工重算链接和逐帧日志身份仍int转换",
+      "requirement": "公开验证与直接Coach派生先检查模型、来源链接及日志身份；内部阶段键按已知源ID查表；非法日志不发布修订。",
+      "status": "工程回归、真实CLI与同源工作流对比通过",
+      "state_group": "工程已完成",
+      "evidence_or_gap": "629项全量、28项新增、76项聚焦；同源250帧/3事件的3类受控案例比较通过。未重新推理，独立准确性未验证。",
+      "remaining": "本项工程通过；其他身份消费者、独立标签、空间/曝光、评分及现场验收保留。",
+      "engineering_source_commit": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2"
+    },
+    {
+      "id": "N36",
+      "priority": "P1",
+      "problem": "评估输出可覆盖原始输入且缺身份策略快照",
+      "display_name": "评估输出可覆盖原始输入且缺身份策略快照",
+      "requirement": "拒绝输出覆盖原事件/标注，包括符号链接与硬链接；非法输入保留旧评估；JSON与36源码快照记录身份策略。",
+      "status": "工程回归、真实CLI与同源工作流对比通过",
+      "state_group": "工程已完成",
+      "evidence_or_gap": "629项全量、28项新增、76项聚焦；同源250帧/3事件的3类受控案例比较通过。未重新推理，独立准确性未验证。",
+      "remaining": "本项工程通过；其他身份消费者、独立标签、空间/曝光、评分及现场验收保留。",
+      "engineering_source_commit": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2"
     }
   ],
   "optional_expansion": [
@@ -1439,7 +1487,7 @@
   "state_counts": {
     "部分完成": 36,
     "待独立或现场验证": 24,
-    "工程已完成": 54,
+    "工程已完成": 58,
     "待开发或继续优化": 8
   },
   "earlier_repairs": [
@@ -1469,19 +1517,19 @@
     }
   ],
   "evidence_refs": {
-    "engineering_acceptance": "validation/reference_evaluation_acceptance_20261005.json",
-    "test_log": "/tmp/tennis_evaluation_reference_full_20261005.log",
+    "engineering_acceptance": "validation/evaluation_identity_acceptance_20261005.json",
+    "test_log": "/tmp/tennis_evaluation_identity_full_20261005.log",
     "metric_contract": "docs/METRIC_CALCULATION_CONTRACT.md",
     "source_timing": "docs/EVENT_SOURCE_TIMING.md",
     "independent_labels": "data/analysis_results/kinematic_validation/independent_temporal_plan_v3_20261005/blank_labels.json",
     "pixel_run": "data/analysis_results/kinematic_validation/frontend_anchor_delivery_20261005/live/report.html",
     "motion_source_timing": "docs/MOTION_SOURCE_TIME.md",
-    "same_input_comparison": "data/analysis_results/kinematic_validation/reference_evaluation_delivery_20261005/comparison.json",
-    "previous_inventory": "data/analysis_results/kinematic_validation/frontend_anchor_delivery_20261005/inventory.json",
+    "same_input_comparison": "data/analysis_results/kinematic_validation/evaluation_identity_delivery_20261005/comparison.json",
+    "previous_inventory": "data/analysis_results/kinematic_validation/reference_evaluation_delivery_20261005/inventory.json",
     "evaluation_contract": "docs/EVALUATION_REFERENCE_CONTRACT.md"
   },
   "priority_order": [
-    "T04：CLI评估的帧身份int转换及其他消费者；F03参考对照/准确性区分已通过，其他状态待现场统一",
+    "T04：剩余报告事件/Coach关联及前端身份、其他时间消费者；CLI与人工重算整数身份通过，其他原要求保留",
     "A01/B07/X07：球拍错框、漏检、跳变与来源资格",
     "E02/B01/B02/X01/X02：独立连续帧、完整挥拍及球拍/主球标签",
     "B03/C05/C08：坐标尺度、定位误差及位移阈值校准",
@@ -1496,6 +1544,13 @@
       "status": "尚未实现；非当前main_pipe主线验收范围",
       "evidence": "main.py导入EnhancedMotionCapture；enhanced_motion_capture.py:627的_draw_velocity_vectors仍为pass。",
       "remaining": "若继续维护旧入口，需要携带当前关節坐标、观测来源和速度单位后实现；否则在文档明确停用。"
+    },
+    {
+      "id": "L02",
+      "name": "旧main.py球追踪兼容接口空实现",
+      "status": "旧入口调用轨迹/静止球绘制为空；非main_pipe主线功能",
+      "evidence": "main.py:441/528调用BallDetectionWrapper；yolo26n_unified_detector.py:864–877高级处理原样返回、绘制为空。",
+      "remaining": "若维护旧入口，迁移到有轨迹支持与静止锚点的主线实现并验收；否则明确停用及能力限制。"
     }
   ]
 }
