@@ -582,8 +582,8 @@
     }
   ],
   "validation": {
-    "full_test_count": 593,
-    "log": "/tmp/tennis_frontend_anchor_final_20261005.log",
+    "full_test_count": 601,
+    "log": "/tmp/tennis_evaluation_reference_full_20261005.log",
     "semantic_replay": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/semantic_replay.json",
     "audit": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/audit.json",
     "pixel_run": "data/analysis_results/kinematic_validation/pixel_acceptance_v2_20261005/run.json",
@@ -592,13 +592,14 @@
     "phase_coach": "validation/phase_coach_acceptance_20261005.json",
     "motion_source": "validation/motion_source_acceptance_20261005.json",
     "current_project_inventory": "validation/project_inventory_20261005.json",
-    "current_semantic_replay": "data/analysis_results/kinematic_validation/frontend_anchor_delivery_20261005/semantic_replay.json",
+    "current_semantic_replay": "data/analysis_results/kinematic_validation/reference_evaluation_delivery_20261005/semantic_replay.json",
     "current_pixel_run": "data/analysis_results/kinematic_validation/manual_anchor_phase_release_20261005/run.json",
     "body_windows": "validation/body_window_acceptance_20261005.json",
     "classifier_windows": "validation/classifier_window_acceptance_20261005.json",
     "finite_observations": "validation/finite_observation_acceptance_20261005.json",
     "manual_anchor_phase": "validation/manual_anchor_phase_acceptance_20261005.json",
-    "frontend_anchors": "validation/frontend_anchor_acceptance_20261005.json"
+    "frontend_anchors": "validation/frontend_anchor_acceptance_20261005.json",
+    "reference_evaluation": "validation/reference_evaluation_acceptance_20261005.json"
   },
   "constraints": [
     "automatic validated rubrics remain empty",
@@ -624,9 +625,9 @@
     },
     {
       "id": "T04",
-      "status": "人工页面及后端身份通过／其余消费者待审",
+      "status": "人工页面通过／CLI旧身份转换及其余消费者待审",
       "requirement": "审查剩余固定FPS与帧窗口消费者",
-      "evidence": "N27–N29工程回归、实际DOM监听及服务请求通过；其他候选消费者继续跟踪。"
+      "evidence": "源身份仍不能经CLI的int强制转换丢失参考精度；本轮仅修评估语义与显示资格。"
     },
     {
       "id": "T05",
@@ -640,14 +641,14 @@
     }
   ],
   "delivery": {
-    "engineering_commit": "9c58820c543f1883df833fad667124fed791ec7c",
+    "engineering_commit": "838507a309b926dd7050888e25892689c1562ba6",
     "branch": "algo-2.0",
     "remote": "origin-paused",
     "engineering_push_verified": true,
     "control_server_restarted": true,
-    "control_server_pid": 58910,
+    "control_server_pid": 60780,
     "source_hashes_match": true,
-    "restart_semantics": "strict manual annotation identity editor and backend; analysis remains stopped"
+    "restart_semantics": "reference agreement and accuracy qualification policy; analysis remains stopped"
   },
   "additional_regressions": [
     {
@@ -826,6 +827,27 @@
       "status": "工程验收通过",
       "requirement": "事件委托覆盖全部标注卡片，过滤无关输入；真实小数错误提示和整数恢复即时更新，合法草稿继续保存。",
       "evidence": "validation/frontend_anchor_acceptance_20261005.json"
+    },
+    {
+      "id": "N30",
+      "problem": "评估JSON把参考匹配比例直接作为准确率",
+      "status": "工程验收通过",
+      "requirement": "保留匹配计数、差异和独立命名比例；旧accuracy字段在新输出中为空，参考来源/复核状态与独立性分开记录。",
+      "evidence": "validation/reference_evaluation_acceptance_20261005.json"
+    },
+    {
+      "id": "N31",
+      "problem": "未复核比例仍显示100%且历史报告沿用准确率标签",
+      "status": "工程验收通过",
+      "requirement": "实时与独立报告统一显示资格；临时或完成状态缺失显示待复核，已确认只显示对照匹配比例，说明独立准确性未验证。",
+      "evidence": "validation/reference_evaluation_acceptance_20261005.json"
+    },
+    {
+      "id": "N32",
+      "problem": "模型辅助页面导出未记录来源，自行声明独立易被误解",
+      "status": "工程验收通过",
+      "requirement": "两种编辑器标记模型辅助与模型提示可见；输入自行声明仅作为来源声明保存，不能批准独立性或准确性，运行快照新增评估策略与2源码。",
+      "evidence": "validation/reference_evaluation_acceptance_20261005.json"
     }
   ]
 }
