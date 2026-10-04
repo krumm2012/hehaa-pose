@@ -87,3 +87,10 @@ not input FPS. Frame capacity is separate from media context duration. Missing
 clocks retain explicitly unverified candidate heuristics; remaining traditional
 metric windows and independent accuracy are still pending. See
 `docs/MOTION_SOURCE_TIME.md`.
+
+Body summary and collector trajectory windows now use a shared source-time
+index. Reported file clocks authorize measurement windows; explicit invalid
+clocks abstain, while legacy windows remain disclosed as unverified. Capacity,
+observation counts and source identity checks remain frame-based invariants.
+Legacy per-observation peak maxima are audit candidates only, without FPS
+latencies or OPTIMAL/DISCONNECTED conclusions. See the v3 metric contract.

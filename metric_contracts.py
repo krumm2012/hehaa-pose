@@ -1,17 +1,17 @@
 """Shared, versioned metric definitions; evidence quality is not accuracy."""
 from copy import deepcopy
 
-VERSION = 'tennis.metric-contract.v2'
+VERSION = 'tennis.metric-contract.v3'
 # formula, coordinate system, window, qualification; operational definitions only.
 DEFINITIONS = {
-    'hip_shoulder_separation': ('abs(wrap180(shoulder_line_angle-hip_line_angle)); median', 'front image plane', 'contact +/- 2 frame IDs', 'observed shoulder and hip endpoints; projected separation only'),
-    'shoulder_turn': ('median atan2(back_shoulder_width,front_shoulder_width); fallback absolute shoulder image angle', 'ROI coordinates restored to source pixel scale for width proxy; front image for fallback', 'contact +/- 2 frame IDs', 'both source-scale widths >15 px for dual proxy; no calibrated 3D interpretation'),
-    'shoulder_turn_change': ('max abs(wrap180(angle-circular_local_median(first min(5,max(2,N//4)) angles)))', 'front image shoulder-line orientation', 'event start through contact', 'finite observed shoulder angles; baseline unwrapped relative to first angle'),
-    'preparation_knee_flexion': ('median(180-mean(available left/right hip-knee-ankle angles))', 'front image joint coordinates', 'start through start+max(1,(contact-start)//2) frame IDs', 'at least one complete nondegenerate leg; side availability can vary'),
-    'arm_extension': ('median hitting-side shoulder-elbow-wrist interior angle', 'front image joint coordinates', 'contact +/-2 frame IDs if contact score >=.35; otherwise peak +/-2', 'complete nondegenerate observed arm'),
-    'contact_lateral_distance': ('abs(ball_x-body_center_x)/event_body_width; closest supported sample', 'front original image pixels; body center=mean of shoulder and hip midpoints', 'contact +/-2 frame IDs', 'ball and torso center plus positive body scale; coaching gates are separate'),
-    'weight_transfer': ('distance(median_center(start),median_center(contact))/event_body_width', 'front image Euclidean displacement, not physical weight transfer', 'each endpoint +/-2 frame IDs', 'both torso centers and positive body scale'),
-    'balance_drift': ('distance(median_center(contact),median_center(early_recovery))/event_body_width', 'front image Euclidean displacement, not balance stability', 'each endpoint +/-2 frame IDs', 'both torso centers and positive body scale'),
+    'hip_shoulder_separation': ('abs(wrap180(shoulder_line_angle-hip_line_angle)); sample median', 'front image plane', 'contact source PTS +/-0.08s, clipped to event', 'observed shoulder and hip endpoints; reported source time; projected separation only'),
+    'shoulder_turn': ('sample median atan2(back_shoulder_width,front_shoulder_width); fallback absolute shoulder image angle', 'ROI coordinates restored to source pixel scale for width proxy; front image for fallback', 'contact source PTS +/-0.08s, clipped to event', 'both source-scale widths >15 px for dual proxy; reported source time; no calibrated 3D interpretation'),
+    'shoulder_turn_change': ('max abs(wrap180(angle-circular_sample_median(baseline)))', 'front image shoulder-line orientation', 'event start through contact; baseline first quarter source elapsed interval capped at0.16s', 'finite observed shoulder angles and observed baseline; baseline unwrapped relative to first angle'),
+    'preparation_knee_flexion': ('sample median(180-mean(available left/right hip-knee-ankle angles))', 'front image joint coordinates', 'first half of start-to-contact source elapsed interval', 'reported source time; at least one complete nondegenerate leg; side availability can vary'),
+    'arm_extension': ('sample median hitting-side shoulder-elbow-wrist interior angle', 'front image joint coordinates', 'source PTS +/-0.08s at contact if contact score>=.35, otherwise peak; clipped to event', 'reported source time; complete nondegenerate observed arm'),
+    'contact_lateral_distance': ('abs(ball_x-body_center_x)/event_body_width; closest supported source-time sample', 'front original image pixels; body center=mean of shoulder and hip midpoints', 'contact source PTS +/-0.08s, clipped to event', 'ball and torso center plus positive body scale; reported source time; coaching gates are separate'),
+    'weight_transfer': ('distance(sample_median_center(start),sample_median_center(contact))/event_body_width', 'front image Euclidean displacement, not physical weight transfer', 'each endpoint source PTS +/-0.08s, clipped to event', 'both torso centers and positive body scale; reported source time'),
+    'balance_drift': ('distance(sample_median_center(contact),sample_median_center(early_recovery))/event_body_width', 'front image Euclidean displacement, not balance stability', 'endpoint source PTS +/-0.08s; recovery observed PTS nearest contact+0.40s within event', 'both torso centers and positive body scale; reported source time'),
     'takeback_depth': ('max min(2.5,abs(back_wrist_x-back_shoulder_mid_x)/back_shoulder_width)', 'back ROI projection restored to source pixel scale', 'start through contact', 'back wrist and shoulders; width >20 px; not physical depth'),
     'scapular_retraction': ('max min(3,back_shoulder_width/front_shoulder_width)', 'ROI coordinates restored to source pixel scale', 'start through contact', 'both shoulder widths >15 px; not anatomical scapular motion'),
     'racket_head_speed': ('distance(current_box_center,previous_box_center)/source_dt', 'original image pixels per source second', 'contact and immediately preceding frame', 'fresh consecutive boxes; positive same-basis source dt; no km/h calibration'),
@@ -28,13 +28,16 @@ DEFINITIONS = {
 def metric_contract(key, metric):
     formula, coordinates, window, conditions = DEFINITIONS[key]
     evidence = metric.get('measurement_evidence') or {}
-    reasons = list(evidence.get('reasons') or [])
+    window_evidence = deepcopy(metric.get('window_evidence') or {})
+    reasons = list(dict.fromkeys(list(evidence.get('reasons') or []) + list(window_evidence.get('reasons') or [])))
     if metric.get('value') is None and not reasons:
         details = metric.get('details') or {}
         reasons = [details.get('reason') or 'insufficient_inputs_or_qualification']
     return {'version': VERSION, 'metric_id': key, 'formula': formula,
             'coordinate_system': coordinates, 'unit': metric.get('unit'),
             'window': window, 'valid_conditions': conditions,
+            'window_evidence': window_evidence,
+            'legacy_compatibility': 'legacy windows explicitly unverified; declared invalid source clocks abstain',
             'missing_reasons': reasons if metric.get('value') is None else [],
             'evidence_reasons': reasons, 'source_frames': list(metric.get('source_frames') or []),
             'accuracy_validated': False, 'confidence_meaning': 'heuristic_evidence_quality_not_accuracy',

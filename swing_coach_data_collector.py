@@ -97,16 +97,13 @@ def _best_contact_frame(event: Dict, event_features: List[Dict]) -> Tuple[int, s
 
 
 def _nearest_feature(features_by_frame: Dict[int, Dict], frame_id: int) -> Dict:
-    if frame_id in features_by_frame:
-        return features_by_frame[frame_id]
-    if not features_by_frame:
-        return {}
-    nearest = min(features_by_frame.keys(), key=lambda fid: abs(fid - frame_id))
-    return features_by_frame[nearest]
+    # A nearby row is a different source observation, never the missing anchor.
+    return features_by_frame.get(frame_id) or {}
 
 
 def _pose_at(frames_by_id: Dict[int, Dict], frame_id: int) -> Dict:
-    return frames_by_id.get(frame_id, {}).get("pose") or {}
+    from observation_policy import measurement_pose
+    return measurement_pose(frames_by_id.get(frame_id) or {})
 
 
 def _body_center(pose: Dict) -> Optional[Point]:
@@ -175,16 +172,29 @@ def _shot_direction(points: List[Optional[Point]], min_dx: float = 12.0) -> Tupl
     return direction, round(confidence, 4)
 
 
-def _bounce_candidate(features: List[Dict], contact_frame: int) -> Tuple[Optional[int], float, str]:
-    post = [f for f in features if int(f["frame_id"]) > contact_frame and f.get("ball") is not None]
+def _bounce_candidate(features: List[Dict], contact_frame: int, windows=None) -> Tuple[Optional[int], float, str]:
+    from metric_source_windows import MetricWindowContext
+    windows = windows or MetricWindowContext(features)
+    if windows.declared and not windows.qualified:
+        return None, 0., 'reported_source_time_unavailable'
+    post = sorted((f for f in features if int(f["frame_id"]) > contact_frame and f.get("ball") is not None),
+                  key=lambda f: f['frame_id'])
     if len(post) < 4:
         return None, 0.0, "insufficient_post_contact_ball_points"
     points = [(int(f["frame_id"]), _point(f.get("ball"))) for f in post]
     for (f0, p0), (f1, p1), (f2, p2) in zip(points, points[1:], points[2:]):
         if p0 is None or p1 is None or p2 is None:
             continue
+        if f1 != f0 + 1 or f2 != f1 + 1:
+            continue
         dy1 = p1[1] - p0[1]
         dy2 = p2[1] - p1[1]
+        if windows.timed:
+            dt1, dt2 = windows.times[f1] - windows.times[f0], windows.times[f2] - windows.times[f1]
+            if max(dt1, dt2) > .12 + 1e-9:
+                continue
+            # Fixed 25Hz heuristic reference; not a physical bounce measurement.
+            dy1, dy2 = dy1 / (25 * dt1), dy2 / (25 * dt2)
         if dy1 > 2.0 and dy2 < -2.0:
             return f1, 0.45, "vertical_direction_reversal"
     return None, 0.0, "no_reliable_bounce_candidate"
@@ -225,34 +235,44 @@ def _window_features(features_by_frame: Dict[int, Dict], start: int, end: int) -
     return [features_by_frame[fid] for fid in range(start, end + 1) if fid in features_by_frame]
 
 
-def _interpolate_point(features_by_frame: Dict[int, Dict], frame_id: int, key: str) -> Tuple[Optional[Point], str, float]:
-    current = _point(features_by_frame.get(frame_id, {}).get(key))
+def _interpolate_point(features_by_frame: Dict[int, Dict], frame_id: int, key: str,
+                       windows=None) -> Tuple[Optional[Point], str, float]:
+    from metric_source_windows import MetricWindowContext
+    windows = windows or MetricWindowContext(features_by_frame.values())
+    current_row = features_by_frame.get(frame_id, {})
+    current = _point(current_row.get(key))
     if current is not None:
-        return current, "detected", 1.0
+        source = current_row.get('racket_center_source', 'detected') if key == 'racket_center' else 'detected'
+        return current, source, 1.0 if source == 'detected' else 0.
+
+    if frame_id not in windows.by_id or windows.declared and not windows.qualified:
+        return None, 'missing', 0.
 
     before = []
     after = []
     for fid, feature in features_by_frame.items():
         point = _point(feature.get(key))
-        if point is None:
+        if point is None or key == 'racket_center' and feature.get('racket_center_source', 'detected') != 'detected':
             continue
         if fid < frame_id:
             before.append((fid, point))
         elif fid > frame_id:
             after.append((fid, point))
     if not before or not after:
-        nearest = before[-1] if before else after[0] if after else None
-        if nearest is None:
-            return None, "missing", 0.0
-        distance = abs(nearest[0] - frame_id)
-        return nearest[1], "nearest", round(max(0.1, 1.0 - distance / 10.0), 4)
+        return None, 'missing', 0.
 
     left = max(before, key=lambda item: item[0])
     right = min(after, key=lambda item: item[0])
     span = right[0] - left[0]
-    if span <= 0:
-        return left[1], "nearest", 0.5
-    ratio = (frame_id - left[0]) / span
+    if span <= 0 or span > 3 or any(fid not in windows.by_id for fid in range(left[0], right[0] + 1)):
+        return None, 'missing', 0.
+    if windows.timed:
+        dt = windows.times[right[0]] - windows.times[left[0]]
+        if dt <= 0 or dt > .12 + 1e-9:
+            return None, 'missing', 0.
+        ratio = (windows.times[frame_id] - windows.times[left[0]]) / dt
+    else:
+        ratio = (frame_id - left[0]) / span
     point = (left[1][0] + (right[1][0] - left[1][0]) * ratio, left[1][1] + (right[1][1] - left[1][1]) * ratio)
     confidence = max(0.1, 1.0 - min(abs(frame_id - left[0]), abs(right[0] - frame_id)) / 8.0)
     return (round(point[0], 4), round(point[1], 4)), "interpolated", round(confidence, 4)
@@ -351,13 +371,19 @@ def _event_frames(event: Dict, event_features: List[Dict], event_traces: List[Di
     }
 
 
-def _ball_metrics(event_features: List[Dict], contact_frame: int, features_by_frame: Dict[int, Dict]) -> Dict:
+def _ball_metrics(event_features: List[Dict], contact_frame: int, features_by_frame: Dict[int, Dict], windows=None) -> Dict:
+    from metric_source_windows import MetricWindowContext
+    windows = windows or MetricWindowContext(features_by_frame.values())
     contact = _nearest_feature(features_by_frame, contact_frame)
-    pre = _window_features(features_by_frame, contact_frame - 5, contact_frame - 1)
-    post = _window_features(features_by_frame, contact_frame + 1, contact_frame + 5)
+    pre_window = windows.around(contact_frame, before=.2, after=0.,
+                               legacy_before=5, legacy_after=0, exclude_anchor=True)
+    post_window = windows.around(contact_frame, before=0., after=.2,
+                                legacy_before=0, legacy_after=5, exclude_anchor=True)
+    pre = [features_by_frame[fid] for fid in pre_window.frame_ids if fid in features_by_frame]
+    post = [features_by_frame[fid] for fid in post_window.frame_ids if fid in features_by_frame]
     event_balls = [f.get("ball") for f in event_features]
     shot_direction, shot_direction_confidence = _shot_direction([f.get("ball") for f in post])
-    bounce_frame, bounce_confidence, bounce_source = _bounce_candidate(event_features, contact_frame)
+    bounce_frame, bounce_confidence, bounce_source = _bounce_candidate(event_features, contact_frame, windows=windows)
     return {
         "contact_point": contact.get("ball"),
         "contact_confidence": contact.get("contact_score"),
@@ -381,16 +407,22 @@ def _ball_metrics(event_features: List[Dict], contact_frame: int, features_by_fr
         "shot_direction": shot_direction,
         "shot_direction_confidence": shot_direction_confidence,
         "shot_direction_space": "screen" if shot_direction is not None else None,
+        "incoming_window": pre_window.evidence,
+        "outgoing_window": post_window.evidence,
+        "speed_units": "pixels_per_observation_not_per_second_or_kmh",
+        "trajectory_accuracy_validated": False,
+        "bounce_semantics": "continuous_image_vertical_reversal_candidate_not_verified_ground_contact",
+        "confidence_meaning": "heuristic_evidence_quality_not_accuracy",
     }
 
 
-def _racket_metrics(event_features: List[Dict], contact_frame: int, peak_frame: int, features_by_frame: Dict[int, Dict]) -> Dict:
+def _racket_metrics(event_features: List[Dict], contact_frame: int, peak_frame: int, features_by_frame: Dict[int, Dict], windows=None) -> Dict:
     contact = _nearest_feature(features_by_frame, contact_frame)
     peak = _nearest_feature(features_by_frame, peak_frame)
     detections = [f.get("racket_center") for f in event_features]
     path_angle = _trajectory_angle(detections)
     low_to_high = _low_to_high_ratio(detections)
-    peak_center, peak_source, peak_confidence = _interpolate_point(features_by_frame, peak_frame, "racket_center")
+    peak_center, peak_source, peak_confidence = _interpolate_point(features_by_frame, peak_frame, "racket_center", windows=windows)
     contact_center = _point(contact.get("racket_center"))
     active_wrist = _point(contact.get("wrist"))
     racket_lag = _distance(active_wrist, contact_center)
@@ -415,6 +447,10 @@ def _racket_metrics(event_features: List[Dict], contact_frame: int, peak_frame: 
         "racket_lag_confidence": round(lag_confidence, 4),
         "racket_detection_frames": sum(1 for p in detections if p is not None),
         "racket_continuity_ratio": round(sum(1 for p in detections if p is not None) / max(1, len(detections)), 4),
+        "speed_units": "pixels_per_observation_not_per_second_or_kmh",
+        "acceleration_semantics": "legacy_candidate_step_difference_not_physical_acceleration",
+        "peak_point_semantics": "exact_or_bounded_candidate_interpolation_not_independent_measurement",
+        "confidence_meaning": "heuristic_evidence_quality_not_accuracy",
     }
 
 
@@ -448,6 +484,12 @@ def _body_metrics(
     biomechanical_metrics = (biomechanics or {}).get("metrics") or {}
     return {
         "body_center_at_contact": body_center,
+        "reference_source_frame_ids": {'start': start_frame, 'contact': contact_frame,
+                                       'peak': peak_frame, 'end': end_frame},
+        "aggregation_semantics": "exact_source_anchor_samples_not_neighborhood_medians",
+        "pose_source_semantics": "fresh_front_measurement_pose_or_legacy_unverified",
+        "coordinate_space": "front_original_source_pixels",
+        "accuracy_validated": False,
         "contact_point_relative_to_body": relative_contact,
         "right_wrist_relative_to_body": _relative_point(right_wrist, body_center),
         "left_wrist_relative_to_body": _relative_point(left_wrist, body_center),
@@ -596,8 +638,11 @@ def build_coach_dataset(frame_data: Dict, event_analysis: Dict) -> Dict:
         frame_markers = _event_frames(event, event_features, event_traces)
         contact_frame = int(frame_markers["contact"])
         peak_frame = int(frame_markers["peak"])
-        ball = _ball_metrics(event_features, contact_frame, features_by_frame)
-        racket = _racket_metrics(event_features, contact_frame, peak_frame, features_by_frame)
+        from metric_source_windows import MetricWindowContext
+        windows = MetricWindowContext([r for r in frames
+            if int(event['start_frame']) <= r.get('frame_id', -1) <= int(event['end_frame'])])
+        ball = _ball_metrics(event_features, contact_frame, features_by_frame, windows=windows)
+        racket = _racket_metrics(event_features, contact_frame, peak_frame, features_by_frame, windows=windows)
         body = _body_metrics(
             frames_by_id,
             features_by_frame,

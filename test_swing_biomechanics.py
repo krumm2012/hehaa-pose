@@ -157,7 +157,7 @@ class SwingBiomechanicsTests(unittest.TestCase):
 
         self.assertEqual(calibration["status"], "insufficient_evidence")
         self.assertEqual(calibration["metrics_used"], [])
-    def test_kinematic_sequence_ignores_late_follow_through_noise(self):
+    def test_legacy_candidate_peaks_ignore_follow_through_but_do_not_prove_sequence(self):
         from swing_biomechanics import _calculate_extended_tier_biomechanics
 
         # 构造击球事件：contact_frame=20, 范围 0~40
@@ -193,11 +193,12 @@ class SwingBiomechanicsTests(unittest.TestCase):
             fps=25.0,
         )
         seq = ext["kinematic_sequence"]
-        self.assertEqual(seq["hip_peak_frame"], 18)
-        self.assertEqual(seq["shoulder_peak_frame"], 18)
-        self.assertEqual(seq["racket_peak_frame"], 22)
-        self.assertTrue(seq["is_sequential"])
-        self.assertEqual(seq["sequence_quality"], "OPTIMAL")
+        self.assertEqual(seq['legacy_candidate_peak_frames'], {'hip': 18, 'shoulder': 18, 'racket': 22})
+        self.assertIsNone(seq['hip_peak_frame'])
+        self.assertIsNone(seq['is_sequential'])
+        self.assertIsNone(seq['latency_hip_to_shoulder_ms'])
+        self.assertIsNone(seq['sequence_quality'])
+        self.assertEqual(seq['reason'], 'independent_view_records_missing')
 
     def test_contact_frame_midpoint_not_flagged_with_contact_evidence(self):
         from swing_event_segmenter import _event_quality_flags
@@ -232,4 +233,3 @@ class SwingBiomechanicsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

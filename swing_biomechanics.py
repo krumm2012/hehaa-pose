@@ -6,6 +6,7 @@ import math
 from copy import deepcopy
 from statistics import median
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from metric_source_windows import MetricWindowContext, attach_window, combine_windows
 
 
 Point = Tuple[float, float]
@@ -91,16 +92,20 @@ def _metric(
     return result
 
 
+def _metric_windows(rows_by_frame, windows=None):
+    return windows if windows is not None else MetricWindowContext(
+        [{**row, 'frame_id': row.get('frame_id', fid)} for fid, row in rows_by_frame.items()])
+
+
 def _window_rows(
     rows_by_frame: Dict[int, Dict],
     frame_id: int,
     radius: int = 2,
+    windows=None,
 ) -> List[Dict]:
-    return [
-        rows_by_frame[candidate]
-        for candidate in range(int(frame_id) - radius, int(frame_id) + radius + 1)
-        if candidate in rows_by_frame
-    ]
+    window = _metric_windows(rows_by_frame, windows).around(frame_id,
+        before=radius / 25., after=radius / 25., legacy_before=radius, legacy_after=radius)
+    return [rows_by_frame[fid] for fid in window.frame_ids if fid in rows_by_frame]
 
 
 def _median_feature_metric(
@@ -113,17 +118,19 @@ def _median_feature_metric(
     coach_eligible: bool = True,
     observability: str = "observable_2d",
     exclusion_reason: Optional[str] = None,
+    windows=None,
 ) -> Dict:
-    window = _window_rows(features_by_frame, frame_id)
+    window = _metric_windows(features_by_frame, windows).around(frame_id)
     samples = [
-        (int(row["frame_id"]), float(row[key]))
-        for row in window
-        if row.get(key) is not None
+        (fid, float(features_by_frame[fid][key]))
+        for fid in window.frame_ids if fid in features_by_frame
+        and features_by_frame[fid].get(key) is not None
+        and math.isfinite(float(features_by_frame[fid][key]))
     ]
-    availability = len(samples) / max(1, len(window))
+    availability = len(samples) / max(1, len(window.frame_ids))
     value = median(value for _, value in samples) if samples else None
     confidence = min(confidence_cap, pose_ratio * 0.65 + availability * 0.35)
-    return _metric(
+    return attach_window(_metric(
         value,
         unit,
         confidence,
@@ -132,7 +139,7 @@ def _median_feature_metric(
         observability=observability,
         coach_eligible=coach_eligible,
         exclusion_reason=exclusion_reason,
-    )
+    ), window)
 
 
 def _angle_delta(left: float, right: float) -> float:
@@ -144,34 +151,47 @@ def _shoulder_turn_change_metric(
     start_frame: int,
     contact_frame: int,
     pose_ratio: float,
+    windows=None,
 ) -> Dict:
+    windows = _metric_windows(features_by_frame, windows)
+    window = windows.between(start_frame, contact_frame)
     samples = [
         (frame_id, float(row.get("shoulder_line_angle_deg", row.get("shoulder_turn_deg"))))
-        for frame_id, row in sorted(features_by_frame.items())
-        if start_frame <= frame_id <= contact_frame
-        and row.get("shoulder_line_angle_deg", row.get("shoulder_turn_deg")) is not None
+        for frame_id in window.frame_ids if frame_id in features_by_frame
+        for row in [features_by_frame[frame_id]]
+        if row.get("shoulder_line_angle_deg", row.get("shoulder_turn_deg")) is not None
+        and math.isfinite(float(row.get("shoulder_line_angle_deg", row.get("shoulder_turn_deg"))))
     ]
     if not samples:
-        return _metric(None, "deg_2d", 0.0, [], 0)
+        return attach_window(_metric(None, "deg_2d", 0.0, [], 0), window)
     baseline_count = min(5, max(2, len(samples) // 4))
+    baseline_samples = samples[:baseline_count]
+    if windows.timed:
+        baseline_window = windows.between(start_frame, contact_frame, end_fraction=.25, max_duration=.16)
+        baseline_samples = [sample for sample in samples if sample[0] in baseline_window.frame_ids]
+        window.evidence['baseline_window'] = baseline_window.evidence
+    if not baseline_samples:
+        window.evidence['reasons'].append('shoulder_baseline_not_observed')
+        return attach_window(_metric(None, 'deg_2d', 0., [], 0,
+            observability='image_plane_change', coach_eligible=False), window)
     anchor = samples[0][1]
     baseline = anchor + median((value - anchor + 180.0) % 360.0 - 180.0
-                               for _, value in samples[:baseline_count])
+                               for _, value in baseline_samples)
     source_frame, value = max(
         samples,
         key=lambda item: _angle_delta(item[1], baseline),
     )
     change = _angle_delta(value, baseline)
-    coverage = len(samples) / max(1, contact_frame - start_frame + 1)
+    coverage = len(samples) / max(1, len(window.frame_ids))
     confidence = min(0.82, pose_ratio * 0.65 + coverage * 0.35)
-    return _metric(
+    return attach_window(_metric(
         change,
         "deg_2d",
         confidence,
-        [frame for frame, _ in samples[:baseline_count]] + [source_frame],
+        [frame for frame, _ in baseline_samples] + [source_frame],
         len(samples),
         observability="image_plane_change",
-    )
+    ), window)
 
 
 def _event_peak_or_median_feature(
@@ -185,15 +205,18 @@ def _event_peak_or_median_feature(
     confidence_cap: float = 0.90,
     coach_eligible: bool = True,
     observability: str = "dual_view_mirror_projection",
+    windows=None,
 ) -> Dict:
+    window = _metric_windows(features_by_frame, windows).between(start_frame, end_frame)
     samples = [
-        (int(row["frame_id"]), float(row[key]))
-        for frame_id, row in features_by_frame.items()
-        if start_frame <= frame_id <= end_frame and row.get(key) is not None
+        (frame_id, float(features_by_frame[frame_id][key]))
+        for frame_id in window.frame_ids if frame_id in features_by_frame
+        and features_by_frame[frame_id].get(key) is not None
+        and math.isfinite(float(features_by_frame[frame_id][key]))
     ]
     if not samples:
-        return _metric(None, unit, 0.0, [], 0, observability=observability, coach_eligible=False)
-    coverage = len(samples) / max(1, end_frame - start_frame + 1)
+        return attach_window(_metric(None, unit, 0.0, [], 0, observability=observability, coach_eligible=False), window)
+    coverage = len(samples) / max(1, len(window.frame_ids))
     if use_max:
         source_frame, value = max(samples, key=lambda s: s[1])
         source_frames = [source_frame]
@@ -201,7 +224,7 @@ def _event_peak_or_median_feature(
         value = median(v for _, v in samples)
         source_frames = [f for f, _ in samples]
     confidence = min(confidence_cap, pose_ratio * 0.65 + coverage * 0.35)
-    return _metric(
+    return attach_window(_metric(
         value,
         unit,
         confidence,
@@ -209,7 +232,7 @@ def _event_peak_or_median_feature(
         len(samples),
         observability=observability,
         coach_eligible=coach_eligible,
-    )
+    ), window)
 
 
 def _joint_angle(a: Optional[Point], b: Optional[Point], c: Optional[Point]) -> Optional[float]:
@@ -229,11 +252,12 @@ def _preparation_knee_flexion_metric(
     start_frame: int,
     contact_frame: int,
     pose_ratio: float,
+    windows=None,
 ) -> Dict:
-    preparation_end = start_frame + max(1, (contact_frame - start_frame) // 2)
+    window = _metric_windows(frames_by_id, windows).between(start_frame, contact_frame, end_fraction=.5)
     samples = []
     source_frames = []
-    for frame_id in range(start_frame, preparation_end + 1):
+    for frame_id in window.frame_ids:
         pose = (frames_by_id.get(frame_id) or {}).get("pose") or {}
         frame_angles = []
         for side in ("left", "right"):
@@ -247,25 +271,26 @@ def _preparation_knee_flexion_metric(
         if frame_angles:
             samples.append(max(0.0, 180.0 - sum(frame_angles) / len(frame_angles)))
             source_frames.append(frame_id)
-    availability = len(source_frames) / max(1, preparation_end - start_frame + 1)
+    availability = len(source_frames) / max(1, len(window.frame_ids))
     confidence = min(0.82, pose_ratio * 0.65 + availability * 0.35)
-    return _metric(
+    return attach_window(_metric(
         median(samples) if samples else None,
         "deg_2d",
         confidence,
         source_frames,
         len(samples),
         observability="image_plane_joint_angle",
-    )
+    ), window)
 
 
 def _median_center(
     frames_by_id: Dict[int, Dict],
     frame_id: int,
     radius: int = 2,
+    windows=None,
 ) -> Tuple[Optional[Point], List[int]]:
     samples = []
-    for row in _window_rows(frames_by_id, frame_id, radius=radius):
+    for row in _window_rows(frames_by_id, frame_id, radius=radius, windows=windows):
         center = _body_center(row.get("pose") or {})
         if center is not None:
             samples.append((int(row["frame_id"]), center))
@@ -287,9 +312,12 @@ def _movement_metric(
     body_width: Optional[float],
     pose_ratio: float,
     exclusion_reason: str,
+    windows=None,
 ) -> Dict:
-    start, start_sources = _median_center(frames_by_id, start_frame)
-    end, end_sources = _median_center(frames_by_id, end_frame)
+    windows = _metric_windows(frames_by_id, windows)
+    start, start_sources = _median_center(frames_by_id, start_frame, windows=windows)
+    end, end_sources = _median_center(frames_by_id, end_frame, windows=windows)
+    window = combine_windows([windows.around(start_frame), windows.around(end_frame)])
     distance = _distance(start, end)
     value = (
         distance / body_width
@@ -301,7 +329,7 @@ def _movement_metric(
         0.80,
         pose_ratio * 0.7 + endpoint_coverage * 0.3,
     )
-    return _metric(
+    return attach_window(_metric(
         value,
         "body_width",
         confidence,
@@ -310,7 +338,7 @@ def _movement_metric(
         observability="screen_body_center_displacement",
         coach_eligible=False,
         exclusion_reason=exclusion_reason,
-    )
+    ), window)
 
 
 def _contact_position_metric(
@@ -320,9 +348,12 @@ def _contact_position_metric(
     body_width: Optional[float],
     pose_ratio: float,
     contact_evidence_confidence: float,
+    windows=None,
 ) -> Dict:
+    windows = _metric_windows(frames_by_id, windows)
+    window = windows.around(contact_frame)
     candidates = []
-    for frame_id in range(contact_frame - 2, contact_frame + 3):
+    for frame_id in window.frame_ids:
         frame = frames_by_id.get(frame_id) or {}
         feature = features_by_frame.get(frame_id) or {}
         center = _body_center(frame.get("pose") or {})
@@ -331,7 +362,7 @@ def _contact_position_metric(
             continue
         candidates.append(
             (
-                abs(frame_id - contact_frame),
+                abs(windows.times[frame_id] - windows.times[contact_frame]) if windows.timed else abs(frame_id - contact_frame),
                 -float(feature.get("contact_score") or 0.0),
                 frame_id,
                 abs(ball[0] - center[0]),
@@ -339,9 +370,9 @@ def _contact_position_metric(
             )
         )
     if not candidates or body_width is None or body_width <= 0:
-        return _metric(None, "body_width", 0.0, [], 0)
-    _, _, source_frame, lateral_distance, contact_score = min(candidates)
-    proximity = 1.0 - min(1.0, abs(source_frame - contact_frame) / 3.0)
+        return attach_window(_metric(None, "body_width", 0.0, [], 0), window)
+    offset, _, source_frame, lateral_distance, contact_score = min(candidates)
+    proximity = 1.0 - min(1.0, offset / (.12 if windows.timed else 3.0))
     evidence_confidence = max(
         float(contact_score),
         float(contact_evidence_confidence),
@@ -356,7 +387,7 @@ def _contact_position_metric(
         exclusion_reason = "contact_geometry_outside_plausible_single_view_range"
     else:
         exclusion_reason = None
-    return _metric(
+    return attach_window(_metric(
         normalized_distance,
         "body_width",
         confidence,
@@ -365,7 +396,7 @@ def _contact_position_metric(
         observability="image_plane_lateral_only",
         coach_eligible=coach_eligible,
         exclusion_reason=exclusion_reason,
-    )
+    ), window)
 
 
 def _early_recovery_frame(
@@ -373,20 +404,10 @@ def _early_recovery_frame(
     contact_frame: int,
     end_frame: int,
     seconds: float = 0.40,
-) -> int:
-    contact = features_by_frame.get(contact_frame) or {}
-    contact_time = contact.get("timestamp")
-    if contact_time is None:
-        return min(end_frame, contact_frame + 10)
-    target = float(contact_time) + seconds
-    candidates = [
-        (frame_id, float(row["timestamp"]))
-        for frame_id, row in features_by_frame.items()
-        if contact_frame <= frame_id <= end_frame and row.get("timestamp") is not None
-    ]
-    if not candidates:
-        return min(end_frame, contact_frame + 10)
-    return min(candidates, key=lambda item: abs(item[1] - target))[0]
+    windows=None,
+) -> Optional[int]:
+    selected, _ = _metric_windows(features_by_frame, windows).recovery(contact_frame, end_frame, seconds)
+    return selected
 
 
 def _calculate_extended_tier_biomechanics(
@@ -397,7 +418,9 @@ def _calculate_extended_tier_biomechanics(
     body_width: Optional[float],
     fps: float = 25.0,
 ) -> Dict[str, Any]:
-    """计算第一、第二、第三梯队拓展的高级网球生物力学指标。"""
+    """Raw image estimates; unsupported legacy peaks never establish a chain."""
+    windows = MetricWindowContext(features_in_event)
+    features_by_id = {f['frame_id']: f for f in features_in_event}
     # Uncalibrated image speed is a box-centre velocity, not racket-head km/h.
     contact_f = next((f for f in features_in_event if f.get("frame_id") == contact_frame), {})
     speed_samples = [f for f in features_in_event if f.get("racket_speed_px_s") is not None]
@@ -405,10 +428,8 @@ def _calculate_extended_tier_biomechanics(
     contact_image_speed = contact_f.get("racket_speed_px_s")
 
     # 2. 第一梯队：由下向上刷球角与掉拍头下潜深度 (Low-to-High Brush Angle & Drop Depth)
-    pre_contact_feats = [
-        f for f in features_in_event
-        if max(start_frame, contact_frame - 12) <= f.get("frame_id", -1) <= contact_frame
-    ]
+    pre_contact_feats = [features_by_id[fid] for fid in windows.around(
+        contact_frame, before=.48, after=0., legacy_before=12, legacy_after=0).frame_ids]
     racket_centers = [
         (f["frame_id"], f.get("racket_measurement_point", f.get("racket_center")))
         for f in pre_contact_feats
@@ -431,17 +452,17 @@ def _calculate_extended_tier_biomechanics(
     racket_drop_ratio = round(racket_drop_px / ref_scale, 2)
 
     # 3. 第二梯队：步法站位识别 (Stance Type Classification: Open vs Semi-Open vs Closed)
-    foot_angles = [f["stance_angle"] for f in features_in_event
-                   if abs(f.get("frame_id", -100) - contact_frame) <= 3
-                   and f.get("stance_angle") is not None]
+    foot_angles = [features_by_id[fid]['stance_angle'] for fid in windows.around(
+        contact_frame, before=.12, after=.12, legacy_before=3, legacy_after=3).frame_ids
+        if features_by_id[fid].get('stance_angle') is not None]
     foot_angle = median(foot_angles) if foot_angles else None
     stance_type = None
 
     # 4. 第二梯队：垂直蹬地发力率 (Vertical Leg Drive)
     hip_ys = [
         (f["frame_id"], f.get("hip_vertical_pos"))
-        for f in features_in_event
-        if f.get("hip_vertical_pos") is not None and f.get("frame_id", 0) <= contact_frame
+        for fid in windows.between(start_frame, contact_frame).frame_ids
+        for f in [features_by_id[fid]] if f.get("hip_vertical_pos") is not None
     ]
     leg_drive_px = 0.0
     contact_hip = contact_f.get("hip_vertical_pos")
@@ -451,25 +472,13 @@ def _calculate_extended_tier_biomechanics(
         leg_drive_px = max(0.0, lowest_hip - contact_hip)
     leg_drive_ratio = round(leg_drive_px / ref_scale, 2)
 
-    # 5. 第三梯队：动力学链时序时差 (Kinematic Sequence Latency: 腿➔髋➔肩➔拍)
-    # 限制在向前加速至击球瞬间窗口（触球前15帧至触球后4帧），避免随挥制动期干扰
-    accel_features = [
-        f for f in features_in_event
-        if (contact_frame - 15) <= f.get("frame_id", contact_frame) <= (contact_frame + 4)
-    ]
-    if not accel_features:
-        accel_features = features_in_event
-
+    # Candidate signal maxima are retained for auditing, not kinetic inference.
+    accel_window = windows.around(contact_frame, before=.6, after=.16,
+                                  legacy_before=15, legacy_after=4)
+    accel_features = [features_by_id[fid] for fid in accel_window.frame_ids]
     hip_peak_f = max(accel_features or [{}], key=lambda f: float(f.get("hip_rotation_speed") or 0.0)).get("frame_id", contact_frame)
     sh_peak_f = max(accel_features or [{}], key=lambda f: float(f.get("shoulder_rotation_speed") or 0.0)).get("frame_id", contact_frame)
     rkt_peak_f = max(accel_features or [{}], key=lambda f: float(f.get("racket_speed") or 0.0)).get("frame_id", contact_frame)
-
-    dt_hip_sh = round((sh_peak_f - hip_peak_f) / fps * 1000.0, 1)
-    dt_sh_rkt = round((rkt_peak_f - sh_peak_f) / fps * 1000.0, 1)
-    is_sequential = (hip_peak_f <= sh_peak_f <= rkt_peak_f) or (
-        hip_peak_f <= rkt_peak_f and sh_peak_f <= rkt_peak_f and abs(sh_peak_f - hip_peak_f) <= 1
-    )
-
 
     # Legacy weighted composite is retired: missing data never receives defaults.
     # A single practice policy is attached after the evidence metrics are assembled.
@@ -515,13 +524,18 @@ def _calculate_extended_tier_biomechanics(
             "coach_eligible": False,
         },
         "kinematic_sequence": {
-            "hip_peak_frame": int(hip_peak_f) if sequence_observed else None,
-            "shoulder_peak_frame": int(sh_peak_f) if sequence_observed else None,
-            "racket_peak_frame": int(rkt_peak_f) if sequence_observed else None,
-            "latency_hip_to_shoulder_ms": dt_hip_sh if sequence_observed else None,
-            "latency_shoulder_to_racket_ms": dt_sh_rkt if sequence_observed else None,
-            "is_sequential": is_sequential if sequence_observed else None,
-            "sequence_quality": ("OPTIMAL" if is_sequential else "DISCONNECTED") if sequence_observed else None,
+            "hip_peak_frame": None,
+            "shoulder_peak_frame": None,
+            "racket_peak_frame": None,
+            "legacy_candidate_peak_frames": {'hip': int(hip_peak_f), 'shoulder': int(sh_peak_f),
+                'racket': int(rkt_peak_f)} if sequence_observed else {},
+            "latency_hip_to_shoulder_ms": None,
+            "latency_shoulder_to_racket_ms": None,
+            "is_sequential": None,
+            "sequence_quality": None,
+            "reason": "independent_view_records_missing",
+            "window_evidence": accel_window.evidence,
+            "legacy_peak_semantics": "per_observation_candidate_signal_not_segment_velocity",
             "coach_eligible": False,
             "confidence": 0.0,
         },
@@ -570,6 +584,7 @@ def aggregate_event_biomechanics(
         for row in features_in_event
         if row.get("frame_id") is not None
     }
+    windows = MetricWindowContext(frames_in_event)
     pose_ratio = float(
         (event.get("quality_flags") or {}).get("pose_frame_ratio")
         or (
@@ -610,6 +625,7 @@ def aggregate_event_biomechanics(
         features_by_frame,
         contact_frame,
         end_frame,
+        windows=windows,
     )
 
     has_robust_turn = any(
@@ -631,6 +647,7 @@ def aggregate_event_biomechanics(
             confidence_cap=0.0,
             coach_eligible=False,
             observability="dual_view_anti_collapse",
+            windows=windows,
         )
     else:
         shoulder_turn_metric = _median_feature_metric(
@@ -643,6 +660,7 @@ def aggregate_event_biomechanics(
             coach_eligible=False,
             observability="absolute_image_orientation_only",
             exclusion_reason="absolute_projection_is_not_turn_magnitude",
+            windows=windows,
         )
 
     takeback_depth_metric = _event_peak_or_median_feature(
@@ -656,6 +674,7 @@ def aggregate_event_biomechanics(
         coach_eligible=False,
         confidence_cap=0.0,
         observability="dual_view_mirror_projection",
+        windows=windows,
     )
 
     scapular_retraction_metric = _event_peak_or_median_feature(
@@ -669,6 +688,7 @@ def aggregate_event_biomechanics(
         coach_eligible=False,
         confidence_cap=0.0,
         observability="dual_view_mirror_projection",
+        windows=windows,
     )
 
     ext = _calculate_extended_tier_biomechanics(
@@ -721,6 +741,7 @@ def aggregate_event_biomechanics(
                 coach_eligible=False,
                 observability="image_plane_proxy_only",
                 exclusion_reason="true_3d_separation_not_observable_single_view",
+                windows=windows,
             ),
             "shoulder_turn": shoulder_turn_metric,
             "shoulder_turn_change": _shoulder_turn_change_metric(
@@ -728,12 +749,14 @@ def aggregate_event_biomechanics(
                 start_frame,
                 contact_frame,
                 pose_ratio,
+                windows=windows,
             ),
             "preparation_knee_flexion": _preparation_knee_flexion_metric(
                 frames_by_id,
                 start_frame,
                 contact_frame,
                 pose_ratio,
+                windows=windows,
             ),
             "arm_extension": _median_feature_metric(
                 features_by_frame,
@@ -742,6 +765,7 @@ def aggregate_event_biomechanics(
                 pose_ratio,
                 unit="deg_2d",
                 observability=arm_observability,
+                windows=windows,
             ),
             "contact_lateral_distance": _contact_position_metric(
                 frames_by_id,
@@ -750,6 +774,7 @@ def aggregate_event_biomechanics(
                 body_width,
                 pose_ratio,
                 contact_evidence_confidence,
+                windows=windows,
             ),
             "weight_transfer": _movement_metric(
                 frames_by_id,
@@ -758,6 +783,7 @@ def aggregate_event_biomechanics(
                 body_width,
                 pose_ratio,
                 "screen_translation_is_not_true_weight_transfer",
+                windows=windows,
             ),
             "balance_drift": _movement_metric(
                 frames_by_id,
@@ -766,6 +792,7 @@ def aggregate_event_biomechanics(
                 body_width,
                 pose_ratio,
                 "body_center_translation_is_not_balance_stability",
+                windows=windows,
             ),
             "takeback_depth": takeback_depth_metric,
             "scapular_retraction": scapular_retraction_metric,
@@ -828,7 +855,8 @@ def aggregate_event_biomechanics(
             ),
             "contact_evidence_confidence": round(contact_evidence_confidence, 4),
             "arm_extension_reference_frame": int(arm_reference_frame),
-            "early_recovery_frame": int(early_recovery_frame),
+            "early_recovery_frame": early_recovery_frame,
+            "body_window_policy": windows.around(contact_frame).evidence,
         },
     }
 

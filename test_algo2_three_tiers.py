@@ -83,11 +83,12 @@ class TestAlgo2ThreeTiers(unittest.TestCase):
         # Tier 3: 动力学链时序
         self.assertIn("kinematic_sequence", ext)
         seq = ext["kinematic_sequence"]
-        self.assertEqual(seq["hip_peak_frame"], 7)
-        self.assertEqual(seq["shoulder_peak_frame"], 9)
-        self.assertEqual(seq["racket_peak_frame"], 10)
-        self.assertTrue(seq["is_sequential"])
-        self.assertEqual(seq["sequence_quality"], "OPTIMAL")
+        self.assertEqual(seq['legacy_candidate_peak_frames'], {'hip': 7, 'shoulder': 9, 'racket': 10})
+        self.assertIsNone(seq['hip_peak_frame'])
+        self.assertIsNone(seq['is_sequential'])
+        self.assertIsNone(seq['sequence_quality'])
+        self.assertIsNone(seq['latency_hip_to_shoulder_ms'])
+        self.assertEqual(seq['reason'], 'independent_view_records_missing')
 
     def test_dual_view_relative_depth_z(self):
         """测试双机位前后尺度视差拟合的相对 3D 深度推算。"""
