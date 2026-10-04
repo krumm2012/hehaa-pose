@@ -131,18 +131,20 @@ def discover_session_paths(session_dir: Path) -> Dict[str, Path]:
     if not session_dir.is_dir():
         raise FileNotFoundError(f"Session directory does not exist: {session_dir}")
 
-    def choose(exact: str, pattern: str) -> Path:
+    def choose(exact: str, pattern: str, plain: str) -> Path:
         exact_path = session_dir / exact
         if exact_path.exists():
             return exact_path
+        if (session_dir / plain).exists():
+            return session_dir / plain
         candidates = sorted(session_dir.glob(pattern))
         if not candidates:
             raise FileNotFoundError(f"Missing {exact} in {session_dir}")
         return candidates[0]
 
-    events = choose("final_events.json", "*_events.json")
-    frames = choose("final_frames.jsonl", "*_frames.jsonl")
-    report = choose("final_report.html", "*_report.html")
+    events = choose("final_events.json", "*_events.json", "events.json")
+    frames = choose("final_frames.jsonl", "*_frames.jsonl", "frames.jsonl")
+    report = choose("final_report.html", "*_report.html", "report.html")
     stem = events.stem[:-len("_events")] if events.stem.endswith("_events") else events.stem
     return {
         "session_dir": session_dir,

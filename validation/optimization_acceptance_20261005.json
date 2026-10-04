@@ -458,7 +458,7 @@
       "problem": "最近全量测试仍有三项环境／ROI 相关失败",
       "requirement": "隔离本机机位配置与测试夹具，核验视频检测测试，恢复可重复的全绿结果",
       "status": "全量通过",
-      "evidence_or_gap": "451项测试通过；测试ROI与用户机位隔离；两个模型后端核验旧测试机位"
+      "evidence_or_gap": "452项测试通过；测试ROI与用户机位隔离；两个模型后端核验旧测试机位"
     },
     {
       "id": "G02",
@@ -529,8 +529,8 @@
       "priority": "P2",
       "problem": "本轮整体尚未完成正式发布验收",
       "requirement": "核对提交、远端状态、运行版本和回退方式",
-      "status": "本地验收通过／远端与运行版本待闭环",
-      "evidence_or_gap": "451项全量、新像素会话、哈希与语义回放通过；控制服务尚未重启加载新Python代码"
+      "status": "工程提交推送通过／服务更新与现场发布待验收",
+      "evidence_or_gap": "9798cb8普通推送到algo-2.0；452项测试通过；控制服务尚未重启加载新Python，RTSP/TTS现场发布待验收"
     },
     {
       "id": "G11",
@@ -582,8 +582,8 @@
     }
   ],
   "validation": {
-    "full_test_count": 451,
-    "log": "/tmp/tennis-final-acceptance-tests.log",
+    "full_test_count": 452,
+    "log": "/tmp/tennis-release-tests.log",
     "semantic_replay": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/semantic_replay.json",
     "audit": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/audit.json",
     "pixel_run": "data/analysis_results/kinematic_validation/pixel_acceptance_v2_20261005/run.json"
@@ -625,5 +625,12 @@
       "status": "待独立验收",
       "requirement": "日常缺观测与队列诊断"
     }
-  ]
+  ],
+  "delivery": {
+    "engineering_commit": "9798cb8",
+    "branch": "algo-2.0",
+    "remote": "origin-paused",
+    "engineering_push_verified": true,
+    "control_server_restarted": false
+  }
 }

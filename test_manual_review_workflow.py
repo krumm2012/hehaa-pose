@@ -109,6 +109,18 @@ def _publish_review_in_child(paths, annotations, results):
 
 
 class ManualReviewWorkflowTests(unittest.TestCase):
+    def test_plain_pixel_session_names_are_discoverable(self):
+        with TemporaryDirectory() as directory:
+            root=Path(directory)
+            for name in ('events.json','frames.jsonl','report.html'):
+                (root/name).write_text('')
+            paths=discover_session_paths(root)
+            self.assertEqual(paths['events'].name,'events.json')
+            self.assertEqual(paths['frames'].name,'frames.jsonl')
+            self.assertEqual(paths['report'].name,'report.html')
+            (root/'final_events.json').write_text('')
+            self.assertEqual(discover_session_paths(root)['events'].name,'final_events.json')
+
     def test_two_processes_publish_complete_separate_revisions(self):
         import multiprocessing
         context = multiprocessing.get_context('spawn')
