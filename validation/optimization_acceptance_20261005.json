@@ -458,7 +458,7 @@
       "problem": "全量回归的可重复性与测试环境隔离",
       "requirement": "隔离本机机位配置与测试夹具，核验视频检测测试，恢复可重复的全绿结果",
       "status": "全量通过",
-      "evidence_or_gap": "当前462项全量测试通过；日志/tmp/tennis_adjudication_release_20261005.log。"
+      "evidence_or_gap": "当前473项测试通过；11项同源证据/默认源视频拒绝回归通过。/tmp/tennis_cross_project_release_20261005.log"
     },
     {
       "id": "G02",
@@ -521,16 +521,16 @@
       "priority": "P2",
       "problem": "代码、用户配置与历史制品的提交范围",
       "requirement": "区分本轮代码、用户配置和既有删除，再整理提交",
-      "status": "代码提交范围整理通过",
-      "evidence_or_gap": "仲裁工具、服务版本身份、测试及文档单独提交；两份用户配置、51份既有历史删除和视频制品保持工作区现状。"
+      "status": "本轮代码提交范围整理通过",
+      "evidence_or_gap": "d2c4658只提交离线工具、测试及文档；用户机位配置、既有51份历史删除与视频制品未纳入。"
     },
     {
       "id": "G10",
       "priority": "P2",
       "problem": "代码远端、运行版本与现场发布验收",
       "requirement": "核对提交、远端状态、运行版本和回退方式",
-      "status": "工程推送与服务更新通过／现场发布待验收",
-      "evidence_or_gap": "a8fa995普通推送到algo-2.0；控制服务已重启为PID9851，导入时源码哈希与当前文件匹配、SSE连接；RTSP/TTS现场仍待验收。"
+      "status": "工程推送与运行版本核验通过／现场待验收",
+      "evidence_or_gap": "d2c4658普通推送；控制PID9851与导入模块哈希一致。本轮仅改离线工具，无需重启。RTSP/TTS现场仍待验收。"
     },
     {
       "id": "G11",
@@ -545,16 +545,16 @@
       "priority": "P2",
       "problem": "统一两项目的帧号、时间、坐标和证据来源",
       "requirement": "Analyzer 保持轻量实时；Vision 做离线审计",
-      "status": "接口边界保留／跨项目联验待完成",
-      "evidence_or_gap": "源帧/媒体时间/原坐标/来源契约；Analyzer实时、Vision离线，未改Vision拟合"
+      "status": "源身份工程检查通过／完整共同契约待完成",
+      "evidence_or_gap": "核验输入SHA、Analyzer源帧、Vision tracking索引及实际Viewer元数据；坐标/身体语义、曝光与派生映射仍待验证。"
     },
     {
       "id": "H02",
       "priority": "P2",
       "problem": "建立同一挥拍的一键关联与对照",
       "requirement": "不把 Vision 模型拟合自动视为真值",
-      "status": "待跨项目关联界面",
-      "evidence_or_gap": "按视频内容哈希和源帧连接；现同源重算对照不冒充Vision一键关联"
+      "status": "离线关联、回放及页面通过／同步定位待完成",
+      "evidence_or_gap": "同一249帧副本的3事件对应源帧通过，像素制品完整且重放一致。原片250帧因不同SHA待逐帧映射；当前手动定位，不宣称自动同步播放器。"
     },
     {
       "id": "H03",
@@ -582,12 +582,13 @@
     }
   ],
   "validation": {
-    "full_test_count": 462,
-    "log": "/tmp/tennis_adjudication_release_20261005.log",
+    "full_test_count": 473,
+    "log": "/tmp/tennis_cross_project_release_20261005.log",
     "semantic_replay": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/semantic_replay.json",
     "audit": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/audit.json",
     "pixel_run": "data/analysis_results/kinematic_validation/pixel_acceptance_v2_20261005/run.json",
-    "adjudication": "validation/adjudication_acceptance_20261005.json"
+    "adjudication": "validation/adjudication_acceptance_20261005.json",
+    "cross_project": "validation/cross_project_acceptance_20261005.json"
   },
   "constraints": [
     "automatic validated rubrics remain empty",
@@ -628,12 +629,21 @@
     }
   ],
   "delivery": {
-    "engineering_commit": "a8fa995254d73f96acbbe031bf7ec00845a45337",
+    "engineering_commit": "d2c4658c9bd644591a6677b5056f8494dd65eb08",
     "branch": "algo-2.0",
     "remote": "origin-paused",
     "engineering_push_verified": true,
-    "control_server_restarted": true,
+    "control_server_restarted": false,
     "control_server_pid": 9851,
-    "source_hashes_match": true
-  }
+    "source_hashes_match": true,
+    "restart_semantics": "this offline-only iteration; previous server restart remains recorded in adjudication receipt"
+  },
+  "additional_regressions": [
+    {
+      "id": "N01",
+      "status": "工程修复通过",
+      "requirement": "像素验收必须在创建目录/启动推理前验证默认源视频存在与冻结SHA一致。",
+      "evidence": "直接选择器反例和实际CLI丢失/改写可选源视频回归均通过。"
+    }
+  ]
 }

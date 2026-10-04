@@ -1,0 +1,201 @@
+{
+  "schema": "tennis.cross-project-acceptance.v1",
+  "generated_at": "2026-10-05T02:09:12+08:00",
+  "engineering_source_commit": "d2c4658c9bd644591a6677b5056f8494dd65eb08",
+  "engineering_push_succeeded": true,
+  "code_sha256": {
+    "cross_project_evidence.py": "48ddc2ef4e8afcca33201722adaf7cfdc3511c12098c9f4365cf00a73a098db4",
+    "scripts/build_cross_project_review.py": "b877345cb9e86c7c540e3e9d4200c0793e66884e3462c1f1a98e4c6faac13c7c",
+    "scripts/run_pixel_acceptance.py": "4a8efd44098cb60181776132f45feb96f1f5f4b119e756a5780fa0dd28969785",
+    "test_cross_project_evidence.py": "80e913a067b0149b113c904e717e965ceab57d30a392a20b3504b8c5d07a633b"
+  },
+  "tests": {
+    "full_count": 473,
+    "full_passed": true,
+    "full_log": "/tmp/tennis_cross_project_release_20261005.log",
+    "focused_count": 11,
+    "focused_passed": true
+  },
+  "N01": {
+    "status": "engineering_fixed",
+    "original_counterexample_passed": true,
+    "changed_and_missing_optional_source_rejected_by_actual_cli": true,
+    "rejected_input_creates_no_output_and_starts_no_inference": true,
+    "cause": "source video is optional for FrameRecord replay; the pixel runner had reused replayable and returned its default path without checking the frozen source hash"
+  },
+  "same_input_pixel_run": {
+    "path": "data/analysis_results/kinematic_validation/pixel_cross_project_normalized_20261005/run.json",
+    "frames": 249,
+    "returncode": 0,
+    "source_selection": {
+      "reference_source_sha256": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0",
+      "input_source_sha256": "01b09ee089971d9482c17e9f80514eeaee7af6909a99db0d1806704674dfea32",
+      "explicit_alternate_input": true,
+      "relationship_to_reference": "unverified_derived_relationship"
+    },
+    "integrity_valid": true,
+    "semantic_match": true,
+    "event_count": 3,
+    "semantic_replay_sha256": "fcb5aa06802a6ee63d7be5f96a5f85ead833f62c0883af154cd73461474658f4"
+  },
+  "same_input_association": {
+    "path": "data/analysis_results/kinematic_validation/cross_project_same_source_20261005/association.json",
+    "sha256": "33bfc812862b59f9e1565d1b71b70599183f3f6808f8dae7dfb325bb2cd42f6f",
+    "status": "linked_same_input_video",
+    "source_frame_ids_verified": true,
+    "viewer_identity": {
+      "status": "verified",
+      "metadata_url": "http://127.0.0.1:18769/datasets/5a773384d71951c0b96f179179ace857/result/mesh_meta.json",
+      "mesh_meta_sha256": "c4a0adb69fdd14399d8d29a539a4ccb94bd9b7c14a2ab3dc961e10d4481455c6",
+      "reason": null
+    },
+    "events": [
+      {
+        "event_id": 1,
+        "stroke_type": "Forehand",
+        "anchors": {
+          "start_frame": {
+            "Analyzer_frame_id": 1,
+            "source_timestamp_seconds": 0.04,
+            "source_time_quality": "reported",
+            "Vision_frame_index": 1,
+            "status": "linked_same_input_frame"
+          },
+          "contact_frame": {
+            "Analyzer_frame_id": 26,
+            "source_timestamp_seconds": 1.04,
+            "source_time_quality": "reported",
+            "Vision_frame_index": 26,
+            "status": "linked_same_input_frame"
+          },
+          "peak_frame": {
+            "Analyzer_frame_id": 26,
+            "source_timestamp_seconds": 1.04,
+            "source_time_quality": "reported",
+            "Vision_frame_index": 26,
+            "status": "linked_same_input_frame"
+          },
+          "end_frame": {
+            "Analyzer_frame_id": 57,
+            "source_timestamp_seconds": 2.2800000000000002,
+            "source_time_quality": "reported",
+            "Vision_frame_index": 57,
+            "status": "linked_same_input_frame"
+          }
+        },
+        "viewer_url": "http://127.0.0.1:18769/datasets/5a773384d71951c0b96f179179ace857/result/viewer.html"
+      },
+      {
+        "event_id": 2,
+        "stroke_type": "Two-Handed Backhand",
+        "anchors": {
+          "start_frame": {
+            "Analyzer_frame_id": 88,
+            "source_timestamp_seconds": 3.52,
+            "source_time_quality": "reported",
+            "Vision_frame_index": 88,
+            "status": "linked_same_input_frame"
+          },
+          "contact_frame": {
+            "Analyzer_frame_id": 109,
+            "source_timestamp_seconds": 4.36,
+            "source_time_quality": "reported",
+            "Vision_frame_index": 109,
+            "status": "linked_same_input_frame"
+          },
+          "peak_frame": {
+            "Analyzer_frame_id": 114,
+            "source_timestamp_seconds": 4.5600000000000005,
+            "source_time_quality": "reported",
+            "Vision_frame_index": 114,
+            "status": "linked_same_input_frame"
+          },
+          "end_frame": {
+            "Analyzer_frame_id": 145,
+            "source_timestamp_seconds": 5.8,
+            "source_time_quality": "reported",
+            "Vision_frame_index": 145,
+            "status": "linked_same_input_frame"
+          }
+        },
+        "viewer_url": "http://127.0.0.1:18769/datasets/5a773384d71951c0b96f179179ace857/result/viewer.html"
+      },
+      {
+        "event_id": 3,
+        "stroke_type": "Unknown",
+        "anchors": {
+          "start_frame": {
+            "Analyzer_frame_id": 164,
+            "source_timestamp_seconds": 6.5600000000000005,
+            "source_time_quality": "reported",
+            "Vision_frame_index": 164,
+            "status": "linked_same_input_frame"
+          },
+          "contact_frame": {
+            "Analyzer_frame_id": 191,
+            "source_timestamp_seconds": 7.640000000000001,
+            "source_time_quality": "reported",
+            "Vision_frame_index": 191,
+            "status": "linked_same_input_frame"
+          },
+          "peak_frame": {
+            "Analyzer_frame_id": 188,
+            "source_timestamp_seconds": 7.520000000000001,
+            "source_time_quality": "reported",
+            "Vision_frame_index": 188,
+            "status": "linked_same_input_frame"
+          },
+          "end_frame": {
+            "Analyzer_frame_id": 219,
+            "source_timestamp_seconds": 8.76,
+            "source_time_quality": "reported",
+            "Vision_frame_index": 219,
+            "status": "linked_same_input_frame"
+          }
+        },
+        "viewer_url": "http://127.0.0.1:18769/datasets/5a773384d71951c0b96f179179ace857/result/viewer.html"
+      }
+    ]
+  },
+  "original_input_association": {
+    "path": "data/analysis_results/kinematic_validation/cross_project_original_v2_20261005/association.json",
+    "sha256": "b300b64c7b2d6ac89272c2aae0d3002d513ea9b436ad58f4cd1d8c882f5cc403",
+    "status": "pending_source_frame_mapping",
+    "source_frame_ids_verified": false,
+    "blockers": [
+      "different_input_video_hashes_need_source_frame_mapping"
+    ],
+    "all_12_anchor_indices_null": true
+  },
+  "browser_acceptance": {
+    "same_input_event_rows": 3,
+    "all_four_anchor_columns_match_per_event": true,
+    "pending_original_rows": 3,
+    "pending_original_anchor_labels": 12,
+    "Analyzer_link_clicked_and_report_rendered": true,
+    "verified_Vision_url_navigated_and_rendered": true,
+    "Vision_selected_clip": "50.03",
+    "Vision_rendered_status": "0.00 秒 · 1/249 帧",
+    "manual_positioning_disclosed": true,
+    "automatic_player_sync_tested": false
+  },
+  "control_service": {
+    "pid": 9851,
+    "analysis_state": "stopped",
+    "loaded_hashes_match_current_modules": true,
+    "restart_in_this_iteration": false,
+    "reason": "only offline tooling changed; imported runtime modules are unchanged"
+  },
+  "remaining": {
+    "original_to_normalized_frame_map": false,
+    "automatic_three_dimensional_player_sync": false,
+    "independent_joint_plan_confirmed": false,
+    "true_three_dimensional_accuracy_validated": false,
+    "technical_scoring_calibrated": false,
+    "RTSP_TTS_field_acceptance": false
+  },
+  "all_items_complete": false,
+  "accuracy_validated": false,
+  "automatic_scoring_enabled": false,
+  "historical_fitting_rewritten": false
+}
