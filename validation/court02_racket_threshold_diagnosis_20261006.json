@@ -1,0 +1,175 @@
+{
+  "schema": "tennis.racket-threshold-diagnostic.v1",
+  "source_sha256": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0",
+  "source_image_size": [
+    2560,
+    1440
+  ],
+  "session_id": "court02_newroi_20261005T154607Z_41bc38",
+  "config_sha256": "a72cbbce3a02c54bf2f86c368f8f4cfd2a73af0142aa3d43e7df3c377e8fe69f",
+  "roi_sha256": "34756f6c874213e853f7ae37b0a552b19ce0052e2ed2fd5b5a4b710216f96850",
+  "detector_code_sha256": "c2410762fdc5f314da5f154576619d899d6272ec0720a7e18fb581c8acbe9964",
+  "model_manifest_sha256": "fd42a7ecac87b686aabb1f69b99ec45587e3c2c1a40cd966e9f1a315db835829",
+  "model_bundle_content_sha256": "52b9a3325d49191491372a7af52b28648f25c604cd89123f567a3586ed9f9341",
+  "model_manifest_operating_threshold": 0.524,
+  "tested_thresholds": [
+    0.524,
+    0.45,
+    0.35,
+    0.25,
+    0.15,
+    0.05
+  ],
+  "frames": [
+    {
+      "source_frame_id": 21,
+      "front_candidate": {
+        "box": [
+          1101,
+          498,
+          1294,
+          600
+        ],
+        "confidence": 0.4775390625,
+        "class_name": "tennis racket",
+        "area": 19591,
+        "aspect_ratio": 0.52
+      },
+      "front_candidate_image": "front_candidate_21.png",
+      "source_frame_png_sha256": "404623dda6a1743f99568e544ff0ecac1f3c5611fca95fcfe6f2679f0fd26467",
+      "default_threshold": 0.524,
+      "passes_default_threshold": false,
+      "passes_debug_threshold_025": true,
+      "primary_selection_at_debug_threshold": [
+        {
+          "box": [
+            1101,
+            498,
+            1294,
+            600
+          ],
+          "confidence": 0.4775390625,
+          "class_name": "tennis racket",
+          "area": 19591,
+          "aspect_ratio": 0.52
+        }
+      ],
+      "primary_selected_front": true,
+      "candidate_role_basis": "agent_visual_review_pending_user_confirmation",
+      "contact_truth_verified": false
+    },
+    {
+      "source_frame_id": 22,
+      "front_candidate": {
+        "box": [
+          1100,
+          512,
+          1316,
+          614
+        ],
+        "confidence": 0.27001953125,
+        "class_name": "tennis racket",
+        "area": 22032,
+        "aspect_ratio": 0.47
+      },
+      "front_candidate_image": "front_candidate_22.png",
+      "source_frame_png_sha256": "47f6c7cf51cf3fc39ea1e7c7221676b6f2421b13f9853ccf3d9052dc0875283d",
+      "default_threshold": 0.524,
+      "passes_default_threshold": false,
+      "passes_debug_threshold_025": true,
+      "primary_selection_at_debug_threshold": [
+        {
+          "box": [
+            1182,
+            61,
+            1316,
+            123
+          ],
+          "confidence": 0.91064453125,
+          "class_name": "tennis racket",
+          "area": 8263,
+          "aspect_ratio": 0.46
+        }
+      ],
+      "primary_selected_front": false,
+      "candidate_role_basis": "agent_visual_review_pending_user_confirmation",
+      "contact_truth_verified": false
+    },
+    {
+      "source_frame_id": 23,
+      "front_candidate": {
+        "box": [
+          1112,
+          513,
+          1347,
+          620
+        ],
+        "confidence": 0.304443359375,
+        "class_name": "tennis racket",
+        "area": 25031,
+        "aspect_ratio": 0.45
+      },
+      "front_candidate_image": "front_candidate_23.png",
+      "source_frame_png_sha256": "dcd9191a92dcc166d6a465ebec0f86a14f61977bab54161676e545a1c17390eb",
+      "default_threshold": 0.524,
+      "passes_default_threshold": false,
+      "passes_debug_threshold_025": true,
+      "primary_selection_at_debug_threshold": [
+        {
+          "box": [
+            1206,
+            34,
+            1334,
+            92
+          ],
+          "confidence": 0.5771484375,
+          "class_name": "tennis racket",
+          "area": 7300,
+          "aspect_ratio": 0.45
+        }
+      ],
+      "primary_selected_front": false,
+      "candidate_role_basis": "agent_visual_review_pending_user_confirmation",
+      "contact_truth_verified": false
+    }
+  ],
+  "raw_prediction_sha256": {
+    "20": "ad542e1f77d27d100201a46f9cf1db125f1e46f9b713cca25e3f8ad478c57149",
+    "21": "705bcfb50afb6554330ead105228eaa4889e8c31c098398449016667db507d0c",
+    "22": "8f2f4cfc0e06239a013d07dd5cc18536cb817c583fda232799b64ba6bb95073d",
+    "23": "7e26c82329c4263d6acdb9b753079e9c04b313f95ba459efd1d9774000fbec08",
+    "24": "e6f865e96ce902f6db124b0cd65232746897902c51f81eb89aec9c0d26ce7b1b"
+  },
+  "conclusions": [
+    "All three current-frame front racket candidates are below the configured 0.524 threshold.",
+    "A 0.45 threshold restores only frame21; 0.35 still misses frame22 and frame23 front candidates.",
+    "A 0.25 threshold retains all three front candidates, but current primary selection still chooses mirror rackets in frames22 and23.",
+    "The image-height mirror penalty is applied to front candidate centers as well, and selection occurs before front wrist association.",
+    "No global operating threshold, runtime selector or accepted observations were modified."
+  ],
+  "human_review_receipt": "human_review_received/receipt.json",
+  "operator_message_attestation": "User reports remaining frames reviewed; absent per-candidate JSON roles were not fabricated.",
+  "human_contact_intervals": [
+    [
+      20,
+      23
+    ],
+    [
+      109,
+      111
+    ],
+    [
+      190,
+      192
+    ]
+  ],
+  "accuracy_validated": false,
+  "runtime_modified": false,
+  "global_threshold_modified": false,
+  "report": "data/analysis_results/kinematic_validation/court02_racket_threshold_20261006_v1/index.html",
+  "diagnosis_sha256": "b986e9cc743443fed7d88d3a89b45f031916d970dfb76cc30230bd988381a882",
+  "submitted_review_sha256": "c33f47bdd34cbef9597ef28c8754dcf6d154d2f70eb1acc8eef1b2d80680550b",
+  "human_review_binding_validated": true,
+  "event_reviews_complete": true,
+  "model_event_snapshot_modified": false
+}
