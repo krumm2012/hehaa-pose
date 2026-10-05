@@ -18,6 +18,7 @@ from manual_annotation_contract import POLICY_VERSION as MANUAL_ANNOTATION_POLIC
 from evaluation_reference_policy import POLICY_VERSION as EVALUATION_REFERENCE_POLICY
 from evaluation_identity_contract import POLICY_VERSION as EVALUATION_IDENTITY_POLICY
 from report_identity_contract import POLICY_VERSION as REPORT_IDENTITY_POLICY
+from ground_reference import POLICY_VERSION as GROUND_REFERENCE_POLICY
 
 _FILES = ('swing_event_analyzer.py','swing_biomechanics.py','kinematic_sequence.py',
           'osd_evidence.py','realtime_swing_pipeline.py','swing_motion_features.py',
@@ -36,11 +37,14 @@ _FILES += ('observation_policy.py', 'dual_view_biomechanics.py', 'local_control_
 _FILES += ('swing_evaluation.py', 'evaluation_reference_policy.py')
 _FILES += ('evaluation_identity_contract.py',)
 _FILES += ('report_identity_contract.py',)
+_FILES += ('ground_reference.py', 'ground_calibration_store.py', 'ground_calibration.html')
+_FILES += ('dual_view_renderer.py',)
 _HASHES = {name:hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in _FILES}
 
 
 def analysis_build_info():
     return {'schema':'tennis.analysis-build.v1', 'code_sha256':dict(_HASHES),
+            'ground_reference_policy': GROUND_REFERENCE_POLICY,
             'hash_semantics':'source files at provenance module import; restart required after source edits',
             'metric_contract':METRIC_CONTRACT,'kinematic_policy':KINEMATIC_POLICY,
             'observation_policy':OBSERVATION_POLICY,'scoring_policy':CALIBRATION_POLICY_VERSION,

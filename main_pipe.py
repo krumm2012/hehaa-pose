@@ -458,6 +458,14 @@ class MultiprocessPipeline:
                 "pose": str(self.config.get("yolo_pose_model_path") or ""),
             },
         )
+        self.ground_reference = None
+        ground = self.config.get('ground_reference') or {}
+        if ground.get('calibration') is not None:
+            from ground_reference import GroundReference
+            from ground_calibration_store import source_binding
+            binding = source_binding(self.video_path, ground.get('context_stream_id') or self.roi_profile.stream_id)
+            self.ground_reference = GroundReference(ground['calibration'], binding, (self.width, self.height))
+            self.session_metadata['ground_calibration'] = self.ground_reference.calibration
         print(
             f"🗂️ [Session] {self.session_id}"
             + (
@@ -1330,6 +1338,9 @@ class MultiprocessPipeline:
                     from kinematic_sequence import serialize_kinematic_views
                     frame_record["kinematic_views"] = serialize_kinematic_views(pose_res)
                     frame_record["pose_observations"] = serialize_kinematic_views(pose_res, all_joints=True)
+                    frame_record['pose_observation_coordinate_space'] = 'original_source_pixels'
+                if self.ground_reference is not None:
+                    frame_record['ground_reference'] = self.ground_reference.observe(frame_record)
                 frame_record["detection_diagnostics"] = data.get("ball_diagnostics") or {}
                 frame_record["racket_detection_diagnostics"] = (
                     data.get("racket_diagnostics") or {}
@@ -1379,6 +1390,8 @@ class MultiprocessPipeline:
                     ball_trail=list(ball_trail),
                     racket_box=racket_box,
                     telemetry_card=telemetry_card,
+                    ground_reference=frame_record.get('ground_reference') if frame_record else None,
+                    ground_geometry=self.ground_reference.overlay_geometry if self.ground_reference else None,
                 )
             else:
                 # 背景半透明面板

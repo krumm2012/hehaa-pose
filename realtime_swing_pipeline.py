@@ -1600,6 +1600,8 @@ class RealtimeSwingOutputManager:
                 if metric_rows
                 else ""
             )
+            from ground_reference import ground_reference_html
+            biomechanics_content += ground_reference_html(event)
             deepseek_advice = event.get("deepseek_advice") or {}
             deepseek_status = str(deepseek_advice.get("status") or "")
             deepseek_content = ""

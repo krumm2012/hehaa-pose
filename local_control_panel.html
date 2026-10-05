@@ -1064,6 +1064,8 @@
 
           <div class="section">
             <div class="section-title"><h3>ROI 参数</h3><span>本次运行</span></div>
+            <button type="button" class="button" id="open-ground-calibration">地面四点标定 / 双视角参考</button>
+            <p class="help" style="font-size:12px;color:var(--muted)">独立保存地面标定。脚踝投影供核对，不作为真实着地点或技术评分。</p>
             <div class="fields">
               <div class="field">
                 <label for="crop_margin">裁剪边距 px</label>
@@ -1911,10 +1913,26 @@
       return escapeHtml(`${text} ${units[unit] ?? unit}`.trim());
     }
 
+    function renderGroundReference(event) {
+      const reference = event.ground_reference;
+      if (!reference || typeof reference !== 'object') return '';
+      const text = ['脚踝地面投影参考 · 着地未确认 · 不参与评分'];
+      if (reference.dimensions_measured !== true) text.push('尺寸待实测');
+      const reasonLabels = {camera_geometry_not_confirmed:'当前画面四角尚未核对',source_binding_mismatch:'输入来源不匹配',source_image_size_mismatch:'原图尺寸不匹配',observation_coordinate_space_unverified:'观测坐标系未确认',mixed_calibration_versions:'窗口含不同标定版本',duplicate_source_frames:'窗口含重复源帧'};
+      for (const key of Object.keys(reference.rejected_reasons || {})) if (reasonLabels[key]) text.push(reasonLabels[key]);
+      for (const [key, label] of [['left_ankle','左脚踝'],['right_ankle','右脚踝']]) {
+        const row = reference.feet?.[key] || {}, value = row.median_projection_difference_m;
+        text.push(typeof value === 'number' && Number.isFinite(value) ? `${label}双视角投影差 ${value.toFixed(3)} m（${row.paired_frames}对）` : `${label}缺少合格双视角配对`);
+        if (row.reasons?.corner_correspondence_not_confirmed) text.push('镜中四角实体对应尚未核对');
+      }
+      return `<p class="ground-reference" style="color:var(--muted);font-size:13px">${escapeHtml(text.join('；'))}</p>`;
+    }
+
     function renderEventMeasurements(event) {
       const rows = event.analysis_metrics || [];
-      if (!rows.length) return "";
-      return `<details class="event-measurements" style="margin:12px 0"><summary>全部分析指标 · 事件窗口统计 (${rows.length}项)</summary>
+      const ground = renderGroundReference(event);
+      if (!rows.length) return ground;
+      return ground + `<details class="event-measurements" style="margin:12px 0"><summary>全部分析指标 · 事件窗口统计 (${rows.length}项)</summary>
         <p style="font-size:12px;color:var(--muted)">来自当前事件 JSON；视频底部为逐帧数值，统计窗口不同。代理指标不直接代表真实力学或技术评分。</p>
         <div class="swing-telemetry-grid">${rows.map(m => `<div class="telemetry-cell">
           <span class="t-label">${escapeHtml(m.label || m.key)}</span><span class="t-val">${measurementValue(m.value, m.unit)}</span>
@@ -3091,6 +3109,11 @@
       $("save-roi-boundary-btn").addEventListener("click", saveRoiBoundary);
     }
     $("preview-button").addEventListener("click", () => refreshPreview(true));
+    $('open-ground-calibration').addEventListener('click', () => {
+      const payload = formPayload(), query = new URLSearchParams();
+      for (const key of ['stream_id','mapped_stream_id','video_id']) if (payload[key]) query.set(key, payload[key]);
+      window.open('/ground-calibration?' + query, '_blank', 'noopener');
+    });
     $("start-button").addEventListener("click", startAnalysis);
     $("stop-button").addEventListener("click", stopAnalysis);
     $("stream_id").addEventListener("change", updateStreamMeta);

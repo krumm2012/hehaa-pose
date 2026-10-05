@@ -227,6 +227,10 @@ def analyze_frame_records(
         evidence_features,
     )
     for event in events:
+        from ground_reference import event_ground_reference
+        ground = event_ground_reference(event, evidence_frames)
+        if ground is not None:
+            event['ground_reference'] = ground
         event['phase_timing'] = analyze_event_source_timing(
             event, evidence_frames, segmentation['frame_trace'])
         event["coach_calibration"] = calibrate_coaching_event(event)

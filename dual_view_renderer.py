@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import replace
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -443,6 +443,8 @@ class DualViewRenderer:
         racket_box: Optional[Tuple[float, float, float, float]] = None,
         mask_back_eyes: Optional[bool] = None,
         telemetry_card: Optional[Dict[str, Any]] = None,
+        ground_reference: Optional[Dict[str, Any]] = None,
+        ground_geometry: Optional[Dict[str, Any]] = None,
     ) -> np.ndarray:
         """
         全量渲染单帧双视角画面：
@@ -455,6 +457,26 @@ class DualViewRenderer:
         """
         f_img = dual_frame.front_frame.copy()
         b_img = dual_frame.back_frame.copy()
+
+        if (ground_reference and ground_geometry and not ground_reference.get('reasons')
+                and ground_reference.get('source_frame_id') == dual_frame.frame_id
+                and ground_reference.get('image_size') == list(dual_frame.original_frame.shape[1::-1])):
+            for view, image, info in [('front', f_img, dual_frame.front_info),
+                                      ('back', b_img, dual_frame.back_info)]:
+                geometry = ground_geometry.get(view)
+                if not geometry:
+                    continue
+                color = (90, 220, 255) if view == 'front' else (210, 220, 60)
+                overlay = image.copy()
+                for pair in geometry['lines']:
+                    a, b = [tuple(round(v) for v in info.map_from_original(*p)) for p in pair]
+                    cv2.line(overlay, a, b, color, 1, cv2.LINE_AA)
+                cv2.addWeighted(overlay, .35, image, .65, 0, image)
+                for i, p in enumerate(geometry['corners']):
+                    x, y = (round(v) for v in info.map_from_original(*p))
+                    cv2.circle(image, (x, y), 5, color, -1, cv2.LINE_AA)
+                    cv2.putText(image, 'ABCD'[i]+("'" if view == 'back' else ''),
+                                (x+7, y-7), cv2.FONT_HERSHEY_SIMPLEX, .55, color, 1, cv2.LINE_AA)
 
         # 绘制球轨迹 (正面视角局部映射)
         if ball_trail:
@@ -556,6 +578,10 @@ class DualViewRenderer:
 
         if self.show_hud:
             sbs = self.draw_hud(sbs, pose_result, event_label=event_label, coaching_text=coaching_text)
+            if ground_reference is not None:
+                from ground_reference import ground_reference_osd
+                cv2.putText(sbs, ground_reference_osd(ground_reference), (20, sbs.shape[0]-34),
+                            cv2.FONT_HERSHEY_SIMPLEX, .40, (180, 225, 220), 1, cv2.LINE_AA)
 
         if telemetry_card is not None:
             sbs = self.draw_impact_telemetry_card(sbs, telemetry_card)

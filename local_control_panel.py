@@ -462,6 +462,7 @@ class LocalPipelineController:
         self._logs = deque(maxlen=300)
         self._public_command: List[str] = []
         self._artifacts: Dict[str, str] = {}
+        self._ground_contexts = {}
 
     def _notify_change(self) -> None:
         with self._change_condition:
@@ -611,6 +612,57 @@ class LocalPipelineController:
             raise RuntimeError("ROI 预览图编码失败")
         return encoded.tobytes()
 
+    def _ground_binding(self, payload):
+        from ground_calibration_store import source_binding
+        stream = self._stream_from_payload(payload)
+        source = self._authenticated_source(stream, payload)
+        identity = stream.get('mapped_stream_id') or stream['stream_id']
+        return source, source_binding(source, identity)
+
+    def ground_info(self, payload):
+        from ground_calibration_store import GroundCalibrationStore
+        _, binding = self._ground_binding(payload)
+        with self._lock:
+            document = GroundCalibrationStore(self.workspace).load(binding)
+        return {'binding': binding, 'calibration': document}
+
+    def ground_preview(self, payload):
+        import base64
+        from ground_calibration_store import GroundCalibrationStore
+        source, binding = self._ground_binding(payload)
+        config = yaml.safe_load(self.config_path.read_text(encoding='utf-8')) or {}
+        frame = capture_calibration_frame(source, config, warmup_frames=3)
+        height, width = frame.shape[:2]
+        if width > 1600:
+            frame = cv2.resize(frame, (1600, round(height*1600/width)))
+        ok, encoded = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 88])
+        if not ok:
+            raise RuntimeError('地面标定预览编码失败')
+        nonce = secrets.token_hex(16)
+        with self._lock:
+            self._ground_contexts[nonce] = {'binding': binding, 'image_size': [width, height]}
+            while len(self._ground_contexts) > 20:
+                self._ground_contexts.pop(next(iter(self._ground_contexts)))
+            document = GroundCalibrationStore(self.workspace).load(binding)
+        return {'context_id': nonce, 'binding': binding, 'image_size': [width, height],
+                'image_base64': base64.b64encode(encoded).decode(), 'calibration': document}
+
+    def save_ground_calibration(self, payload):
+        from ground_calibration_store import GroundCalibrationStore
+        from ground_reference import normalize_calibration
+        document = normalize_calibration(payload.get('calibration'))
+        with self._lock:
+            context = self._ground_contexts.get(payload.get('context_id'))
+            if context is None:
+                raise ValueError('请先加载当前输入的地面标定原图')
+            _, binding = self._ground_binding(payload)
+            if document['binding'] != context['binding'] or binding != context['binding']:
+                raise ValueError('输入已改变，请重新加载标定原图')
+            if document['image_size'] != context['image_size']:
+                raise ValueError('标定原图尺寸不匹配')
+            result = GroundCalibrationStore(self.workspace).save(document, binding)
+        return {'calibration': result, 'message': '已保存独立标定版本；下次分析加载。着地与准确性仍待核验。'}
+
     def start(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         settings = ControlSettings.from_payload(payload)
         stream = self._stream_from_payload(payload)
@@ -649,6 +701,16 @@ class LocalPipelineController:
             if target_id:
                 roi["target_stream_id"] = target_id
                 config["target_stream_id"] = target_id
+            from ground_calibration_store import GroundCalibrationStore, source_binding
+            ground_stream_id = target_id or stream['stream_id']
+            store = GroundCalibrationStore(self.workspace)
+            calibration = None
+            if store.directory.exists():
+                binding = source_binding(source, ground_stream_id)
+                calibration = store.load(binding)
+            config['ground_reference'] = ({'calibration': calibration,
+                                         'context_stream_id': ground_stream_id}
+                                        if calibration is not None else {})
             visualization = roi.setdefault("visualization", {})
             visualization["show_roi_boundary"] = settings.show_roi_boundary
             visualization["show_roi_fill"] = settings.show_roi_fill
@@ -1601,6 +1663,10 @@ def create_handler(controller: LocalPipelineController):
                         self._handle_sse()
                 elif path == "/":
                     self._send_file(controller.frontend_path, "text/html", head_only=head_only)
+                elif path == "/ground-calibration":
+                    self._send_file(controller.workspace / 'ground_calibration.html', 'text/html', head_only=head_only)
+                elif path == '/api/ground/lane2-reference':
+                    self._send_file(controller.workspace / 'validation/lane2_ground_reference_20261005.json', 'application/json', head_only=head_only)
                 elif path in ("/mirror-calibration", "/mirror_calibration.html"):
                     calib_html = controller.workspace / "mirror_calibration.html"
                     if calib_html.exists():
@@ -1692,6 +1758,9 @@ def create_handler(controller: LocalPipelineController):
                 "/api/stop",
                 "/api/manual-review/evaluate",
                 "/api/roi/config",
+                "/api/ground/preview",
+                "/api/ground/info",
+                "/api/ground/save",
             }
             if path not in allowed_paths:
                 self.send_error(HTTPStatus.NOT_FOUND)
@@ -1730,6 +1799,12 @@ def create_handler(controller: LocalPipelineController):
                     self._send_json(controller.stop())
                 elif path == "/api/roi/config":
                     self._send_json(controller.save_roi_boundary(payload))
+                elif path == '/api/ground/preview':
+                    self._send_json(controller.ground_preview(payload))
+                elif path == '/api/ground/info':
+                    self._send_json(controller.ground_info(payload))
+                elif path == '/api/ground/save':
+                    self._send_json(controller.save_ground_calibration(payload))
                 elif path == "/api/manual-review/evaluate":
                     self._send_json(
                         controller.evaluate_manual_review(

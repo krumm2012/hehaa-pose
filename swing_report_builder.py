@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from manual_annotation_contract import annotation_contract_script
 from evaluation_reference_policy import comparison_metric_rows, reference_note
+from ground_reference import ground_reference_html
 import html
 import json
 import math
@@ -479,6 +480,7 @@ def build_report_payload(
                 "swing_score": raw_score,
                 "swing_grade": raw_grade,
                 "kinematic_sequence": seq,
+                "ground_reference": event.get('ground_reference'),
                 "racket_speed": rkt,
                 "brush_angle": brush,
                 "stance": stc,
@@ -888,6 +890,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
               <p class="tags">{html.escape(', '.join(tags + warnings) or 'no quality warnings')}</p>
               {radar_html}
               {kinematic_html}
+              {ground_reference_html(event)}
               {phase_time_html}
               {telemetry_html}
               {snapshot_html}
