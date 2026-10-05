@@ -1,35 +1,36 @@
 {
-  "schema": "tennis.project-inventory.v11",
-  "generated_at": "2026-10-05T07:38:57.756172+08:00",
-  "git_head": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2",
-  "scope": "126条已识别问题/验收记录（含交叉），58条工程已完成、原68条未闭环；另7项可选扩展及2项旧入口。原122条与历史结果保留。",
+  "schema": "tennis.project-inventory.v12",
+  "generated_at": "2026-10-05T08:32:43.990149+08:00",
+  "git_head": "b33956f37a66e180f9d489158f69b3912bf1f664",
+  "scope": "130条已识别问题/验收记录（含交叉），62条明确工程范围通过，原68条未闭环；另7可选扩展及2旧入口。新版编辑器实际浏览器交互未完成。",
   "all_items_complete": false,
   "accuracy_validated": false,
   "verification": {
-    "test_count": 629,
-    "passed": 629,
+    "test_count": 656,
+    "passed": 656,
     "failures": 0,
-    "log": "/tmp/tennis_evaluation_identity_full_20261005.log",
+    "log": "/tmp/tennis_report_identity_full_20261005.log",
     "failure_item": null,
-    "service_pid": 64359,
+    "service_pid": 70403,
     "control_analysis_state": "stopped",
     "loaded_source_hashes_match": true,
-    "remote_head": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2",
+    "remote_head": "b33956f37a66e180f9d489158f69b3912bf1f664",
     "independent_plan_frames": 22,
     "independent_plan_points": 176,
     "independent_filled_points": 0,
     "automatic_scoring_validated": false,
     "repository_code_changed_in_this_inventory": true,
-    "iteration_engineering_changes": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2",
-    "git_head": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2",
+    "iteration_engineering_changes": "b33956f37a66e180f9d489158f69b3912bf1f664",
+    "git_head": "b33956f37a66e180f9d489158f69b3912bf1f664",
     "remote_matches_head": true,
-    "loaded_analysis_source_count": 36,
+    "loaded_analysis_source_count": 37,
     "independent_submission_confirmed": false,
     "open_github_issue_count": 0,
-    "test_semantics": "629全量、28新增、76聚焦；三类真实记录受控CLI/工作流对比；未重新推理，不证明独立准确性。",
+    "test_semantics": "656全量、27新增、109聚焦；250帧/3事件同源工作流及报告、真实HTTP验证；未重新推理，未证明独立准确性；新版编辑器实际浏览器交互未完成。",
     "source_changes_in_this_inventory": true,
     "service_restarted_in_this_inventory": true,
-    "new_regressions": 28
+    "new_regressions": 27,
+    "new_editor_browser_verified": false
   },
   "items": [
     {
@@ -720,9 +721,9 @@
       "problem": "TTS 超时、队列等已有实现，但真实播放验收不完整",
       "requirement": "测首声延迟、连续播放、取消和真实扬声器表现",
       "status": "待真实扬声器验收",
-      "evidence_or_gap": "首声/连续播放/取消现场数据，代码测试不替代播放证据",
+      "evidence_or_gap": "本轮实际/api/status曾见Speech sidecar did not stop within deadline导致返回码1；随后会话正常返回0。取消/关闭与真实扬声器验收仍未闭环。",
       "state_group": "待独立或现场验证",
-      "remaining": "测首声延迟、连续播放、取消和真实扬声器表现",
+      "remaining": "复现并修复现场TTS关停超时，验证首声、连续播放、取消、进程回收及真实扬声器。",
       "display_name": "TTS 超时、队列等已有实现，但真实播放验收不完整"
     },
     {
@@ -862,10 +863,10 @@
       "priority": "P1",
       "problem": "审查剩余固定FPS与帧窗口消费者",
       "requirement": "审查剩余固定FPS与帧窗口消费者",
-      "status": "CLI评估与人工重算身份工程通过／其余消费者待审",
-      "evidence_or_gap": "N33–N36覆盖评估及人工重算；swing_report_builder的事件/Coach关联仍int转换，其他身份及FPS消费者继续审查。",
+      "status": "报告声明ID、编辑器链接与空锚点工程通过／其他来源与身份消费者待审查",
+      "evidence_or_gap": "N37–N40通过；实际反例仍可把capture-B的Coach附到capture-A同ID事件，明确source_binding_verified=false。输出、日志、汇总趋势等其他消费者未全审。",
       "state_group": "部分完成",
-      "remaining": "优先审查swing_report_builder的事件/Coach关联、前端事件链接及其余身份与固定FPS消费者；不将本轮局部迁移视为全部时间契约完成。",
+      "remaining": "先修显式跨会话关联矛盾；继续审查Coach与源内容绑定、输出/日志/汇总身份和其他固定FPS消费者，补新版编辑器实际浏览器交互验收。",
       "display_name": "审查剩余固定FPS与帧窗口消费者"
     },
     {
@@ -1445,6 +1446,50 @@
       "evidence_or_gap": "629项全量、28项新增、76项聚焦；同源250帧/3事件的3类受控案例比较通过。未重新推理，独立准确性未验证。",
       "remaining": "本项工程通过；其他身份消费者、独立标签、空间/曝光、评分及现场验收保留。",
       "engineering_source_commit": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2"
+    },
+    {
+      "id": "N37",
+      "priority": "P1",
+      "problem": "报告事件/Coach身份int转换及重复行静默覆盖",
+      "requirement": "报告输入和渲染入口统一校验唯一安全整数身份，再按原ID关联。",
+      "status": "工程回归、同源及服务验收通过；浏览器交互另待复核",
+      "evidence_or_gap": "12项真实报告回归；小数、布尔、字符串、缺失和重复ID拒绝；合法0与旧别名保留。跨会话来源绑定仍未验证。",
+      "state_group": "工程已完成",
+      "display_name": "报告事件/Coach身份int转换及重复行静默覆盖",
+      "remaining": "本项明确工程范围通过；完整T04来源绑定、其他消费者与浏览器/现场验收保留。"
+    },
+    {
+      "id": "N38",
+      "priority": "P1",
+      "problem": "报告缺失触球锚点从Coach旁路补回",
+      "requirement": "显式null和缺失模型锚点均不能从另一个Coach文档补回。",
+      "status": "工程回归与同源验收通过",
+      "evidence_or_gap": "真实build_report_payload反例修复；原件不回写，真实0触球保留。",
+      "state_group": "工程已完成",
+      "display_name": "报告缺失触球锚点从Coach旁路补回",
+      "remaining": "本项明确工程范围通过；完整T04来源绑定、其他消费者与浏览器/现场验收保留。"
+    },
+    {
+      "id": "N39",
+      "priority": "P1",
+      "problem": "页面错误来源链接、重复身份及恢复ID丢失",
+      "requirement": "两种编辑器先校验完整导入/恢复计划，保留空来源、标签身份与原草稿，拒绝不存在及重复链接。",
+      "status": "生成JS、同源及HTTP工程验收通过；真实浏览器交互未完成",
+      "evidence_or_gap": "15项生成页面边界测试；兼容合法旧event_id，显式null不继承；冲突与非法输入不改变已有卡片。自动浏览器导航超时已明确记录。",
+      "state_group": "工程已完成",
+      "display_name": "页面错误来源链接、重复身份及恢复ID丢失",
+      "remaining": "本项明确工程范围通过；完整T04来源绑定、其他消费者与浏览器/现场验收保留。"
+    },
+    {
+      "id": "N40",
+      "priority": "P1",
+      "problem": "空源帧时间轴标记/定位变为0，空峰值被旧模型补回",
+      "requirement": "缺触球/峰值不画标记，空定位不跳0，导入空峰值两种页面保持缺失，真实0有效。",
+      "status": "生成JS回归与同源验收通过",
+      "evidence_or_gap": "实际marker/seekFrame/import/export反例；源时间图与派生视频映射仍未独立验证。",
+      "state_group": "工程已完成",
+      "display_name": "空源帧时间轴标记/定位变为0，空峰值被旧模型补回",
+      "remaining": "本项明确工程范围通过；完整T04来源绑定、其他消费者与浏览器/现场验收保留。"
     }
   ],
   "optional_expansion": [
@@ -1487,7 +1532,7 @@
   "state_counts": {
     "部分完成": 36,
     "待独立或现场验证": 24,
-    "工程已完成": 58,
+    "工程已完成": 62,
     "待开发或继续优化": 8
   },
   "earlier_repairs": [
@@ -1517,25 +1562,26 @@
     }
   ],
   "evidence_refs": {
-    "engineering_acceptance": "validation/evaluation_identity_acceptance_20261005.json",
-    "test_log": "/tmp/tennis_evaluation_identity_full_20261005.log",
+    "engineering_acceptance": "validation/report_identity_acceptance_20261005.json",
+    "test_log": "/tmp/tennis_report_identity_full_20261005.log",
     "metric_contract": "docs/METRIC_CALCULATION_CONTRACT.md",
     "source_timing": "docs/EVENT_SOURCE_TIMING.md",
     "independent_labels": "data/analysis_results/kinematic_validation/independent_temporal_plan_v3_20261005/blank_labels.json",
     "pixel_run": "data/analysis_results/kinematic_validation/frontend_anchor_delivery_20261005/live/report.html",
     "motion_source_timing": "docs/MOTION_SOURCE_TIME.md",
-    "same_input_comparison": "data/analysis_results/kinematic_validation/evaluation_identity_delivery_20261005/comparison.json",
-    "previous_inventory": "data/analysis_results/kinematic_validation/reference_evaluation_delivery_20261005/inventory.json",
-    "evaluation_contract": "docs/EVALUATION_REFERENCE_CONTRACT.md"
+    "same_input_comparison": "data/analysis_results/kinematic_validation/report_identity_delivery_20261005/comparison.json",
+    "previous_inventory": "data/analysis_results/kinematic_validation/project_backlog_snapshot_20261005/inventory.json",
+    "evaluation_contract": "docs/EVALUATION_REFERENCE_CONTRACT.md",
+    "report_contract": "docs/EVALUATION_REFERENCE_CONTRACT.md"
   },
   "priority_order": [
-    "T04：剩余报告事件/Coach关联及前端身份、其他时间消费者；CLI与人工重算整数身份通过，其他原要求保留",
+    "T04：拒绝已复现的显式跨会话Coach关联矛盾；继续输出/日志/汇总身份与其他消费者，以及新版编辑器实际浏览器交互验收",
     "A01/B07/X07：球拍错框、漏检、跳变与来源资格",
     "E02/B01/B02/X01/X02：独立连续帧、完整挥拍及球拍/主球标签",
     "B03/C05/C08：坐标尺度、定位误差及位移阈值校准",
     "B08/B09/E03/H03：同步高速、曝光及标定三维参考",
     "D01–D09/X03/X12：独立教练标准、预定门槛与评分校准",
-    "G03–G07/G10/T01/T03：RTSP、长会话、显示与TTS现场验收"
+    "G07/G10与G03–G06/T01/T03：优先复现已观察到的TTS关停超时，再验收RTSP、长会话、显示与语音"
   ],
   "legacy_limitations": [
     {

@@ -582,8 +582,8 @@
     }
   ],
   "validation": {
-    "full_test_count": 629,
-    "log": "/tmp/tennis_evaluation_identity_full_20261005.log",
+    "full_test_count": 656,
+    "log": "/tmp/tennis_report_identity_full_20261005.log",
     "semantic_replay": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/semantic_replay.json",
     "audit": "data/analysis_results/kinematic_validation/pixel_audit_v2_20261005/audit.json",
     "pixel_run": "data/analysis_results/kinematic_validation/pixel_acceptance_v2_20261005/run.json",
@@ -601,7 +601,8 @@
     "frontend_anchors": "validation/frontend_anchor_acceptance_20261005.json",
     "reference_evaluation": "validation/reference_evaluation_acceptance_20261005.json",
     "evaluation_identity": "validation/evaluation_identity_acceptance_20261005.json",
-    "current_same_input_comparison": "data/analysis_results/kinematic_validation/evaluation_identity_delivery_20261005/comparison.json"
+    "current_same_input_comparison": "data/analysis_results/kinematic_validation/report_identity_delivery_20261005/comparison.json",
+    "report_identity": "validation/report_identity_acceptance_20261005.json"
   },
   "constraints": [
     "automatic validated rubrics remain empty",
@@ -643,14 +644,14 @@
     }
   ],
   "delivery": {
-    "engineering_commit": "909b1406fc1e4f2cc03b4cd049eba74704a29fa2",
+    "engineering_commit": "b33956f37a66e180f9d489158f69b3912bf1f664",
     "branch": "algo-2.0",
     "remote": "origin-paused",
     "engineering_push_verified": true,
     "control_server_restarted": true,
-    "control_server_pid": 64359,
+    "control_server_pid": 70403,
     "source_hashes_match": true,
-    "restart_semantics": "evaluation and manual-review source identity validation; analysis remains stopped"
+    "restart_semantics": "report identity and editor preflight contracts; analysis stopped at restart; automatic new editor browser navigation unavailable"
   },
   "additional_regressions": [
     {
@@ -870,6 +871,26 @@
       "id": "N36",
       "problem": "评估输出可覆盖原始输入且缺身份策略快照",
       "status": "工程回归与同源验收通过"
+    },
+    {
+      "id": "N37",
+      "problem": "报告事件/Coach身份int转换及重复行静默覆盖",
+      "status": "工程回归、同源及服务验收通过；浏览器交互另待复核"
+    },
+    {
+      "id": "N38",
+      "problem": "报告缺失触球锚点从Coach旁路补回",
+      "status": "工程回归与同源验收通过"
+    },
+    {
+      "id": "N39",
+      "problem": "页面错误来源链接、重复身份及恢复ID丢失",
+      "status": "生成JS、同源及HTTP工程验收通过；真实浏览器交互未完成"
+    },
+    {
+      "id": "N40",
+      "problem": "空源帧时间轴标记/定位变为0，空峰值被旧模型补回",
+      "status": "生成JS回归与同源验收通过"
     }
   ]
 }
