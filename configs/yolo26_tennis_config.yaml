@@ -23,6 +23,10 @@ unified_detection:
   coreml_detection_output: "var_1440"          # exp-004 Core ML 端到端输出
   preprocess_mode: "letterbox"                 # 与 Ultralytics 960 训练/验证预处理保持一致
   ball_confidence_threshold: 0.692             # exp-004 val: P>=0.90 工作点
+  racket_temporal_recovery_enabled: true
+  racket_temporal_recovery_min_confidence: 0.25
+  racket_temporal_recovery_max_frames: 3
+  racket_temporal_recovery_max_seconds: 0.16
   racket_confidence_threshold: 0.524           # exp-004 val: P>=0.90 工作点
   compute_units: "ANE"                         # 👈 锁定在 ANE (Neural Engine)
   ball_continuity_weight: 0.45                 # 多球候选重排序：上一帧轨迹连续性权重

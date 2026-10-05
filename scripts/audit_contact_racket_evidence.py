@@ -69,7 +69,9 @@ def frame_evidence(row, image_size):
             rackets.append({'box': box, 'model_confidence': candidate['confidence'],
                             'wrist_to_box_distance_image_diagonal_units': distances,
                             'ball_to_box_distance_px': box_point_distance(box, ball) if ball else None,
-                            'person_assignment_verified': False, 'racket_head_observed': False})
+                            'person_assignment_verified': False, 'racket_head_observed': False,
+                            'temporal_recovery': candidate.get('temporal_recovery'),
+                            'measurement_eligible': candidate.get('measurement_eligible')})
     return {'frame_id': fid, 'ball': ball, 'ball_reason': ball_reason,
             'fresh_rackets': rackets, 'rejected_rackets': dict(rejected),
             'joint_ball_racket_observation_available': bool(ball and rackets),

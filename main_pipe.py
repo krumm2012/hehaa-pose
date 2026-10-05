@@ -729,6 +729,10 @@ class MultiprocessPipeline:
                 print("⚡ [Inference] 直播新鲜度模式：Reader只保留最新待推理帧")
             self.inf_ready.set()
 
+            from racket_temporal_tracker import RacketTemporalTracker
+            recovery_config = self.config.get("unified_detection", {})
+            racket_tracker = (RacketTemporalTracker(recovery_config)
+                              if recovery_config.get("racket_temporal_recovery_enabled", False) else None)
             last_racket_box = None
             last_racket_entry = None
             racket_missing_count = 0
@@ -768,6 +772,7 @@ class MultiprocessPipeline:
                         frame_ptr,
                         (0, 0),
                         (self.width, self.height),
+                        retain_racket_candidates=racket_tracker is not None,
                     )
                     f2 = executor.submit(dual_pose_estimator.estimate_dual_pose, dual_frame)
 
@@ -800,6 +805,21 @@ class MultiprocessPipeline:
                     if dual_view_mgr is not None and hasattr(dual_view_mgr, "update_player_from_keypoints"):
                         dual_view_mgr.update_player_from_keypoints(pose_res.front_pose_orig or pose_res.fused_pose_orig)
                         current_player_bbox = dual_view_mgr.tracked_player_bbox
+
+                    if racket_tracker is not None:
+                        tracker_points = {name: {"x": kp.x, "y": kp.y, "confidence": kp.conf,
+                            "observed": kp.observed, "source_frame_id": kp.source_frame_id,
+                            "recovered_from_mirror": kp.recovered_from_mirror,
+                            "confidence_source": kp.confidence_source}
+                            for name, kp in (pose_res.front_pose_orig or {}).items()}
+                        selected, temporal_diagnostics = racket_tracker.select(
+                            raw_rackets or [], tracker_points, task['idx'], task.get('source_time'),
+                            (self.width, self.height))
+                        raw_rackets = [selected] if selected else []
+                        racket_diagnostics = dict(racket_diagnostics or {})
+                        racket_diagnostics['temporal_tracking'] = temporal_diagnostics
+                        racket_diagnostics['model_candidates'] = dict(
+                            (getattr(detector, 'last_parse_diagnostics', {}) or {}).get('racket') or {})
 
                     # 关联手腕位置并防误判后墙纯镜面虚影
                     wrists = [

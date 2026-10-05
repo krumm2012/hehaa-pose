@@ -66,6 +66,23 @@ class UnifiedDetectorROITests(unittest.TestCase):
         self.assertEqual(detector.last_parse_diagnostics["ball"]["class_candidates"], 2)
         self.assertEqual(detector.last_parse_diagnostics["ball"]["above_threshold_candidates"], 1)
 
+    def test_recovery_retains_weak_candidates_without_changing_strong_counts(self):
+        detector = YOLO26nUnifiedDetector.__new__(YOLO26nUnifiedDetector)
+        detector.original_width, detector.original_height = 1920, 1080
+        detector.input_width = detector.input_height = 960
+        detector.ball_class_id, detector.racket_class_id = 0, 1
+        detector.coreml_detection_output = "var_1440"
+        detector.ball_conf_threshold, detector.racket_conf_threshold = .692, .524
+        output = {"var_1440": np.array([[[300, 220, 380, 320, .27, 1],
+                                         [300, 220, 380, 320, .24, 1]]])}
+        detector.config = {}
+        self.assertEqual(detector._parse_predictions(output)[1], [])
+        detector.config = {"racket_temporal_recovery_enabled": True}
+        rackets = detector._parse_predictions(output)[1]
+        self.assertEqual(len(rackets), 1)
+        self.assertEqual(rackets[0]['confidence'], .27)
+        self.assertEqual(detector.last_parse_diagnostics['racket']['above_threshold_candidates'], 0)
+
     def test_letterbox_restores_original_coordinates(self):
         detector = YOLO26nUnifiedDetector.__new__(YOLO26nUnifiedDetector)
         detector.original_width = 1920

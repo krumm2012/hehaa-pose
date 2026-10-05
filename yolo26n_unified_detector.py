@@ -125,6 +125,7 @@ class YOLO26nUnifiedDetector:
         frame,
         coordinate_offset=(0, 0),
         full_frame_size=None,
+        retain_racket_candidates=False,
     ):
         """
         统一检测球和球拍
@@ -200,12 +201,20 @@ class YOLO26nUnifiedDetector:
             )
 
         # 在已有候选中选择真实运动球/主拍；不增加模型推理，只做轻量距离打分。
-        ball_detections = self._filter_static_balls(ball_detections, racket_detections)
+        strong_rackets = [r for r in racket_detections if r.get("confidence", 0) >= self.racket_conf_threshold]
+        ball_detections = self._filter_static_balls(ball_detections, strong_rackets)
         if isinstance(self.last_ball_diagnostics, dict):
             self.last_ball_diagnostics["model_candidates"] = dict(
                 (getattr(self, "last_parse_diagnostics", {}) or {}).get("ball") or {}
             )
-        racket_detections = self._select_primary_racket(racket_detections, ball_detections)
+        if not retain_racket_candidates:
+            racket_detections = self._select_primary_racket(strong_rackets, ball_detections)
+        else:
+            self.last_racket_diagnostics = {
+                **dict(self.last_parse_diagnostics.get("racket") or {}),
+                "selection_candidates": len(racket_detections),
+                "final_decision": "awaiting_front_temporal_association",
+            }
         
         return ball_detections, racket_detections, inference_time
 
@@ -273,6 +282,10 @@ class YOLO26nUnifiedDetector:
     
     def _parse_predictions(self, predictions):
         """解析模型输出"""
+        recovery_config = getattr(self, "config", {})
+        racket_candidate_threshold = self.racket_conf_threshold
+        if recovery_config.get("racket_temporal_recovery_enabled", False):
+            racket_candidate_threshold = min(racket_candidate_threshold, float(recovery_config.get("racket_temporal_recovery_min_confidence", .25)))
         ball_detections = []
         racket_detections = []
         diagnostics = {
@@ -289,6 +302,7 @@ class YOLO26nUnifiedDetector:
                 "above_threshold_candidates": 0,
                 "geometry_rejections": 0,
                 "threshold": float(self.racket_conf_threshold),
+                "candidate_retention_threshold": float(racket_candidate_threshold),
             },
         }
 
@@ -367,8 +381,8 @@ class YOLO26nUnifiedDetector:
                     })
                 
                 # 球拍检测
-                elif cls_id == self.racket_class_id and conf >= self.racket_conf_threshold:
-                    diagnostics["racket"]["above_threshold_candidates"] += 1
+                elif cls_id == self.racket_class_id and conf >= racket_candidate_threshold:
+                    diagnostics["racket"]["above_threshold_candidates"] += int(conf >= self.racket_conf_threshold)
                     # 计算边界框面积
                     box_width = box[2] - box[0]
                     box_height = box[3] - box[1]
@@ -447,8 +461,8 @@ class YOLO26nUnifiedDetector:
                     diagnostics["racket"]["max_confidence"] = max(
                         diagnostics["racket"]["max_confidence"], racket_conf
                     )
-                if racket_conf >= self.racket_conf_threshold:
-                    diagnostics["racket"]["above_threshold_candidates"] += 1
+                if racket_conf >= racket_candidate_threshold:
+                    diagnostics["racket"]["above_threshold_candidates"] += int(racket_conf >= self.racket_conf_threshold)
                     box_width = box[2] - box[0]
                     box_height = box[3] - box[1]
                     box_area = box_width * box_height
