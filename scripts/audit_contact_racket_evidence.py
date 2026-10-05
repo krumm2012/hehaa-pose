@@ -123,6 +123,8 @@ def main():
     parser = argparse.ArgumentParser()
     for key in ('manifest', 'journal', 'events', 'source', 'output'):
         parser.add_argument('--'+key, required=True)
+    parser.add_argument('--radius-seconds', type=float, default=.24,
+                        help='Source PTS radius around each model contact anchor (0 < radius <= 2)')
     args = parser.parse_args()
     paths = {k: Path(getattr(args, k)) for k in ('manifest', 'journal', 'events', 'source')}
     def sha(path):
@@ -147,7 +149,8 @@ def main():
     rows = [json.loads(s) for s in paths['journal'].read_text().splitlines() if s.strip()]
     if any(r.get('session_id') != manifest['session']['session_id'] for r in rows):
         raise ValueError('Cross-session frame record')
-    result = analyze(rows, document['events'], manifest['session']['ground_calibration']['image_size'])
+    result = analyze(rows, document['events'], manifest['session']['ground_calibration']['image_size'],
+                     args.radius_seconds)
     result.update(inputs_sha256=hashes, source_sha256=hashes['source'], session_id=manifest['session']['session_id'],
                   generator_sha256=sha(Path(__file__)))
     out = Path(args.output)

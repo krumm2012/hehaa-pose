@@ -1,0 +1,127 @@
+{
+  "schema": "tennis.newroi-iteration-acceptance.v1",
+  "session_id": "court02_newroi_20261005T154607Z_41bc38",
+  "source_sha256": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0",
+  "source_frame_count": 250,
+  "source_dimensions": [
+    2560,
+    1440
+  ],
+  "all_source_frames_processed": true,
+  "source_identity_verified_against_historical_video": true,
+  "no_stale_frame_drops": true,
+  "roi_config_sha256": "34756f6c874213e853f7ae37b0a552b19ce0052e2ed2fd5b5a4b710216f96850",
+  "roi_points": [
+    [
+      1121,
+      349
+    ],
+    [
+      1924,
+      373
+    ],
+    [
+      2253,
+      1204
+    ],
+    [
+      893,
+      1200
+    ]
+  ],
+  "mirror_polygon": [
+    [
+      0.4266,
+      0.0
+    ],
+    [
+      0.8145,
+      0.0021
+    ],
+    [
+      0.8,
+      0.3229
+    ],
+    [
+      0.4301,
+      0.2896
+    ]
+  ],
+  "capture_roi_matches_snapshot": true,
+  "ground_calibration_id": "203952012b12c5634c16cc782cf914afe9a33c0c81a6377e7bf87a62edf3ecf9",
+  "base_commit": "3941f72e2270094c4e6659e17fe52f91867cc784",
+  "comparison_semantics": "historical session versus current complete rerun, not an isolated ROI-only causal experiment",
+  "evidence_manifest_sha256": "493f06112ad465ab007231aa6d9f245bc0f7074d31d79fd5d40109ed887738d7",
+  "evidence_manifest": "data/analysis_results/control_panel/court02_newroi_20261005T154607Z_41bc38/court02_newroi_evidence_manifest.json",
+  "frame_journal_sha256": "2be292ae51f973c3fd502e39bc17e625aecad09ae00693bf328ced5df6d13b31",
+  "event_snapshot_sha256": "13506c6c99833c90e7321a2fbe02c805837decb0498091f0412e448231d78b04",
+  "agent_review_sha256": "cd60e9b5451df825afa1adbae485e49ed143bb95ef24538c99fe3f492a2e16d3",
+  "contact_review": {
+    "status": "agent_review_complete_human_confirmation_pending",
+    "window_radius_seconds": 0.48,
+    "fresh_racket_boxes_reviewed": 45,
+    "front_role_candidates": 39,
+    "mirror_role_candidates": 6,
+    "human_confirmed": false,
+    "contact_truth_verified": false,
+    "candidate_intervals": [
+      {
+        "event_id": 1,
+        "frames": [
+          21,
+          23
+        ],
+        "pts_seconds": [
+          0.819609375,
+          0.89453125
+        ]
+      },
+      {
+        "event_id": 2,
+        "frames": [
+          109,
+          111
+        ],
+        "pts_seconds": [
+          4.33859375,
+          4.411015625
+        ]
+      },
+      {
+        "event_id": 3,
+        "frames": [
+          190,
+          192
+        ],
+        "pts_seconds": [
+          7.57890625,
+          7.66015625
+        ]
+      }
+    ]
+  },
+  "independent_scale": {
+    "status": "blank_template_prepared_physical_measurements_pending",
+    "measured_points": 0
+  },
+  "independent_joints": {
+    "status": "blind_board_prepared_human_annotations_pending",
+    "frames": 12,
+    "views": 2,
+    "joints_per_view": 4,
+    "requested_items": 96,
+    "filled_items": 0,
+    "source_pixels_verified_against_sequential_decode": true
+  },
+  "tests": {
+    "command": "python3 -m unittest test_contact_racket_evidence test_racket_candidate_selector -q",
+    "passed": 10,
+    "generated_javascript_syntax": "passed",
+    "browser_navigation_and_blank_measurement_submission_rejection": "passed",
+    "browser_console_errors": 0
+  },
+  "accuracy_validated": false,
+  "coaching_eligible": false,
+  "historical_inputs_modified": false,
+  "report": "data/analysis_results/kinematic_validation/court02_newroi_iteration_20261005_v1/index.html"
+}

@@ -57,5 +57,20 @@ class ContactRacketEvidenceTests(unittest.TestCase):
         e = {'event_id': 1, 'start_frame': 3, 'end_frame': 3, 'contact_frame': 3}
         with self.assertRaises(ValueError): analyze([r], [e, e], [100, 100])
 
+    def test_expanded_window_includes_alternate_anchor_without_confirming_contact(self):
+        rows = [row(20, .8), row(21, .84), row(26, 1.1)]
+        event = {'event_id': 1, 'start_frame': 20, 'end_frame': 26, 'contact_frame': 20}
+        narrow = analyze(rows, [event], [100, 100], .24)['events'][0]
+        wide = analyze(rows, [event], [100, 100], .48)['events'][0]
+        self.assertNotIn(26, [f['frame_id'] for f in narrow['frames']])
+        self.assertIn(26, [f['frame_id'] for f in wide['frames']])
+        self.assertEqual(wide['model_contact_frame'], 20)
+        self.assertFalse(wide['contact_verified'])
+
+    def test_invalid_window_radius_rejected(self):
+        for radius in [0, -1, 2.01, float('inf'), float('nan')]:
+            with self.assertRaises(ValueError):
+                analyze([], [], [100, 100], radius)
+
 
 if __name__ == '__main__': unittest.main()
