@@ -221,6 +221,44 @@ class GroundReferenceTests(unittest.TestCase):
 
 
 class GroundControlTests(unittest.TestCase):
+    def test_actual_export_button_downloads_json_without_shadowing_dom_document(self):
+        page=Path('ground_calibration.html').read_text()
+        function=page[page.index('function exportDocument('):page.index('function inputChanged(')]
+        handler=next(line for line in page.splitlines() if line.startswith("$('export').onclick="))
+        doc=calibration()
+        setup=f"const source={json.dumps(doc)};"+'''
+const context={image_size:source.image_size,binding:source.binding}, origin={kind:'manual_points'};
+const draft={front:source.views.front.points,back:source.views.back.points};
+const elements={width:{value:'3.3'},length:{value:'4.8'},measured:{checked:true},
+ geometry:{checked:true},paired:{checked:false},checks:{value:'[]'},export:{},result:{textContent:''}};
+const $=id=>elements[id];
+let blob=null,anchor=null,clicks=0,revoked=[];
+const document={createElement(tag){if(tag!=='a')throw Error('wrong download element');
+ anchor={click(){clicks++}};return anchor;}};
+const URL={createObjectURL(value){blob=value;return 'blob:ground-export';},revokeObjectURL(value){revoked.push(value)}};
+const setTimeout=callback=>callback();
+'''
+        assertions='''
+(async()=>{
+ for(const [geometry,paired] of [[true,false],[false,true],[true,true]]){
+  elements.geometry.checked=geometry;elements.paired.checked=paired;
+  const before=clicks;elements.export.onclick();
+  if(clicks!==before+1)throw Error(elements.result.textContent||'download was not triggered');
+  const value=JSON.parse(await blob.text());
+  if(anchor.download!=='analyzer_ground_calibration.json'||anchor.href!=='blob:ground-export')throw Error('wrong download');
+  if(blob.type!=='application/json'||value.width_m!==3.3||value.length_m!==4.8)throw Error('dimensions or format lost');
+  if(value.camera_geometry_confirmed!==geometry||value.correspondence_confirmed!==paired)throw Error('confirmation flags lost');
+  if(JSON.stringify(value.views.front.points)!==JSON.stringify(draft.front)||JSON.stringify(value.views.back.points)!==JSON.stringify(draft.back))throw Error('corners lost');
+  if(JSON.stringify(value.binding)!==JSON.stringify(context.binding))throw Error('source binding lost');
+ }
+ if(revoked.length!==3)throw Error('download URLs not released');
+ elements.width.value='';const before=clicks;elements.export.onclick();
+ if(clicks!==before||!elements.result.textContent.includes('正数宽长'))throw Error('invalid draft downloaded');
+})().catch(e=>{console.error(e);process.exitCode=1});
+'''
+        result=subprocess.run(['node','-e',setup+function+handler+assertions],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+
     def test_actual_http_token_rejection_and_bad_save_keep_revision(self):
         import threading
         import urllib.request

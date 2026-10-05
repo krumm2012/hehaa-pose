@@ -1,0 +1,16 @@
+{
+  "schema": "tennis.ground-export-fix.v1",
+  "cause": "Local calibration variable shadowed browser DOM document in export onclick.",
+  "full_tests": 678,
+  "targeted_tests": 22,
+  "regression_reproduced_original_error": true,
+  "actual_browser_download_verified": true,
+  "download_path": "/Users/krum5539/Downloads/analyzer_ground_calibration.json",
+  "exported_fields_match_saved_calibration": true,
+  "validation_passed": true,
+  "user_draft_preserved": true,
+  "accuracy_validated": false,
+  "service_pid": 84758,
+  "loaded_source_hashes_match": true,
+  "analysis_state": "stopped"
+}

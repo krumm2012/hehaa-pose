@@ -1,5 +1,12 @@
 # Swing Event Recognition Change Log
 
+## 2026-10-05 — 修复地面标定 JSON 导出
+
+- 修复导出按钮的局部 `document` 变量覆盖浏览器 DOM 对象，导致 `document.createElement is not a function`；标定数据变量改名为 `calibration`。
+- 新增执行实际导出回调的回归，校验下载文件名、JSON 格式、正背四角、来源绑定、尺寸、确认状态、URL 释放及无效草稿拒绝。
+- 先保存用户当前选点和确认状态再刷新；实际浏览器下载的四角、尺寸、来源绑定与确认状态均与保存值一致。22 项地面回归、678 项全量通过。
+- 验收见 [导出修复记录](validation/ground_export_fix_20261005.json)。
+
 ## 2026-10-05 — 独立地面标定与双视角投影参考
 
 - 新增独立四角编辑器、当前输入来源绑定和不可变标定版本；不写入 ROI 配置。
