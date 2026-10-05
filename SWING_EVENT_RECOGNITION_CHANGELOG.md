@@ -1,5 +1,14 @@
 # Swing Event Recognition Change Log
 
+## 2026-10-05 — 源时间、观测资格与复核报告迭代
+
+- 汇总双视角观测来源、动力链断段与峰宽、未标定球拍速度、指标公式和评分限制。
+- 运动、身体统计、分类与触球候选改用合格源时间，人工锚点保持指定源帧。
+- 评估、报告及编辑器导入先校验身份；合法零帧保留，显式空值不借旧值。
+- 模型辅助复核与参考匹配不批准独立准确性；自动技术规则集合保持为空。
+- 最新工程轮 656 项全量回归通过；独立标签、跨会话来源绑定、最新编辑器实际交互及 RTSP/TTS 现场验收仍有缺口。
+- 完整提交、验收和剩余内容见 [最近修改汇总](docs/RECENT_CHANGES_20261005.md)；逐轮记录见 [优化验收历史](docs/OPTIMIZATION_ACCEPTANCE_20261004.md)。
+
 ## 2026-08-02 — Realtime overlap suppression and overlay re-recognition
 
 - Aligned realtime peak duplicate suppression with the segmenter's 1.6-second minimum peak distance.
