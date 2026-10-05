@@ -144,6 +144,8 @@ def display_value(metric, field):
 
 
 def sequence_osd_label(seq):
+    if (seq.get('cross_validation') or {}).get('reason') == 'cadence_sensitive_peak':
+        return '短时间间隔敏感·暂停判定'
     cross=(seq.get('cross_validation') or {}).get('status')
     if cross=='disagree': return '双视角冲突·不判定'
     if cross in (None,'unavailable','legacy_single_view'): return '二维参考·证据不足·未验证'

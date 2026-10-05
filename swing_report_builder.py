@@ -106,6 +106,12 @@ def _build_kinematic_sequence_html(sequence: Dict) -> str:
     if not qualified and cross_status in labels:
         status = labels[cross_status]
     view_rows = []
+    audit = details.get('cadence_audit') or {}
+    if audit:
+        frames = audit.get('short_interval_source_frames', [])
+        view_rows.append('<div>时间间隔审计：短间隔 ' + html.escape(str(len(frames)))
+                         + ' 个；源帧 ' + html.escape(str(frames))
+                         + '。保留原始 PTS；排除短间隔仅用于峰值敏感性检查，非曝光校准。</div>')
     for view, evidence in (details.get("views") or {}).items():
         label = {"front": "正面", "back": "背面"}.get(view, str(view))
         interval = number(evidence.get("latency_hip_to_shoulder_ms"))
@@ -119,11 +125,23 @@ def _build_kinematic_sequence_html(sequence: Dict) -> str:
             reasons = {'boundary_peak':'峰值位于窗口边界', 'ambiguous_peak':'峰值过宽或多峰',
                        'discontinuous_evidence':'有效片段不连续', 'low_coverage':'有效覆盖不足',
                        'insufficient_samples':'有效样本不足', 'insufficient_motion':'未形成明确运动峰值',
-                       'usable':'峰值可用'}
+                       'usable':'峰值可用', 'cadence_sensitive_peak':'峰值对短时间间隔敏感，暂停判定'}
             parts = [f"{name}：{reasons.get((evidence.get('segments') or {}).get(key,{}).get('status'),'证据不足')}"
                      for key,name in (("hip","髋"),("shoulder","肩"))]
             text = f"{label}：" + "；".join(parts)
         view_rows.append(f"<div>{html.escape(text)}</div>")
+        rejection_labels = {'joint_missing':'关节点缺失', 'joint_source_frame_mismatch':'关节点来源帧不匹配',
+                            'joint_not_raw_observation':'非原始观测', 'joint_score_unavailable':'关节点分数不可用',
+                            'invalid_joint_numeric':'关节点数值无效', 'low_joint_score':'关节点分数不足',
+                            'projected_line_too_short':'肩髋像面线过短'}
+        for key, name in (('hip', '髋'), ('shoulder', '肩')):
+            segment = (evidence.get('segments') or {}).get(key, {})
+            if 'observation_total_frames' in segment:
+                items = [f"{rejection_labels.get(reason, reason)} {count} 帧"
+                         for reason, count in segment.get('observation_rejections', {}).items()]
+                detail = (f"{label}{name}原始观测：{segment.get('observation_valid_frames', 0)} / "
+                          f"{segment['observation_total_frames']} 帧；" + ('；'.join(items) or '无观测拒绝'))
+                view_rows.append('<div>' + html.escape(detail) + '</div>')
     evidence_quality = number(details.get("evidence_confidence"))
     if evidence_quality is not None:
         view_rows.append(f"<div>交叉验证证据质量：{evidence_quality:.2f}/1（启发式，非准确率）</div>")
@@ -137,6 +155,7 @@ def _build_kinematic_sequence_html(sequence: Dict) -> str:
     if details.get("time_basis") in time_labels:
         view_rows.append(f"<div>时间来源：{time_labels[details['time_basis']]}</div>")
     time_reasons = {
+        "cadence_sensitive_peak": "排除异常短间隔后峰值不稳定，暂停综合时序判定；原始候选保留供复核。",
         "source_media_time_unavailable": "无法获取源媒体时间，暂停峰值间隔估计。",
         "duplicate_or_discontinuous_source_time": "源时间重复或倒退，暂停峰值间隔估计。",
         "mixed_source_time_bases": "时间来源混用，暂停峰值间隔估计。",
@@ -166,6 +185,7 @@ def _build_kinematic_sequence_html(sequence: Dict) -> str:
         view_rows.append("<div>峰值间隔接近时间分辨率，难以分辨先后。</div>")
     if details.get("racket_peak_frame") is None and hip_dt is not None:
         racket_reason = {'low_coverage':'有效覆盖不足', 'boundary_peak':'峰值位于窗口边界',
+                         'cadence_sensitive_peak':'峰值对短时间间隔敏感',
                          'ambiguous_peak':'峰值过宽或多峰', 'discontinuous_evidence':'有效片段不连续',
                          'insufficient_samples':'有效样本不足', 'insufficient_motion':'未形成明确运动峰值'}.get(
                              (details.get('racket_evidence') or {}).get('status'),'证据不足')

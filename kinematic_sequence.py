@@ -6,8 +6,9 @@ from typing import Dict, List, Optional, Tuple
 
 from practice_scoring import number
 from observation_policy import finite_number
+from collections import Counter
 
-POLICY_VERSION = "kinematic_cross_view_2d_v7_finite_observations"
+POLICY_VERSION = "kinematic_cross_view_2d_v8_cadence_stability"
 JOINTS = ("left_hip", "right_hip", "left_shoulder", "right_shoulder")
 MIN_CONFIDENCE = .5
 MIN_LINE_SPAN_PX = 12.0
@@ -117,7 +118,41 @@ def _continuous_peak(samples: List[Dict], minimum_speed: float) -> Dict:
     }
 
 
-def _view_evidence(rows: List[Dict], times: List[float], view: str, cadence: float) -> Dict:
+def _angle_rejection(pose, segment, frame_id):
+    for side in ('left', 'right'):
+        point = pose.get(f'{side}_{segment}')
+        if not isinstance(point, dict):
+            return 'joint_missing'
+        if not _source_frame_matches(point, frame_id):
+            return 'joint_source_frame_mismatch'
+        if point.get('observed') is False or point.get('recovered_from_mirror'):
+            return 'joint_not_raw_observation'
+        if point.get('confidence_source') == 'unavailable':
+            return 'joint_score_unavailable'
+        values = [finite_number(point.get(k)) for k in ('x', 'y', 'confidence')]
+        if None in values or not 0 <= values[2] <= 1:
+            return 'invalid_joint_numeric'
+        if values[2] < MIN_CONFIDENCE:
+            return 'low_joint_score'
+    return 'projected_line_too_short'
+
+
+def _audit_peak(evidence, alternative, cadence):
+    """Sensitivity only: the alternative never substitutes for an observed peak."""
+    raw, check = evidence.get('peak'), alternative.get('peak')
+    stable = (raw is not None and check is not None
+              and abs(raw['time'] - check['time']) <= cadence + 1e-9
+              and abs(raw['speed'] - check['speed']) <= .25 * max(raw['speed'], 1e-9))
+    evidence['cadence_sensitivity'] = {
+        'method': 'exclude_intervals_below_quarter_window_median',
+        'accuracy_validated': False, 'stable': stable if raw else None,
+        'alternative_status': alternative['status'], 'alternative_peak': check,
+        'time_tolerance_seconds': cadence, 'relative_speed_tolerance': .25}
+    if raw is not None and not stable:
+        evidence.update(candidate_peak=raw, peak=None, status='cadence_sensitive_peak')
+
+
+def _view_evidence(rows: List[Dict], times: List[float], view: str, cadence: float, minimum_dt=0.) -> Dict:
     """Differentiate each raw view independently, resetting across invalid samples."""
     result = {"status": "unavailable", "segments": {}, "quality": 0.0}
     for segment in ("hip", "shoulder"):
@@ -125,19 +160,26 @@ def _view_evidence(rows: List[Dict], times: List[float], view: str, cadence: flo
         samples = []
         confidences = []
         segment_id = 0
+        rejected = Counter()
+        rejected_frames = []
+        valid_frames = 0
         for row, timestamp in zip(rows, times):
             pose = ((row.get("kinematic_views") or {}).get(view) or {})
             observation = _angle(pose, segment, int(row["frame_id"]))
             if observation is None:
+                reason = _angle_rejection(pose, segment, int(row['frame_id']))
+                rejected[reason] += 1
+                rejected_frames.append({'source_frame_id': row['frame_id'], 'reason': reason})
                 previous = None
                 continue
+            valid_frames += 1
             if previous is None:
                 segment_id += 1
             angle, confidence = observation
             if previous is not None:
                 old_angle, old_time, old_confidence = previous
                 dt = timestamp - old_time
-                if 0 < dt <= 3 * cadence:
+                if minimum_dt < dt <= 3 * cadence:
                     difference = abs((angle - old_angle + 180) % 360 - 180)
                     samples.append({"frame_id": int(row["frame_id"]), "time": timestamp,
                                     "speed": difference / dt, "segment_id": segment_id})
@@ -148,7 +190,10 @@ def _view_evidence(rows: List[Dict], times: List[float], view: str, cadence: flo
         evidence = _peak(samples, minimum_speed=12)
         coverage = len(samples) / max(1, len(rows)-1)
         evidence.update(coverage=round(coverage, 4),
-                        keypoint_quality=round(mean(confidences), 4) if confidences else 0)
+                        keypoint_quality=round(mean(confidences), 4) if confidences else 0,
+                        observation_valid_frames=valid_frames,
+                        observation_total_frames=len(rows), observation_rejections=dict(rejected),
+                        observation_rejected_frames=rejected_frames)
         evidence["signal"] = [
             {"frame_id": sample["frame_id"], "time": sample["time"],
              "speed": round(speed, 4)}
@@ -183,7 +228,7 @@ def _signal_agreement(front: Dict, back: Dict) -> Optional[float]:
     return max(-1.0, min(1.0, numerator / denominator)) if denominator > 1e-9 else None
 
 
-def _racket_evidence(rows: List[Dict], times: List[float], cadence: float) -> Dict:
+def _racket_evidence(rows: List[Dict], times: List[float], cadence: float, minimum_dt=0.) -> Dict:
     """Measure detection-box centres; changing box size alone has no velocity."""
     previous = None
     samples = []
@@ -206,7 +251,7 @@ def _racket_evidence(rows: List[Dict], times: List[float], cadence: float) -> Di
         if previous is not None:
             old_centre, old_time = previous
             dt = timestamp - old_time
-            if 0 < dt <= 3 * cadence:
+            if minimum_dt < dt <= 3 * cadence:
                 speed = math.dist(centre, old_centre) / dt
                 if not math.isfinite(speed):
                     previous = None
@@ -298,10 +343,32 @@ def analyze_kinematic_sequence(frames: List[Dict], contact_frame: int, fps: floa
         result["cross_validation"]["reason"] = "window_too_short"
         return result
     cadence = median(b-a for a, b in zip(times, times[1:]))
+    short_frames = [row['frame_id'] for row, a, b in zip(rows[1:], times, times[1:])
+                    if b-a <= .25 * cadence]
+    result['cadence_audit'] = {
+        'policy': 'window_median_quarter_interval_sensitivity_v1',
+        'short_interval_source_frames': short_frames,
+        'min_interval_ms': round(min(b-a for a,b in zip(times,times[1:]))*1000, 3),
+        'median_interval_ms': round(cadence*1000, 3),
+        'short_interval_threshold_ms': round(.25*cadence*1000, 3),
+        'accuracy_validated': False, 'original_timestamps_preserved': True,
+        'meaning': 'heuristic_sensitivity_check_not_invalid_pts_or_exposure_proof'}
     tolerance = max(.04, 2 * cadence)
     result.update(time_basis=time_basis, sampling_interval_ms=round(cadence*1000, 2),
                   peak_time_uncertainty_ms=round(cadence*1000, 2))
     result["views"] = {view: _view_evidence(rows, times, view, cadence) for view in ("front", "back")}
+    if short_frames:
+        for view, evidence in result['views'].items():
+            alternative = _view_evidence(rows, times, view, cadence, .25*cadence)
+            for segment in ('hip', 'shoulder'):
+                _audit_peak(evidence['segments'][segment], alternative['segments'][segment], cadence)
+            if any(s['status'] == 'cadence_sensitive_peak' for s in evidence['segments'].values()):
+                evidence.update(status='unavailable', quality=0.)
+                evidence['candidate_latency_hip_to_shoulder_ms'] = evidence.pop('latency_hip_to_shoulder_ms', None)
+    racket = _racket_evidence(rows, times, cadence)
+    if short_frames:
+        _audit_peak(racket, _racket_evidence(rows, times, cadence, .25*cadence), cadence)
+    result['racket_evidence'] = racket
     usable = [view for view, evidence in result["views"].items() if evidence["status"] == "usable"]
     result["source_views"] = usable
     result["cross_validation"]["tolerance_ms"] = round(tolerance * 1000, 2)
@@ -309,7 +376,9 @@ def analyze_kinematic_sequence(frames: List[Dict], contact_frame: int, fps: floa
         result["cross_validation"].update(status="unavailable", reason="sampling_too_sparse")
         return result
     if not usable:
-        result["cross_validation"]["reason"] = "insufficient_view_evidence"
+        sensitive = any(s['status'] == 'cadence_sensitive_peak'
+                        for v in result['views'].values() for s in v['segments'].values())
+        result["cross_validation"]["reason"] = "cadence_sensitive_peak" if sensitive else "insufficient_view_evidence"
         return result
     if len(usable) == 2:
         deltas = {
@@ -368,8 +437,6 @@ def analyze_kinematic_sequence(frames: List[Dict], contact_frame: int, fps: floa
     # unavailable. Racket evidence is required only for a full-chain order.
     if not result['pair_timing']['hip_to_shoulder']['resolved']:
         result["sequence_quality"] = "UNRESOLVED_AT_FRAME_RATE"
-    racket = _racket_evidence(rows, times, cadence)
-    result["racket_evidence"] = racket
     if racket["peak"] is not None:
         racket_time = racket["peak"]["time"]
         result["racket_peak_frame"] = racket["peak"]["frame_id"]

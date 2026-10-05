@@ -1,0 +1,147 @@
+{
+  "schema": "tennis.cadence-ground-iteration-acceptance.v1",
+  "policy_version": "kinematic_cross_view_2d_v8_cadence_stability",
+  "analysis_build": {
+    "schema": "tennis.analysis-build.v1",
+    "code_sha256": {
+      "swing_event_analyzer.py": "8797355d5c372ffae4bce8bbb9275d484cbb474b2d8f3acfb2b52868cb6fca22",
+      "swing_biomechanics.py": "c249c42f5494c29c037b920cc89ce5274aab4caca32429a3098e7da391625de4",
+      "kinematic_sequence.py": "9e86ef5dc0ce7c3112a18dd8104ba1f75f747139c09dce9324071184c415d1e7",
+      "osd_evidence.py": "1ed68f0634df2f922b621ed768b7b9c36a69ed651766cdd914a54050041257bd",
+      "realtime_swing_pipeline.py": "e4f587edef58813243c25b8a889be3077d7318178573df02930fe60954ef859c",
+      "swing_motion_features.py": "9e0b5cc84e9d773a8dcd5be959915ea84b2b2820fd82ff9dc0d96b358081f2cf",
+      "analysis_metric_delivery.py": "1b3fd4c897d1224d8e20d5e16f2811bd398044f16a140d7bb28b8a5b1f2ca161",
+      "metric_contracts.py": "cbeda437d1a767626b85a5edc99156bd04eea548019eb851397e01ffce6d0e00",
+      "ball_observation_contract.py": "eab2c82b7c303d879ce98003a1f742cdf33d639425862733f71a3b3127881525",
+      "frame_processor.py": "f55f126d1aeb3960522991d5aef0b2cc785826a5d710e6a64e2636931980351d",
+      "main_pipe.py": "428cf5b92eecf79f27de331e8d7186853ad9f7ee593bb4fa23377ce6e516afbf",
+      "yolo26n_unified_detector.py": "c2410762fdc5f314da5f154576619d899d6272ec0720a7e18fb581c8acbe9964",
+      "event_source_timing.py": "7cd841a3826e2082623c1aa7e72a3d912e0f5efab8b2ca63bb40cfa1a3359221",
+      "local_realtime_coach.py": "35167b842d68f5d8d36d4ddc8ffc5fdfe7699cb0001422589aded53501ea8024",
+      "swing_coach_data_collector.py": "90dc9e7810a51aadbfc5bacde36d570e6de00c7b1cb3478b4c1e2e26fa92e396",
+      "coach_evidence_policy.py": "a4875c661f5f57384061b273fcf9411006b590097664a078d5ab644c0cf35e99",
+      "deepseek_evidence_view.py": "df4bb2452efcf1ba6ce0d654e950d1377c9ef0c81ad523c78a8cd4a82eb3bb2f",
+      "coach_rule_contract.py": "92401a367bf98f20927ee4a022e3214de960381f7975a233ed3688f47f251ecc",
+      "swing_report_builder.py": "7ccc74b658eb1040180d34c9a7d5454680470518b962129cc22c026a949ff58d",
+      "analysis_provenance.py": "b6f864aff19d36379cc0fae04896bb51c5aaafe861caa500723a1d5fe7c7638f",
+      "deepseek_realtime_coach.py": "4f5467ac7a48ef4ca8db16574a5e150addd2355b5980da5680fc62a7537cfba8",
+      "manual_review_workflow.py": "9b64e97d99caf097c5985950d75150a04c79094a42d677ae91b34ddd5e4a75eb",
+      "swing_event_segmenter.py": "70a62a2542f342ef0b82036ad578979a6abfd2eb3d7c71fd2cf9404a38b58e40",
+      "swing_event_classifier.py": "b8a5fdfc89608a641be2286157a2c0c5ff0baa40abd3864d8c67c0a949e423f6",
+      "motion_time_contract.py": "ff92aa0bb81b4b6a97c680ca044c1d5b7c625686a2f9c1a2a5430bb280c316e5",
+      "image_motion_measurements.py": "a648ae2ce21535d861022f851336fa101f10b37da198bd713489c5e243b8953d",
+      "session_evidence_bundle.py": "0f0c5f6af5af3cdd107fb3df01e055f0552abdc6048eb7d68fc917bc11a19f38",
+      "swing_quality_policy.py": "a4cae94e73a03835dd17abcbfbcbfa0c889625b3a9d104f16b8e6d9b108f2b1d",
+      "metric_source_windows.py": "f962a1aff02def335cab90db68487c4574fc8741b9ad3dcd7cb2d20e80eda63b",
+      "observation_policy.py": "432552280e986ce99f40de38a15be7b9066276c1503ce7d79cf871c62bf672f1",
+      "dual_view_biomechanics.py": "3cc7f737474beb9ca75162176d07ce45cb2f3e29a7cbf3de85f85255d1109416",
+      "local_control_panel.html": "03842e019931b971fcb10a9838da752589d43e113669d5075b810a299dc8a566",
+      "manual_annotation_contract.py": "f1f1ee40da80278591dd92df4fa216630796f11b8949d241e6abe5ca30527909",
+      "swing_evaluation.py": "e51873ce51264514b6064d7c5b685709ab53bedb330c952e571097ebfa873bfe",
+      "evaluation_reference_policy.py": "418a550f2b547f5bdc13e311ec10431b67d9da383f49eb00a877bc78ea97fc5c",
+      "evaluation_identity_contract.py": "37226ce75c00f424267bc861ad59abcf884b45e45770aec560391b9055e70c8c",
+      "report_identity_contract.py": "eb1bc934679b44b86669387793c2877fc876a205bb67caabe938f7c5fe6c2841",
+      "ground_reference.py": "c86eb08e184967712a767a69fe4a76aecc01b432552ca8e9a8e7173e88883510",
+      "ground_calibration_store.py": "b968c8c2ce070a904b5bd166fd6888b89799bcbcfd1e18736f0a0392e20aa1eb",
+      "ground_calibration.html": "7f007a0a6082fb72eb1a9839d20ede5f39fc8ef617962264f1934f32c511a86d",
+      "dual_view_renderer.py": "28705dd2a6fb6c357305400e51b1bb300d2aa517d63b67bb66247554c5c53c67",
+      "ground_camera_profiles.py": "f1f3273734bf92362d5c0da854d293e75a4dcdfecab8a30bc242e1f76418619a"
+    },
+    "ground_reference_policy": "ground_reference_v1_original_pixels_ankle_candidates",
+    "ground_camera_profile_policy": "ground_camera_profile_v1_explicit_mapping_exact_size",
+    "hash_semantics": "source files at provenance module import; restart required after source edits",
+    "metric_contract": "tennis.metric-contract.v4",
+    "kinematic_policy": "kinematic_cross_view_2d_v8_cadence_stability",
+    "observation_policy": "osd_observation_qualification_v6_finite_values",
+    "scoring_policy": "single_view_visible_coach_v4_unvalidated_rubrics_blocked",
+    "window_policy": "realtime_source_time_and_capacity_separated_v3",
+    "ball_observation_contract": "tennis.ball-observation.v1",
+    "phase_time_policy": "event_phase_media_time_v1",
+    "automatic_coach_policy": "automatic_coach_v2_validated_rules_only",
+    "motion_time_policy": "motion_candidates_v1_source_time",
+    "body_window_policy": "body_and_trajectory_windows_v1_source_time",
+    "classification_policy": "player_camera_swing_v3_source_windows",
+    "image_motion_policy": "image_motion_v2_source_identity",
+    "pose_measurement_policy": "fresh_front_pose_v2_finite_observations",
+    "phase_candidate_policy": "model_phase_labels_v2_source_recovery",
+    "manual_anchor_policy": "manual_event_anchors_v2_preserve_reference",
+    "manual_annotation_policy": "manual_annotation_identity_v2_event_links",
+    "evaluation_reference_policy": "evaluation_reference_v1_review_agreement",
+    "evaluation_identity_policy": "evaluation_identity_v1_strict_source_frames",
+    "report_identity_policy": "report_identity_v1_strict_event_and_coach_ids",
+    "historical_outputs_rewritten": false,
+    "accuracy_validated": false
+  },
+  "input_sha256": {
+    "source": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0",
+    "manifest": "ab4ea7d31bf2f472241e85f380f42c2000e255ee7ba37a45898151ff4a613eb1",
+    "journal": "8d18d5bca6702a03f4f80a5e3624bd14123e199bcde3a59cc565cedd98e9a0c9",
+    "events": "3665487a852e63a48d1cea27c6dbb6e556adf977bb696cf803954e8b2d0b7146"
+  },
+  "source_clock": {
+    "verified_sensor_exposure": false,
+    "ffprobe_available": true,
+    "decoded_frame_count": 250,
+    "journal_matches_file_pts": true
+  },
+  "interval_statistics": {
+    "frame_count": 250,
+    "min_interval_ms": 2.187500000000675,
+    "median_interval_ms": 41.484375000000014,
+    "max_interval_ms": 76.40625000000023,
+    "short_interval_source_frames": [
+      2,
+      52,
+      102,
+      152,
+      202
+    ]
+  },
+  "events": [
+    {
+      "event_id": 1,
+      "cross_validation": {
+        "status": "single_view",
+        "tolerance_ms": 82.97
+      },
+      "hip_peak_frame": 18,
+      "shoulder_peak_frame": 18
+    },
+    {
+      "event_id": 2,
+      "cross_validation": {
+        "status": "unavailable",
+        "tolerance_ms": 81.72,
+        "reason": "cadence_sensitive_peak"
+      },
+      "hip_peak_frame": null,
+      "shoulder_peak_frame": null
+    },
+    {
+      "event_id": 3,
+      "cross_validation": {
+        "status": "single_view",
+        "tolerance_ms": 82.5
+      },
+      "hip_peak_frame": 189,
+      "shoulder_peak_frame": 189
+    }
+  ],
+  "tests": {
+    "new": 6,
+    "full": 694,
+    "result": "passed"
+  },
+  "foot_board": {
+    "source_frames": 66,
+    "ankle_hints": 262,
+    "contact_labels": 0,
+    "independent_reference": false
+  },
+  "browser_full_interaction_verified": false,
+  "service_pid": 91552,
+  "service_state": "stopped",
+  "loaded_hashes_match": true,
+  "new_inference": false,
+  "accuracy_validated": false
+}
