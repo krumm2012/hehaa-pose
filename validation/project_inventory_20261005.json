@@ -1,36 +1,37 @@
 {
-  "schema": "tennis.project-inventory.v12",
-  "generated_at": "2026-10-05T08:32:43.990149+08:00",
-  "git_head": "b33956f37a66e180f9d489158f69b3912bf1f664",
-  "scope": "130条已识别问题/验收记录（含交叉），62条明确工程范围通过，原68条未闭环；另7可选扩展及2旧入口。新版编辑器实际浏览器交互未完成。",
+  "schema": "tennis.project-inventory.v13",
+  "generated_at": "2026-10-05T10:17:12.764851+08:00",
+  "git_head": "aa7852c46643fff5ecae639695a3598e68eb5b70",
+  "scope": "134条已识别问题/验收记录（含交叉），66条明确工程范围通过，原68条未闭环；另7可选扩展及2旧入口。地面参考工具部分浏览器操作通过，既有逐拍编辑器完整交互仍未验收。",
   "all_items_complete": false,
   "accuracy_validated": false,
   "verification": {
-    "test_count": 656,
-    "passed": 656,
+    "test_count": 677,
+    "passed": 677,
     "failures": 0,
-    "log": "/tmp/tennis_report_identity_full_20261005.log",
+    "log": "/tmp/tennis_ground_full_final_20261005.log",
     "failure_item": null,
-    "service_pid": 70403,
+    "service_pid": 80951,
     "control_analysis_state": "stopped",
     "loaded_source_hashes_match": true,
-    "remote_head": "b33956f37a66e180f9d489158f69b3912bf1f664",
+    "remote_head": "aa7852c46643fff5ecae639695a3598e68eb5b70",
     "independent_plan_frames": 22,
     "independent_plan_points": 176,
     "independent_filled_points": 0,
     "automatic_scoring_validated": false,
     "repository_code_changed_in_this_inventory": true,
-    "iteration_engineering_changes": "b33956f37a66e180f9d489158f69b3912bf1f664",
-    "git_head": "b33956f37a66e180f9d489158f69b3912bf1f664",
+    "iteration_engineering_changes": "aa7852c46643fff5ecae639695a3598e68eb5b70",
+    "git_head": "aa7852c46643fff5ecae639695a3598e68eb5b70",
     "remote_matches_head": true,
-    "loaded_analysis_source_count": 37,
+    "loaded_analysis_source_count": 41,
     "independent_submission_confirmed": false,
     "open_github_issue_count": 0,
-    "test_semantics": "656全量、27新增、109聚焦；250帧/3事件同源工作流及报告、真实HTTP验证；未重新推理，未证明独立准确性；新版编辑器实际浏览器交互未完成。",
+    "test_semantics": "677全量、21新增、64聚焦；实际视频预览与未确认草稿保存、250帧/3事件受控回放；未重新推理或证明独立地面准确性。",
     "source_changes_in_this_inventory": true,
     "service_restarted_in_this_inventory": true,
-    "new_regressions": 27,
-    "new_editor_browser_verified": false
+    "new_regressions": 21,
+    "new_editor_browser_verified": false,
+    "ground_editor_controls_verified": true
   },
   "items": [
     {
@@ -1490,6 +1491,50 @@
       "state_group": "工程已完成",
       "display_name": "空源帧时间轴标记/定位变为0，空峰值被旧模型补回",
       "remaining": "本项明确工程范围通过；完整T04来源绑定、其他消费者与浏览器/现场验收保留。"
+    },
+    {
+      "id": "N41",
+      "priority": "P2",
+      "problem": "地面标定与输入来源/原图尺寸缺少独立契约",
+      "requirement": "按视频实际字节/相机身份绑定，独立存储不可变版本并拒绝几何异常。",
+      "status": "本项工程范围通过；独立地面准确性未验收",
+      "evidence_or_gap": "输入、尺寸、非法几何与历史修订保留测试通过。",
+      "state_group": "工程已完成",
+      "display_name": "地面标定与输入来源/原图尺寸缺少独立契约",
+      "remaining": "当前四角核对、额外实测地面点、足部/接地独立标签和定位误差仍待完成；不以此关闭原68条缺口。"
+    },
+    {
+      "id": "N42",
+      "priority": "P2",
+      "problem": "旧标定导入缺少当前画面与实体对应核对",
+      "requirement": "球道2实测尺寸参考导入，独立正背四角，显式等比例换算和确认资格。",
+      "status": "本项工程范围通过；独立地面准确性未验收",
+      "evidence_or_gap": "实际2560×1440预览、参考草稿导入、重选/撤销与保存通过；几何和对应未代确认。",
+      "state_group": "工程已完成",
+      "display_name": "旧标定导入缺少当前画面与实体对应核对",
+      "remaining": "当前四角核对、额外实测地面点、足部/接地独立标签和定位误差仍待完成；不以此关闭原68条缺口。"
+    },
+    {
+      "id": "N43",
+      "priority": "P2",
+      "problem": "脚踝候选投影和真实接地点含义需分离",
+      "requirement": "分视角映射新鲜原图观测；旧点/补点/域外拒绝，位置与接地保持未知。",
+      "status": "本项工程范围通过；独立地面准确性未验收",
+      "evidence_or_gap": "合成已知映射、镜像还原与观测资格回归通过；不参与评分。",
+      "state_group": "工程已完成",
+      "display_name": "脚踝候选投影和真实接地点含义需分离",
+      "remaining": "当前四角核对、额外实测地面点、足部/接地独立标签和定位误差仍待完成；不以此关闭原68条缺口。"
+    },
+    {
+      "id": "N44",
+      "priority": "P2",
+      "problem": "地面参考需贯穿双视角显示及两种报告",
+      "requirement": "缓存网格、帧OSD与事件配对中位数独立传播；无效与版本混合不补零。",
+      "status": "本项工程范围通过；独立地面准确性未验收",
+      "evidence_or_gap": "绘制坐标、报告入口、实际HTTP和启动配置通过；250帧原事件及指标保持。",
+      "state_group": "工程已完成",
+      "display_name": "地面参考需贯穿双视角显示及两种报告",
+      "remaining": "当前四角核对、额外实测地面点、足部/接地独立标签和定位误差仍待完成；不以此关闭原68条缺口。"
     }
   ],
   "optional_expansion": [
@@ -1532,7 +1577,7 @@
   "state_counts": {
     "部分完成": 36,
     "待独立或现场验证": 24,
-    "工程已完成": 62,
+    "工程已完成": 66,
     "待开发或继续优化": 8
   },
   "earlier_repairs": [
@@ -1562,8 +1607,8 @@
     }
   ],
   "evidence_refs": {
-    "engineering_acceptance": "validation/report_identity_acceptance_20261005.json",
-    "test_log": "/tmp/tennis_report_identity_full_20261005.log",
+    "engineering_acceptance": "validation/ground_reference_acceptance_20261005.json",
+    "test_log": "/tmp/tennis_ground_full_final_20261005.log",
     "metric_contract": "docs/METRIC_CALCULATION_CONTRACT.md",
     "source_timing": "docs/EVENT_SOURCE_TIMING.md",
     "independent_labels": "data/analysis_results/kinematic_validation/independent_temporal_plan_v3_20261005/blank_labels.json",
@@ -1572,7 +1617,9 @@
     "same_input_comparison": "data/analysis_results/kinematic_validation/report_identity_delivery_20261005/comparison.json",
     "previous_inventory": "data/analysis_results/kinematic_validation/project_backlog_snapshot_20261005/inventory.json",
     "evaluation_contract": "docs/EVALUATION_REFERENCE_CONTRACT.md",
-    "report_contract": "docs/EVALUATION_REFERENCE_CONTRACT.md"
+    "report_contract": "docs/EVALUATION_REFERENCE_CONTRACT.md",
+    "ground_reference_contract": "docs/GROUND_REFERENCE.md",
+    "ground_reference_comparison": "data/analysis_results/kinematic_validation/ground_reference_delivery_20261005/comparison.json"
   },
   "priority_order": [
     "T04：拒绝已复现的显式跨会话Coach关联矛盾；继续输出/日志/汇总身份与其他消费者，以及新版编辑器实际浏览器交互验收",

@@ -1,0 +1,170 @@
+{
+  "schema": "tennis.ground-reference-acceptance.v1",
+  "generated_at": "2026-10-05T10:17:12.764851+08:00",
+  "engineering_commit": "aa7852c46643fff5ecae639695a3598e68eb5b70",
+  "all_items_complete": false,
+  "accuracy_validated": false,
+  "tests": {
+    "full": 677,
+    "new": 21,
+    "focused": 64,
+    "failures": 0,
+    "full_log": "/tmp/tennis_ground_full_final_20261005.log",
+    "focused_log": "/tmp/tennis_ground_focused_final_20261005.log",
+    "targeted_log": "/tmp/tennis_ground_reference_final_20261005.log"
+  },
+  "service": {
+    "old_pid": 70403,
+    "new_pid": 80951,
+    "analysis_state": "stopped",
+    "analysis_pid": null,
+    "source_hash_count": 41,
+    "source_hashes_match": true,
+    "ground_reference_policy": "ground_reference_v1_original_pixels_ankle_candidates",
+    "service_build": {
+      "schema": "tennis.control-service-build.v1",
+      "pid": 80951,
+      "loaded_at_unix_ns": 1791165997413402000,
+      "control_source_sha256": "e29ceb33ef749734ed6d5aeb38e336ba1fe06521af8b655d891f89bab4439642",
+      "hash_semantics": "source files at module import; restart required after source edits",
+      "analysis_build": {
+        "schema": "tennis.analysis-build.v1",
+        "code_sha256": {
+          "swing_event_analyzer.py": "8797355d5c372ffae4bce8bbb9275d484cbb474b2d8f3acfb2b52868cb6fca22",
+          "swing_biomechanics.py": "c249c42f5494c29c037b920cc89ce5274aab4caca32429a3098e7da391625de4",
+          "kinematic_sequence.py": "f41545fffebdf9e3399185cbc2d16bdc11540718cc834f82febeab526ef66e36",
+          "osd_evidence.py": "da4662c3270efe6af1bc39a0a18c75c0c40671f855bbca6340db8fdd420b670d",
+          "realtime_swing_pipeline.py": "e4f587edef58813243c25b8a889be3077d7318178573df02930fe60954ef859c",
+          "swing_motion_features.py": "9e0b5cc84e9d773a8dcd5be959915ea84b2b2820fd82ff9dc0d96b358081f2cf",
+          "analysis_metric_delivery.py": "1b3fd4c897d1224d8e20d5e16f2811bd398044f16a140d7bb28b8a5b1f2ca161",
+          "metric_contracts.py": "cbeda437d1a767626b85a5edc99156bd04eea548019eb851397e01ffce6d0e00",
+          "ball_observation_contract.py": "eab2c82b7c303d879ce98003a1f742cdf33d639425862733f71a3b3127881525",
+          "frame_processor.py": "f55f126d1aeb3960522991d5aef0b2cc785826a5d710e6a64e2636931980351d",
+          "main_pipe.py": "4f4827b0992b624d03664f260ca34c72bd7c9f6c5e9d901cccdf4040dc325e72",
+          "yolo26n_unified_detector.py": "c2410762fdc5f314da5f154576619d899d6272ec0720a7e18fb581c8acbe9964",
+          "event_source_timing.py": "7cd841a3826e2082623c1aa7e72a3d912e0f5efab8b2ca63bb40cfa1a3359221",
+          "local_realtime_coach.py": "35167b842d68f5d8d36d4ddc8ffc5fdfe7699cb0001422589aded53501ea8024",
+          "swing_coach_data_collector.py": "90dc9e7810a51aadbfc5bacde36d570e6de00c7b1cb3478b4c1e2e26fa92e396",
+          "coach_evidence_policy.py": "a4875c661f5f57384061b273fcf9411006b590097664a078d5ab644c0cf35e99",
+          "deepseek_evidence_view.py": "df4bb2452efcf1ba6ce0d654e950d1377c9ef0c81ad523c78a8cd4a82eb3bb2f",
+          "coach_rule_contract.py": "92401a367bf98f20927ee4a022e3214de960381f7975a233ed3688f47f251ecc",
+          "swing_report_builder.py": "e398f8fd70d37bb4467d57a05d7d59ecfe47ced7cbb300743b5d5dcd775f9ace",
+          "analysis_provenance.py": "1ae7caf7e2ca21abd93af01a6136e50a7ed3e6d0afea693acf42f09a14cf72ba",
+          "deepseek_realtime_coach.py": "4f5467ac7a48ef4ca8db16574a5e150addd2355b5980da5680fc62a7537cfba8",
+          "manual_review_workflow.py": "9b64e97d99caf097c5985950d75150a04c79094a42d677ae91b34ddd5e4a75eb",
+          "swing_event_segmenter.py": "70a62a2542f342ef0b82036ad578979a6abfd2eb3d7c71fd2cf9404a38b58e40",
+          "swing_event_classifier.py": "b8a5fdfc89608a641be2286157a2c0c5ff0baa40abd3864d8c67c0a949e423f6",
+          "motion_time_contract.py": "ff92aa0bb81b4b6a97c680ca044c1d5b7c625686a2f9c1a2a5430bb280c316e5",
+          "image_motion_measurements.py": "a648ae2ce21535d861022f851336fa101f10b37da198bd713489c5e243b8953d",
+          "session_evidence_bundle.py": "0f0c5f6af5af3cdd107fb3df01e055f0552abdc6048eb7d68fc917bc11a19f38",
+          "swing_quality_policy.py": "a4cae94e73a03835dd17abcbfbcbfa0c889625b3a9d104f16b8e6d9b108f2b1d",
+          "metric_source_windows.py": "f962a1aff02def335cab90db68487c4574fc8741b9ad3dcd7cb2d20e80eda63b",
+          "observation_policy.py": "432552280e986ce99f40de38a15be7b9066276c1503ce7d79cf871c62bf672f1",
+          "dual_view_biomechanics.py": "3cc7f737474beb9ca75162176d07ce45cb2f3e29a7cbf3de85f85255d1109416",
+          "local_control_panel.html": "5cd31e3d7fb1709277083fc55607b3559e5366647b03316348089ca1ffa94d67",
+          "manual_annotation_contract.py": "f1f1ee40da80278591dd92df4fa216630796f11b8949d241e6abe5ca30527909",
+          "swing_evaluation.py": "e51873ce51264514b6064d7c5b685709ab53bedb330c952e571097ebfa873bfe",
+          "evaluation_reference_policy.py": "418a550f2b547f5bdc13e311ec10431b67d9da383f49eb00a877bc78ea97fc5c",
+          "evaluation_identity_contract.py": "37226ce75c00f424267bc861ad59abcf884b45e45770aec560391b9055e70c8c",
+          "report_identity_contract.py": "eb1bc934679b44b86669387793c2877fc876a205bb67caabe938f7c5fe6c2841",
+          "ground_reference.py": "cc87fc57a5578ddbd32a29f1f20731d0e48af3c03f35d65484ad9cda819e743d",
+          "ground_calibration_store.py": "b968c8c2ce070a904b5bd166fd6888b89799bcbcfd1e18736f0a0392e20aa1eb",
+          "ground_calibration.html": "631bec25cf57823ad2d4f6ff2004e0e0a2741ec12228544fc619e70656703fc3",
+          "dual_view_renderer.py": "28705dd2a6fb6c357305400e51b1bb300d2aa517d63b67bb66247554c5c53c67"
+        },
+        "ground_reference_policy": "ground_reference_v1_original_pixels_ankle_candidates",
+        "hash_semantics": "source files at provenance module import; restart required after source edits",
+        "metric_contract": "tennis.metric-contract.v4",
+        "kinematic_policy": "kinematic_cross_view_2d_v7_finite_observations",
+        "observation_policy": "osd_observation_qualification_v6_finite_values",
+        "scoring_policy": "single_view_visible_coach_v4_unvalidated_rubrics_blocked",
+        "window_policy": "realtime_source_time_and_capacity_separated_v3",
+        "ball_observation_contract": "tennis.ball-observation.v1",
+        "phase_time_policy": "event_phase_media_time_v1",
+        "automatic_coach_policy": "automatic_coach_v2_validated_rules_only",
+        "motion_time_policy": "motion_candidates_v1_source_time",
+        "body_window_policy": "body_and_trajectory_windows_v1_source_time",
+        "classification_policy": "player_camera_swing_v3_source_windows",
+        "image_motion_policy": "image_motion_v2_source_identity",
+        "pose_measurement_policy": "fresh_front_pose_v2_finite_observations",
+        "phase_candidate_policy": "model_phase_labels_v2_source_recovery",
+        "manual_anchor_policy": "manual_event_anchors_v2_preserve_reference",
+        "manual_annotation_policy": "manual_annotation_identity_v2_event_links",
+        "evaluation_reference_policy": "evaluation_reference_v1_review_agreement",
+        "evaluation_identity_policy": "evaluation_identity_v1_strict_source_frames",
+        "report_identity_policy": "report_identity_v1_strict_event_and_coach_ids",
+        "historical_outputs_rewritten": false,
+        "accuracy_validated": false
+      }
+    }
+  },
+  "actual_video_preview": {
+    "video_name": "30.56.mp4",
+    "image_size": [
+      2560,
+      1440
+    ],
+    "binding": {
+      "kind": "video_sha256",
+      "stream_id": "court02-main",
+      "source_id": "3e2dbc532ba0ca109d8b586b5c79027312832fd3630ce5b5530184d5f2e7b57e"
+    },
+    "preview_http_status": 200,
+    "new_inference_run": false
+  },
+  "actual_browser": {
+    "verified_controls": [
+      "load_original_frame",
+      "explicit_2x_reference_import",
+      "reset_front_corners",
+      "undo_front_corners_with_dimensions",
+      "save_pending_reference"
+    ],
+    "first_tab_control_coordinate_mismatch": true,
+    "retried_visible_tab_controls_passed": true,
+    "not_verified": [
+      "dragging",
+      "keyboard_nudge",
+      "all_import_and_export_browser_paths"
+    ],
+    "ground_truth_declared_by_browser_test": false
+  },
+  "saved_pending_reference": {
+    "calibration_id": "50edfbb0d8bd2743c1b79820c587416f1f24b86d16e2d46491834fa11ccb5d09",
+    "width_m": 3.3,
+    "length_m": 4.8,
+    "dimensions_measured": true,
+    "camera_geometry_confirmed": false,
+    "correspondence_confirmed": false,
+    "accuracy_validated": false,
+    "coaching_eligible": false
+  },
+  "same_input": {
+    "schema": "tennis.ground-reference-replay-check.v1",
+    "frames": 250,
+    "replayed_events": 3,
+    "same_event_and_metric_outputs": true,
+    "comparison_excludes": [
+      "ground_reference",
+      "timing.event_emitted_at",
+      "timing.event_emitted_at_unix_ns"
+    ],
+    "pending_geometry_differences_missing": true,
+    "controlled_calibration_not_actual_video_calibration": true,
+    "new_inference_run": false,
+    "accuracy_validated": false,
+    "historical_files_preserved": 35
+  },
+  "protected_worktree": {
+    "camera_configs_unchanged": true,
+    "existing_51_deleted_paths_preserved": true,
+    "unrelated_untracked_doc_staged": false
+  },
+  "scope_limits": [
+    "Ankle projection candidates are not observed ground contacts.",
+    "No real stride, speed, force, coaching score or 3D accuracy authorized.",
+    "Lane 2 dimensions confirmed by user; current original/mirror corners still pending review.",
+    "No new full inference or realtime throughput audit in this round.",
+    "The original 68 project gaps remain open."
+  ]
+}
