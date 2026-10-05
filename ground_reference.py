@@ -170,11 +170,14 @@ def normalize_calibration(document):
 
 
 class GroundReference:
-    def __init__(self, calibration, binding, image_size):
+    def __init__(self, calibration, binding, image_size, application=None):
         self.calibration = normalize_calibration(calibration)
+        self.application = application
         self.reasons = []
         if self.calibration['binding'] != binding:
             self.reasons.append('source_binding_mismatch')
+        if application is not None and application.get('input_binding') != binding:
+            self.reasons.append('application_binding_mismatch')
         if self.calibration['image_size'] != list(image_size):
             self.reasons.append('source_image_size_mismatch')
         if not self.calibration['camera_geometry_confirmed']:
@@ -200,6 +203,8 @@ class GroundReference:
                   'accuracy_validated': False, 'coaching_eligible': False,
                   'ground_contact_verified': False, 'views': {}, 'cross_view': {},
                   'reasons': self.reasons.copy()}
+        if self.application is not None:
+            result['application'] = self.application
         if self.reasons:
             return result
         if record.get('pose_observation_coordinate_space') != 'original_source_pixels':
@@ -275,6 +280,13 @@ def event_ground_reference(event, frames):
               'dimensions_measured': all(r.get('dimensions_measured') is True for r in rows),
               'accuracy_validated': False, 'coaching_eligible': False,
               'ground_contact_verified': False, 'feet': {}, 'rejected_reasons': dict(reasons)}
+    applications = [r['application'] for r in rows if isinstance(r.get('application'), dict)]
+    if applications:
+        profiles = {a.get('profile_id') for a in applications}
+        if len(profiles) != 1 or len(applications) != len(rows):
+            result['rejected_reasons']['mixed_camera_profile_versions'] = len(rows)
+            return result
+        result['application'] = applications[0]
     if len(ids) != 1:
         result['rejected_reasons']['mixed_calibration_versions'] = len(rows)
         return result
@@ -300,6 +312,9 @@ def ground_reference_html(event):
     if not isinstance(reference, dict):
         return ''
     text = ['脚踝地面投影参考 · 着地未确认 · 不参与评分']
+    application = reference.get('application') or {}
+    if application.get('scope') == 'camera_profile':
+        text.append('机位共享标定：'+str(application.get('camera_binding', {}).get('stream_id', '')))
     if not reference.get('dimensions_measured'):
         text.append('尺寸待实测')
     labels = {'camera_geometry_not_confirmed': '当前画面四角尚未核对',

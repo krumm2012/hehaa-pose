@@ -1917,6 +1917,7 @@
       const reference = event.ground_reference;
       if (!reference || typeof reference !== 'object') return '';
       const text = ['脚踝地面投影参考 · 着地未确认 · 不参与评分'];
+      if (reference.application?.scope === 'camera_profile') text.push('机位共享标定：' + (reference.application.camera_binding?.stream_id || ''));
       if (reference.dimensions_measured !== true) text.push('尺寸待实测');
       const reasonLabels = {camera_geometry_not_confirmed:'当前画面四角尚未核对',source_binding_mismatch:'输入来源不匹配',source_image_size_mismatch:'原图尺寸不匹配',observation_coordinate_space_unverified:'观测坐标系未确认',mixed_calibration_versions:'窗口含不同标定版本',duplicate_source_frames:'窗口含重复源帧'};
       for (const key of Object.keys(reference.rejected_reasons || {})) if (reasonLabels[key]) text.push(reasonLabels[key]);

@@ -1,5 +1,13 @@
 # Swing Event Recognition Change Log
 
+## 2026-10-05 — 球道 / 机位共享地面标定 JSON 导入
+
+- 新增“应用 JSON 为机位标定”入口和受 token 保护的导入 API；注册独立不可变共享版本，不覆盖原 JSON、单视频修订或 ROI。
+- 球道 2 实时源及明确绑定球道 2 的同尺寸视频使用共享标定；其他机位、未绑定或尺寸不符的输入不获得测量资格。
+- 保留原标定与实际输入的不同来源身份，FrameRecord、session 与事件记录共享 profile 应用声明，不把机位复用解释成同一视频。
+- 已应用用户的 `analyzer_ground_calibration (2).json`；尺寸 3.3×4.8 米，原图 2560×1440，镜中对应未确认标记保留。
+- 10 项新增回归、32 项地面聚焦、688 项全量通过，实际 HTTP 注册及跨输入/机位隔离核验通过；未新增推理或评分规则。
+
 ## 2026-10-05 — 修复地面标定 JSON 导出
 
 - 修复导出按钮的局部 `document` 变量覆盖浏览器 DOM 对象，导致 `document.createElement is not a function`；标定数据变量改名为 `calibration`。

@@ -464,8 +464,11 @@ class MultiprocessPipeline:
             from ground_reference import GroundReference
             from ground_calibration_store import source_binding
             binding = source_binding(self.video_path, ground.get('context_stream_id') or self.roi_profile.stream_id)
-            self.ground_reference = GroundReference(ground['calibration'], binding, (self.width, self.height))
+            self.ground_reference = GroundReference(ground['calibration'], binding, (self.width, self.height),
+                                                    application=ground.get('application'))
             self.session_metadata['ground_calibration'] = self.ground_reference.calibration
+            if ground.get('application'):
+                self.session_metadata['ground_calibration_application'] = ground['application']
         print(
             f"🗂️ [Session] {self.session_id}"
             + (

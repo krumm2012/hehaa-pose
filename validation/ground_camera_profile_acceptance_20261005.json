@@ -1,0 +1,34 @@
+{
+  "schema": "tennis.ground-camera-profile-acceptance.v1",
+  "imported_file": "/Users/krum5539/Downloads/analyzer_ground_calibration (2).json",
+  "imported_file_sha256": "ef758af5c720c7d23863cd350935b48adb59b38670964c62e8c40bf0bdc1edf2",
+  "profile_id": "709a56e10d014f3d3a48d95d9da2a09f542ccf76936f68e9bfe9eb195d880ef0",
+  "target_stream_id": "court02-main",
+  "original_file_and_roi_configs_preserved": true,
+  "dimensions_m": [
+    3.3,
+    4.8
+  ],
+  "image_size": [
+    2560,
+    1440
+  ],
+  "camera_geometry_confirmed": true,
+  "correspondence_confirmed": false,
+  "actual_http_import_verified": true,
+  "live_source_and_separate_mapped_video_resolve_same_profile": true,
+  "other_court_and_unmapped_video_excluded": true,
+  "new_inference_run": false,
+  "accuracy_validated": false,
+  "service_pid": 88322,
+  "loaded_source_hash_count": 42,
+  "loaded_source_hashes_match": true,
+  "analysis_state": "stopped",
+  "full_tests": 688,
+  "new_regressions": 10,
+  "targeted_tests": 32,
+  "full_log": "/tmp/tennis_ground_profiles_full_final_20261005.log",
+  "targeted_log": "/tmp/tennis_ground_profiles_targeted_20261005.log",
+  "all_items_complete": false,
+  "import_and_apply_callback_tested": true
+}

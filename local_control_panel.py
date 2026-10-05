@@ -620,11 +620,34 @@ class LocalPipelineController:
         return source, source_binding(source, identity)
 
     def ground_info(self, payload):
-        from ground_calibration_store import GroundCalibrationStore
         _, binding = self._ground_binding(payload)
         with self._lock:
-            document = GroundCalibrationStore(self.workspace).load(binding)
-        return {'binding': binding, 'calibration': document}
+            resolved = self._resolve_ground_calibration(binding)
+        return {'binding': binding, **resolved}
+
+    def _ground_camera_binding(self, stream_id):
+        from ground_calibration_store import source_binding
+        stream = self._stream(stream_id)
+        return source_binding(stream['source'], stream_id)
+
+    def _resolve_ground_calibration(self, binding):
+        from ground_calibration_store import GroundCalibrationStore
+        from ground_camera_profiles import GroundCameraProfiles
+        profiles = GroundCameraProfiles(self.workspace)
+        if profiles.directory.exists() and any(s['stream_id'] == binding['stream_id'] for s in self.streams):
+            resolved = profiles.resolve(binding, self._ground_camera_binding(binding['stream_id']))
+            if resolved is not None: return resolved
+        return {'calibration': GroundCalibrationStore(self.workspace).load(binding), 'application': None}
+
+    def import_ground_camera_profile(self, payload):
+        from ground_camera_profiles import GroundCameraProfiles
+        target = payload.get('target_stream_id')
+        if not isinstance(target, str) or not target:
+            raise ValueError('请选择共享标定的目标机位')
+        with self._lock:
+            binding = self._ground_camera_binding(target)
+            profile = GroundCameraProfiles(self.workspace).save(payload.get('calibration'), binding)
+        return {'profile': profile, 'message': '已应用为机位共享标定；下次分析使用。仅用于该机位实时输入及明确绑定该机位的同尺寸视频。'}
 
     def ground_preview(self, payload):
         import base64
@@ -643,9 +666,15 @@ class LocalPipelineController:
             self._ground_contexts[nonce] = {'binding': binding, 'image_size': [width, height]}
             while len(self._ground_contexts) > 20:
                 self._ground_contexts.pop(next(iter(self._ground_contexts)))
-            document = GroundCalibrationStore(self.workspace).load(binding)
+            resolved = self._resolve_ground_calibration(binding)
+            document = resolved['calibration']
+            reason = None
+            if document and document['image_size'] != [width, height]:
+                document = None
+                reason = '标定原图尺寸不同，不能自动缩放；请重新核对当前机位四角'
         return {'context_id': nonce, 'binding': binding, 'image_size': [width, height],
-                'image_base64': base64.b64encode(encoded).decode(), 'calibration': document}
+                'image_base64': base64.b64encode(encoded).decode(), 'calibration': document,
+                'application': resolved['application'], 'calibration_unavailable_reason': reason}
 
     def save_ground_calibration(self, payload):
         from ground_calibration_store import GroundCalibrationStore
@@ -702,15 +731,16 @@ class LocalPipelineController:
                 roi["target_stream_id"] = target_id
                 config["target_stream_id"] = target_id
             from ground_calibration_store import GroundCalibrationStore, source_binding
+            from ground_camera_profiles import GroundCameraProfiles
             ground_stream_id = target_id or stream['stream_id']
             store = GroundCalibrationStore(self.workspace)
-            calibration = None
-            if store.directory.exists():
+            resolved = {'calibration': None, 'application': None}
+            if store.directory.exists() or GroundCameraProfiles(self.workspace).directory.exists():
                 binding = source_binding(source, ground_stream_id)
-                calibration = store.load(binding)
-            config['ground_reference'] = ({'calibration': calibration,
+                resolved = self._resolve_ground_calibration(binding)
+            config['ground_reference'] = ({**resolved,
                                          'context_stream_id': ground_stream_id}
-                                        if calibration is not None else {})
+                                        if resolved['calibration'] is not None else {})
             visualization = roi.setdefault("visualization", {})
             visualization["show_roi_boundary"] = settings.show_roi_boundary
             visualization["show_roi_fill"] = settings.show_roi_fill
@@ -1761,6 +1791,7 @@ def create_handler(controller: LocalPipelineController):
                 "/api/ground/preview",
                 "/api/ground/info",
                 "/api/ground/save",
+                "/api/ground/profile/import",
             }
             if path not in allowed_paths:
                 self.send_error(HTTPStatus.NOT_FOUND)
@@ -1805,6 +1836,8 @@ def create_handler(controller: LocalPipelineController):
                     self._send_json(controller.ground_info(payload))
                 elif path == '/api/ground/save':
                     self._send_json(controller.save_ground_calibration(payload))
+                elif path == '/api/ground/profile/import':
+                    self._send_json(controller.import_ground_camera_profile(payload))
                 elif path == "/api/manual-review/evaluate":
                     self._send_json(
                         controller.evaluate_manual_review(
