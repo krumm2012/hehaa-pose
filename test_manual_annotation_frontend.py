@@ -38,11 +38,13 @@ class ManualAnnotationFrontendTests(unittest.TestCase):
 
     def execute(self, surface, names, assertions):
         page = self.pages[surface]
-        helpers = ['sourceFrameValue', 'annotationFrames', 'validateAnnotationFrames',
+        helpers = ['sourceFrameValue', 'sourceIdentityAttribute', 'annotationIdentity',
+                   'annotationFrames', 'validateAnnotationFrames',
                    'validateAnnotationPayload', 'showAnnotationError']
         functions = '\n'.join(function_source(page, n) for n in dict.fromkeys(helpers + names))
         script = r'''
 const assert = require('node:assert/strict');
+const modelEventIds=[];
 let downloads=0, writes=0, requests=0;
 const nodes={};
 const document={getElementById(id){return nodes[id] ||= {textContent:'previous',dataset:{}};},

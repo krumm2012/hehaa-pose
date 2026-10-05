@@ -1309,6 +1309,8 @@ class RealtimeSwingOutputManager:
         """
 
     def _render_live_html(self, document: Dict) -> str:
+        from report_identity_contract import normalize_report_document
+        document = normalize_report_document(document)
         summary = document.get("summary") or {}
         build = document.get('analysis_build') or {}
         version_html = '<p class="summary">历史分析版本未记录；需生成新版本后比较，原记录保留。</p>'
@@ -1667,9 +1669,9 @@ class RealtimeSwingOutputManager:
             ) or "legacy"
             cards.append(
                 f"""
-                <article class="event-card" data-annotation-card data-annotation-id="model-{int(event['event_id'])}" data-source-event-id="{int(event['event_id'])}" data-predicted-stroke-type="{html.escape(str(event.get('stroke_type') or 'Unknown'))}" data-peak-frame="{html.escape(str('' if event.get('peak_frame') is None else event.get('peak_frame')))}">
+                <article class="event-card" data-annotation-card data-annotation-id="model-{event['event_id']}" data-source-event-id="{event['event_id']}" data-predicted-stroke-type="{html.escape(str(event.get('stroke_type') or 'Unknown'))}" data-peak-frame="{html.escape(str('' if event.get('peak_frame') is None else event.get('peak_frame')))}">
                   <div class="event-heading">
-                    <h2>Swing #{int(event['event_id'])} · {html.escape(str(event.get('stroke_type') or 'Unknown'))}</h2>
+                    <h2>Swing #{event['event_id']} · {html.escape(str(event.get('stroke_type') or 'Unknown'))}</h2>
                     {head_badge_html}
                   </div>
                   {snapshot_html}
@@ -2062,6 +2064,7 @@ class RealtimeSwingOutputManager:
   </main>
   <script>
     const eventJsonUrl = {json.dumps(event_json_href)};
+    const modelEventIds = {json.dumps([event['event_id'] for event in document['events']])};
     const coachFeed = document.getElementById('live-coach-feed');
     const reportSummary = document.getElementById('report-summary');
     const refreshStatus = document.getElementById('refresh-status');
@@ -2120,11 +2123,8 @@ class RealtimeSwingOutputManager:
     {annotation_contract_script()}
 
     function annotationFromCard(card) {{
-      const sourceText = card.dataset.sourceEventId || '';
-      const sourceNumber = Number(sourceText);
-      const sourceEventId = sourceText === '' ? null : (Number.isFinite(sourceNumber) ? sourceNumber : sourceText);
-      const peakText = card.dataset.peakFrame || '';
-      const peakNumber = peakText.trim() === '' ? null : Number(peakText);
+      const sourceEventId = sourceIdentityAttribute(card.dataset.sourceEventId, '来源事件ID');
+      const peakNumber = sourceIdentityAttribute(card.dataset.peakFrame, '动作峰值帧');
       return {{
         annotation_id: card.dataset.annotationId,
         source_event_id: sourceEventId,
@@ -2138,7 +2138,7 @@ class RealtimeSwingOutputManager:
         frames: {{
           start: integerField(card, 'start_frame'),
           contact: integerField(card, 'contact_frame'),
-          peak: Number.isSafeInteger(peakNumber) && peakNumber >= 0 ? peakNumber : null,
+          peak: peakNumber,
           end: integerField(card, 'end_frame')
         }}
       }};
@@ -2172,7 +2172,7 @@ class RealtimeSwingOutputManager:
     function saveAnnotations() {{
       lastAnnotationInteraction = Date.now();
       try {{
-        const payload = validateAnnotationPayload(collectAnnotations());
+        const payload = validateAnnotationPayload(collectAnnotations(), false, modelEventIds);
         localStorage.setItem(annotationStorageKey, JSON.stringify(payload));
         updateAnnotationReadiness(payload);
         annotationStatus.textContent = `已在浏览器保存 ${{payload.events.length}} 条草稿`;
@@ -2194,7 +2194,10 @@ class RealtimeSwingOutputManager:
     }}
 
     function applyAnnotation(card, imported) {{
+      const identity = annotationIdentity(imported);
       const frames = validateAnnotationFrames(imported);
+      card.dataset.annotationId = identity.annotation_id;
+      card.dataset.peakFrame = frames.peak == null ? '' : String(frames.peak);
       setAnnotationField(card, 'actual_stroke_type', imported.actual_stroke_type);
       setAnnotationField(card, 'count_correct', imported.count_correct);
       setAnnotationField(card, 'valid_hit', imported.valid_hit);
@@ -2208,12 +2211,15 @@ class RealtimeSwingOutputManager:
     }}
 
     function addMissedEvent(imported = null, persist = true) {{
+      if (imported) {{ annotationIdentity(imported); validateAnnotationFrames(imported); }}
       manualCounter += 1;
+      while (document.querySelector(`[data-annotation-id="manual-${{manualCounter}}"]`)) manualCounter += 1;
       const card = document.createElement('article');
       card.className = 'manual-event-card';
       card.dataset.annotationCard = '';
       card.dataset.annotationId = String(imported?.annotation_id ?? imported?.event_id ?? `manual-${{manualCounter}}`);
-      card.dataset.sourceEventId = imported?.source_event_id == null ? '' : String(imported.source_event_id);
+      const sourceId = imported ? annotationIdentity(imported).source_event_id : null;
+      card.dataset.sourceEventId = sourceId == null ? '' : String(sourceId);
       card.dataset.predictedStrokeType = '';
       card.dataset.peakFrame = String(imported?.frames?.peak ?? '');
       card.innerHTML = `
@@ -2247,12 +2253,13 @@ class RealtimeSwingOutputManager:
       try {{ payload = JSON.parse(localStorage.getItem(annotationStorageKey) || 'null'); }}
       catch (_error) {{ payload = null; }}
       if (!payload || !Array.isArray(payload.events)) return;
-      try {{ validateAnnotationPayload(payload); }}
+      let plan;
+      try {{ plan = prepareAnnotationImport(payload); }}
       catch (error) {{ showAnnotationError(error); return; }}
+      payload = plan.payload;
       timelineReviewComplete.checked = Boolean(payload.timeline_review_complete);
-      for (const imported of payload.events) {{
-        const sourceId = imported.source_event_id ?? imported.event_id ?? null;
-        const card = sourceId == null ? null : document.querySelector(`[data-annotation-card][data-source-event-id="${{String(sourceId)}}"]`);
+      manualEvents.replaceChildren();
+      for (const {{annotation: imported, card}} of plan.assignments) {{
         if (card) applyAnnotation(card, imported);
         else addMissedEvent(imported, false);
       }}
@@ -2390,16 +2397,18 @@ class RealtimeSwingOutputManager:
 
     function applyImportedReviewToEditor(payload) {{
       if (!payload || !Array.isArray(payload.events)) return;
-      try {{ validateAnnotationPayload(payload); }}
+      let plan;
+      try {{ plan = prepareAnnotationImport(payload); }}
       catch (error) {{ showAnnotationError(error); return; }}
+      payload = plan.payload;
       timelineReviewComplete.checked = Boolean(payload.timeline_review_complete);
-      for (const imported of payload.events) {{
-        const sourceId = imported.source_event_id ?? imported.event_id ?? null;
-        const card = sourceId == null ? null : document.querySelector(`[data-annotation-card][data-source-event-id="${{String(sourceId)}}"]`);
+      manualEvents.replaceChildren();
+      for (const {{annotation: imported, card}} of plan.assignments) {{
         if (card) applyAnnotation(card, imported);
         else addMissedEvent(imported, false);
       }}
       saveAnnotations();
+      return payload;
     }}
 
     function manualReviewReportHeaders() {{
@@ -2427,7 +2436,7 @@ class RealtimeSwingOutputManager:
     }}
 
     async function submitManualReview(payload) {{
-      try {{ validateAnnotationPayload(payload, true); }}
+      try {{ payload = validateAnnotationPayload(payload, true, modelEventIds); }}
       catch (error) {{
         showAnnotationError(error);
         setReviewStatus('标注校验失败', 'error', error.message);
@@ -2467,9 +2476,9 @@ class RealtimeSwingOutputManager:
         if (payload.schema_version !== 'swing_manual_annotations_v2' || !Array.isArray(payload.events)) {{
           throw new Error('请选择 swing_manual_annotations_v2 JSON');
         }}
-        validateAnnotationPayload(payload);
-        applyImportedReviewToEditor(payload);
-        importedReviewPayload = payload;
+        const applied = applyImportedReviewToEditor(payload);
+        if (!applied) throw new Error('标注身份或帧号未通过校验，原草稿保留');
+        importedReviewPayload = applied;
         const pending = payload.events.filter(item => item.needs_review).length;
         evaluateImportedReview.disabled = false;
         setReviewStatus(

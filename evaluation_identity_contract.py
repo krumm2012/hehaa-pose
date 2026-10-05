@@ -108,8 +108,13 @@ def normalize_evaluation_inputs(event_data, annotation_data):
             and type(annotation_data['timeline_review_complete']) is not bool):
         raise ValueError('timeline_review_complete必须是布尔值')
     v2 = schema == 'swing_manual_annotations_v2'
-    return (_normalize_document(event_data, True, v2),
+    return (normalize_model_event_document(event_data),
             _normalize_document(annotation_data, False, v2))
+
+
+def normalize_model_event_document(document):
+    """Validate source event IDs and frame aliases for every public consumer."""
+    return _normalize_document(document, True, False)
 
 
 def validate_evaluation_settings(contact_tolerance, match_tolerance, minimum_iou):

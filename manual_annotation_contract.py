@@ -1,6 +1,6 @@
 """Source frame identities shared by manual review and generated report editors."""
 
-POLICY_VERSION = 'manual_annotation_identity_v1_no_coercion'
+POLICY_VERSION = 'manual_annotation_identity_v2_event_links'
 MAX_SAFE_FRAME_ID = 2**53 - 1
 
 
@@ -37,6 +37,31 @@ def annotation_contract_script():
         throw error;
       }
     }
+    function sourceIdentityAttribute(text, label) {
+      if (text === undefined || text === '') return null;
+      if (typeof text !== 'string' || !/^(0|[1-9]\d*)$/.test(text)) {
+        throw new Error(`${label}必须保留非负整数身份`);
+      }
+      // Only decode canonical DOM text written from a validated JSON integer.
+      return sourceFrameValue(Number(text), label);
+    }
+    function annotationIdentity(annotation, index = 0) {
+      if (!annotation || typeof annotation !== 'object' || Array.isArray(annotation)) {
+        throw new Error('人工标注必须是对象');
+      }
+      for (const key of ['event_id', 'source_event_id']) {
+        if (annotation[key] !== null && annotation[key] !== undefined) {
+          sourceFrameValue(annotation[key], `事件身份 ${key}`);
+        }
+      }
+      const source = Object.prototype.hasOwnProperty.call(annotation, 'source_event_id')
+        ? annotation.source_event_id : annotation.event_id;
+      const sourceId = sourceFrameValue(source, '来源事件ID', true);
+      const id = annotation.annotation_id ?? (annotation.event_id == null
+        ? `annotation-${index + 1}` : String(annotation.event_id));
+      if (typeof id !== 'string' || !id.trim()) throw new Error('标注身份ID必须是非空字符串');
+      return {annotation_id:id, source_event_id:sourceId};
+    }
     function annotationFrames(annotation) {
       if (!annotation || typeof annotation !== 'object' || Array.isArray(annotation)) {
         throw new Error('人工标注必须是对象');
@@ -44,9 +69,15 @@ def annotation_contract_script():
       const frames = annotation.frames ?? {};
       if (typeof frames !== 'object' || Array.isArray(frames)) throw new Error('标注frames必须是对象');
       const resolved = {};
-      for (const key of ['start', 'contact', 'end']) {
+      for (const key of ['start', 'contact', 'end', 'peak']) {
         resolved[key] = Object.prototype.hasOwnProperty.call(frames, key)
-          ? frames[key] : annotation[`${key}_frame`];
+          ? frames[key] : (Object.prototype.hasOwnProperty.call(annotation, `${key}_frame`)
+            ? annotation[`${key}_frame`] : frames[`${key}_frame`]);
+        for (const [mapping, name] of [[annotation, `${key}_frame`], [frames, key], [frames, `${key}_frame`]]) {
+          if (Object.prototype.hasOwnProperty.call(mapping, name)) {
+            sourceFrameValue(mapping[name], `源帧 ${name}`, true);
+          }
+        }
       }
       return resolved;
     }
@@ -56,6 +87,7 @@ def annotation_contract_script():
       for (const key of ['start', 'contact', 'end']) {
         frames[key] = sourceFrameValue(frames[key], labels[key], !complete);
       }
+      frames.peak = sourceFrameValue(frames.peak, '动作峰值帧', true);
       if ((frames.start !== null && frames.contact !== null && frames.start > frames.contact)
           || (frames.contact !== null && frames.end !== null && frames.contact > frames.end)
           || (frames.start !== null && frames.end !== null && frames.start > frames.end)) {
@@ -63,16 +95,70 @@ def annotation_contract_script():
       }
       return frames;
     }
-    function validateAnnotationPayload(payload, complete = false) {
+    function validateAnnotationPayload(payload, complete = false, knownSourceIds = null) {
       if (!payload || payload.schema_version !== 'swing_manual_annotations_v2'
           || !Array.isArray(payload.events) || (complete && payload.events.length === 0)) {
         throw new Error('请选择包含事件的swing_manual_annotations_v2标注');
       }
-      for (const event of payload.events) validateAnnotationFrames(event, complete);
-      return payload;
+      if (payload.timeline_review_complete !== undefined && typeof payload.timeline_review_complete !== 'boolean') {
+        throw new Error('整段复核确认必须是布尔值');
+      }
+      if (payload.source != null && (typeof payload.source !== 'object' || Array.isArray(payload.source))) {
+        throw new Error('标注来源必须是对象');
+      }
+      const identities = new Set(), sourceIds = new Set();
+      const events = payload.events.map((event, index) => {
+        validateAnnotationFrames(event, complete);
+        const identity = annotationIdentity(event, index);
+        if (identities.has(identity.annotation_id)) throw new Error(`标注身份重复: ${identity.annotation_id}`);
+        identities.add(identity.annotation_id);
+        const sourceId = identity.source_event_id;
+        if (sourceId !== null) {
+          if (sourceIds.has(sourceId)) throw new Error(`来源事件ID重复: ${sourceId}`);
+          sourceIds.add(sourceId);
+          if (knownSourceIds !== null && !knownSourceIds.includes(sourceId)) {
+            throw new Error(`来源事件 #${sourceId} 在当前报告中不存在`);
+          }
+        }
+        for (const key of ['valid_hit', 'needs_review', 'count_correct']) {
+          if (event[key] !== undefined && typeof event[key] !== 'boolean') throw new Error(`${key}必须是布尔值`);
+        }
+        if (event.issue_tags != null && (!Array.isArray(event.issue_tags) || event.issue_tags.some(tag => typeof tag !== 'string'))) {
+          throw new Error('问题标签必须是字符串数组');
+        }
+        return {...event, ...identity};
+      });
+      return {...payload, events};
+    }
+    function prepareAnnotationImport(payload) {
+      const validated = validateAnnotationPayload(payload, false, modelEventIds);
+      const modelCards = [...document.querySelectorAll('.event-card[data-annotation-card]')];
+      const cardsBySource = new Map();
+      for (const card of modelCards) {
+        const sourceId = sourceIdentityAttribute(card.dataset.sourceEventId, '来源事件ID');
+        if (sourceId === null || cardsBySource.has(sourceId)) throw new Error('页面来源事件身份缺失或重复');
+        cardsBySource.set(sourceId, card);
+      }
+      const assignments = validated.events.map(annotation => {
+        const card = annotation.source_event_id === null ? null : cardsBySource.get(annotation.source_event_id);
+        if (annotation.source_event_id !== null && !card) throw new Error('来源事件在当前页面不存在');
+        return {annotation, card};
+      });
+      const targeted = new Set(assignments.map(item => item.card).filter(Boolean));
+      const remainingIds = new Set();
+      for (const card of modelCards.filter(card => !targeted.has(card))) {
+        const id = annotationIdentity({annotation_id:card.dataset.annotationId}).annotation_id;
+        if (remainingIds.has(id)) throw new Error(`页面标注身份重复: ${id}`);
+        remainingIds.add(id);
+      }
+      for (const {annotation} of assignments) {
+        if (remainingIds.has(annotation.annotation_id)) throw new Error(`标注身份与当前卡片重复: ${annotation.annotation_id}`);
+        remainingIds.add(annotation.annotation_id);
+      }
+      return {payload:validated, assignments};
     }
     function showAnnotationError(error) {
-      const message = `标注帧号未通过校验：${error.message || String(error)}`;
+      const message = `标注身份或帧号未通过校验：${error.message || String(error)}`;
       const readiness = document.getElementById('annotation-readiness');
       if (readiness) { readiness.dataset.state = 'blocked'; readiness.textContent = message; }
       const status = document.getElementById('annotation-status');

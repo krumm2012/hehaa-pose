@@ -18,6 +18,7 @@ from practice_score_adapter import resolve_practice_score
 from swing_session_quality import build_session_quality_dashboard
 from event_source_timing import analyze_event_source_timing, source_frame_navigation, POLICY_VERSION as PHASE_TIME_POLICY
 from observation_policy import finite_number
+from report_identity_contract import normalize_report_document, report_identity_info
 
 EVIDENCE_QUALITY_NOTE = '证据参考为启发式质量，未经准确率校准，不是技术评分。'
 
@@ -321,11 +322,8 @@ def _rel(path: Optional[str], base_dir: Path) -> Optional[str]:
 
 
 def _event_by_id(events: List[Dict]) -> Dict[int, Dict]:
-    out = {}
-    for event in events or []:
-        if isinstance(event, dict) and event.get("event_id") is not None:
-            out[int(event["event_id"])] = event
-    return out
+    document = normalize_report_document({'events': events}, 'Coach关联')
+    return {event['event_id']: event for event in document['events']}
 
 
 def _classification_text(context: Dict) -> str:
@@ -371,18 +369,20 @@ def build_report_payload(
     if not declared_source or Path(video_path).resolve() != Path(declared_source).resolve():
         navigation.update(status='unavailable', frames=[], reasons=['selected_video_not_bound_to_source'])
     navigation['video_binding'] = 'declared_source_path_only_not_independent_content_verification'
-    event_data = load_json(event_json_path)
-    coach_data = load_json(coach_json_path) if coach_json_path and os.path.exists(coach_json_path) else {"events": []}
+    event_data = normalize_report_document(load_json(event_json_path))
+    coach_data = normalize_report_document(
+        load_json(coach_json_path) if coach_json_path and os.path.exists(coach_json_path)
+        else {"events": []}, 'Coach报告输入')
     evaluation_data = (
         load_json(evaluation_json_path)
         if evaluation_json_path and os.path.exists(evaluation_json_path)
         else None
     )
-    coach_lookup = _event_by_id(coach_data.get("events", []))
+    coach_lookup = {event['event_id']: event for event in coach_data['events']}
 
     merged_events = []
     for event in event_data.get("events", []):
-        coach_event = coach_lookup.get(int(event.get("event_id", 0)), {})
+        coach_event = coach_lookup.get(event['event_id'], {})
         scores = coach_event.get("scores") or {}
         quality_flags = coach_event.get("quality_flags") or event.get("quality_flags") or {}
         start_boundary = (event.get("evidence") or {}).get("start_boundary") or {}
@@ -449,7 +449,7 @@ def build_report_payload(
                 "stroke_type": event.get("stroke_type"),
                 "confidence": event.get("confidence"),
                 "start_frame": event.get("start_frame"),
-                "contact_frame": event.get("contact_frame") if event.get("contact_frame") is not None else (coach_event.get("frames") or {}).get("contact"),
+                "contact_frame": event.get("contact_frame"),
                 "peak_frame": event.get("peak_frame"),
                 "end_frame": event.get("end_frame"),
                 "phase_counts": event.get("phase_counts") or {},
@@ -491,6 +491,7 @@ def build_report_payload(
         )
 
     return {
+        'report_identity': report_identity_info(),
         "paths": {
             "frame_json": frame_json_path,
             "event_json": event_json_path,
@@ -720,6 +721,7 @@ def _session_dashboard_html(dashboard: Dict) -> str:
 
 
 def render_report_html(payload: Dict, output_path: str) -> str:
+    payload = normalize_report_document(payload)
     output_dir = Path(output_path).parent
     video_src = _rel(payload["paths"].get("video"), output_dir)
     event_cards = []
@@ -870,7 +872,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
 
         event_cards.append(
             f"""
-            <article class="event-card{' is-shadow-event' if is_shadow else ''}" data-is-shadow="{'true' if is_shadow else 'false'}" data-annotation-card data-annotation-id="model-{html.escape(str(event.get('event_id')))}" data-source-event-id="{html.escape(str(event.get('event_id')))}" data-event-id="{html.escape(str(event.get('event_id')))}">
+            <article class="event-card{' is-shadow-event' if is_shadow else ''}" data-is-shadow="{'true' if is_shadow else 'false'}" data-annotation-card data-annotation-id="model-{event['event_id']}" data-source-event-id="{event['event_id']}" data-event-id="{event['event_id']}" data-peak-frame="{'' if event.get('peak_frame') is None else event['peak_frame']}">
               <div class="event-head">
                 <strong>Event {html.escape(str(event.get('event_id')))} · {html.escape(str(event.get('stroke_type')))}</strong>
                 {head_badge_html}
@@ -1355,10 +1357,11 @@ def render_report_html(payload: Dict, output_path: str) -> str:
     const navigation = (data.timeline || {{}}).source_time_navigation || {{}};
     const sourceTimes = navigation.status === 'reported_media_time' ? navigation.frames || [] : [];
     const timeByFrame = new Map(sourceTimes);
-    const maxEventFrame = Math.max(0, ...data.events.flatMap(event => [event.start_frame, event.contact_frame, event.peak_frame, event.end_frame].map(Number).filter(Number.isFinite)));
+    const maxEventFrame = Math.max(0, ...data.events.flatMap(event => [event.start_frame, event.contact_frame, event.peak_frame, event.end_frame].filter(Number.isSafeInteger)));
     const totalFrames = Math.max(1, Number((data.timeline || {{}}).total_frames || 0), maxEventFrame + 1,
                                 sourceTimes.length ? sourceTimes[sourceTimes.length - 1][0] + 1 : 0);
-    let activeEventId = data.events.length ? Number(data.events[0].event_id) : null;
+    const modelEventIds = data.events.map(event => event.event_id);
+    let activeEventId = data.events.length ? data.events[0].event_id : null;
     scrubber.max = String(totalFrames - 1);
     scrubber.disabled = !sourceTimes.length;
 
@@ -1376,7 +1379,12 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       return Math.max(0, Math.min(100, (Number(frame) / Math.max(1, totalFrames - 1)) * 100));
     }}
     function seekFrame(frame, shouldPlay = false) {{
-      const safeFrame = Math.max(0, Math.min(totalFrames - 1, Math.round(Number(frame) || 0)));
+      const safeFrame = typeof frame === 'string'
+        ? sourceIdentityAttribute(frame, '定位源帧') : sourceFrameValue(frame, '定位源帧', true);
+      if (safeFrame === null) {{
+        timelineStatus.textContent = '缺少源帧锚点，无法准确定位。';
+        return;
+      }}
       const seconds = timeByFrame.get(safeFrame);
       if (seconds === undefined) {{
         timelineStatus.textContent = `第 ${{safeFrame}} 帧源时间不可核验，无法准确定位。`;
@@ -1393,14 +1401,17 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       if (shouldPlay) video.play();
     }}
     function selectEvent(eventId, seek = true) {{
-      const event = data.events.find(item => Number(item.event_id) === Number(eventId));
+      const identity = typeof eventId === 'string'
+        ? sourceIdentityAttribute(eventId, '来源事件ID') : sourceFrameValue(eventId, '来源事件ID');
+      const event = data.events.find(item => item.event_id === identity);
       if (!event) return;
-      activeEventId = Number(event.event_id);
-      document.querySelectorAll('[data-event-id]').forEach(node => node.classList.toggle('is-active', Number(node.dataset.eventId) === activeEventId));
+      activeEventId = event.event_id;
+      document.querySelectorAll('[data-event-id]').forEach(node => node.classList.toggle('is-active', node.dataset.eventId === String(activeEventId)));
       if (seek) seekFrame(event.start_frame);
     }}
     function marker(label, frame, className, eventId) {{
-      if (!Number.isFinite(Number(frame))) return '';
+      if (frame === null || frame === undefined) return '';
+      sourceFrameValue(frame, '时间轴源帧');
       const position = percentForFrame(frame);
       return `<button type="button" class="timeline-marker ${{className}}" data-event-id="${{eventId}}" data-frame="${{frame}}" style="left:calc(${{position}}% - 5px)" aria-label="${{label}}：第 ${{frame}} 帧">${{label}}</button>`;
     }}
@@ -1411,8 +1422,11 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       }}).join('');
       const lanes = data.events.map(event => {{
         const isShadow = Boolean(event.is_shadow_swing || ((event.evidence || {{}}).contact_analysis || {{}}).is_shadow_swing || (((event.evidence || {{}}).classification_context || {{}}).contact_analysis || {{}}).is_shadow_swing);
-        const start = Number(event.start_frame) || 0;
-        const end = Math.max(start + 1, Number(event.end_frame) || start + 1);
+        const start = event.start_frame;
+        const end = event.end_frame;
+        if (start === null || end === null) {{
+          return `<div class="timeline-lane"><span class="timeline-label">事件 ${{event.event_id}}</span><div class="timeline-track">缺少起止源帧锚点</div></div>`;
+        }}
         const left = percentForFrame(start);
         const width = Math.max(1.5, percentForFrame(end) - left);
         const btnClass = isShadow ? 'timeline-event timeline-event--shadow' : 'timeline-event';
@@ -1425,9 +1439,14 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       }}));
     }}
     function updatePlaybackState(frame) {{
-      const currentFrame = Math.max(0, Math.min(totalFrames - 1, Math.round(Number(frame) || 0)));
+      const currentFrame = sourceFrameValue(frame, '播放源帧', true);
+      if (currentFrame === null) {{
+        timelineStatus.textContent = '当前播放位置无法对应已知源帧。';
+        return;
+      }}
       scrubber.value = String(currentFrame);
-      const currentEvent = data.events.find(event => currentFrame >= Number(event.start_frame) && currentFrame <= Number(event.end_frame));
+      const currentEvent = data.events.find(event => event.start_frame !== null && event.end_frame !== null
+        && currentFrame >= event.start_frame && currentFrame <= event.end_frame);
       if (currentEvent) selectEvent(currentEvent.event_id, false);
       const phase = ((data.timeline || {{}}).frame_trace || []).find(trace => Number(trace.frame) === currentFrame)?.phase || 'ready';
       const seconds = timeByFrame.get(currentFrame);
@@ -1459,10 +1478,8 @@ def render_report_html(payload: Dict, output_path: str) -> str:
     {annotation_contract_script()}
 
     function annotationFromCard(card) {{
-      const sourceText = card.dataset.sourceEventId || '';
-      const sourceNumber = Number(sourceText);
-      const sourceEventId = sourceText === '' ? null : (Number.isFinite(sourceNumber) ? sourceNumber : sourceText);
-      const original = data.events.find(event => String(event.event_id) === String(sourceEventId)) || {{}};
+      const sourceEventId = sourceIdentityAttribute(card.dataset.sourceEventId, '来源事件ID');
+      const original = data.events.find(event => event.event_id === sourceEventId) || {{}};
       return {{
         annotation_id: card.dataset.annotationId,
         source_event_id: sourceEventId,
@@ -1476,7 +1493,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         frames: {{
           start: integerField(card, 'start_frame'),
           contact: integerField(card, 'contact_frame'),
-          peak: original.peak_frame ?? null,
+          peak: sourceIdentityAttribute(card.dataset.peakFrame, '动作峰值帧'),
           end: integerField(card, 'end_frame')
         }},
         quality_flags: original.quality_flags || {{}}
@@ -1508,7 +1525,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
     }}
     function refreshAnnotations() {{
       try {{
-        const payload = validateAnnotationPayload(collectAnnotations());
+        const payload = validateAnnotationPayload(collectAnnotations(), false, modelEventIds);
         updateAnnotationReadiness(payload);
         document.getElementById('annotation-json').textContent = JSON.stringify(payload, null, 2);
         return payload;
@@ -1538,7 +1555,10 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       }});
     }}
     function applyAnnotationToCard(card, imported) {{
+      const identity = annotationIdentity(imported);
       const frames = validateAnnotationFrames(imported);
+      card.dataset.annotationId = identity.annotation_id;
+      card.dataset.peakFrame = frames.peak == null ? '' : String(frames.peak);
       setField(card, 'actual_stroke_type', imported.actual_stroke_type);
       setField(card, 'count_correct', imported.count_correct);
       setField(card, 'valid_hit', imported.valid_hit);
@@ -1551,13 +1571,16 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       card.querySelectorAll('[data-tag]').forEach(input => input.checked = tags.has(input.dataset.tag));
     }}
     function addMissedEvent(imported = null) {{
+      if (imported) {{ annotationIdentity(imported); validateAnnotationFrames(imported); }}
       manualCounter += 1;
+      while (document.querySelector(`[data-annotation-id="manual-${{manualCounter}}"]`)) manualCounter += 1;
       const card = document.createElement('article');
       const importedId = imported && (imported.annotation_id ?? imported.event_id);
       card.className = 'manual-event-card';
       card.dataset.annotationCard = '';
       card.dataset.annotationId = importedId != null ? String(importedId) : `manual-${{manualCounter}}`;
-      card.dataset.sourceEventId = imported && imported.source_event_id != null ? String(imported.source_event_id) : '';
+      const sourceId = imported ? annotationIdentity(imported).source_event_id : null;
+      card.dataset.sourceEventId = sourceId == null ? '' : String(sourceId);
       card.innerHTML = `
         <div class="manual-event-head">
           <h3>人工补充挥拍</h3>
@@ -1601,16 +1624,13 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       return card;
     }}
     function applyImportedAnnotations(payload) {{
-      validateAnnotationPayload(payload);
-      const importedEvents = Array.isArray(payload.events) ? payload.events : [];
+      const plan = prepareAnnotationImport(payload);
+      payload = plan.payload;
       timelineReviewComplete.checked = Boolean(payload.timeline_review_complete);
       manualEvents.replaceChildren();
       let applied = 0;
-      for (const imported of importedEvents) {{
-        const sourceId = imported.source_event_id ?? imported.event_id ?? null;
-        const card = sourceId == null ? null : document.querySelector(`.event-card[data-event-id="${{String(sourceId)}}"]`);
+      for (const {{annotation: imported, card}} of plan.assignments) {{
         if (card) {{
-          if (imported.annotation_id != null) card.dataset.annotationId = String(imported.annotation_id);
           applyAnnotationToCard(card, imported);
         }} else {{
           addMissedEvent(imported);
@@ -1649,7 +1669,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
     document.querySelectorAll('.event-jump').forEach(button => button.addEventListener('click', () => selectEvent(button.dataset.eventId)));
     scrubber.addEventListener('input', event => seekFrame(event.target.value));
     document.getElementById('play-event').addEventListener('click', () => {{
-      const event = data.events.find(item => Number(item.event_id) === activeEventId);
+      const event = data.events.find(item => item.event_id === activeEventId);
       if (event) seekFrame(event.start_frame, true);
       else video.play();
     }});
@@ -1690,7 +1710,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
       }}
 
       if (onlyValid && activeEventId != null) {{
-        const curr = (data.events || []).find(e => Number(e.event_id) === Number(activeEventId));
+        const curr = (data.events || []).find(e => e.event_id === activeEventId);
         const isCurrShadow = curr && (curr.is_shadow_swing || ((curr.evidence || {{}}).contact_analysis || {{}}).is_shadow_swing || (((curr.evidence || {{}}).classification_context || {{}}).contact_analysis || {{}}).is_shadow_swing);
         if (isCurrShadow && validEvents.length > 0) {{
           selectEvent(validEvents[0].event_id, false);
