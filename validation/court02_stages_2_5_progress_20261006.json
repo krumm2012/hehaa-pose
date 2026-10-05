@@ -1,0 +1,42 @@
+{
+  "schema": "tennis.iteration-validation-progress.v1",
+  "session_id": "court02_temporal_racket_20261005T161814Z_0ab2c2",
+  "source_sha256": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0",
+  "all_stages_complete": false,
+  "stages": {
+    "2": {
+      "status": "awaiting_physical_measurements",
+      "evaluation_tool_ready": true
+    },
+    "3": {
+      "status": "awaiting_independent_labels",
+      "frames": 59,
+      "requested_points": 472
+    },
+    "4": {
+      "status": "baseline_audited_pending_error_benchmark",
+      "parameter_optimization_accepted": false
+    },
+    "5": {
+      "status": "awaiting_independent_coach_rubric_and_heldout_labels",
+      "policy": {
+        "policy_version": "automatic_coach_v2_validated_rules_only",
+        "validated_rule_ids": [],
+        "approval_source": "code_owned_independent_validation",
+        "exclusion_reason": "automatic_technique_rule_not_independently_validated",
+        "accuracy_validated": false
+      }
+    }
+  },
+  "evaluation_parameters": {
+    "joint_tolerance_px": 15.0,
+    "scale_tolerance_m": 0.05,
+    "semantics": "Diagnostic parameters only; user acceptance criteria remain unset."
+  },
+  "validation_checks": {
+    "target_peak_frames_in_blind_board": true,
+    "prediction_source_identities_match": true,
+    "regression_tests_passed": 36,
+    "cadence_pts_match_original": true
+  }
+}
