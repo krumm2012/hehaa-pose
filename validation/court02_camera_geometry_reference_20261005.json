@@ -1,0 +1,35 @@
+{
+  "schema": "tennis.camera-geometry-reference.v1",
+  "stream_id": "court02-main",
+  "camera_height_m": 3.3,
+  "camera_height_reference": "ground_to_camera_optical_center",
+  "camera_height_status": "user_confirmed",
+  "camera_height_evidence": "用户先说明镜头高3.3米，并于2026-10-05要求统一到3.30；替代示意图3.00米初值。",
+  "pitch_status": "requires_reconciliation",
+  "pitch_evidence": {
+    "earlier_user_statement_deg": 45,
+    "schematic_initial_range_deg": [
+      20,
+      35
+    ]
+  },
+  "room_height_m": null,
+  "room_height_note": "示意图室内高3.30米为假设，尚未作为实测值确认；不得由镜头高度反推。",
+  "ground_rectangle_width_m": 3.3,
+  "ground_rectangle_length_m": 4.8,
+  "ground_dimensions_status": "previously_user_confirmed_measured",
+  "schematic_horizontal_distance_m": 4.68,
+  "schematic_horizontal_distance_status": "assumed_not_measured",
+  "derived_example": {
+    "foot_sightline_depression_deg": 35.189,
+    "foot_slant_distance_m": 5.726
+  },
+  "usage": "reference_metadata_only",
+  "calibration_homographies_modified": false,
+  "accuracy_validated": false,
+  "mirror_wall_horizontal_distance_m": 6.2,
+  "mirror_wall_horizontal_distance_status": "user_reported_approximate",
+  "mirror_wall_distance_evidence": "用户确认6.2米指镜头正下方到镜墙的地面水平距离",
+  "mirror_wall_mounted": true,
+  "mirror_verticality_measured": false
+}

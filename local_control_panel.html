@@ -1311,7 +1311,9 @@
     }
 
     function selectedStream() {
-      return state.streams.find(item => item.stream_id === $("stream_id").value);
+      const inputId = $("stream_id").value;
+      const cameraId = inputId === "local_video" ? $("mapped_stream_id")?.value : inputId;
+      return state.streams.find(item => item.stream_id === cameraId);
     }
 
     function customPublicSource() {
@@ -1355,6 +1357,7 @@
           $("stream-meta").textContent = "本地视频 · " + (state.videoName || "请先选择视频文件");
           $("point-list").textContent = "全画面分析 · 未绑定机位 ROI · 不启用直播丢帧";
         }
+        updateRoiBoundaryEditor(mappedStream);
         savePreset();
         return;
       }
@@ -1378,6 +1381,24 @@
         (point, index) => `<span>P${index + 1}: [${point[0]}, ${point[1]}]</span>`
       ).join("") + (hasMirror ? `<span style="color: #ff6e73; border-color: rgba(255, 110, 115, 0.4);">🛡️ 镜面排除已激活 (阻断镜中虚像)</span>` : "");
 
+      updateRoiBoundaryEditor(stream);
+      savePreset();
+    }
+
+    function updateRoiBoundaryEditor(stream) {
+      const editor = $("roi-boundary-editor");
+      if (editor) editor.hidden = !stream;
+      if (!stream) {
+        for (const id of ["roi_p1", "roi_p2", "roi_p3", "roi_p4", "mirror_m1", "mirror_m2", "mirror_m3", "mirror_m4"]) {
+          if ($(id)) $(id).value = "";
+        }
+        if ($("roi-mirror-tag")) $("roi-mirror-tag").textContent = "未绑定机位";
+        roiEditorState.courtPoints = [];
+        roiEditorState.mirrorPoints = [];
+        if (roiEditorState.active) drawRoiCanvas();
+        return;
+      }
+      const hasMirror = Boolean(stream.mirror_view?.polygon?.length >= 3);
       const pts = (typeof sortPointsTLTRBRBL === "function" && stream.points && stream.points.length === 4)
         ? sortPointsTLTRBRBL(stream.points) : (stream.points || []);
       if ($("roi_p1")) $("roi_p1").value = pts[0] ? `${pts[0][0]}, ${pts[0][1]}` : "";
@@ -1403,9 +1424,8 @@
 
       if (typeof roiEditorState !== "undefined" && roiEditorState.active && typeof initRoiEditorFromStream === "function") {
         initRoiEditorFromStream(stream);
-        drawRoiCanvas();
+        syncCanvasGeometry();
       }
-      savePreset();
     }
 
     function escapeHtml(value) {
@@ -2317,8 +2337,8 @@
       active: false,
       target: "court", // "court" (球场ROI) | "mirror" (镜面排除区)
       mode: "drag", // "drag" (拖拽已有顶点) | "click" (重新顺序点击4点)
-      courtPoints: [], // [[previewX, previewY], ...] 画布预览像素坐标
-      mirrorPoints: [], // [[previewX, previewY], ...] 画布预览像素坐标
+      courtPoints: [], // [[sourceX, sourceY], ...] 原视频像素坐标
+      mirrorPoints: [], // [[sourceX, sourceY], ...] 原视频像素坐标
       clickStep: 0,
       hoverIdx: -1,
       draggingIdx: -1,
@@ -2338,58 +2358,39 @@
       return [sw, sh];
     }
 
+    // Keep editor points in original source pixels. Preview decoding and canvas
+    // layout can change independently; neither may change the stored geometry.
     function sourceToPreview(pt) {
       if (!pt || pt.length < 2) return null;
-      const [sw, sh] = getSourceDimensions();
-      const canvas = $("roi-canvas");
-      const img = $("preview-image");
-      const cw = canvas && canvas.width ? canvas.width : (img && img.naturalWidth ? img.naturalWidth : 1600);
-      const ch = canvas && canvas.height ? canvas.height : (img && img.naturalHeight ? img.naturalHeight : 900);
-      return [
-        Math.round(pt[0] * (cw / sw)),
-        Math.round(pt[1] * (ch / sh)),
-      ];
+      return [Math.round(pt[0]), Math.round(pt[1])];
     }
 
     function previewToSource(pt) {
       if (!pt || pt.length < 2) return null;
-      const [sw, sh] = getSourceDimensions();
-      const canvas = $("roi-canvas");
-      const img = $("preview-image");
-      const cw = canvas && canvas.width ? canvas.width : (img && img.naturalWidth ? img.naturalWidth : 1600);
-      const ch = canvas && canvas.height ? canvas.height : (img && img.naturalHeight ? img.naturalHeight : 900);
-      return [
-        Math.round(pt[0] * (sw / cw)),
-        Math.round(pt[1] * (sh / ch)),
-      ];
+      return [Math.round(pt[0]), Math.round(pt[1])];
     }
 
     function normToPreview(pt) {
       if (!pt || pt.length < 2) return null;
-      const canvas = $("roi-canvas");
-      const img = $("preview-image");
-      const cw = canvas && canvas.width ? canvas.width : (img && img.naturalWidth ? img.naturalWidth : 1600);
-      const ch = canvas && canvas.height ? canvas.height : (img && img.naturalHeight ? img.naturalHeight : 900);
-      return [
-        Math.round(pt[0] * cw),
-        Math.round(pt[1] * ch),
-      ];
+      const [sw, sh] = getSourceDimensions();
+      return [Math.round(pt[0] * sw), Math.round(pt[1] * sh)];
     }
 
     function previewToNorm(pt) {
       if (!pt || pt.length < 2) return null;
-      const canvas = $("roi-canvas");
-      const img = $("preview-image");
-      const cw = canvas && canvas.width ? canvas.width : (img && img.naturalWidth ? img.naturalWidth : 1600);
-      const ch = canvas && canvas.height ? canvas.height : (img && img.naturalHeight ? img.naturalHeight : 900);
+      const [sw, sh] = getSourceDimensions();
       return [
-        Number(Math.max(0, Math.min(1, pt[0] / cw)).toFixed(4)),
-        Number(Math.max(0, Math.min(1, pt[1] / ch)).toFixed(4)),
+        Number(Math.max(0, Math.min(1, pt[0] / sw)).toFixed(4)),
+        Number(Math.max(0, Math.min(1, pt[1] / sh)).toFixed(4)),
       ];
     }
 
     function initRoiEditorFromStream(stream) {
-      if (!stream) return;
+      if (!stream) {
+        roiEditorState.courtPoints = [];
+        roiEditorState.mirrorPoints = [];
+        return;
+      }
       if (stream.points && stream.points.length >= 3) {
         const sorted = (stream.points.length === 4) ? sortPointsTLTRBRBL(stream.points) : stream.points;
         roiEditorState.courtPoints = sorted.map(sourceToPreview);
@@ -2456,8 +2457,9 @@
       canvas.style.top = `${rect.top - stageRect.top}px`;
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
-      canvas.width = rect.naturalWidth;
-      canvas.height = rect.naturalHeight;
+      const [sw, sh] = getSourceDimensions();
+      canvas.width = sw;
+      canvas.height = sh;
 
       const stream = selectedStream();
       if ((!roiEditorState.courtPoints.length || !roiEditorState.mirrorPoints.length) && stream) {

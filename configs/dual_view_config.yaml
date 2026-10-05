@@ -2,33 +2,24 @@ camera_profile: camera04_mirror_booth
 mirror_view:
   enabled: true
   reflection_roi:
-  - 0.2863
-  - 0.1622
-  - 0.6438
-  - 0.5567
+  - 0.6787
+  - 0.0
+  - 1.0
+  - 0.5122
   polygon:
-  - - 0.3162
-    - 0.1622
-  - - 0.6438
-    - 0.1978
-  - - 0.6262
-    - 0.5567
-  - - 0.2863
-    - 0.5433
+  - - 0.6825
+    - 0.0
+  - - 1.0
+    - 0.0033
+  - - 1.0
+    - 0.5122
+  - - 0.6787
+    - 0.4789
   padding: 0.0
   horizontal_flip: true
   target_size:
   - 540
   - 720
-  mask_polygon:
-  - - 0.5746
-    - 0.2057
-  - - 0.6272
-    - 0.2057
-  - - 0.6342
-    - 0.3048
-  - - 0.5707
-    - 0.2993
 front_view:
   enabled: true
   default_roi:
@@ -45,8 +36,8 @@ unified_detection:
   model_path: models/detectors/tennis-yolo26n-exp004-960-fp16/model.mlpackage
   ball_class_id: 0
   racket_class_id: 1
-  coreml_detection_output: "var_1440"
-  preprocess_mode: "letterbox"
+  coreml_detection_output: var_1440
+  preprocess_mode: letterbox
   ball_confidence_threshold: 0.692
   racket_confidence_threshold: 0.524
   ball_racket_contact_distance_px: 180.0

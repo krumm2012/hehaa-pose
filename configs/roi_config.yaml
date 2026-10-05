@@ -25,40 +25,31 @@ streams:
   mirror_view:
     enabled: true
     reflection_roi:
-    - 0.2863
-    - 0.1622
-    - 0.6438
-    - 0.5567
+    - 0.4238
+    - 0.0011
+    - 0.8317
+    - 0.3237
     polygon:
-    - - 0.3162
-      - 0.1622
-    - - 0.6438
-      - 0.1978
-    - - 0.6262
-      - 0.5567
-    - - 0.2863
-      - 0.5433
+    - - 0.4292
+      - 0.0011
+    - - 0.8317
+      - 0.0024
+    - - 0.8124
+      - 0.3237
+    - - 0.4238
+      - 0.2976
     padding: 0.0
     horizontal_flip: true
     target_size:
     - 540
     - 720
-    mask_polygon:
-    - - 0.5746
-      - 0.2057
-    - - 0.6272
-      - 0.2057
-    - - 0.6342
-      - 0.3048
-    - - 0.5707
-      - 0.2993
-    exclusion_enabled: true
+    mask_polygon: []
   front_view:
     enabled: true
     default_roi:
     - 0.34
     - 0.28
-    - 0.60
+    - 0.6
     - 0.88
     bbox_padding: 0.45
     target_size:
@@ -72,40 +63,41 @@ streams:
   - 2560
   - 1440
   roi_points:
-  - - 1170
-    - 336
-  - - 1952
-    - 358
-  - - 2186
-    - 1196
-  - - 962
-    - 1194
-  roi_description: '4-point ROI: [[1170, 336], [1952, 358], [2186, 1196], [962, 1194]]'
-  last_updated: '2026-09-25 20:20:00'
+  - - 1121
+    - 349
+  - - 1924
+    - 373
+  - - 2253
+    - 1204
+  - - 893
+    - 1200
+  roi_description: '4-point ROI: [[1121, 349], [1924, 373], [2253, 1204], [893, 1200]]'
+  last_updated: '2026-10-05 20:24:59'
   created_by: Tennis Analyzer ROI Calibration
   version: '2.0'
   mirror_view:
     enabled: true
     reflection_roi:
-    - 0.4244
+    - 0.4266
     - 0.0
     - 0.8145
-    - 0.3199
+    - 0.3229
     polygon:
-    - - 0.4244
-      - 0.2993
-    - - 0.4267
+    - - 0.4266
       - 0.0
     - - 0.8145
       - 0.0021
-    - - 0.8029
-      - 0.3199
+    - - 0.8
+      - 0.3229
+    - - 0.4301
+      - 0.2896
     padding: 0.0
     horizontal_flip: true
     target_size:
     - 540
     - 720
     mask_polygon: []
+    exclusion_enabled: true
   front_view:
     enabled: true
     default_roi:

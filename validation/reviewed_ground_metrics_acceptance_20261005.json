@@ -1,0 +1,22 @@
+{
+  "schema": "tennis.iteration-acceptance.v1",
+  "policy_version": "reviewed_ground_candidates_v1_sensitivity_no_scoring",
+  "inputs_sha256": {
+    "review": "bd4c81b8be352c636f9cb65f910ba843d75580ea77567c39bcdab50b9a5767ac",
+    "history": "d4e9a7a29f701219bb420c160f474cca11ad443ef2b637867306897d58443e50",
+    "manifest": "ab4ea7d31bf2f472241e85f380f42c2000e255ee7ba37a45898151ff4a613eb1",
+    "journal": "8d18d5bca6702a03f4f80a5e3624bd14123e199bcde3a59cc565cedd98e9a0c9",
+    "source": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0"
+  },
+  "generator_sha256": "8d4c0594b8ef51835df3b011e0bbd9ebffc41a4dec4a54e0a4511bd3d228962a",
+  "mapped_candidates": 150,
+  "unknown": 114,
+  "front_paired_frames": 26,
+  "back_diagnostic_paired_frames": 19,
+  "cross_view_diagnostics": 61,
+  "consecutive_candidate_changes": 140,
+  "accuracy_validated": false,
+  "runtime_modified": false,
+  "test_command": "python3 -m unittest test_reviewed_ground_contacts test_ground_reference test_ground_contact_review test_kinematic_cadence_audit -q",
+  "tests_passed": 36
+}
