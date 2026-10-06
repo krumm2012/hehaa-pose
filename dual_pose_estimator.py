@@ -39,6 +39,46 @@ def measurement_points(points, info):
             for k, v in points.items() if v.observed}
 
 
+PAIRED_KEYPOINT_NAMES: List[Tuple[str, str]] = [
+    ("left_shoulder", "right_shoulder"),
+    ("left_elbow", "right_elbow"),
+    ("left_wrist", "right_wrist"),
+    ("left_hip", "right_hip"),
+    ("left_knee", "right_knee"),
+    ("left_ankle", "right_ankle"),
+    ("left_eye", "right_eye"),
+    ("left_ear", "right_ear"),
+]
+
+TORSO_KEYPOINT_PAIRS: List[Tuple[str, str]] = [
+    ("left_shoulder", "right_shoulder"),
+    ("left_hip", "right_hip"),
+]
+
+LEG_KEYPOINT_PAIRS: List[Tuple[str, str]] = [
+    ("left_knee", "right_knee"),
+    ("left_ankle", "right_ankle"),
+]
+
+ARM_KEYPOINT_PAIRS: List[Tuple[str, str]] = [
+    ("left_elbow", "right_elbow"),
+    ("left_wrist", "right_wrist"),
+]
+
+
+def swap_pose_pairs(pose: Dict[str, Keypoint], pairs: List[Tuple[str, str]]) -> None:
+    """对姿态关键点字典中的指定成对解剖部位进行原位标签交换。"""
+    for l_name, r_name in pairs:
+        has_l = l_name in pose
+        has_r = r_name in pose
+        if has_l and has_r:
+            pose[l_name], pose[r_name] = pose[r_name], pose[l_name]
+        elif has_l:
+            pose[r_name] = pose.pop(l_name)
+        elif has_r:
+            pose[l_name] = pose.pop(r_name)
+
+
 @dataclass
 class DualPoseResult:
     """双视角姿态检测综合结果。"""
@@ -95,6 +135,7 @@ class DualPoseEstimator:
         self._last_back_eyes: List[Tuple[int, int, int, int]] = []
         self._last_valid_back_pose: Dict[str, Keypoint] = {}
         self._back_missing_count: int = 0
+        self._has_back_orientation_anchor: bool = False
         self._last_valid_front_pose: Dict[str, Keypoint] = {}
         self._front_missing_count: int = 0
         self._init_backend(model_path)
@@ -498,6 +539,155 @@ class DualPoseEstimator:
         self._back_identity_anchor = (center,span)
         return index
 
+    @staticmethod
+    def _get_pose_centroid(pose: Dict[str, Keypoint]) -> Optional[Tuple[float, float]]:
+        """计算姿态躯干核心质心（去平移参考锚点）。"""
+        pts = []
+        for k in ("left_shoulder", "right_shoulder", "left_hip", "right_hip"):
+            kp = pose.get(k)
+            if kp is not None and getattr(kp, "conf", 0.0) >= 0.3:
+                pts.append((kp.x, kp.y))
+        if not pts:
+            for kp in pose.values():
+                if kp is not None and getattr(kp, "conf", 0.0) >= 0.3:
+                    pts.append((kp.x, kp.y))
+        if not pts:
+            return None
+        return sum(p[0] for p in pts) / len(pts), sum(p[1] for p in pts) / len(pts)
+
+    @staticmethod
+    def _compute_bipartite_costs(
+        curr_pose: Dict[str, Keypoint],
+        prev_pose: Dict[str, Keypoint],
+        curr_c: Tuple[float, float],
+        prev_c: Tuple[float, float],
+        pairs: List[Tuple[str, str]],
+    ) -> Tuple[float, float, int]:
+        """计算躯干质心去平移后的相对坐标二分图匹配代价 (正向代价 vs 左右对调代价)。"""
+        cost_norm = 0.0
+        cost_swap = 0.0
+        valid_count = 0
+        for l_name, r_name in pairs:
+            if (
+                l_name in curr_pose
+                and r_name in curr_pose
+                and l_name in prev_pose
+                and r_name in prev_pose
+            ):
+                c_l = (curr_pose[l_name].x - curr_c[0], curr_pose[l_name].y - curr_c[1])
+                c_r = (curr_pose[r_name].x - curr_c[0], curr_pose[r_name].y - curr_c[1])
+                p_l = (prev_pose[l_name].x - prev_c[0], prev_pose[l_name].y - prev_c[1])
+                p_r = (prev_pose[r_name].x - prev_c[0], prev_pose[r_name].y - prev_c[1])
+
+                d_norm = math.hypot(c_l[0] - p_l[0], c_l[1] - p_l[1]) + math.hypot(
+                    c_r[0] - p_r[0], c_r[1] - p_r[1]
+                )
+                d_swap = math.hypot(c_l[0] - p_r[0], c_l[1] - p_r[1]) + math.hypot(
+                    c_r[0] - p_l[0], c_r[1] - p_l[1]
+                )
+                cost_norm += d_norm
+                cost_swap += d_swap
+                valid_count += 1
+        return cost_norm, cost_swap, valid_count
+
+    def _filter_backview_temporal_swap(
+        self,
+        curr_pose: Dict[str, Keypoint],
+    ) -> Optional[str]:
+        """
+        时序二分图抗翻转滤波器（Temporal Anti-Swap Filter）：
+        对背面机位（镜面视口）姿态进行躯干去平移的局部相对时序二分图匹配。
+        杜绝 2D 网络在背影/侧身及双手反拍胸前交叉时发生的 180° 解剖左右关节颠倒问题。
+        """
+        if not self._last_valid_back_pose or not curr_pose:
+            return None
+
+        prev_pose = self._last_valid_back_pose
+        curr_c = self._get_pose_centroid(curr_pose)
+        prev_c = self._get_pose_centroid(prev_pose)
+        if not curr_c or not prev_c:
+            return None
+
+        t_norm, t_swap, t_cnt = self._compute_bipartite_costs(
+            curr_pose, prev_pose, curr_c, prev_c, TORSO_KEYPOINT_PAIRS
+        )
+        all_norm, all_swap, all_cnt = self._compute_bipartite_costs(
+            curr_pose, prev_pose, curr_c, prev_c, PAIRED_KEYPOINT_NAMES
+        )
+
+        # 1. 全身 180° 朝向翻转判定：总体代价显著偏向对调，且躯干无正向阻抗
+        if (
+            all_cnt >= 2
+            and all_norm > 25.0
+            and all_swap < 0.55 * all_norm
+            and (t_cnt == 0 or t_swap <= t_norm * 1.05)
+        ):
+            swap_pose_pairs(curr_pose, PAIRED_KEYPOINT_NAMES)
+            logger.info(
+                f"Back view temporal whole-body swap detected and corrected: "
+                f"norm={all_norm:.1f}, swap={all_swap:.1f}, ratio={all_swap / all_norm:.2f}"
+            )
+            return "whole_body"
+
+        # 2. 下肢局部翻转判定：躯干朝向正常，但随挥下肢跨步导致下肢局部翻转
+        l_norm, l_swap, l_cnt = self._compute_bipartite_costs(
+            curr_pose, prev_pose, curr_c, prev_c, LEG_KEYPOINT_PAIRS
+        )
+        if (
+            l_cnt >= 1
+            and l_norm > 30.0
+            and l_swap < 0.50 * l_norm
+            and (t_cnt == 0 or t_norm <= t_swap)
+        ):
+            swap_pose_pairs(curr_pose, LEG_KEYPOINT_PAIRS)
+            logger.info(
+                f"Back view temporal leg swap detected and corrected: "
+                f"norm={l_norm:.1f}, swap={l_swap:.1f}, ratio={l_swap / l_norm:.2f}"
+            )
+            return "legs"
+
+        return None
+
+    def _verify_cross_view_cold_start(
+        self,
+        front_pose_orig: Dict[str, Keypoint],
+        back_pose_orig: Dict[str, Keypoint],
+        back_pose_local: Dict[str, Keypoint],
+    ) -> Optional[str]:
+        """
+        跨视角解剖朝向冷启动校验 (Level 2)：
+        利用具备人脸五官锚定的正面视角横轴朝向符号，防范冷启动或长丢帧后的初始镜像倒置。
+        """
+        if not front_pose_orig or not back_pose_orig:
+            return None
+
+        f_ls, f_rs = front_pose_orig.get("left_shoulder"), front_pose_orig.get("right_shoulder")
+        b_ls, b_rs = back_pose_orig.get("left_shoulder"), back_pose_orig.get("right_shoulder")
+        f_lh, f_rh = front_pose_orig.get("left_hip"), front_pose_orig.get("right_hip")
+        b_lh, b_rh = back_pose_orig.get("left_hip"), back_pose_orig.get("right_hip")
+
+        sh_disagree = False
+        if f_ls and f_rs and b_ls and b_rs:
+            f_dx = f_ls.x - f_rs.x
+            b_dx = b_ls.x - b_rs.x
+            if abs(f_dx) > 30.0 and abs(b_dx) > 25.0 and (f_dx * b_dx < 0):
+                sh_disagree = True
+
+        hip_disagree = False
+        if f_lh and f_rh and b_lh and b_rh:
+            f_dx = f_lh.x - f_rh.x
+            b_dx = b_lh.x - b_rh.x
+            if abs(f_dx) > 25.0 and abs(b_dx) > 20.0 and (f_dx * b_dx < 0):
+                hip_disagree = True
+
+        if sh_disagree or hip_disagree:
+            swap_pose_pairs(back_pose_orig, PAIRED_KEYPOINT_NAMES)
+            swap_pose_pairs(back_pose_local, PAIRED_KEYPOINT_NAMES)
+            logger.info("Cold-start cross-view orientation mismatch: inverted back view corrected to match front view.")
+            return "cold_start_whole_body"
+
+        return None
+
     def _predict_single_view(
         self,
         view_frame: np.ndarray,
@@ -557,6 +747,7 @@ class DualPoseEstimator:
 
             if is_back_view:
                 if parsed:
+                    self._filter_backview_temporal_swap(parsed)
                     self._last_valid_back_pose = parsed
                     self._last_valid_back_crop = crop_info
                     self._back_missing_count = 0
@@ -614,6 +805,7 @@ class DualPoseEstimator:
 
                 if is_back_view:
                     if parsed:
+                        self._filter_backview_temporal_swap(parsed)
                         self._last_valid_back_pose = parsed
                         self._last_valid_back_crop = crop_info
                         self._back_missing_count = 0
@@ -724,6 +916,13 @@ class DualPoseEstimator:
         front_pose_orig = self._map_pose_to_original(front_pose_local, dual_frame.front_info)
         back_pose_orig = self._map_pose_to_original(back_pose_local, dual_frame.back_info)
 
+        # 2.5 跨视角解剖朝向冷启动与长丢帧重对齐保护 (Level 2)
+        if not self._has_back_orientation_anchor or self._back_missing_count >= 3:
+            if back_pose_local and front_pose_orig and back_pose_orig:
+                if self._verify_cross_view_cold_start(front_pose_orig, back_pose_orig, back_pose_local):
+                    self._last_valid_back_pose = back_pose_local
+                self._has_back_orientation_anchor = True
+
         # 3. 生物力学融合计算
         # 如果提供了原图 ball_pos，将其映射至正面机位坐标用于击球手与触球间距分析
         front_ball_pos = None
@@ -764,6 +963,7 @@ class DualPoseEstimator:
         self._back_identity_anchor = None
         self._last_valid_back_pose = {}
         self._back_missing_count = 0
+        self._has_back_orientation_anchor = False
         self._last_valid_front_pose = {}
         self._front_missing_count = 0
 

@@ -143,9 +143,182 @@ class DualPoseEstimatorTests(unittest.TestCase):
         self.assertEqual(estimator._front_missing_count, 0)
         self.assertEqual(len(estimator._last_valid_back_pose), 0)
         self.assertEqual(estimator._back_missing_count, 0)
+        self.assertFalse(estimator._has_back_orientation_anchor)
+
+    def test_backview_temporal_whole_body_swap_filter(self):
+        """验证时序二分图滤波器成功拦截并纠正类似 Frame 223 的全身左右颠倒。"""
+        estimator = DualPoseEstimator(backend="mock")
+        from dual_view_biomechanics import Keypoint
+
+        # 帧 222 (基准正常帧，人体解剖左侧在局部画面右侧较大坐标)
+        f222 = {
+            "left_shoulder": Keypoint(x=280.0, y=100.0, conf=0.95),
+            "right_shoulder": Keypoint(x=200.0, y=95.0, conf=0.95),
+            "left_elbow": Keypoint(x=290.0, y=150.0, conf=0.92),
+            "right_elbow": Keypoint(x=190.0, y=145.0, conf=0.92),
+            "left_wrist": Keypoint(x=300.0, y=120.0, conf=0.70),
+            "right_wrist": Keypoint(x=210.0, y=130.0, conf=0.65),
+            "left_hip": Keypoint(x=260.0, y=200.0, conf=0.95),
+            "right_hip": Keypoint(x=220.0, y=195.0, conf=0.95),
+            "left_knee": Keypoint(x=270.0, y=280.0, conf=0.95),
+            "right_knee": Keypoint(x=210.0, y=280.0, conf=0.95),
+            "left_ankle": Keypoint(x=280.0, y=360.0, conf=0.95),
+            "right_ankle": Keypoint(x=190.0, y=365.0, conf=0.95),
+        }
+        estimator._last_valid_back_pose = f222
+
+        # 帧 223 注入全身 180° 翻转（左右标签互换，坐标颠倒）
+        f223_flipped = {
+            "left_shoulder": Keypoint(x=202.0, y=96.0, conf=0.95),
+            "right_shoulder": Keypoint(x=278.0, y=101.0, conf=0.95),
+            "left_elbow": Keypoint(x=188.0, y=147.0, conf=0.92),
+            "right_elbow": Keypoint(x=288.0, y=152.0, conf=0.92),
+            "left_wrist": Keypoint(x=208.0, y=132.0, conf=0.65),
+            "right_wrist": Keypoint(x=298.0, y=122.0, conf=0.70),
+            "left_hip": Keypoint(x=218.0, y=197.0, conf=0.95),
+            "right_hip": Keypoint(x=258.0, y=202.0, conf=0.95),
+            "left_knee": Keypoint(x=208.0, y=282.0, conf=0.95),
+            "right_knee": Keypoint(x=268.0, y=282.0, conf=0.95),
+            "left_ankle": Keypoint(x=188.0, y=367.0, conf=0.95),
+            "right_ankle": Keypoint(x=278.0, y=362.0, conf=0.95),
+        }
+
+        action = estimator._filter_backview_temporal_swap(f223_flipped)
+        self.assertEqual(action, "whole_body")
+        # 验证修正后：左肩恢复在 x~278 附近，右肩恢复在 x~202 附近
+        self.assertAlmostEqual(f223_flipped["left_shoulder"].x, 278.0, delta=1.0)
+        self.assertAlmostEqual(f223_flipped["right_shoulder"].x, 202.0, delta=1.0)
+        self.assertAlmostEqual(f223_flipped["left_ankle"].x, 278.0, delta=1.0)
+        self.assertAlmostEqual(f223_flipped["right_ankle"].x, 188.0, delta=1.0)
+
+        # 帧 224 (模型自然恢复正常)
+        f224_normal = {
+            "left_shoulder": Keypoint(x=279.0, y=102.0, conf=0.95),
+            "right_shoulder": Keypoint(x=201.0, y=97.0, conf=0.95),
+            "left_elbow": Keypoint(x=289.0, y=153.0, conf=0.92),
+            "right_elbow": Keypoint(x=189.0, y=148.0, conf=0.92),
+            "left_hip": Keypoint(x=259.0, y=203.0, conf=0.95),
+            "right_hip": Keypoint(x=219.0, y=198.0, conf=0.95),
+            "left_knee": Keypoint(x=269.0, y=283.0, conf=0.95),
+            "right_knee": Keypoint(x=209.0, y=283.0, conf=0.95),
+            "left_ankle": Keypoint(x=279.0, y=368.0, conf=0.95),
+            "right_ankle": Keypoint(x=189.0, y=363.0, conf=0.95),
+        }
+        # 以修正后的 f223 作为历史参考，断言 f224 不会被误判翻转
+        estimator._last_valid_back_pose = f223_flipped
+        action224 = estimator._filter_backview_temporal_swap(f224_normal)
+        self.assertIsNone(action224)
+        self.assertAlmostEqual(f224_normal["left_shoulder"].x, 279.0, delta=1.0)
+
+    def test_backview_temporal_leg_swap_filter(self):
+        """验证时序二分图滤波器仅对下肢单独翻转进行局部矫正，不误伤正常躯干。"""
+        estimator = DualPoseEstimator(backend="mock")
+        from dual_view_biomechanics import Keypoint
+
+        f_prev = {
+            "left_shoulder": Keypoint(x=280.0, y=100.0, conf=0.95),
+            "right_shoulder": Keypoint(x=200.0, y=95.0, conf=0.95),
+            "left_hip": Keypoint(x=260.0, y=200.0, conf=0.95),
+            "right_hip": Keypoint(x=220.0, y=195.0, conf=0.95),
+            "left_knee": Keypoint(x=270.0, y=280.0, conf=0.95),
+            "right_knee": Keypoint(x=210.0, y=280.0, conf=0.95),
+            "left_ankle": Keypoint(x=280.0, y=360.0, conf=0.95),
+            "right_ankle": Keypoint(x=190.0, y=365.0, conf=0.95),
+        }
+        estimator._last_valid_back_pose = f_prev
+
+        # 下一帧躯干正常微动，但双腿发生交叉误识别翻转
+        f_curr = {
+            "left_shoulder": Keypoint(x=278.0, y=101.0, conf=0.95),
+            "right_shoulder": Keypoint(x=202.0, y=96.0, conf=0.95),
+            "left_hip": Keypoint(x=258.0, y=201.0, conf=0.95),
+            "right_hip": Keypoint(x=222.0, y=196.0, conf=0.95),
+            "left_knee": Keypoint(x=209.0, y=281.0, conf=0.95),
+            "right_knee": Keypoint(x=269.0, y=281.0, conf=0.95),
+            "left_ankle": Keypoint(x=189.0, y=366.0, conf=0.95),
+            "right_ankle": Keypoint(x=279.0, y=361.0, conf=0.95),
+        }
+
+        action = estimator._filter_backview_temporal_swap(f_curr)
+        self.assertEqual(action, "legs")
+        # 躯干未被改动
+        self.assertAlmostEqual(f_curr["left_shoulder"].x, 278.0, delta=1.0)
+        self.assertAlmostEqual(f_curr["right_shoulder"].x, 202.0, delta=1.0)
+        # 双腿被成功矫正回正确位置
+        self.assertAlmostEqual(f_curr["left_ankle"].x, 279.0, delta=1.0)
+        self.assertAlmostEqual(f_curr["right_ankle"].x, 189.0, delta=1.0)
+
+    def test_backview_natural_body_movement_no_false_swap(self):
+        """测试正常人体奔跑平移及旋转不会被误判为翻转。"""
+        estimator = DualPoseEstimator(backend="mock")
+        from dual_view_biomechanics import Keypoint
+
+        f_prev = {
+            "left_shoulder": Keypoint(x=280.0, y=100.0, conf=0.95),
+            "right_shoulder": Keypoint(x=200.0, y=95.0, conf=0.95),
+            "left_hip": Keypoint(x=260.0, y=200.0, conf=0.95),
+            "right_hip": Keypoint(x=220.0, y=195.0, conf=0.95),
+            "left_knee": Keypoint(x=270.0, y=280.0, conf=0.95),
+            "right_knee": Keypoint(x=210.0, y=280.0, conf=0.95),
+            "left_ankle": Keypoint(x=280.0, y=360.0, conf=0.95),
+            "right_ankle": Keypoint(x=190.0, y=365.0, conf=0.95),
+        }
+        estimator._last_valid_back_pose = f_prev
+
+        # 选手整体向左平移 15px，并伴随转体（肩宽由 80px 缩减至 65px）
+        f_curr = {
+            "left_shoulder": Keypoint(x=260.0, y=100.0, conf=0.95),
+            "right_shoulder": Keypoint(x=195.0, y=95.0, conf=0.95),
+            "left_hip": Keypoint(x=245.0, y=200.0, conf=0.95),
+            "right_hip": Keypoint(x=210.0, y=195.0, conf=0.95),
+            "left_knee": Keypoint(x=255.0, y=280.0, conf=0.95),
+            "right_knee": Keypoint(x=200.0, y=280.0, conf=0.95),
+            "left_ankle": Keypoint(x=265.0, y=360.0, conf=0.95),
+            "right_ankle": Keypoint(x=180.0, y=365.0, conf=0.95),
+        }
+
+        action = estimator._filter_backview_temporal_swap(f_curr)
+        self.assertIsNone(action)
+        self.assertAlmostEqual(f_curr["left_shoulder"].x, 260.0)
+        self.assertAlmostEqual(f_curr["right_shoulder"].x, 195.0)
+
+    def test_cross_view_cold_start_orientation_alignment(self):
+        """测试冷启动时背面视口若初始颠倒，能被正面机位解剖矢量符号成功拉回对齐。"""
+        estimator = DualPoseEstimator(backend="mock")
+        from dual_view_biomechanics import Keypoint
+
+        # 正面原图坐标系：左肩 x=1650, 右肩 x=1550 (dx = +100)
+        front_orig = {
+            "left_shoulder": Keypoint(x=1650.0, y=400.0, conf=0.98),
+            "right_shoulder": Keypoint(x=1550.0, y=390.0, conf=0.98),
+            "left_hip": Keypoint(x=1600.0, y=530.0, conf=0.98),
+            "right_hip": Keypoint(x=1530.0, y=525.0, conf=0.98),
+        }
+        # 背面原图坐标系初始冷启动输出颠倒：左肩 x=1450, 右肩 x=1520 (dx = -70)
+        back_orig = {
+            "left_shoulder": Keypoint(x=1450.0, y=85.0, conf=0.95),
+            "right_shoulder": Keypoint(x=1520.0, y=80.0, conf=0.95),
+            "left_hip": Keypoint(x=1460.0, y=185.0, conf=0.95),
+            "right_hip": Keypoint(x=1510.0, y=180.0, conf=0.95),
+        }
+        back_local = {
+            "left_shoulder": Keypoint(x=200.0, y=90.0, conf=0.95),
+            "right_shoulder": Keypoint(x=270.0, y=85.0, conf=0.95),
+            "left_hip": Keypoint(x=210.0, y=190.0, conf=0.95),
+            "right_hip": Keypoint(x=260.0, y=185.0, conf=0.95),
+        }
+
+        res = estimator._verify_cross_view_cold_start(front_orig, back_orig, back_local)
+        self.assertEqual(res, "cold_start_whole_body")
+        # 断言 back_orig 与 back_local 均被对调为正确朝向
+        self.assertAlmostEqual(back_orig["left_shoulder"].x, 1520.0)
+        self.assertAlmostEqual(back_orig["right_shoulder"].x, 1450.0)
+        self.assertAlmostEqual(back_local["left_shoulder"].x, 270.0)
+        self.assertAlmostEqual(back_local["right_shoulder"].x, 200.0)
 
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
