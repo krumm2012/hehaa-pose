@@ -37,10 +37,12 @@
       "parameter_optimization_accepted": false,
       "excluded_joint_count": 133,
       "replayed_event_count": 3,
+      "attribution_complete": true,
+      "parameter_exploration_complete": true,
       "report_url": "temporal_review_report.html"
     },
     "5": {
-      "status": "awaiting_independent_coach_rubric_and_heldout_labels",
+      "status": "structured_coach_rubric_defined_awaiting_independent_labels",
       "policy": {
         "policy_version": "automatic_coach_v2_validated_rules_only",
         "validated_rule_ids": [],
@@ -48,6 +50,8 @@
         "exclusion_reason": "automatic_technique_rule_not_independently_validated",
         "accuracy_validated": false
       },
+      "rubric_version": "2026.10-court02-v1",
+      "rules_defined_count": 3,
       "reference_label_count": 0,
       "score_enabled": false,
       "report_url": "coach_validation_status.json"
@@ -58,5 +62,5 @@
     "scale_tolerance_m": 0.05,
     "semantics": "Diagnostic parameters only; user acceptance criteria remain unset."
   },
-  "report_url": "/artifacts/data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v5/index.html"
+  "report_url": "/artifacts/data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v6/index.html"
 }

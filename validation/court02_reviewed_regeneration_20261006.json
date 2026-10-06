@@ -86,5 +86,8 @@
       }
     }
   ],
-  "report_directory": "data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v5"
+  "failure_attribution": "data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v6/kinematic_failure_attribution.json",
+  "parameter_exploration": "data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v6/temporal_parameter_exploration.json",
+  "independent_benchmark_draft": "data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v6/independent_joint_benchmark_draft.json",
+  "report_directory": "data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v6"
 }

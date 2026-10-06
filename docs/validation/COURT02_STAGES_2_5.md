@@ -158,3 +158,21 @@ Run `scripts/regenerate_reviewed_validation.py` with `--binding`, `--progress`,
 `--review`, `--predictions`, `--coach-reference` and a fresh `--output` directory.
 All input hashes and sessions must agree. The new report is evidence replay,
 not another model inference run or completed independent validation.
+
+## Regenerated stages 3–5 with deep attribution and structured rubric (2026-10-06, v6)
+
+The latest entry is `court02_stages_2_5_20261006_v6/index.html`.
+Stage 3 maintains the verified 144 human labels and 1856 conservative automatic reviews,
+and introduces a 9-frame independent benchmark slice draft (`independent_joint_benchmark_draft.json`)
+covering static setup, high-speed forward acceleration, and follow-through occluded regimes
+without model-anchoring prelabels.
+Stage 4 adds frame-by-frame failure attribution (`kinematic_failure_attribution.json`):
+- Event 1 (frame 21): Racket missing 12 frames (7–18) due to acceleration motion blur; 4 front hip frames auto-abstained by limb overlap proxy; 8 back hip frames auto-abstained by joint pair overlap.
+- Event 2 (frame 110): Front view paused by 2.18ms VFR interval at frame 102 (`cadence_sensitive_peak`); back hip frames 104–108 auto-abstained by joint pair overlap, producing an unphysical 393.2ms peak displacement.
+- Event 3 (frame 191): Racket missing 9 frames (179–187) due to motion blur; front/back hip coverage drops below 0.60 triggered by human unknowns and proximity cascade.
+- Parameter exploration (`temporal_parameter_exploration.json`): separates Event 1 tuning from Events 2–3 held-out evaluation across 3 candidate parameter configurations. Smoothing or relaxing coverage shifts peak frames by 40–80ms without proving physical truth; parameters remain unapproved for production.
+Stage 5 updates the coach draft (`coach_reference_draft.json`) to a formal structured rubric:
+3 rules defined (hip-shoulder separation timing, kinetic chain sequence order, stance foot ground anchoring)
+with observable metrics, tolerances, unknown/occlusion policies, and held-out requirements.
+The code-owned policy maintains zero approved rules and zero score labels; scoring remains strictly disabled.
+
