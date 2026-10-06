@@ -697,8 +697,14 @@ def aggregate_event_biomechanics(
     )
     if any(row.get("kinematic_views") for row in frames):
         from kinematic_sequence import analyze_kinematic_sequence
+        fps_val = float(event.get("fps") or 25.0)
+        post_contact_sec = max(0.0, (end_frame - contact_frame) / max(1.0, fps_val))
+        follow_through_win = round(min(0.28, max(0.20, post_contact_sec)), 2)
         ext["kinematic_sequence"] = analyze_kinematic_sequence(
-            frames, contact_frame, float(event.get("fps") or 25.0),
+            frames,
+            contact_frame,
+            fps_val,
+            window_seconds=(-0.60, follow_through_win),
         )
     else:
         ext["kinematic_sequence"].update(
@@ -832,6 +838,9 @@ def aggregate_event_biomechanics(
                 "confidence": 0.0,
                 "evidence_confidence": ext["kinematic_sequence"].get("evidence_confidence", 0),
                 "details": ext["kinematic_sequence"],
+                "racket_candidate_peak_frame": ext["kinematic_sequence"].get("racket_candidate_peak_frame"),
+                "racket_candidate_peak_speed": ext["kinematic_sequence"].get("racket_candidate_peak_speed"),
+                "candidate_latency_shoulder_to_racket_ms": ext["kinematic_sequence"].get("candidate_latency_shoulder_to_racket_ms"),
             },
             "swing_quality_score": {
                 "value": ext["swing_quality_score"]["overall_score"] if pose_ratio > 0 else None,

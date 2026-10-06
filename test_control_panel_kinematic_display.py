@@ -57,6 +57,20 @@ const escapeHtml = s => String(s).replaceAll('&','&amp;').replaceAll('<','&lt;')
         self.assertIn('髋—肩 -40.0 ms', page)
         self.assertNotIn('badge-seq disconnected', page)
 
+    def test_candidate_racket_peak_is_shown_as_diagnostic_reference(self):
+        page = self.render({'sequence_quality': 'UNRESOLVED_AT_FRAME_RATE',
+                            'latency_hip_to_shoulder_ms': 0,
+                            'racket_peak_frame': None,
+                            'racket_candidate_peak_frame': 25,
+                            'racket_candidate_peak_speed': 2304.2,
+                            'candidate_latency_shoulder_to_racket_ms': 278.4,
+                            'coach_eligible': False, 'confidence': 0,
+                            'sampling_interval_ms': 40, 'peak_time_uncertainty_ms': 80,
+                            'cross_validation': {'status': 'single_view'}})
+        self.assertIn('含候选拍峰', page)
+        self.assertIn('肩—拍(候选F25) +278.4 ms @ 2304px/s', page)
+        self.assertIn('球拍候选峰值：第 25 帧', page)
+
 
 if __name__ == '__main__':
     unittest.main()

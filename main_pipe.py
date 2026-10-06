@@ -1781,6 +1781,13 @@ class MultiprocessPipeline:
                 {'role': 'swing_clip', 'path': str(path)}
                 for path in sorted(clips_dir.glob('*.mp4'))
             )
+            artifacts.extend(
+                {'role': 'impact_freeze', 'path': str(path)}
+                for path in sorted(clips_dir.glob('*_impact_freeze.jpg'))
+            )
+        roi_preview = Path(f'{output_stem}_swing_report_roi_preview.jpg')
+        if roi_preview.is_file():
+            artifacts.append({'role': 'roi_preview', 'path': str(roi_preview)})
         coach_tts_dir = Path(f'{output_stem}_coach_audio')
         if coach_tts_dir.is_dir():
             artifacts.extend(

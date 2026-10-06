@@ -155,6 +155,9 @@ def sequence_osd_label(seq):
     unresolved=(pair is not None and not pair['resolved']) or seq.get('sequence_quality')=='UNRESOLVED_AT_FRAME_RATE' or (
         dt is not None and uncertainty is not None and abs(dt)<=uncertainty)
     if seq.get('racket_peak_frame') is None:
+        has_cand = seq.get('racket_candidate_peak_frame') is not None or seq.get('candidate_latency_shoulder_to_racket_ms') is not None
+        if has_cand:
+            return '髋肩先后难辨·含候选拍峰' if unresolved else '仅髋肩·含候选拍峰'
         return '髋肩先后难辨·缺拍峰' if unresolved else '仅髋肩·缺拍峰'
     if unresolved: return '二维峰值先后难辨'
     if seq.get('sequence_quality') == 'PROJECTED_REVERSE_ORDER': return '投影峰值反序·待复核'

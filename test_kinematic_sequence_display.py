@@ -55,6 +55,17 @@ class KinematicSequenceDisplayTests(unittest.TestCase):
                 self.assertIn("-240.0 ms", page)
                 self.assertIn("280.0 ms", page)
 
+    def test_candidate_racket_peak_is_shown_in_html_report(self):
+        page = _build_kinematic_sequence_html({
+            "sequence_quality": "UNRESOLVED_AT_FRAME_RATE", "coach_eligible": False, "confidence": 0,
+            "latency_hip_to_shoulder_ms": 0.0, "latency_shoulder_to_racket_ms": None,
+            "racket_candidate_peak_frame": 25, "racket_candidate_peak_speed": 2304.2,
+            "candidate_latency_shoulder_to_racket_ms": 278.4,
+            "racket_evidence": {"status": "discontinuous_evidence"},
+        })
+        self.assertIn("候选拍峰（诊断参考）：第 25 帧", page)
+        self.assertIn("+278.4 ms (候选F25 @ 2304px/s)", page)
+
 
 if __name__ == "__main__":
     unittest.main()

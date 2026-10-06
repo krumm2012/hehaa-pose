@@ -57,9 +57,10 @@ def peak_summary(result, rows=None):
         'latency_hip_to_shoulder_ms', 'latency_shoulder_to_racket_ms', 'cross_validation')}
     summary['racket_candidate_peak_frame'] = result.get('racket_candidate_peak_frame')
     summary['racket_candidate_peak_speed'] = result.get('racket_candidate_peak_speed')
+    summary['candidate_latency_shoulder_to_racket_ms'] = result.get('candidate_latency_shoulder_to_racket_ms')
     sh = result.get('shoulder_peak_frame')
     rk_c = result.get('racket_candidate_peak_frame')
-    if summary.get('latency_shoulder_to_racket_ms') is None and sh is not None and rk_c is not None and rows:
+    if summary.get('candidate_latency_shoulder_to_racket_ms') is None and summary.get('latency_shoulder_to_racket_ms') is None and sh is not None and rk_c is not None and rows:
         ordered = sorted(rows, key=lambda row: int(row["frame_id"]))
         t_map = {int(r["frame_id"]): r["source_time"]["timestamp_seconds"] for r in ordered if "source_time" in r}
         if sh in t_map and rk_c in t_map:

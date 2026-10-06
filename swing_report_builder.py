@@ -183,27 +183,57 @@ def _build_kinematic_sequence_html(sequence: Dict) -> str:
     uncertainty = number(details.get("peak_time_uncertainty_ms"))
     if quality == "UNRESOLVED_AT_FRAME_RATE" or (hip_dt is not None and uncertainty is not None and abs(hip_dt) <= uncertainty):
         view_rows.append("<div>峰值间隔接近时间分辨率，难以分辨先后。</div>")
+    cand_frame = details.get("racket_candidate_peak_frame")
+    cand_speed = details.get("racket_candidate_peak_speed")
+    cand_lat = details.get("candidate_latency_shoulder_to_racket_ms")
     if details.get("racket_peak_frame") is None and hip_dt is not None:
         racket_reason = {'low_coverage':'有效覆盖不足', 'boundary_peak':'峰值位于窗口边界',
                          'cadence_sensitive_peak':'峰值对短时间间隔敏感',
                          'ambiguous_peak':'峰值过宽或多峰', 'discontinuous_evidence':'有效片段不连续',
                          'insufficient_samples':'有效样本不足', 'insufficient_motion':'未形成明确运动峰值'}.get(
                              (details.get('racket_evidence') or {}).get('status'),'证据不足')
-        view_rows.append(f"<div>球拍峰值缺失（{racket_reason}），仅有髋肩投影时序；不能判断完整动力链。</div>")
+        if cand_frame is not None:
+            cand_spd_txt = f"{cand_speed:.1f} px/s" if cand_speed is not None else "—"
+            cand_lat_txt = f"{cand_lat:+.1f} ms" if cand_lat is not None else "—"
+            view_rows.append(
+                f"<div>球拍判定虽未完全闭合（{racket_reason}），但已检出<strong>候选拍峰（诊断参考）："
+                f"第 {cand_frame} 帧 · 速度 {cand_spd_txt} · 候选肩—拍时差 {cand_lat_txt}</strong>。</div>"
+            )
+        else:
+            view_rows.append(f"<div>球拍峰值缺失（{racket_reason}），仅有髋肩投影时序；不能判断完整动力链。</div>")
     rows = []
-    for label, key, scale, extra_class in [
-        ("髋—肩峰值间隔", "latency_hip_to_shoulder_ms", 80.0, ""),
-        ("肩—拍峰值间隔", "latency_shoulder_to_racket_ms", 90.0, "k-fill-rkt"),
+    for label, key, scale, extra_class, cand_val in [
+        ("髋—肩峰值间隔", "latency_hip_to_shoulder_ms", 80.0, "", None),
+        ("肩—拍峰值间隔", "latency_shoulder_to_racket_ms", 90.0, "k-fill-rkt", cand_lat),
     ]:
         value = number(details.get(key))
-        text = f"{value:.1f} ms" if value is not None else "未观测"
-        width = min(100.0, max(5.0, value / scale * 100.0)) if value is not None else 0.0
-        rows.append(
-            '<div class="kinematic-bar-row">'
-            f'<span class="k-label">{label}:</span><span class="k-val">{text}</span>'
-            f'<div class="k-track"><div class="k-fill {extra_class}" '
-            f'style="width:{width:.0f}%;"></div></div></div>'
-        )
+        if value is not None:
+            text = f"{value:.1f} ms"
+            width = min(100.0, max(5.0, value / scale * 100.0))
+            rows.append(
+                '<div class="kinematic-bar-row">'
+                f'<span class="k-label">{label}:</span><span class="k-val">{text}</span>'
+                f'<div class="k-track"><div class="k-fill {extra_class}" '
+                f'style="width:{width:.0f}%;"></div></div></div>'
+            )
+        elif cand_val is not None:
+            spd_suffix = f" @ {cand_speed:.0f}px/s" if cand_speed is not None else ""
+            text = f"{cand_val:+.1f} ms (候选F{cand_frame or '—'}{spd_suffix})"
+            width = min(100.0, max(5.0, abs(cand_val) / scale * 100.0))
+            rows.append(
+                '<div class="kinematic-bar-row">'
+                f'<span class="k-label">{label}:</span><span class="k-val" style="color:var(--blue, #38bdf8);">{text}</span>'
+                f'<div class="k-track"><div class="k-fill {extra_class}" '
+                f'style="width:{width:.0f}%; opacity: 0.7; border: 1px dashed var(--blue, #38bdf8);"></div></div></div>'
+            )
+        else:
+            text = "未观测"
+            rows.append(
+                '<div class="kinematic-bar-row">'
+                f'<span class="k-label">{label}:</span><span class="k-val">{text}</span>'
+                f'<div class="k-track"><div class="k-fill {extra_class}" '
+                f'style="width:0%;"></div></div></div>'
+            )
     return (
         '<div class="kinematic-box"><div class="kinematic-header">'
         '<span>二维峰值间隔：<strong>髋/骨盆 ➔ 肩/躯干 ➔ 球拍检测点</strong></span>'

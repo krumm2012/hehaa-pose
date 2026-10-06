@@ -303,13 +303,15 @@ def analyze_kinematic_sequence(
     regularize_cadence: bool = False,
 ) -> Dict:
     """Cross-check per-view timing; disagreement abstains from a combined estimate."""
-    win_start, win_end = window_seconds if window_seconds is not None else (-.6, .16)
+    win_start, win_end = window_seconds if window_seconds is not None else (-.6, .20)
     result = {
         "policy_version": POLICY_VERSION, "scope": "image_plane_peak_timing_only",
         "validation_status": "unvalidated_2d_projection", "coach_eligible": False,
         "confidence": 0.0, "evidence_confidence": 0.0, "source_views": [],
         "hip_peak_frame": None, "shoulder_peak_frame": None, "racket_peak_frame": None,
+        "racket_candidate_peak_frame": None, "racket_candidate_peak_speed": None,
         "latency_hip_to_shoulder_ms": None, "latency_shoulder_to_racket_ms": None,
+        "candidate_latency_shoulder_to_racket_ms": None,
         "is_sequential": None, "sequence_quality": None,
         "cross_validation": {"status": "unavailable"}, "views": {},
         "limitations": ["heuristic_evidence_quality_not_accuracy_probability",
@@ -477,6 +479,7 @@ def analyze_kinematic_sequence(
         result["racket_peak_frame"] = racket["peak"]["frame_id"]
         sh_rkt = racket_time-peak_times["shoulder"]
         result["latency_shoulder_to_racket_ms"] = round(sh_rkt*1000, 1)
+        result["candidate_latency_shoulder_to_racket_ms"] = result["latency_shoulder_to_racket_ms"]
         peak_ranges['racket'] = racket['peak']['time_range']
         result['pair_timing']['shoulder_to_racket'] = _pair_interval(peak_ranges['shoulder'], peak_ranges['racket'], cadence)
         if not all(pair['resolved'] for pair in result['pair_timing'].values()):
@@ -484,4 +487,11 @@ def analyze_kinematic_sequence(
         else:
             result["is_sequential"] = hip_sh > 0 and sh_rkt > 0
             result["sequence_quality"] = "PROJECTED_ORDER" if result["is_sequential"] else "PROJECTED_REVERSE_ORDER"
+    elif racket.get("candidate_peak") is not None and "shoulder" in peak_times:
+        cand_time = racket["candidate_peak"]["time"]
+        sh_cand_rkt = cand_time - peak_times["shoulder"]
+        result["candidate_latency_shoulder_to_racket_ms"] = round(sh_cand_rkt * 1000, 1)
+        cand_range = racket["candidate_peak"].get("time_range") or [cand_time, cand_time]
+        peak_ranges['candidate_racket'] = cand_range
+        result['pair_timing']['candidate_shoulder_to_racket'] = _pair_interval(peak_ranges['shoulder'], cand_range, cadence)
     return result

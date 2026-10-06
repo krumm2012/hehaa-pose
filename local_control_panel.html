@@ -1887,25 +1887,39 @@
         label = {OPTIMAL: "时序符合已校准规则", ACCEPTABLE: "时序基本符合规则", DISCONNECTED: "时序需复核"}[seq.sequence_quality];
         badgeClass = seq.sequence_quality === "DISCONNECTED" ? "disconnected" : "optimal";
       }
-      if (seq.racket_peak_frame === null && seq.latency_hip_to_shoulder_ms != null) label += " · 缺拍峰";
+      const hasCandidateRacket = seq.racket_candidate_peak_frame != null || seq.candidate_latency_shoulder_to_racket_ms != null;
+      if (seq.racket_peak_frame === null && seq.latency_hip_to_shoulder_ms != null) {
+        label += hasCandidateRacket ? " · 含候选拍峰" : " · 缺拍峰";
+      }
       const intervals = [];
-      for (const [name, key] of [["髋—肩", "latency_hip_to_shoulder_ms"], ["肩—拍", "latency_shoulder_to_racket_ms"]]) {
-        const value = seq[key];
-        if (typeof value === "number" && Number.isFinite(value)) {
-          intervals.push(`${name} ${value > 0 ? "+" : ""}${value.toFixed(1)} ms`);
-        }
+      const hipVal = seq.latency_hip_to_shoulder_ms;
+      if (typeof hipVal === "number" && Number.isFinite(hipVal)) {
+        intervals.push(`髋—肩 ${hipVal > 0 ? "+" : ""}${hipVal.toFixed(1)} ms`);
+      }
+      const rktVal = seq.latency_shoulder_to_racket_ms;
+      const candRktVal = seq.candidate_latency_shoulder_to_racket_ms;
+      if (typeof rktVal === "number" && Number.isFinite(rktVal)) {
+        intervals.push(`肩—拍 ${rktVal > 0 ? "+" : ""}${rktVal.toFixed(1)} ms`);
+      } else if (typeof candRktVal === "number" && Number.isFinite(candRktVal)) {
+        const candSpeed = typeof seq.racket_candidate_peak_speed === "number" ? ` @ ${seq.racket_candidate_peak_speed.toFixed(0)}px/s` : "";
+        intervals.push(`肩—拍(候选F${seq.racket_candidate_peak_frame ?? "—"}) ${candRktVal > 0 ? "+" : ""}${candRktVal.toFixed(1)} ms${candSpeed}`);
       }
       let explanation = "二维峰值参考；未验证结果不用于技术纠错。";
       if (unresolved) explanation = "峰值落在同帧或定位范围重叠，当前采样无法分辨真实先后；0 ms 不代表动作错误或真实同步。";
       if (typeof seq.sampling_interval_ms === "number") explanation += ` 采样间隔约 ${seq.sampling_interval_ms.toFixed(1)} ms。`;
       if (typeof seq.peak_time_uncertainty_ms === "number") explanation += ` 峰值定位范围约 ${seq.peak_time_uncertainty_ms.toFixed(1)} ms（非统计置信区间）。`;
-      const peakReasons = {usable:"峰值可用", boundary_peak:"峰值在窗口边界", ambiguous_peak:"峰值过宽或多峰", discontinuous_evidence:"有效片段不连续", low_coverage:"有效覆盖不足", insufficient_samples:"有效样本不足", insufficient_motion:"未形成明确运动峰值"};
+      const peakReasons = {usable:"峰值可用", boundary_peak:"峰值在窗口边界", ambiguous_peak:"峰值过宽或多峰", discontinuous_evidence:"有效片段不连续", low_coverage:"有效覆盖不足", insufficient_samples:"有效样本不足", insufficient_motion:"未形成明确运动峰值", cadence_sensitive_peak:"峰值对短时间间隔敏感"};
       for (const [view, title] of [["front","正面"],["back","背面"]]) {
         const segments = seq.views?.[view]?.segments;
         if (segments) explanation += ` ${title}：髋 ${peakReasons[segments.hip?.status] || "证据不足"}；肩 ${peakReasons[segments.shoulder?.status] || "证据不足"}。`;
       }
       if (seq.racket_evidence) explanation += ` 球拍：${peakReasons[seq.racket_evidence.status] || "证据不足"}。`;
-      for (const [key, title] of [["hip_to_shoulder","髋—肩"],["shoulder_to_racket","肩—拍"]]) {
+      if (seq.racket_candidate_peak_frame != null && seq.racket_peak_frame == null) {
+        const candSpeedStr = typeof seq.racket_candidate_peak_speed === 'number' ? `${seq.racket_candidate_peak_speed.toFixed(1)} px/s` : '—';
+        const candLatStr = typeof seq.candidate_latency_shoulder_to_racket_ms === 'number' ? `${seq.candidate_latency_shoulder_to_racket_ms > 0 ? '+' : ''}${seq.candidate_latency_shoulder_to_racket_ms.toFixed(1)} ms` : '—';
+        explanation += ` 球拍候选峰值：第 ${seq.racket_candidate_peak_frame} 帧（速度 ${candSpeedStr}，候选肩—拍时差 ${candLatStr}，诊断性参考）。`;
+      }
+      for (const [key, title] of [["hip_to_shoulder","髋—肩"],["shoulder_to_racket","肩—拍"],["candidate_shoulder_to_racket","肩—拍(候选)"]]) {
         const range = seq.pair_timing?.[key]?.latency_range_ms;
         if (Array.isArray(range) && range.length === 2 && range.every(Number.isFinite)) explanation += ` ${title}时差范围 ${range[0]}～${range[1]} ms（非统计置信区间）。`;
       }
