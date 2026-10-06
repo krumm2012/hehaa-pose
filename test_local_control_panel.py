@@ -891,6 +891,41 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
             self.assertEqual(loaded["points"], [[120, 100], [600, 120], [580, 510], [100, 500]])
             self.assertEqual(loaded["mirror_view"]["polygon"], [[0.27, 0.10], [0.61, 0.12], [0.59, 0.48], [0.25, 0.48]])
 
+    def test_static_file_routing_and_traversal_prevention(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            static_dir = root / "static" / "css"
+            static_dir.mkdir(parents=True)
+            css_file = static_dir / "control_panel.css"
+            css_file.write_text(":root { --test: 1; }\n", encoding="utf-8")
+
+            controller = self.make_controller(root)
+            server = ThreadingHTTPServer(("127.0.0.1", 0), create_handler(controller))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                # 1. Successful fetch
+                url = f"http://127.0.0.1:{server.server_port}/static/css/control_panel.css"
+                with urllib.request.urlopen(url) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(response.headers.get("Content-Type"), "text/css; charset=utf-8")
+                    self.assertIn(b"--test: 1", response.read())
+
+                # 2. Not found
+                with self.assertRaises(urllib.error.HTTPError) as ctx:
+                    urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/static/css/missing.css")
+                self.assertEqual(ctx.exception.code, 404)
+
+                # 3. Path traversal attack attempt -> 403 or 404
+                with self.assertRaises(urllib.error.HTTPError) as ctx:
+                    urllib.request.urlopen(f"http://127.0.0.1:{server.server_port}/static/../../config.yaml")
+                self.assertIn(ctx.exception.code, (403, 404))
+            finally:
+                controller.stop_server()
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,8 +1,19 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const html = fs.readFileSync('local_control_panel.html','utf8');
-const code = html.slice(html.indexOf('    function selectedStream()'),html.indexOf('    function escapeHtml')) + html.slice(html.indexOf('    const roiEditorState = {'),html.indexOf('    function parsePointString'));
+let code;
+if (fs.existsSync('static/js/roi_editor.js') && fs.existsSync('static/js/control_panel_core.js')) {
+  const core = fs.readFileSync('static/js/control_panel_core.js', 'utf8');
+  const roi = fs.readFileSync('static/js/roi_editor.js', 'utf8');
+  const coreStart = core.indexOf('function selectedStream()') !== -1 ? core.indexOf('function selectedStream()') : core.indexOf('    function selectedStream()');
+  const coreEnd = core.indexOf('function escapeHtml') !== -1 ? core.indexOf('function escapeHtml') : core.indexOf('    function escapeHtml');
+  const roiStart = roi.indexOf('const roiEditorState = {') !== -1 ? roi.indexOf('const roiEditorState = {') : roi.indexOf('    const roiEditorState = {');
+  const roiEnd = roi.indexOf('function parsePointString') !== -1 ? roi.indexOf('function parsePointString') : roi.indexOf('    function parsePointString');
+  code = core.slice(coreStart, coreEnd) + roi.slice(roiStart, roiEnd);
+} else {
+  const html = fs.readFileSync('local_control_panel.html','utf8');
+  code = html.slice(html.indexOf('    function selectedStream()'),html.indexOf('    function escapeHtml')) + html.slice(html.indexOf('    const roiEditorState = {'),html.indexOf('    function parsePointString'));
+}
 const elements = new Map();
 function $(id){if(!elements.has(id))elements.set(id,{value:'',hidden:false,style:{},checked:false});return elements.get(id);}
 const streams = [

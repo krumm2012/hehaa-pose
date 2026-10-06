@@ -9,11 +9,21 @@ import unittest
 @unittest.skipUnless(shutil.which('node'), 'Node is required for frontend regression')
 class ControlPanelKinematicDisplayTests(unittest.TestCase):
     def render(self, sequence):
-        page = Path(__file__).with_name('local_control_panel.html').read_text()
+        static_feed = Path(__file__).parent / 'static' / 'js' / 'swing_feed.js'
+        page = static_feed.read_text(encoding='utf-8') if static_feed.exists() else Path(__file__).with_name('local_control_panel.html').read_text()
         start = page.find('    function kinematicDisplay(')
         if start < 0:
-            start = page.index('    function renderSwingsFeed(')
-        code = page[start:page.index('    function handleLogsData(', start)]
+            start = page.find('function kinematicDisplay(')
+        if start < 0:
+            start = page.index('function renderSwingsFeed(')
+        if '    function handleLogsData(' in page:
+            end = page.index('    function handleLogsData(', start)
+            code = page[start:end]
+        elif 'function handleLogsData(' in page:
+            end = page.index('function handleLogsData(', start)
+            code = page[start:end]
+        else:
+            code = page[start:]
         event = {'event_id': 3, 'extended_biomechanics': {'kinematic_sequence': sequence}}
         harness = '''
 const elements = {};

@@ -2,8 +2,11 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const html = fs.readFileSync('local_control_panel.html', 'utf8');
-const code = html.slice(html.indexOf('    const roiEditorState = {'), html.indexOf('    function parsePointString'));
+const srcFile = fs.existsSync('static/js/roi_editor.js') ? 'static/js/roi_editor.js' : 'local_control_panel.html';
+const html = fs.readFileSync(srcFile, 'utf8');
+const startIdx = html.indexOf('const roiEditorState = {') !== -1 ? html.indexOf('const roiEditorState = {') : html.indexOf('    const roiEditorState = {');
+const endIdx = html.indexOf('function parsePointString') !== -1 ? html.indexOf('function parsePointString') : html.indexOf('    function parsePointString');
+const code = html.slice(startIdx, endIdx);
 for (const initialWidth of [300, 2560, 1600]) {
   const source = {frame_size: [2560, 1440], points: [[1170,336],[1952,358],[2186,1196],[962,1194]], mirror_view: {polygon: [[.4244,.2993],[.4267,0],[.8145,.0021],[.8029,.3199]]}};
   const canvas = {width: initialWidth, height: initialWidth*9/16, style: {}};

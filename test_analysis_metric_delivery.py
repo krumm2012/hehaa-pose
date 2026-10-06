@@ -57,9 +57,23 @@ class MetricDeliveryTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which('node'), 'Node required for frontend regression')
     def test_real_page_renders_metrics_and_refreshes_updates_to_same_event(self):
-        page = Path(__file__).with_name('local_control_panel.html').read_text()
-        helpers = page[page.index('    function measurementValue('):page.index('    function renderSwingsFeed(')]
-        handler = page[page.index('    function handleSwingsData('):page.index('    async function pollSwings(')]
+        static_feed = Path(__file__).parent / 'static' / 'js' / 'swing_feed.js'
+        page = static_feed.read_text(encoding='utf-8') if static_feed.exists() else Path(__file__).with_name('local_control_panel.html').read_text()
+        helpers_start = page.find('    function measurementValue(')
+        if helpers_start < 0:
+            helpers_start = page.index('function measurementValue(')
+        helpers_end = page.find('    function renderSwingsFeed(')
+        if helpers_end < 0:
+            helpers_end = page.index('function renderSwingsFeed(')
+        helpers = page[helpers_start:helpers_end]
+
+        handler_start = page.find('    function handleSwingsData(')
+        if handler_start < 0:
+            handler_start = page.index('function handleSwingsData(')
+        handler_end = page.find('    async function pollSwings(')
+        if handler_end < 0:
+            handler_end = page.index('async function pollSwings(')
+        handler = page[handler_start:handler_end]
         summary = build_session_coaching_summary([{'event_id': 2, 'stroke_type': 'Backhand',
             'biomechanics': {'metrics': {'arm_extension': {'value': 88.67, 'unit': 'deg_2d'}}}}])
         harness = '''

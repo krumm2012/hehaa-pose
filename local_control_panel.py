@@ -1749,6 +1749,19 @@ def create_handler(controller: LocalPipelineController):
                         )
                     else:
                         self._send_file(preview, "image/jpeg", no_cache=True, head_only=head_only)
+                elif path.startswith("/static/"):
+                    relative_str = path[len("/static/") :].lstrip("/")
+                    static_root = controller.workspace / "static"
+                    try:
+                        resolved_file = (static_root / relative_str).resolve()
+                        if not resolved_file.is_relative_to(static_root.resolve()):
+                            self.send_error(HTTPStatus.FORBIDDEN)
+                        elif not resolved_file.is_file():
+                            self.send_error(HTTPStatus.NOT_FOUND)
+                        else:
+                            self._send_file(resolved_file, head_only=head_only)
+                    except Exception:
+                        self.send_error(HTTPStatus.NOT_FOUND)
                 elif path.startswith("/artifacts/"):
                     artifact = controller.artifact_path(
                         path[len("/artifacts/") :]
@@ -1930,6 +1943,8 @@ def create_handler(controller: LocalPipelineController):
                 or mimetypes.guess_type(str(path))[0]
                 or "application/octet-stream"
             )
+            if resolved_type in ("text/css", "text/javascript", "text/html"):
+                resolved_type = f"{resolved_type}; charset=utf-8"
             file_size = path.stat().st_size
             range_header = self.headers.get("Range")
             if range_header and range_header.startswith("bytes="):
