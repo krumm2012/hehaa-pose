@@ -66,6 +66,26 @@ class RacketTemporalTrackerTests(unittest.TestCase):
             self.assertIsNone(tracker.select([candidate(box, .4)], wrist(21, x=box[2], y=550),
                                             21, clock(21, .84), [2560, 1440])[0])
 
+    def test_backward_temporal_recovery_recovers_prior_weak_candidates(self):
+        tracker = self.tracker()
+        anchor = candidate([1090, 473, 1288, 568], .874023)
+        prior1 = candidate([1100, 470, 1290, 565], .42)
+        prior2 = candidate([1110, 465, 1295, 560], .35)
+        frames_cands = {
+            18: [prior2],
+            19: [prior1],
+            20: anchor,
+        }
+        wrists = {fid: wrist(fid) for fid in (18, 19, 20)}
+        clocks = {fid: clock(fid, .77 - (20 - fid) * .04) for fid in (18, 19, 20)}
+        recovered, diag = tracker.recover_backward(frames_cands, wrists, clocks, [2560, 1440], 20)
+        self.assertEqual(len(recovered), 2)
+        self.assertIn(19, recovered)
+        self.assertIn(18, recovered)
+        self.assertEqual(recovered[19]['temporal_recovery']['direction'], 'backward')
+        self.assertEqual(recovered[19]['temporal_recovery']['anchor_source_frame_id'], 20)
+        self.assertEqual(recovered[18]['temporal_recovery']['weak_frame_count'], 2)
+
 
 if __name__ == '__main__':
     unittest.main()

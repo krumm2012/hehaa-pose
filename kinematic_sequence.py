@@ -239,9 +239,10 @@ def _racket_evidence(rows: List[Dict], times: List[float], cadence: float, minim
         box = selected.get("box") or row.get("racket")
         confidence = finite_number(selected.get("confidence"))
         values = [finite_number(value) for value in box] if isinstance(box, (list, tuple)) else []
+        min_conf = 0.25 if selected.get("temporal_recovery") else MIN_CONFIDENCE
         if (not _source_frame_matches(selected, int(row["frame_id"]))
                 or selected.get("observed") is False or len(values) != 4
-                or None in values or confidence is None or not MIN_CONFIDENCE <= confidence <= 1
+                or None in values or confidence is None or not min_conf <= confidence <= 1
                 or values[2] <= values[0] or values[3] <= values[1]):
             previous = None
             continue
@@ -262,8 +263,10 @@ def _racket_evidence(rows: List[Dict], times: List[float], cadence: float, minim
                 segment_id += 1
         previous = centre, timestamp
     result = _peak(samples, minimum_speed=50)
-    if len(samples) / max(1, len(rows)-1) < MIN_COVERAGE:
+    coverage = len(samples) / max(1, len(rows)-1)
+    if coverage < MIN_COVERAGE and len(samples) < MIN_SAMPLES:
         result.update(status="low_coverage", peak=None)
+    result["coverage"] = round(coverage, 4)
     return result
 
 

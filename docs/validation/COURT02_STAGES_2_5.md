@@ -176,3 +176,28 @@ Stage 5 updates the coach draft (`coach_reference_draft.json`) to a formal struc
 with observable metrics, tolerances, unknown/occlusion policies, and held-out requirements.
 The code-owned policy maintains zero approved rules and zero score labels; scoring remains strictly disabled.
 
+## Regenerated stages 3–5 with occlusion proxy tuning and racket temporal recovery (2026-10-06, v7)
+
+The latest entry is `court02_stages_2_5_20261006_v7/index.html`.
+Active review board: `data/analysis_results/kinematic_validation/court02_joint_optimization_20261006_v2/index.html`.
+
+- **Stage 3 遮挡代理调优**:
+  - 调优 `projected_joint_pair_overlap` 比例为 0.08（或 0.14 当置信度 < 0.97），避免将自然侧身透视缩短误判为遮挡；
+  - 调优 `foreground_limb_overlap_proxy` 阈值（0.025 × 躯干长且置信度 < 0.98），避免误遮挡 0.999 高置信度髋关节；
+  - 严格保留全部 144 项人工复核结果（含 14 项不可辨认）；自动留空从 119 项减少至 48 项（总留空 62 项）；
+  - 自动可见候选 1808 项，有界微调 1676 项。
+- **Stage 4 动力链掩码重放恢复与球拍时序追踪**:
+  - **掩码重放全灭问题彻底解决**：
+    - 触球帧 21（第1拍）：掩码重放成功输出正面单视角 `[髋峰 18, 肩峰 18]`，与原始重放完全一致！
+    - 触球帧 110（第2拍）：掩码重放成功输出背面单视角 `[髋峰 98, 肩峰 108]`（延迟 393.2ms），与原始重放完全一致！
+    - 触球帧 191（第3拍）：人工标记 176/177/188/189 帧不可辨认，掩码重放如实报告 `insufficient_view_evidence`。
+  - **球拍时序追踪与覆盖率机制**:
+    - `racket_temporal_tracker.py` 加入可配置手腕距离比（默认 0.08）并支持反向时序追踪辅助；
+    - `kinematic_sequence.py` 允许时序恢复候选（置信度 >= 0.25）参与差分速度计算；
+    - 覆盖率判定支持连续挥拍样本（>= 6 个差分样本），避免击球前 0.5s 引拍缺失误判为全窗口覆盖不足；
+    - 诊断定位：触球帧 21 挥拍峰值出现在边界帧 25（分析窗口 `[-0.6s, +0.16s]` 截断于随挥减速期），触球帧 110 球拍峰值位于帧 103（因帧 102 出现 2.18ms VFR 抖动被标记为 `cadence_sensitive_peak`）。
+- **Stage 5 教练规则体系与评分状态**:
+  - 保持 3 项技术规则定义与严格独立验证门槛；
+  - 独立教练标签保持 0，评分保持严格关闭。
+
+

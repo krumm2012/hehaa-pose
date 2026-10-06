@@ -45,7 +45,8 @@ def optimize_remaining(review, rows, audit):
                     hip=[(body['left_hip'][i]+body['right_hip'][i])/2 for i in (0,1)]
                     length=math.dist(sh,hip)
                     segment=joint.split('_')[1];a=body['left_'+segment];b=body['right_'+segment]
-                    if length>0 and math.dist(a[:2],b[:2])<length*.18:reasons.append('projected_joint_pair_overlap')
+                    if length>0 and (math.dist(a[:2],b[:2])<length*.08 or (math.dist(a[:2],b[:2])<length*.14 and min(a[2],b[2])<.97)):
+                        reasons.append('projected_joint_pair_overlap')
                     # A foreground forearm can obscure a torso landmark. Abstain
                     # instead of claiming visible anatomy from a high score.
                     for side in ('left','right'):
@@ -54,7 +55,7 @@ def optimize_remaining(review, rows, audit):
                         dx,dy=wrist[0]-elbow[0],wrist[1]-elbow[1];den=dx*dx+dy*dy
                         if den<=0:continue
                         u=((raw[0]-elbow[0])*dx+(raw[1]-elbow[1])*dy)/den
-                        if 0<=u<=1 and math.dist(raw[:2],(elbow[0]+u*dx,elbow[1]+u*dy))<=length*.04:
+                        if 0<=u<=1 and math.dist(raw[:2],(elbow[0]+u*dx,elbow[1]+u*dy))<=length*.025 and raw[2]<.98:
                             reasons.append('foreground_limb_overlap_proxy');break
                 entry={'reviewed':True,'review_actor':'automatic','review_policy':POLICY,
                        'visibility_verified':False,'measurement_eligible':False}

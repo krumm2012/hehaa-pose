@@ -21,13 +21,13 @@
       "human_confirmed_count": 144,
       "flagged_count": 92,
       "require_complete_review": true,
-      "review_url": "../court02_joint_optimization_20261006_v1/index.html",
+      "review_url": "../court02_joint_optimization_20261006_v2/index.html",
       "independent_error_validated": false,
       "automatic_reviewed_count": 1856,
-      "automatic_visible_candidate_count": 1737,
-      "automatic_unidentifiable_count": 119,
-      "total_unidentifiable_count": 133,
-      "bounded_adjustment_count": 1621,
+      "automatic_visible_candidate_count": 1808,
+      "automatic_unidentifiable_count": 48,
+      "total_unidentifiable_count": 62,
+      "bounded_adjustment_count": 1676,
       "human_review_complete": false,
       "received_history_sha256": "74250cb533e246a09d7cc3d8e106567c76e00dea11b784d4883f84b4279bef8e",
       "report_url": "joint_review_summary.json"
@@ -35,7 +35,7 @@
     "4": {
       "status": "review_visibility_mask_replayed_pending_independent_error_benchmark",
       "parameter_optimization_accepted": false,
-      "excluded_joint_count": 133,
+      "excluded_joint_count": 62,
       "replayed_event_count": 3,
       "attribution_complete": true,
       "parameter_exploration_complete": true,
@@ -62,5 +62,5 @@
     "scale_tolerance_m": 0.05,
     "semantics": "Diagnostic parameters only; user acceptance criteria remain unset."
   },
-  "report_url": "/artifacts/data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v6/index.html"
+  "report_url": "/artifacts/data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v7/index.html"
 }

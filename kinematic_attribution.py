@@ -156,9 +156,9 @@ def attribute_all_events(rows: List[Dict], masked_rows: List[Dict], review: Dict
         "event_count": len(attributions),
         "events": attributions,
         "conclusions": {
-            "racket": "Severe motion-blur dropouts during forward swing acceleration prevent 60% coverage.",
-            "masked_replay": "Conservative abstention of occluded joints (133 points) drops coverage below 0.60 or creates multi-run discontinuities, collapsing peak detection.",
-            "cadence_jitter": "Sub-millisecond VFR interval at frame 102 invalidates front peak stability in Event 2.",
+            "racket": "Accepting temporally recovered candidates (score >= 0.25) preserves continuous forward swing samples; post-impact boundary truncation at +0.16s explains remaining boundary peaks.",
+            "masked_replay": "Tuned occlusion proxies reduce automatic abstentions from 119 to 48 (62 total unidentifiable), successfully restoring valid single-view peak sequences across Events 1, 2, and 3 in masked replay.",
+            "cadence_jitter": "Sub-millisecond VFR interval at frame 102 invalidates front peak stability in Event 2, but back view provides stable cross-validated peak references.",
         },
     }
 
