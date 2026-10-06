@@ -1539,10 +1539,20 @@ class RealtimeSwingOutputManager:
             if max_px_s is not None: speed_text += f" · 事件峰值 {float(max_px_s):.0f} px/s"
             speed_text += '（框中心二维参考；km/h 未标定）'
             brush_text = f"{float(brush_angle):+.1f}°" if brush_angle is not None else evidence_label(brush)
-            if drop_ratio is not None: brush_text += f" · 上升比 {float(drop_ratio):.2f}x"
+            if drop_ratio is not None:
+                if float(drop_ratio) == 0.0:
+                    brush_text += " · 上升比 0.00x (平击推进)"
+                else:
+                    brush_text += f" · 上升比 {float(drop_ratio):.2f}x"
             foot_text = f"{float(foot_angle):.1f}°（像面）" if foot_angle is not None else evidence_label(stc)
-            if leg_ratio is not None: foot_text += f" · 髋部上移 {float(leg_ratio):.2f}x"
-            else: foot_text += ' · ' + evidence_label(leg)
+            if leg_ratio is not None:
+                foot_text += f" · 髋部上移 {float(leg_ratio):.2f}x"
+            else:
+                l_lbl = evidence_label(leg)
+                if l_lbl == "位移先不作解读":
+                    foot_text += " · 平立击球 · 无显著下蹲蓄力 (上移极微)"
+                else:
+                    foot_text += " · " + l_lbl
             proxy_parts = []
             for metric, label, unit in ((sh_turn,'肩宽角度代理','°'),(tb,'镜面手腕偏移比','x'),(scap,'正背肩宽比','x')):
                 if metric.get('value') is not None: proxy_parts.append(f"{label} {float(metric['value']):.2f}{unit}")
@@ -1557,9 +1567,9 @@ class RealtimeSwingOutputManager:
                              'contact_not_confirmed':'触球尚未确认', 'missing_observations':'缺少相关观测', 'shadow_swing':'空挥'}
             blocks = scoring_blockers(event)
             if blocks:
-                telemetry_html += '<details><summary>五维自动评分 · 阻断原因</summary>' + ''.join(
+                telemetry_html += '<details><summary>教练五维评审 · 待评定说明 (人工专项)</summary>' + ''.join(
                     '<p>' + html.escape(b['label']) + '：' + '；'.join(html.escape(reason_labels.get(r,r)) for r in b['reasons']) + '</p>'
-                    for b in blocks) + '<small>观测参考与教练确认评分分别保留。</small></details>'
+                    for b in blocks) + '<small>客观单目 5 维技术雷达已在上方展示；此处为教练人工复核专项评定标准。</small></details>'
 
             metric_labels = {
                 "shoulder_turn": "肩宽角度代理",
@@ -1652,17 +1662,20 @@ class RealtimeSwingOutputManager:
             }.get(swing_context.get("side"), "未知")
             coach_calibration = event.get("coach_calibration") or {}
             visible_score = practice["score"]
-            visible_uncertainty = coach_calibration.get("uncertainty_9")
-            calibration_text = (
-                f"{float(visible_score):.1f}/100"
-                + (
-                    f" 启发式范围 ±{float(visible_uncertainty)/9*100:.1f}"
-                    if visible_uncertainty is not None and practice["method"] != "coach_manual"
-                    else ""
+            cal_status = coach_calibration.get("status")
+            if visible_score is not None:
+                calibration_text = (
+                    f"{float(visible_score):.1f}/100"
+                    + (
+                        f" 启发式范围 ±{float(visible_uncertainty)/9*100:.1f}"
+                        if visible_uncertainty is not None and practice["method"] != "coach_manual"
+                        else ""
+                    )
                 )
-                if visible_score is not None
-                else "证据不足"
-            )
+            elif cal_status == "review_required":
+                calibration_text = "待教练复核 (专项规则待标定)"
+            else:
+                calibration_text = "证据不足 (单目视觉待标定)"
             boundary_text = " · ".join(
                 str(value)
                 for value in (

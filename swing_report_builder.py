@@ -32,6 +32,11 @@ def _evidence_quality_label(value):
 
 
 def _advice_evidence_label(advice):
+    code = advice.get('code')
+    if code == 'stroke_specific_rubric_unvalidated':
+        return '规则待标定'
+    if code == 'insufficient_technique_evidence':
+        return '待教练标定'
     return '复核提示' if advice.get('category') == 'review' else _evidence_quality_label(advice.get('confidence'))
 
 RADAR_AXES = [
@@ -193,18 +198,25 @@ def _build_kinematic_sequence_html(sequence: Dict) -> str:
     cand_hip_lat = details.get("candidate_latency_hip_to_shoulder_ms")
     cand_hip_frame = details.get("candidate_hip_peak_frame")
     if details.get("racket_peak_frame") is None and (hip_dt is not None or cand_lat is not None):
+        rkt_status = (details.get('racket_evidence') or {}).get('status')
         racket_reason = {'low_coverage':'有效覆盖不足', 'boundary_peak':'峰值位于窗口边界',
                          'cadence_sensitive_peak':'峰值对短时间间隔敏感',
                          'ambiguous_peak':'峰值过宽或多峰', 'discontinuous_evidence':'有效片段不连续',
-                         'insufficient_samples':'有效样本不足', 'insufficient_motion':'未形成明确运动峰值'}.get(
-                             (details.get('racket_evidence') or {}).get('status'),'证据不足')
+                         'insufficient_samples':'有效样本不足', 'insufficient_motion':'未形成明确运动峰值',
+                         'usable':'已形成明确运动峰值'}.get(rkt_status, '证据不足')
         if cand_frame is not None:
             cand_spd_txt = f"{cand_speed:.1f} px/s" if cand_speed is not None else "—"
             cand_lat_txt = f"{cand_lat:+.1f} ms" if cand_lat is not None else "—"
-            view_rows.append(
-                f"<div>球拍判定虽未完全闭合（{racket_reason}），但已检出<strong>候选拍峰（诊断参考）："
-                f"第 {cand_frame} 帧 · 速度 {cand_spd_txt} · 候选肩—拍时差 {cand_lat_txt}</strong>。</div>"
-            )
+            if rkt_status == 'usable':
+                view_rows.append(
+                    f"<div>球拍判定已形成明确运动峰值（拍头峰值有效），末端闭合时序受躯干时序审计影响暂缓闭合，透出<strong>候选拍峰（诊断参考）："
+                    f"第 {cand_frame} 帧 · 速度 {cand_spd_txt} · 候选肩—拍时差 {cand_lat_txt}</strong>。</div>"
+                )
+            else:
+                view_rows.append(
+                    f"<div>球拍判定虽未完全闭合（{racket_reason}），但已检出<strong>候选拍峰（诊断参考）："
+                    f"第 {cand_frame} 帧 · 速度 {cand_spd_txt} · 候选肩—拍时差 {cand_lat_txt}</strong>。</div>"
+                )
         else:
             view_rows.append(f"<div>球拍峰值缺失（{racket_reason}），仅有髋肩投影时序；不能判断完整动力链。</div>")
     rows = []
@@ -866,10 +878,16 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         telemetry_html = ""
         if has_telemetry:
             kmh_text = f"{contact_px_s:.0f} px/s（候选触球帧）；原始峰值 {max_px_s:.0f} px/s（未验证）" if contact_px_s is not None and max_px_s is not None else "未观测；km/h 未标定"
-            brush_text = f"{float(brush_angle):+.1f}°" if brush_angle is not None else "-"
-            if drop_ratio is not None:
+            if brush_angle is not None:
+                brush_text = f"{float(brush_angle):+.1f}°"
+            else:
+                brush_text = "平击推进 (无下沉提拉)" if (drop_ratio is not None and float(drop_ratio) == 0.0) else "-"
+            if drop_ratio is not None and brush_text != "平击推进 (无下沉提拉)":
                 try:
-                    brush_text += f" (上升比 {float(drop_ratio):.2f}x)"
+                    if float(drop_ratio) == 0.0:
+                        brush_text += " · 平击推进 (无下沉提拉)"
+                    else:
+                        brush_text += f" (上升比 {float(drop_ratio):.2f}x)"
                 except (ValueError, TypeError):
                     brush_text += f" (上升比 {drop_ratio})"
             foot_angle = stc.get("image_foot_line_angle_deg", stc.get("value"))
@@ -879,6 +897,8 @@ def render_report_html(payload: Dict, output_path: str) -> str:
                     stance_text += f" · 髋部上移 {float(leg_ratio):.2f}x"
                 except (ValueError, TypeError):
                     stance_text += f" · 髋部上移 {leg_ratio}"
+            else:
+                stance_text += " · 平立击球 · 无显著下蹲蓄力 (上移极微)"
             telemetry_html = f"""
             <div class="telemetry-grid">
               <div class="telem-item"><span class="telem-label">球拍框中心像素速度</span><strong class="telem-val">{html.escape(kmh_text)}</strong></div>
