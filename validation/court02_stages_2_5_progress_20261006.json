@@ -29,11 +29,15 @@
       "total_unidentifiable_count": 133,
       "bounded_adjustment_count": 1621,
       "human_review_complete": false,
-      "received_history_sha256": "74250cb533e246a09d7cc3d8e106567c76e00dea11b784d4883f84b4279bef8e"
+      "received_history_sha256": "74250cb533e246a09d7cc3d8e106567c76e00dea11b784d4883f84b4279bef8e",
+      "report_url": "joint_review_summary.json"
     },
     "4": {
-      "status": "baseline_audited_pending_error_benchmark",
-      "parameter_optimization_accepted": false
+      "status": "review_visibility_mask_replayed_pending_independent_error_benchmark",
+      "parameter_optimization_accepted": false,
+      "excluded_joint_count": 133,
+      "replayed_event_count": 3,
+      "report_url": "temporal_review_report.html"
     },
     "5": {
       "status": "awaiting_independent_coach_rubric_and_heldout_labels",
@@ -43,12 +47,16 @@
         "approval_source": "code_owned_independent_validation",
         "exclusion_reason": "automatic_technique_rule_not_independently_validated",
         "accuracy_validated": false
-      }
+      },
+      "reference_label_count": 0,
+      "score_enabled": false,
+      "report_url": "coach_validation_status.json"
     }
   },
   "evaluation_parameters": {
     "joint_tolerance_px": 15.0,
     "scale_tolerance_m": 0.05,
     "semantics": "Diagnostic parameters only; user acceptance criteria remain unset."
-  }
+  },
+  "report_url": "/artifacts/data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v5/index.html"
 }

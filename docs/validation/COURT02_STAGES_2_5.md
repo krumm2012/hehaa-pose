@@ -140,3 +140,21 @@ Three swings are not a general validation corpus. Validate each claimed rule and
 score against the applicable observable metric and independent reference, then
 review the results before adding any code-owned approved rule. The automatic
 teaching allowlist remains empty until evidence supports an actual approval.
+
+## Regenerated stages 3–5 (2026-10-06, v5)
+
+The latest entry is `court02_stages_2_5_20261006_v5/index.html`.
+Its stage 3 summary distinguishes 144 human decisions from 1856 automatic
+reviews and reports coordinate displacement separately from accuracy. Stage 4
+replays the original source-bound observations and PTS, then repeats the replay
+with the 133 unknown joints removed from a copy of `kinematic_views`. It does
+not promote optimized candidates to raw observations or interpolate gaps.
+At contact frames 21 and 191 the masked replay lacks sufficient evidence; at
+110 its peaks are cadence-sensitive. All three masked kinetic peak conclusions
+remain unavailable. Stage 5 rechecks the current code-owned rule policy and
+bound coach draft: zero approved rules and zero independent score labels.
+
+Run `scripts/regenerate_reviewed_validation.py` with `--binding`, `--progress`,
+`--review`, `--predictions`, `--coach-reference` and a fresh `--output` directory.
+All input hashes and sessions must agree. The new report is evidence replay,
+not another model inference run or completed independent validation.

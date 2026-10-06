@@ -1,0 +1,90 @@
+{
+  "schema": "tennis.reviewed-regeneration-receipt.v1",
+  "source_journal_sha256": "facc1a7cbc2575d2e0bf2c4c98597b48af2fbb2b00d9265a9c8a0f3919fd1cd8",
+  "review_sha256": "4f419cc524550ebe4e112cc39caeaef086ec3b396425d3103b4e335fec9e102a",
+  "excluded_joint_count": 133,
+  "raw_coordinates_replaced": false,
+  "missing_joints_interpolated": false,
+  "accuracy_validated": false,
+  "comparisons": [
+    {
+      "contact_frame": 21,
+      "baseline_summary": {
+        "hip_peak_frame": 18,
+        "shoulder_peak_frame": 18,
+        "racket_peak_frame": null,
+        "latency_hip_to_shoulder_ms": 0.0,
+        "latency_shoulder_to_racket_ms": null,
+        "cross_validation": {
+          "status": "single_view",
+          "tolerance_ms": 84.53
+        }
+      },
+      "masked_summary": {
+        "hip_peak_frame": null,
+        "shoulder_peak_frame": null,
+        "racket_peak_frame": null,
+        "latency_hip_to_shoulder_ms": null,
+        "latency_shoulder_to_racket_ms": null,
+        "cross_validation": {
+          "status": "unavailable",
+          "tolerance_ms": 84.53,
+          "reason": "insufficient_view_evidence"
+        }
+      }
+    },
+    {
+      "contact_frame": 110,
+      "baseline_summary": {
+        "hip_peak_frame": 98,
+        "shoulder_peak_frame": 108,
+        "racket_peak_frame": null,
+        "latency_hip_to_shoulder_ms": 393.2,
+        "latency_shoulder_to_racket_ms": null,
+        "cross_validation": {
+          "status": "single_view",
+          "tolerance_ms": 81.72
+        }
+      },
+      "masked_summary": {
+        "hip_peak_frame": null,
+        "shoulder_peak_frame": null,
+        "racket_peak_frame": null,
+        "latency_hip_to_shoulder_ms": null,
+        "latency_shoulder_to_racket_ms": null,
+        "cross_validation": {
+          "status": "unavailable",
+          "tolerance_ms": 81.72,
+          "reason": "cadence_sensitive_peak"
+        }
+      }
+    },
+    {
+      "contact_frame": 191,
+      "baseline_summary": {
+        "hip_peak_frame": 189,
+        "shoulder_peak_frame": 189,
+        "racket_peak_frame": null,
+        "latency_hip_to_shoulder_ms": 0.0,
+        "latency_shoulder_to_racket_ms": null,
+        "cross_validation": {
+          "status": "single_view",
+          "tolerance_ms": 82.5
+        }
+      },
+      "masked_summary": {
+        "hip_peak_frame": null,
+        "shoulder_peak_frame": null,
+        "racket_peak_frame": null,
+        "latency_hip_to_shoulder_ms": null,
+        "latency_shoulder_to_racket_ms": null,
+        "cross_validation": {
+          "status": "unavailable",
+          "tolerance_ms": 82.5,
+          "reason": "insufficient_view_evidence"
+        }
+      }
+    }
+  ],
+  "report_directory": "data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v5"
+}
