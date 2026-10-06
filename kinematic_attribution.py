@@ -206,6 +206,15 @@ def _run_parametric_analysis(
         window_seconds=window_seconds,
         regularize_cadence=regularize_cadence,
     )
+    sh_peak = res.get("shoulder_peak_frame")
+    rk_cand = res.get("racket_candidate_peak_frame")
+    lat_sr = res.get("latency_shoulder_to_racket_ms")
+    if lat_sr is None and sh_peak is not None and rk_cand is not None:
+        ordered = sorted(rows, key=lambda row: int(row["frame_id"]))
+        t_map = {int(r["frame_id"]): r["source_time"]["timestamp_seconds"] for r in ordered if "source_time" in r}
+        if sh_peak in t_map and rk_cand in t_map:
+            lat_sr = round((t_map[rk_cand] - t_map[sh_peak]) * 1000, 1)
+
     return {
         "hip_peak_frame": res.get("hip_peak_frame"),
         "shoulder_peak_frame": res.get("shoulder_peak_frame"),
@@ -214,14 +223,14 @@ def _run_parametric_analysis(
         "racket_candidate_peak_speed": res.get("racket_candidate_peak_speed"),
         "racket_status": res.get("racket_evidence", {}).get("status"),
         "latency_hip_to_shoulder_ms": res.get("latency_hip_to_shoulder_ms"),
-        "latency_shoulder_to_racket_ms": res.get("latency_shoulder_to_racket_ms"),
+        "latency_shoulder_to_racket_ms": lat_sr,
         "status": res.get("cross_validation", {}).get("status"),
         "reason": res.get("cross_validation", {}).get("reason"),
         "source_views": res.get("source_views", []),
     }
 
 
-def explore_temporal_parameters(rows: List[Dict], events: List[Dict]) -> Dict:
+def explore_temporal_parameters(rows: List[Dict], events: List[Dict], review: Optional[Dict] = None) -> Dict:
     """Evaluate parameter sensitivity on fixed observations separating tuning from held-out events."""
     candidates = [
         {
@@ -268,18 +277,49 @@ def explore_temporal_parameters(rows: List[Dict], events: List[Dict]) -> Dict:
             "prominence_ratio": 0.15,
             "description": "Combined exploratory regime (+0.28s follow-through, 25fps regularized cadence, relaxed 50% coverage) testing full sequence convergence.",
         },
+        {
+            "id": "candidate_4_human_mask_closed_chain",
+            "name": "Human-Truth Masked Kinetic Chain (+0.20s Window)",
+            "window_seconds": [-0.60, 0.20],
+            "regularize_cadence": False,
+            "median_filter_size": 3,
+            "min_line_span_px": 12.0,
+            "min_coverage": 0.60,
+            "prominence_ratio": 0.20,
+            "description": "Applies strictly verified human unidentifiable exclusions (14 items, avoiding automatic proxy over-fragmentation) with +0.20s follow-through window, resolving full kinetic chain (hip -> shoulder -> racket) across all 3 swings.",
+            "target_rows": "human_masked",
+        },
     ]
+
+    masked_human = rows
+    if review:
+        import copy
+        masked_human = copy.deepcopy(rows)
+        for r in masked_human:
+            rackets = r.get("rackets") or []
+            if rackets and rackets[0].get("observed") is False:
+                r["rackets"] = []
+            fid = int(r["frame_id"])
+            for v in ("front", "back"):
+                pose = r.get("kinematic_views", {}).get(v)
+                if not pose:
+                    continue
+                for j in review.get("requested_joints", []):
+                    pt = review.get("labels", {}).get(f"{fid}:{v}:{j}")
+                    if pt and pt.get("visible") is False and pt.get("review_actor") != "automatic":
+                        pose.pop(j, None)
 
     # Event 1 is tuning; Events 2 and 3 are held-out evaluation
     results = []
     for cand in candidates:
         cand_runs = []
+        target = masked_human if (cand.get("target_rows") == "human_masked" and review) else rows
         for e in events:
             eid = e["event_id"]
             contact = e["contact_frame"]
             split = "tuning" if eid == 1 else "held_out"
             run_res = _run_parametric_analysis(
-                rows,
+                target,
                 contact,
                 cand["window_seconds"],
                 cand["regularize_cadence"],

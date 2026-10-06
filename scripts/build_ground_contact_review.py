@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -16,7 +17,7 @@ def adapt_board(page, data):
     page = page.replace('不展示模型点。', '橙色空心点仅为原始模型脚踝参考，不是足底接地点，也不能一键接受为接地标签。此页结果属于模型参考辅助复核，不作为独立准确率真值；全部复核只确认已填写项，不填补缺失。')
     page = page.replace('请按人物自身的左右标记；', '点击可见的鞋底与地面接触位置；脚离地请选择“腾空”，无法确认请选择“不可辨认”；请按人物自身的左右标记；')
     page = page.replace("names.forEach((n,i)", "names.splice(0,names.length,'left_contact','right_contact');cn.splice(0,cn.length,'左足底接地点','右足底接地点');names.forEach((n,i)")
-    page = page.replace('<button id="unknown">', '<button id="airborne">腾空 / 未接地</button><button id="review-all">全部复核已填写项</button><button id="unknown">')
+    page = re.sub(r'<button id="unknown"[^>]*>', '<button id="airborne">腾空 / 未接地</button><button id="review-all">全部复核已填写项</button><button id="unknown">', page)
     page = page.replace("visible:true,x:Math.round(point.x*100)/100,y:Math.round(point.y*100)/100", "visible:true,x:Math.round(point.x*100)/100,y:Math.round(point.y*100)/100,contact_state:'ground_contact_visible',origin:'human_marked',reviewed:true")
     page = page.replace("reason:'not_identifiable'", "reason:'not_identifiable',contact_state:'unknown',origin:'human_review',reviewed:true")
     page = page.replace("$('unknown').onclick", "$('airborne').onclick=()=>{data.labels[key()]={visible:false,x:null,y:null,reason:'airborne',contact_state:'airborne',origin:'human_review',reviewed:true};draw()};$('review-all').onclick=()=>{if(!Object.keys(data.labels).length){$('state').textContent='请先标注接地点、腾空或不可辨认';return}for(const p of Object.values(data.labels)){p.reviewed=true;p.review_method='bulk_review'}$('confirm').checked=true;draw()};$('unknown').onclick", 1)

@@ -68,10 +68,11 @@ class KinematicAttributionTests(unittest.TestCase):
         res = explore_temporal_parameters(self.rows, self.events)
         self.assertEqual(res["schema"], "tennis.temporal-parameter-exploration.v1")
         self.assertFalse(res["parameters_approved"])
-        self.assertEqual(len(res["parameter_candidates"]), 4)
+        self.assertEqual(len(res["parameter_candidates"]), 5)
         self.assertEqual(res["split_definition"]["tuning_event_ids"], [1])
         self.assertEqual(res["parameter_candidates"][1]["candidate"]["id"], "candidate_1_extended_followthrough")
         self.assertEqual(res["parameter_candidates"][2]["candidate"]["id"], "candidate_2_cadence_regularized")
+        self.assertEqual(res["parameter_candidates"][4]["candidate"]["id"], "candidate_4_human_mask_closed_chain")
 
     def test_build_independent_benchmark_draft(self):
         res = build_independent_benchmark_draft("a" * 64, "test_session", self.rows)
