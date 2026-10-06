@@ -220,6 +220,8 @@ class CoachTtsSidecar:
         while self._queue.unfinished_tasks > 0 and time.monotonic() < deadline:
             time.sleep(0.05)
         self._cancel.set()
+        if hasattr(self._client, "closed"):
+            self._client.closed.set()
         with self._play_lock:
             if self._active_play_process and self._active_play_process.poll() is None:
                 try:
@@ -239,10 +241,12 @@ class CoachTtsSidecar:
             finally:
                 self._queue.task_done()
         self._queue.put(self._sentinel)
-        self._thread.join(timeout=2.0)
+        self._thread.join(timeout=1.5)
         self._client.close()
         if self._thread.is_alive():
-            raise RuntimeError("Speech sidecar did not stop within deadline")
+            self._thread.join(timeout=1.0)
+        if self._thread.is_alive():
+            self.logger("⚠️ [Qwen3-TTS] worker thread did not stop within deadline")
 
     def _run(self) -> None:
         while True:

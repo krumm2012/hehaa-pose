@@ -133,7 +133,7 @@ class RealtimeSwingRuntime:
             try:
                 self.coach_tts_sidecar.close()
             except BaseException as exc:
-                close_errors.append(exc)
+                logging.getLogger("realtime_swing").warning(f"Coach TTS sidecar close warning: {exc}")
         if self.output is not None:
             try:
                 self.output.close()
