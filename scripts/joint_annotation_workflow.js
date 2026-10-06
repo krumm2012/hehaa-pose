@@ -12,6 +12,10 @@ function validateAnnotationDraft(candidate) {
   if (!candidate.labels || typeof candidate.labels !== 'object' || Array.isArray(candidate.labels)) throw Error('标签格式错误');
   if (candidate.confirmed === true && (!candidate.annotator_id || typeof candidate.annotator_id !== 'string')) throw Error('确认标签需要标注者编号');
   if (candidate.confirmed === true && data.model_suggestions && Object.values(candidate.labels).some(p => p.reviewed !== true)) throw Error('辅助建议仍有未复核项');
+  if (data.require_complete_review && candidate.confirmed === true &&
+      (Object.keys(candidate.labels).length !== data.frames.length * 2 * names.length ||
+       Object.values(candidate.labels).some(p => p.reviewed !== true))) throw Error('完整审核需要逐项完成所有帧双视角关节');
+  if (candidate.prediction_scale !== data.prediction_scale) throw Error('模型尺度不匹配');
   for (const [k, p] of Object.entries(candidate.labels)) {
     const [fid, view, joint] = k.split(':');
     const f = data.frames.find(f => String(f.frame_id) === fid);

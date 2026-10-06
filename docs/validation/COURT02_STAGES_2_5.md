@@ -44,26 +44,39 @@ passing diagnostic does not approve physical body/3D measurements or coaching.
 The 0.05 metre tolerance is a diagnostic parameter, not an agreed acceptance
 standard. No automatic refitting occurs.
 
-## 3. Independent joint baseline
+## 3. Automatic prelabels with complete human review
 
-Use `independent_joints/index.html`, which hides model predictions. It covers
-contiguous intervals from contact minus 0.56 seconds through contact plus 0.24
-seconds around all three swings, including current candidate hip/shoulder peaks.
-Label anatomical left/right shoulders and hips in both views, or explicitly mark
-unidentifiable joints. Export with the independent annotator identity and review
-confirmation. Existing model-assisted accepted points cannot replace this step.
+On 2026-10-06 the user requested automatic annotations with human-assisted
+confirmation of every item. Active board:
+`data/analysis_results/kinematic_validation/court02_all_frame_joints_20261006_v1/review/index.html`.
+It contains the entire 250 source frames × 2 views × 4 shoulder/hip joints = 2000 prelabels,
+all audited against the hash-bound current frame journal. 92 items have
+review flags for short time intervals, temporal steps or left/right image-order
+changes. See the per-item audit JSON. These are review priorities, not measured
+anatomical position errors. Raw predictions remain unchanged.
+
+Use **下一待审核项** to visit flagged/unreviewed items. Adjust a joint by clicking
+the source image, confirm a suggestion individually, or confirm displayed
+suggestions for the current frame and view. Every item must be reviewed or
+marked unidentifiable before a complete confirmed export. The original model
+suggestions, raw model scores and source identities remain separate from human
+adjustments. Draft import and evaluation reject partial complete-review exports.
+Use `--assisted-joints --all-source-frames` in the preparation CLI to reproduce this workflow.
+
+After receiving a confirmed export:
 
 ```sh
-python3 scripts/evaluate_joint_labels.py \
-  --labels /absolute/path/joint_labels_draft.json \
-  --predictions data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v4/predictions.json \
-  --tolerance-px 15 \
-  --output /absolute/path/new_joint_evaluation.json
+python3 scripts/compare_assisted_joint_review.py \
+  --review /absolute/path/assisted_joint_review.json \
+  --predictions data/analysis_results/kinematic_validation/court02_all_frame_joints_20261006_v1/predictions.json \
+  --output /absolute/path/new_assisted_consistency.json
 ```
 
-Report completeness, visibility, missing qualified predictions and pixel errors
-separately. The 15 pixel tolerance is a diagnostic parameter. More body joints
-are needed when validating elbow/wrist/leg metrics.
+Human-assisted agreement measures correction/consistency, not independent
+accuracy; accepting the same suggestions can produce circular zero errors.
+The separate blind board and independent evaluator remain available when an
+independent error benchmark is needed. The 15 pixel reporting parameter is not
+an agreed coaching criterion. Additional body joints require separate review.
 
 ## 4. Temporal and kinetic candidates
 

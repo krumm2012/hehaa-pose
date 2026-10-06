@@ -32,6 +32,10 @@ def main():
     p.add_argument('--scale-tolerance-m', type=float, required=True)
     p.add_argument("--reuse-existing-scale", action="store_true",
                    help="Use operator-authorized ABCD and reflected dimensions; independent error remains unverified")
+    p.add_argument("--assisted-joints", action="store_true",
+                   help="Prepare model prelabels requiring complete human confirmation")
+    p.add_argument("--all-source-frames", action="store_true",
+                   help="Prepare review of every source frame in the journal")
     a = p.parse_args()
     paths = {k:Path(getattr(a,k)).resolve() for k in ('source','manifest','journal','events','calibration')}
     hashes = {k:digest(v) for k,v in paths.items()}
@@ -58,6 +62,8 @@ def main():
         for r in rows:
             t = r['source_time'].get('timestamp_seconds')
             if t is not None and -.56 <= t-anchor <= .24: frames.add(r['frame_id'])
+    if a.all_source_frames:
+        frames = set(ids)
     out = Path(a.output).resolve()
     out.mkdir(parents=True, exist_ok=False)
     write(out/'input_binding.json', {'session_id':session_id,'paths':{k:str(v) for k,v in paths.items()},'sha256':hashes})
@@ -79,6 +85,10 @@ def main():
         'prediction_semantics':'Fresh original-pixel observations from current run, not truth',
         'session_id':session_id,'frame_journal_sha256':hashes['journal']}
     write(out/'predictions.json',predictions)
+    if a.assisted_joints:
+        run('build_assisted_joint_review.py',['--source',paths['source'],'--predictions',out/'predictions.json',
+            '--journal',paths['journal'],'--output',out/'assisted_joints','--frames',','.join(map(str,sorted(frames))),
+            '--torso-only','--require-complete-review'])
     labels = json.loads((out/'independent_joints/blank_labels.json').read_text())
     write(out/'joint_evaluation.json',evaluate_joint_labels(labels,predictions,a.joint_tolerance_px))
     run('audit_kinematic_cadence.py',['--source',paths['source'],'--manifest',paths['manifest'],
@@ -96,7 +106,9 @@ def main():
         'source_sha256':hashes['source'],'all_stages_complete':False,
         'stages':{'2':{'status':('completed_existing_corner_mapping' if a.reuse_existing_scale else 'awaiting_physical_measurements'),
                        'mapping_reuse_authorized':a.reuse_existing_scale,'independent_scale_accuracy_validated':False,'evaluation_tool_ready':True},
-                  '3':{'status':'awaiting_independent_labels','frames':len(frames),'requested_points':len(frames)*8},
+                  '3':{'status':('awaiting_complete_human_review' if a.assisted_joints else 'awaiting_independent_labels'),
+                       'annotation_mode':('model_assisted' if a.assisted_joints else 'independent'),
+                       'independent_reference':not a.assisted_joints,'frames':len(frames),'requested_points':len(frames)*8},
                   '4':{'status':'baseline_audited_pending_error_benchmark','parameter_optimization_accepted':False},
                   '5':{'status':'awaiting_independent_coach_rubric_and_heldout_labels','policy':automatic_coach_policy()}},
         'evaluation_parameters':{'joint_tolerance_px':a.joint_tolerance_px,'scale_tolerance_m':a.scale_tolerance_m,
@@ -115,6 +127,8 @@ def main():
 <p><a href="progress.json">进度JSON</a> · <a href="input_binding.json">输入身份</a></p><pre>'''+html.escape(json.dumps(status,ensure_ascii=False,indent=2))+'</pre>'
     if a.reuse_existing_scale:
         page = page.replace('待现场实测；误差计算工具就绪', '已沿用ABCD及A′B′C′D′长度映射；独立误差未验证').replace('2 独立尺度','2 尺度映射').replace('<a href="scale_reference/index.html">实测点录入</a>','<a href="scale_mapping.json">现有角点映射核验</a>')
+    if a.assisted_joints:
+        page=page.replace('待盲标；连续触球窗口肩髋标注','已自动预标注；全部条目待人工辅助确认').replace('<a href="independent_joints/index.html">独立标注</a>','<a href="assisted_joints/index.html">全部关节点复核</a>')
     (out/'index.html').write_text(page)
     print(json.dumps(status,ensure_ascii=False))
 

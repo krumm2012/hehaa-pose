@@ -1,0 +1,49 @@
+{
+  "schema": "tennis.assisted-joint-prelabel-audit.v1",
+  "status": "awaiting_complete_human_review",
+  "source_sha256": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0",
+  "planned_count": 2000,
+  "automatically_audited_count": 2000,
+  "model_suggestion_count": 2000,
+  "flagged_count": 92,
+  "flag_counts": {
+    "short_source_interval": 48,
+    "left_right_image_order_changed": 44,
+    "large_temporal_step": 2
+  },
+  "human_confirmed_count": 0,
+  "independent_reference": false,
+  "accuracy_validated": false,
+  "heuristic_parameters": {
+    "step_image_diagonal_ratio": 0.02,
+    "short_interval_s": 0.015
+  },
+  "heuristic_semantics": "Review priorities, not validated anatomical error thresholds",
+  "source_frames": 250,
+  "flagged_source_frames": [
+    2,
+    52,
+    102,
+    103,
+    120,
+    121,
+    122,
+    123,
+    152,
+    164,
+    165,
+    167,
+    176,
+    177,
+    188,
+    189,
+    202,
+    223,
+    224,
+    226,
+    227
+  ],
+  "require_complete_review": true,
+  "regression_tests_passed": 28,
+  "review_url": "http://127.0.0.1:8765/artifacts/data/analysis_results/kinematic_validation/court02_all_frame_joints_20261006_v1/review/index.html"
+}

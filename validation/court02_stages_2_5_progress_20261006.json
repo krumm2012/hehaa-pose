@@ -11,9 +11,18 @@
       "evaluation_tool_ready": true
     },
     "3": {
-      "status": "awaiting_independent_labels",
-      "frames": 59,
-      "requested_points": 472
+      "status": "awaiting_complete_human_review",
+      "frames": 250,
+      "requested_points": 2000,
+      "annotation_mode": "model_assisted",
+      "independent_reference": false,
+      "automatically_labelled_count": 2000,
+      "automatically_audited_count": 2000,
+      "human_confirmed_count": 0,
+      "flagged_count": 92,
+      "require_complete_review": true,
+      "review_url": "../court02_all_frame_joints_20261006_v1/review/index.html",
+      "independent_error_validated": false
     },
     "4": {
       "status": "baseline_audited_pending_error_benchmark",
@@ -34,11 +43,5 @@
     "joint_tolerance_px": 15.0,
     "scale_tolerance_m": 0.05,
     "semantics": "Diagnostic parameters only; user acceptance criteria remain unset."
-  },
-  "validation_checks": {
-    "regression_tests_passed": 40,
-    "original_calibration_fingerprint_preserved": true,
-    "both_corner_mappings_verified": true,
-    "source_journal_calibration_match": true
   }
 }

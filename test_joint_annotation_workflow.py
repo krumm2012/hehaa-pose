@@ -43,3 +43,27 @@ for(const change of [
 if(!draftHistory.length) throw Error('history lost');
 '''
         subprocess.run(['node','-e', harness+workflow+checks],check=True,capture_output=True,text=True)
+
+    def test_assisted_complete_review_rejects_partial_confirmation(self):
+        workflow=Path('scripts/joint_annotation_workflow.js').read_text()
+        data={'schema':'tennis.assisted-joint-review.v1','source_sha256':'abc',
+              'coordinate_space':'original_source_pixels','frame_index_base':0,
+              'frames':[{'frame_id':1,'width':100,'height':100,'file':'frame_1.png'}],
+              'labels':{},'model_suggestions':{},'prediction_scale':1.0,
+              'annotation_mode':'model_assisted','independent_reference':False,
+              'require_complete_review':True}
+        harness="""
+const data=DATA,names=['left_shoulder'];
+const elements={};const $=id=>elements[id] ||= {value:'',checked:false,textContent:'',selectedIndex:0};
+const document={addEventListener(){}};const localStorage={setItem(){},getItem(){return null}};
+function draw(){};
+""".replace('DATA',json.dumps(data))
+        checks="""
+const point={visible:true,x:20,y:20,reviewed:true};
+const draft={...data,confirmed:true,annotator_id:'fixture',labels:{'1:front:left_shoulder':point}};
+let failed=false;try{validateAnnotationDraft(draft)}catch(e){failed=true}if(!failed)throw Error('Partial confirmation accepted');
+draft.labels['1:back:left_shoulder']=point;validateAnnotationDraft(draft);
+draft.labels['1:back:left_shoulder']={...point,reviewed:false};
+failed=false;try{validateAnnotationDraft(draft)}catch(e){failed=true}if(!failed)throw Error('Unreviewed accepted');
+"""
+        subprocess.run(['node','-e',harness+workflow+checks],check=True,capture_output=True,text=True)

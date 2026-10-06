@@ -18,6 +18,14 @@ def compare(review, predictions):
     if review['source_sha256'] != predictions.get('source_sha256'):
         raise ValueError('Source hash mismatch')
     frames = {f['frame_id']: f for f in review['frames']}
+    if review.get('require_complete_review'):
+        joints = review.get('requested_joints')
+        if not isinstance(joints, list) or not joints or len(set(joints)) != len(joints):
+            raise ValueError('Invalid full-review joint set')
+        expected = {f'{fid}:{view}:{joint}' for fid in frames for view in ('front','back') for joint in joints}
+        if set(review['labels']) != expected:
+            raise ValueError('Full review requires every declared frame/view/joint')
+
     groups = []
     for scale in predictions['scales']:
         for view in ('front', 'back'):
