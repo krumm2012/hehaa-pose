@@ -85,6 +85,42 @@ The separate blind board and independent evaluator remain available when an
 independent error benchmark is needed. The 15 pixel reporting parameter is not
 an agreed coaching criterion. Additional body joints require separate review.
 
+## Partial human review and automatic completion (2026-10-06)
+
+Received `joint_draft_history-3.json`: latest revision 189, 144 reviewed labels,
+including 14 unidentifiable joints. The received history and these decisions are
+preserved verbatim. The remaining 1856 labels were conservatively processed:
+1737 candidate positions and 119 null positions; total null positions are 133.
+1621 candidates received a source-PTS-supported adjustment bounded to 2 pixels.
+Only fresh high-score observations are eligible; ambiguous identity, proximity
+to human-marked unknowns, and overlap proxies trigger abstention. No missing
+joint is interpolated. Raw observations stay immutable. Candidate coordinates
+use two decimals; inherited human values remain unchanged.
+
+`court02_joint_optimization_20261006_v1/index.html` separates human and automatic
+status and can navigate blank entries. Its revision-specific draft storage
+prevents an older board's draft overwriting the completed result. Automatic
+labels cannot be exported as complete human confirmation. Completion covers
+assisted review, not independent visibility truth or position accuracy. Steps
+4–5 retain their evidence requirements.
+
+Reproduce into a new directory:
+
+```sh
+python3 scripts/optimize_assisted_joint_review.py \
+  --history /absolute/path/joint_draft_history-3.json \
+  --prelabels data/analysis_results/kinematic_validation/court02_all_frame_joints_20261006_v1/review/model_prelabels.json \
+  --predictions data/analysis_results/kinematic_validation/court02_all_frame_joints_20261006_v1/predictions.json \
+  --journal data/analysis_results/control_panel/court02_temporal_racket_20261005T161814Z_0ab2c2/court02_temporal_racket_frames.jsonl \
+  --audit data/analysis_results/kinematic_validation/court02_all_frame_joints_20261006_v1/review/prelabel_audit.json \
+  --output /absolute/path/new_optimization
+python3 scripts/build_optimized_joint_review.py \
+  --template data/analysis_results/kinematic_validation/court02_all_frame_joints_20261006_v1/review/index.html \
+  --review /absolute/path/new_optimization/optimized_review.json \
+  --image-prefix /artifacts/data/analysis_results/kinematic_validation/court02_all_frame_joints_20261006_v1/review/ \
+  --output /absolute/path/new_optimization/index.html
+```
+
 ## 4. Temporal and kinetic candidates
 
 `temporal_baseline/report.html` contains the current source-PTS cadence audit and

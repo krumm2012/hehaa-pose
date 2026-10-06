@@ -87,7 +87,7 @@ def main():
     page=page.replace("'\\n已填项数：'+Object.keys(data.labels).length", "'\\n已复核：'+Object.values(data.labels).filter(p=>p.reviewed).length+' / 已填：'+Object.keys(data.labels).length")
     page=page.replace("visible:true,x:Math.round(point.x*100)/100,y:Math.round(point.y*100)/100", "visible:true,x:Math.round(point.x*100)/100,y:Math.round(point.y*100)/100,origin:'human_adjusted',reviewed:true")
     page=page.replace("reason:'not_identifiable'", "reason:'not_identifiable',origin:'human_review',reviewed:true")
-    page=page.replace("$('unknown').onclick", "$('accept').onclick=()=>{const p=data.labels[key()];if(p){p.reviewed=true;p.origin='human_accepted_model';draw()}};$('unknown').onclick")
+    page=page.replace("$('unknown').onclick", "$('accept').onclick=()=>{const p=data.labels[key()];if(p){p.reviewed=true;p.review_actor='human';p.origin='human_accepted_model';draw()}};$('unknown').onclick")
     page=page.replace("$('accept').onclick", "$('accept-all').onclick=()=>{const reviewedAt=new Date().toISOString();for(const p of Object.values(data.labels)){if(!p.reviewed&&p.origin==='model'){p.reviewed=true;p.origin='human_bulk_accepted_model';p.reviewed_at=reviewedAt}}$('confirm').checked=Object.values(data.labels).every(p=>p.reviewed);draw()};$('accept').onclick")
     page=page.replace("const blob=new Blob", "if(data.confirmed&&Object.values(data.labels).some(p=>!p.reviewed)){alert('仍有未复核的模型建议，请逐点复核或先取消复核勾选导出草稿');return}const blob=new Blob")
     page=page.replace("a.download='joint_labels_draft.json'", "a.download='assisted_joint_review.json'")

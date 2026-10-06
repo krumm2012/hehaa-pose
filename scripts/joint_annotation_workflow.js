@@ -1,6 +1,8 @@
 // Shared by independent and assisted boards, with separate storage identities.
-const annotationIdentity = JSON.stringify([data.schema, data.source_sha256,
-  data.prediction_sha256 || null, data.frames.map(f => [f.frame_id, f.width, f.height]), names]);
+const annotationIdentityParts = [data.schema, data.source_sha256,
+  data.prediction_sha256 || null, data.frames.map(f => [f.frame_id, f.width, f.height]), names];
+if (data.review_revision_id) annotationIdentityParts.push(data.review_revision_id);
+const annotationIdentity = JSON.stringify(annotationIdentityParts);
 const draftStorageKey = 'tennis.joint-draft.v1:' + annotationIdentity;
 function validateAnnotationDraft(candidate) {
   if (!candidate || candidate.schema !== data.schema || candidate.source_sha256 !== data.source_sha256 ||
@@ -15,6 +17,8 @@ function validateAnnotationDraft(candidate) {
   if (data.require_complete_review && candidate.confirmed === true &&
       (Object.keys(candidate.labels).length !== data.frames.length * 2 * names.length ||
        Object.values(candidate.labels).some(p => p.reviewed !== true))) throw Error('完整审核需要逐项完成所有帧双视角关节');
+  if (candidate.confirmed === true && Object.values(candidate.labels).some(p => p.review_actor === 'automatic')) throw Error('自动处理不能作为全部人工确认');
+  if (candidate.review_revision_id !== data.review_revision_id) throw Error('复核版本不匹配');
   if (candidate.prediction_scale !== data.prediction_scale) throw Error('模型尺度不匹配');
   for (const [k, p] of Object.entries(candidate.labels)) {
     const [fid, view, joint] = k.split(':');
@@ -85,6 +89,9 @@ let savedDraftSignature = '', lastAttemptSignature='', draftHistory = [], lastLa
 const originalAnnotationDraw = draw;
 function persistAnnotationDraft(force=false) {
   data.annotator_id = $('annotator').value.trim() || null;
+  if ($('confirm').checked && Object.values(data.labels).some(p => p.review_actor === 'automatic')) {
+    $('confirm').checked=false;
+  }
   data.confirmed = $('confirm').checked;
   const signature = JSON.stringify([data.labels, data.annotator_id, data.confirmed]);
   if (!force && (signature===savedDraftSignature || signature===lastAttemptSignature)) return;

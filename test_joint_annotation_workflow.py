@@ -63,6 +63,10 @@ const point={visible:true,x:20,y:20,reviewed:true};
 const draft={...data,confirmed:true,annotator_id:'fixture',labels:{'1:front:left_shoulder':point}};
 let failed=false;try{validateAnnotationDraft(draft)}catch(e){failed=true}if(!failed)throw Error('Partial confirmation accepted');
 draft.labels['1:back:left_shoulder']=point;validateAnnotationDraft(draft);
+draft.labels['1:back:left_shoulder']={...point,review_actor:'automatic'};
+failed=false;try{validateAnnotationDraft(draft)}catch(e){failed=true}if(!failed)throw Error('Automatic review promoted to human confirmation');
+draft.labels['1:back:left_shoulder']=point;
+failed=false;try{validateAnnotationDraft({...draft,review_revision_id:'other'})}catch(e){failed=true}if(!failed)throw Error('Wrong revision accepted');
 draft.labels['1:back:left_shoulder']={...point,reviewed:false};
 failed=false;try{validateAnnotationDraft(draft)}catch(e){failed=true}if(!failed)throw Error('Unreviewed accepted');
 """

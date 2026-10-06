@@ -1,0 +1,25 @@
+{
+  "policy": "assisted_joint_bounded_review_v1",
+  "counts": {
+    "human_preserved": 144,
+    "automatic_visible_candidate": 1737,
+    "bounded_adjustment": 1621,
+    "automatic_unidentifiable": 119
+  },
+  "source_sha256": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0",
+  "received_history_sha256": "74250cb533e246a09d7cc3d8e106567c76e00dea11b784d4883f84b4279bef8e",
+  "prediction_sha256": "ff874b9f1bdd6edd9d8fc1579ddc9e691d3e08d6b8f21383ab256db6ae91e9cf",
+  "human_decisions_preserved_exactly": true,
+  "accuracy_validated": false,
+  "occlusion_truth_verified": false,
+  "limitations": [
+    "Automatic visibility proxies can abstain on visible joints or miss occlusions.",
+    "Bounded 2D candidates do not validate true 3D peaks or teaching accuracy."
+  ],
+  "review_revision_id": "64c332f58772baa6c46f96027222759338caaa11682576dd1f897738105c3373",
+  "total_points": 2000,
+  "total_unidentifiable": 133,
+  "human_review_complete": false,
+  "artifact_directory": "data/analysis_results/kinematic_validation/court02_joint_optimization_20261006_v1",
+  "source_history_filename": "joint_draft_history-3.json"
+}
