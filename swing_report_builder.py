@@ -105,6 +105,9 @@ def _build_kinematic_sequence_html(sequence: Dict) -> str:
     }
     if not qualified and cross_status in labels:
         status = labels[cross_status]
+        if cross_status == "unavailable" and cross.get("reason") == "cadence_sensitive_peak":
+            status = "短间隔敏感 · 暂停判定"
+            badge_class = "cadence-sensitive"
     view_rows = []
     audit = details.get('cadence_audit') or {}
     if audit:
@@ -186,7 +189,9 @@ def _build_kinematic_sequence_html(sequence: Dict) -> str:
     cand_frame = details.get("racket_candidate_peak_frame")
     cand_speed = details.get("racket_candidate_peak_speed")
     cand_lat = details.get("candidate_latency_shoulder_to_racket_ms")
-    if details.get("racket_peak_frame") is None and hip_dt is not None:
+    cand_hip_lat = details.get("candidate_latency_hip_to_shoulder_ms")
+    cand_hip_frame = details.get("candidate_hip_peak_frame")
+    if details.get("racket_peak_frame") is None and (hip_dt is not None or cand_lat is not None):
         racket_reason = {'low_coverage':'有效覆盖不足', 'boundary_peak':'峰值位于窗口边界',
                          'cadence_sensitive_peak':'峰值对短时间间隔敏感',
                          'ambiguous_peak':'峰值过宽或多峰', 'discontinuous_evidence':'有效片段不连续',
@@ -202,9 +207,9 @@ def _build_kinematic_sequence_html(sequence: Dict) -> str:
         else:
             view_rows.append(f"<div>球拍峰值缺失（{racket_reason}），仅有髋肩投影时序；不能判断完整动力链。</div>")
     rows = []
-    for label, key, scale, extra_class, cand_val in [
-        ("髋—肩峰值间隔", "latency_hip_to_shoulder_ms", 80.0, "", None),
-        ("肩—拍峰值间隔", "latency_shoulder_to_racket_ms", 90.0, "k-fill-rkt", cand_lat),
+    for label, key, scale, extra_class, cand_val, cand_lbl in [
+        ("髋—肩峰值间隔", "latency_hip_to_shoulder_ms", 80.0, "", cand_hip_lat, f"候选F{cand_hip_frame or '—'}"),
+        ("肩—拍峰值间隔", "latency_shoulder_to_racket_ms", 90.0, "k-fill-rkt", cand_lat, f"候选F{cand_frame or '—'}" + (f" @ {cand_speed:.0f}px/s" if cand_speed is not None else "")),
     ]:
         value = number(details.get(key))
         if value is not None:
@@ -217,8 +222,7 @@ def _build_kinematic_sequence_html(sequence: Dict) -> str:
                 f'style="width:{width:.0f}%;"></div></div></div>'
             )
         elif cand_val is not None:
-            spd_suffix = f" @ {cand_speed:.0f}px/s" if cand_speed is not None else ""
-            text = f"{cand_val:+.1f} ms (候选F{cand_frame or '—'}{spd_suffix})"
+            text = f"{cand_val:+.1f} ms ({cand_lbl})"
             width = min(100.0, max(5.0, abs(cand_val) / scale * 100.0))
             rows.append(
                 '<div class="kinematic-bar-row">'
@@ -1245,6 +1249,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
     .seq-optimal {{ background: #d1fae5; color: #065f46; }}
     .seq-acceptable {{ background: #e0f2fe; color: #0369a1; }}
     .seq-suboptimal {{ background: #fee2e2; color: #991b1b; }}
+    .seq-cadence-sensitive {{ background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); }}
     .kinematic-bars {{ display: grid; gap: 6px; }}
     .kinematic-bar-row {{
       display: grid;

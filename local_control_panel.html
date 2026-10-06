@@ -405,6 +405,7 @@
     }
     .badge-seq.optimal { background: rgba(48,209,88,0.2); color: #30d158; }
     .badge-seq.disconnected { background: rgba(255,69,58,0.2); color: #ff453a; }
+    .badge-seq.cadence_sensitive { background: rgba(255,214,10,0.18); color: #ffd60a; border: 1px solid rgba(255,214,10,0.35); }
     .badge-seq.unvalidated { background: rgba(142,142,147,0.16); color: #b4bdcd; }
 
     .swing-coach-box {
@@ -1881,20 +1882,26 @@
       };
       let label = labels[cross.status] || "未验证 · 需复核";
       let badgeClass = "unvalidated";
-      if (unresolved) {
+      if (cross.status === "unavailable" && cross.reason === "cadence_sensitive_peak") {
+        label = "短时间间隔敏感 · 暂停判定";
+        badgeClass = "cadence_sensitive";
+      } else if (unresolved) {
         label = "先后难以分辨" + (cross.status === "single_view" ? " · 单视角" : "");
       } else if (qualified && ["OPTIMAL", "ACCEPTABLE", "DISCONNECTED"].includes(seq.sequence_quality)) {
         label = {OPTIMAL: "时序符合已校准规则", ACCEPTABLE: "时序基本符合规则", DISCONNECTED: "时序需复核"}[seq.sequence_quality];
         badgeClass = seq.sequence_quality === "DISCONNECTED" ? "disconnected" : "optimal";
       }
       const hasCandidateRacket = seq.racket_candidate_peak_frame != null || seq.candidate_latency_shoulder_to_racket_ms != null;
-      if (seq.racket_peak_frame === null && seq.latency_hip_to_shoulder_ms != null) {
+      if (seq.racket_peak_frame === null && (seq.latency_hip_to_shoulder_ms != null || seq.candidate_latency_hip_to_shoulder_ms != null)) {
         label += hasCandidateRacket ? " · 含候选拍峰" : " · 缺拍峰";
       }
       const intervals = [];
       const hipVal = seq.latency_hip_to_shoulder_ms;
+      const candHipVal = seq.candidate_latency_hip_to_shoulder_ms;
       if (typeof hipVal === "number" && Number.isFinite(hipVal)) {
         intervals.push(`髋—肩 ${hipVal > 0 ? "+" : ""}${hipVal.toFixed(1)} ms`);
+      } else if (typeof candHipVal === "number" && Number.isFinite(candHipVal)) {
+        intervals.push(`髋—肩(候选F${seq.candidate_hip_peak_frame ?? "—"}) ${candHipVal > 0 ? "+" : ""}${candHipVal.toFixed(1)} ms`);
       }
       const rktVal = seq.latency_shoulder_to_racket_ms;
       const candRktVal = seq.candidate_latency_shoulder_to_racket_ms;

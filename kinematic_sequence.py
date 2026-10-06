@@ -200,6 +200,8 @@ def _view_evidence(rows: List[Dict], times: List[float], view: str, cadence: flo
                     samples.append({"frame_id": int(row["frame_id"]), "time": timestamp,
                                     "speed": difference / dt, "segment_id": segment_id})
                     confidences.append(min(confidence, old_confidence))
+                elif dt <= minimum_dt:
+                    continue
                 else:
                     segment_id += 1
             previous = angle, timestamp, confidence
@@ -275,6 +277,8 @@ def _racket_evidence(rows: List[Dict], times: List[float], cadence: float, minim
                     continue
                 samples.append({"frame_id": int(row["frame_id"]), "time": timestamp,
                                 "speed": speed, "segment_id": segment_id})
+            elif dt <= minimum_dt:
+                continue
             else:
                 segment_id += 1
         previous = centre, timestamp
@@ -416,6 +420,30 @@ def analyze_kinematic_sequence(
         sensitive = any(s['status'] == 'cadence_sensitive_peak'
                         for v in result['views'].values() for s in v['segments'].values())
         result["cross_validation"]["reason"] = "cadence_sensitive_peak" if sensitive else "insufficient_view_evidence"
+        for view_name in ("front", "back"):
+            cand_hip = result["views"].get(view_name, {}).get("segments", {}).get("hip", {}).get("candidate_peak")
+            cand_sh = result["views"].get(view_name, {}).get("segments", {}).get("shoulder", {}).get("candidate_peak")
+            if cand_hip and cand_sh:
+                cand_hip_time = cand_hip.get("time")
+                cand_sh_time = cand_sh.get("time")
+                if cand_hip_time is not None and cand_sh_time is not None:
+                    result["candidate_hip_peak_frame"] = cand_hip.get("frame_id")
+                    result["candidate_shoulder_peak_frame"] = cand_sh.get("frame_id")
+                    result["candidate_latency_hip_to_shoulder_ms"] = round((cand_sh_time - cand_hip_time) * 1000, 1)
+                    cand_hip_range = cand_hip.get("time_range") or [cand_hip_time, cand_hip_time]
+                    cand_sh_range = cand_sh.get("time_range") or [cand_sh_time, cand_sh_time]
+                    peak_ranges = {"hip": cand_hip_range, "shoulder": cand_sh_range}
+                    pair_timing = {"hip_to_shoulder": _pair_interval(cand_hip_range, cand_sh_range, cadence)}
+                    if racket.get("candidate_peak") is not None:
+                        cand_rkt_time = racket["candidate_peak"].get("time")
+                        if cand_rkt_time is not None:
+                            result["candidate_latency_shoulder_to_racket_ms"] = round((cand_rkt_time - cand_sh_time) * 1000, 1)
+                            cand_rkt_range = racket["candidate_peak"].get("time_range") or [cand_rkt_time, cand_rkt_time]
+                            peak_ranges["candidate_racket"] = cand_rkt_range
+                            pair_timing["candidate_shoulder_to_racket"] = _pair_interval(cand_sh_range, cand_rkt_range, cadence)
+                    result["pair_timing"] = pair_timing
+                    result["peak_time_ranges_seconds"] = peak_ranges
+                break
         return result
     if len(usable) == 2:
         deltas = {

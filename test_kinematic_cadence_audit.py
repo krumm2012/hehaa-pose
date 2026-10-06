@@ -21,8 +21,10 @@ class CadenceAuditTests(unittest.TestCase):
         hip = result['views']['front']['segments']['hip']
         self.assertEqual(hip['status'], 'cadence_sensitive_peak')
         self.assertIsNone(hip['peak'])
-        self.assertIsNotNone(hip['candidate_peak'])
         self.assertIsNone(result['is_sequential'])
+        self.assertEqual(result['cross_validation']['reason'], 'cadence_sensitive_peak')
+        self.assertIsNotNone(result.get('candidate_latency_hip_to_shoulder_ms'))
+        self.assertIsNotNone(result.get('candidate_hip_peak_frame'))
 
     def test_regular_cadence_preserves_known_order(self):
         result = analyze_kinematic_sequence(frames(), 20, 25)

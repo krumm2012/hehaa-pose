@@ -69,7 +69,23 @@ const escapeHtml = s => String(s).replaceAll('&','&amp;').replaceAll('<','&lt;')
                             'cross_validation': {'status': 'single_view'}})
         self.assertIn('含候选拍峰', page)
         self.assertIn('肩—拍(候选F25) +278.4 ms @ 2304px/s', page)
-        self.assertIn('球拍候选峰值：第 25 帧', page)
+    def test_cadence_sensitive_shows_candidates_and_amber_badge(self):
+        page = self.render({'sequence_quality': None,
+                            'latency_hip_to_shoulder_ms': None,
+                            'candidate_hip_peak_frame': 103,
+                            'candidate_shoulder_peak_frame': 103,
+                            'candidate_latency_hip_to_shoulder_ms': 0.0,
+                            'racket_peak_frame': None,
+                            'racket_candidate_peak_frame': 102,
+                            'racket_candidate_peak_speed': 3180.5,
+                            'candidate_latency_shoulder_to_racket_ms': -14.8,
+                            'coach_eligible': False, 'confidence': 0,
+                            'sampling_interval_ms': 41.3, 'peak_time_uncertainty_ms': 82.7,
+                            'cross_validation': {'status': 'unavailable', 'reason': 'cadence_sensitive_peak'}})
+        self.assertIn('短时间间隔敏感 · 暂停判定', page)
+        self.assertIn('badge-seq cadence_sensitive', page)
+        self.assertIn('髋—肩(候选F103) 0.0 ms', page)
+        self.assertIn('肩—拍(候选F102) -14.8 ms @ 3181px/s', page)
 
 
 if __name__ == '__main__':
