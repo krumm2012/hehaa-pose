@@ -30,7 +30,7 @@ from analysis_data_contracts import (
 from swing_event_analyzer import analyze_frame_records
 from swing_report_builder import (_build_radar_svg, _build_kinematic_sequence_html,
     _build_event_source_timing_html, _impact_freeze_label, _evidence_quality_label,
-    _advice_evidence_label, EVIDENCE_QUALITY_NOTE)
+    _advice_evidence_label, EVIDENCE_QUALITY_NOTE, extract_biomechanical_sub_scores)
 from swing_session_quality import build_session_quality_dashboard
 from video_writer_backend import create_video_writer
 from image_motion_measurements import source_timestamp
@@ -1478,10 +1478,12 @@ class RealtimeSwingOutputManager:
 
             # 5维生物力学技术雷达图
             sub_scores = sqs.get("sub_scores") if isinstance(sqs, dict) and isinstance(sqs.get("sub_scores"), dict) else {}
+            if not sub_scores:
+                sub_scores = extract_biomechanical_sub_scores(event)
             radar_svg = _build_radar_svg(sub_scores, dark_theme=True) if sub_scores else ""
             radar_html = f"""
             <div class="bio-radar-wrapper">
-              <div class="bio-radar-title">5维生物力学质量雷达</div>
+              <div class="bio-radar-title">5维生物力学技术雷达 <small style="font-size:10px;color:var(--muted);font-weight:normal;">(诊断参考 · 像面投影)</small></div>
               {radar_svg}
             </div>
             """ if radar_svg else ""

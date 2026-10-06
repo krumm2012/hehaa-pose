@@ -20,6 +20,7 @@ from swing_session_quality import build_session_quality_dashboard
 from event_source_timing import analyze_event_source_timing, source_frame_navigation, POLICY_VERSION as PHASE_TIME_POLICY
 from observation_policy import finite_number
 from report_identity_contract import normalize_report_document, report_identity_info
+from swing_biomechanics import extract_biomechanical_sub_scores
 
 EVIDENCE_QUALITY_NOTE = '证据参考为启发式质量，未经准确率校准，不是技术评分。'
 
@@ -496,7 +497,12 @@ def build_report_payload(
         practice = resolve_practice_score({**event, "biomechanics": bio})
         calibration = practice["calibration"]
         raw_score, raw_grade = practice["score"], practice["grade"]
-        sqs = {"overall_score": raw_score, "grade": raw_grade, "sub_scores": {}}
+        sub_scores = (
+            (ext.get("swing_quality_score") or {}).get("sub_scores")
+            or (bio.get("metrics", {}).get("swing_quality_score", {}) or {}).get("sub_scores")
+            or extract_biomechanical_sub_scores(event)
+        )
+        sqs = {"overall_score": raw_score, "grade": raw_grade, "sub_scores": sub_scores}
 
         merged_events.append(
             {
@@ -826,10 +832,12 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         # 2. 5维生物力学技术雷达图
         sqs = event.get("swing_quality_score") or {}
         sub_scores = sqs.get("sub_scores") if isinstance(sqs, dict) else {}
+        if not sub_scores:
+            sub_scores = extract_biomechanical_sub_scores(event)
         radar_svg = _build_radar_svg(sub_scores) if sub_scores else ""
         radar_html = f"""
         <div class="bio-radar-wrapper">
-          <div class="bio-radar-title">5维生物力学质量雷达</div>
+          <div class="bio-radar-title">5维生物力学技术雷达 <small style="font-size:10px;color:var(--muted);font-weight:normal;">(诊断参考 · 像面投影)</small></div>
           {radar_svg}
         </div>
         """ if radar_svg else ""

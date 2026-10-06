@@ -6,7 +6,7 @@ from observation_policy import qualified_front_point, finite_number
 
 POLICY = 'osd_observation_qualification_v6_finite_values'
 PARAMETERS = {'minimum_coverage': .8, 'minimum_point_score': .5,
-              'minimum_ankle_span_body_width': .2, 'maximum_foot_range_deg': 10,
+              'minimum_ankle_span_body_width': .2, 'maximum_foot_range_deg': 25,
               'hip_motion_floor_body_width': .04}
 FIELDS = {'brush_angle': ('low_to_high_angle_deg','drop_depth_px','drop_depth_ratio'),
           'stance': ('image_foot_line_angle_deg',), 'leg_drive': ('drive_px','drive_ratio')}
@@ -112,12 +112,14 @@ def qualify_extended_observations(ext, event, frames, features, scale):
                 valid.append(i);spans.append(span);angles.append(math.degrees(math.atan2(abs(dy),abs(dx))))
     reasons=[]
     if len(valid)<3: reasons.append('too_few_ankle_observations')
-    if angles and max(angles)-min(angles)>10: reasons.append('unstable_ankle_line')
+    foot_range = (max(angles)-min(angles)) if angles else 0.0
+    if angles and foot_range > 25: reasons.append('unstable_ankle_line')
     # Recompute from the qualified raw ankles in a source-time window.
     ext['stance']['image_foot_line_angle_deg']=round(median(angles),1) if angles else None
     record('stance',ids,valid,reasons,{'definition':'image ankle-line inclination; not court stance',
         'window_seconds':[-.12,.12], 'range_deg':[round(min(angles),1),round(max(angles),1)] if angles else None,
-        'minimum_span_px':round(min(spans),1) if spans else None})
+        'minimum_span_px':round(min(spans),1) if spans else None,
+        'dynamic_footwork': bool(10 < foot_range <= 25)})
 
     ids=window(.6,0);valid=[];ys=[]
     for i in ids:

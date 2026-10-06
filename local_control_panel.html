@@ -377,6 +377,7 @@
     .badge-intermediate { color: #30d158; background: rgba(48,209,88,0.15); border: 1px solid rgba(48,209,88,0.4); }
     .badge-developing { color: #ffd60a; background: rgba(255,214,10,0.15); border: 1px solid rgba(255,214,10,0.4); }
     .badge-shadow { color: #8e8e93; background: rgba(142,142,147,0.15); border: 1px solid rgba(142,142,147,0.4); }
+    .badge-provisional { color: #38bdf8; background: rgba(56,189,248,0.15); border: 1px solid rgba(56,189,248,0.4); }
     .swing-frames { font-size: 12px; color: var(--muted); font-family: ui-monospace, Menlo, monospace; }
 
     .swing-telemetry-grid {
@@ -1708,8 +1709,101 @@
       return false;
     }
 
+    function extractSubScoresFromEvent(ev) {
+      const sqs = ev?.extended_biomechanics?.swing_quality_score || ev?.swing_quality_score || {};
+      if (sqs.sub_scores && Object.keys(sqs.sub_scores).length > 0) return sqs.sub_scores;
+      const bio = ev?.biomechanics || {};
+      const metrics = bio.metrics || {};
+      const ext = ev?.extended_biomechanics || bio.extended_biomechanics || {};
+      const getVal = (m, key) => {
+        if (!m) return null;
+        let v = key ? m[key] : (typeof m === 'object' && 'value' in m ? m.value : m);
+        if (typeof v === 'object' && v !== null && 'value' in v) v = v.value;
+        const n = parseFloat(v);
+        return Number.isFinite(n) ? n : null;
+      };
+      const curveScore = (val, pts) => {
+        if (val <= pts[0][0]) return pts[0][1];
+        if (val >= pts[pts.length - 1][0]) return pts[pts.length - 1][1];
+        for (let i = 0; i < pts.length - 1; i++) {
+          const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
+          if (val >= x0 && val <= x1) return y0 + (y1 - y0) * ((val - x0) / Math.max(1e-9, x1 - x0));
+        }
+        return pts[pts.length - 1][1];
+      };
+      const sub = {};
+      const stc = getVal(metrics.shoulder_turn_change) ?? getVal(ext.shoulder_turn_change) ?? getVal(metrics.shoulder_turn);
+      if (stc != null) sub.shoulder_turn = Math.round(curveScore(stc, [[0, 35], [12, 50], [30, 80], [45, 100]]));
+      const tb = getVal(metrics.takeback_depth) ?? getVal(ext.takeback_depth) ?? getVal(metrics.scapular_retraction);
+      if (tb != null) sub.takeback = Math.round(curveScore(tb, [[0.0, 35], [0.6, 50], [1.2, 75], [1.8, 90], [2.2, 100]]));
+      const ae = getVal(metrics.arm_extension) ?? getVal(ext.arm_extension);
+      if (ae != null) sub.arm_extension = Math.round(curveScore(ae, [[60, 35], [120, 62], [145, 80], [165, 100]]));
+      const rkt = ext.racket_head_speed || ev.racket_speed || {};
+      const spd = getVal(rkt, 'max_px_s') ?? getVal(rkt, 'contact_px_s') ?? getVal(metrics.racket_head_speed);
+      if (spd != null) sub.racket_speed = Math.round(curveScore(spd, [[0, 30], [800, 50], [1600, 70], [2400, 85], [3200, 100]]));
+      const pkf = getVal(metrics.preparation_knee_flexion) ?? getVal(ext.preparation_knee_flexion);
+      const legRatio = getVal(ext.leg_drive, 'drive_ratio') ?? getVal(metrics.leg_drive);
+      if (pkf != null) sub.leg_drive = Math.round(curveScore(pkf, [[0, 35], [12, 50], [25, 75], [45, 100]]));
+      else if (legRatio != null) sub.leg_drive = Math.round(curveScore(legRatio, [[0.0, 35], [0.03, 55], [0.06, 75], [0.10, 100]]));
+      return sub;
+    }
+
     function generateRadarSvg(ev) {
-      return `<div class="radar-box" style="color:var(--muted);font-size:12px;text-align:center">${isShadowEvent(ev) ? "空挥试拍" : "技术维度请查看教练评分"}</div>`;
+      if (isShadowEvent(ev)) {
+        return `<div class="radar-box"><span style="color:var(--muted);font-size:11px;text-align:center;">空挥试拍<br><small>无球免除</small></span></div>`;
+      }
+      const sub = extractSubScoresFromEvent(ev);
+      const axes = [
+        ["shoulder_turn", "转肩"],
+        ["takeback", "引拍"],
+        ["arm_extension", "延展"],
+        ["racket_speed", "挥速"],
+        ["leg_drive", "蹬地"]
+      ];
+      const hasAny = axes.some(([k]) => sub[k] != null);
+      if (!hasAny) {
+        return `<div class="radar-box"><span style="color:var(--muted);font-size:11px;text-align:center;">5维力学雷达<br><small>待动作识别</small></span></div>`;
+      }
+      const width = 140, height = 135;
+      const cx = width / 2, cy = height / 2 + 2, rMax = 44;
+      const n = axes.length;
+      let ringsSvg = [0.33, 0.66, 1.0].map(lvl => {
+        let pts = [];
+        for (let i = 0; i < n; i++) {
+          let ang = -Math.PI / 2 + i * (2 * Math.PI / n);
+          pts.push(`${(cx + rMax * lvl * Math.cos(ang)).toFixed(1)},${(cy + rMax * lvl * Math.sin(ang)).toFixed(1)}`);
+        }
+        let dash = lvl < 1.0 ? ' stroke-dasharray="2,2"' : '';
+        let col = lvl < 1.0 ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.18)';
+        return `<polygon points="${pts.join(' ')}" fill="none" stroke="${col}" stroke-width="1"${dash}/>`;
+      }).join('');
+
+      let dataPts = [], spokes = [], dots = [], labels = [];
+      for (let i = 0; i < n; i++) {
+        let [k, label] = axes[i];
+        let ang = -Math.PI / 2 + i * (2 * Math.PI / n);
+        let cosA = Math.cos(ang), sinA = Math.sin(ang);
+        let ox = cx + rMax * cosA, oy = cy + rMax * sinA;
+        spokes.push(`<line x1="${cx.toFixed(1)}" y1="${cy.toFixed(1)}" x2="${ox.toFixed(1)}" y2="${oy.toFixed(1)}" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>`);
+        let score = sub[k] != null ? Number(sub[k]) : 50;
+        let clamped = Math.max(0, Math.min(100, score));
+        let rVal = Math.max(5, rMax * (clamped / 100));
+        let dx = cx + rVal * cosA, dy = cy + rVal * sinA;
+        dataPts.push(`${dx.toFixed(1)},${dy.toFixed(1)}`);
+        dots.push(`<circle cx="${dx.toFixed(1)}" cy="${dy.toFixed(1)}" r="2.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1"/>`);
+        let lx = cx + (rMax + 14) * cosA, ly = cy + (rMax + 14) * sinA;
+        let anchor = Math.abs(cosA) < 0.15 ? "middle" : (cosA > 0 ? "start" : "end");
+        let displayScore = sub[k] != null ? Math.round(score) : '—';
+        labels.push(`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="central" font-size="8" font-weight="600" fill="#94a3b8">${escapeHtml(label)}${displayScore}</text>`);
+      }
+      const poly = `<polygon points="${dataPts.join(' ')}" fill="rgba(0, 240, 255, 0.22)" stroke="#00f0ff" stroke-width="1.8"/>`;
+      return `
+        <div class="radar-box">
+          <div style="font-size:9.5px;font-weight:600;color:var(--muted);margin-bottom:1px;letter-spacing:0.3px;">5维生物力学雷达</div>
+          <svg viewBox="0 0 ${width} ${height}" style="width:130px;height:125px;display:block;">
+            ${ringsSvg}${spokes.join('')}${poly}${dots.join('')}${labels.join('')}
+          </svg>
+        </div>`;
     }
 
     function renderSessionSummary(summary, events) {
@@ -1935,9 +2029,13 @@
 
     function observationReason(metric) {
       const reasons = metric.measurement_evidence?.reasons || [];
-      if (reasons.includes("below_motion_resolution_guard")) return "小位移暂不解读";
+      if (reasons.includes("below_motion_resolution_guard")) return "无显著下蹲蓄力 (上移极微)";
       if (reasons.includes("contact_anchor_unconfirmed")) return "触球候选待确认";
-      if (reasons.includes("path_endpoints_coincide")) return "轨迹方向不明确";
+      if (reasons.includes("path_endpoints_coincide")) {
+        const drop = metric?.drop_depth_ratio ?? metric?.measurement_evidence?.fields?.drop_depth_ratio;
+        return (drop === 0 || drop === "0") ? "平击推进 (无下沉提拉)" : "轨迹方向不明确";
+      }
+      if (reasons.includes("unstable_ankle_line")) return "动态步法跨步中";
       return "观测证据不足";
     }
 
@@ -2050,19 +2148,40 @@
         const strokeText = strokeType === "Forehand" ? "正手 (Forehand)" : (strokeType === "Backhand" ? "反手 (Backhand)" : strokeType);
         const score = ev.swing_score ?? (ev.biomechanics?.swing_score ?? "—");
         const grade = ev.swing_grade || (ev.biomechanics?.swing_grade || "REVIEW_REQUIRED");
-        const badgeClass = isShadow ? "badge-shadow" : `badge-${grade.toLowerCase()}`;
-        const badgeText = isShadow ? "空挥试拍 · 无来球" : (score === "—" ? "待复核 · 未评分" : `${grade} · ${score}分`);
+        const badgeClass = isShadow ? "badge-shadow" : (score === "—" ? "badge-provisional" : `badge-${grade.toLowerCase()}`);
+        const badgeText = isShadow ? "空挥试拍 · 无来球" : (score === "—" ? "诊断参考 · 待教练评分" : `${grade} · ${score}分`);
 
         const ext = ev.extended_biomechanics || (ev.biomechanics?.extended_biomechanics || {});
-        const reasonNames = {automatic_rubric_not_independently_validated:"评分标准未独立验证", contact_not_confirmed:"触球尚未确认", missing_observations:"缺少相关观测", shadow_swing:"空挥"};
-        const blockersHtml = (ev.scoring_blockers || []).length ? `<details style="margin:12px 0"><summary>五维自动评分 · 阻断原因</summary>${ev.scoring_blockers.map(b => `<p>${escapeHtml(b.label)}：${(b.reasons || []).map(r => escapeHtml(reasonNames[r] || r)).join('；')}${b.missing_observations?.length ? `（${escapeHtml(b.missing_observations.join(', '))}）` : ''}</p>`).join('')}<small>相关观测仅用于说明缺项，不是已验证评分规则。教练确认评分单独保留。</small></details>` : "";
+        const reasonNames = {
+          automatic_rubric_not_independently_validated: "自动评分标准待教练独立标定",
+          contact_not_confirmed: "触球为视觉候选推断（待人工确认）",
+          missing_observations: "缺少相关专项观测",
+          shadow_swing: "空挥试拍"
+        };
+        const blockersHtml = (ev.scoring_blockers || []).length ? `
+          <details style="margin:10px 0; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.07); border-radius:6px; padding:6px 10px;">
+            <summary style="cursor:pointer; color:var(--muted); font-size:12px;">教练五维评审 · 待评定说明 (人工专项)</summary>
+            <div style="font-size:12px; margin-top:8px; line-height:1.6;">
+              ${ev.scoring_blockers.map(b => `<p style="margin:4px 0;"><strong>${escapeHtml(b.label)}</strong>：${(b.reasons || []).map(r => escapeHtml(reasonNames[r] || r)).join('；')}${b.missing_observations?.length ? `（待测：${escapeHtml(b.missing_observations.join(', '))}）` : ''}</p>`).join('')}
+              <div style="color:var(--muted); font-size:11px; margin-top:6px; border-top:1px dashed rgba(255,255,255,0.08); padding-top:6px;">
+                💡 五维综合评分（准备、到位、击球、协调、随挥）属于教练人工专项评审；单目视觉已在右侧【5维生物力学技术雷达】中完整透出转肩、引拍、延展、挥速、蹬地等客观表现。
+              </div>
+            </div>
+          </details>` : "";
         const speed = ext.racket_head_speed || {};
         const speedContact = speed.contact_px_s != null ? `${speed.contact_px_s.toFixed(0)} <small>px/s · 候选触球帧<br>原始峰值 ${speed.max_px_s?.toFixed(0) ?? "—"} px/s（未验证）</small>` : "未观测 · km/h 未标定";
         
         const brush = ext.brush_angle || {};
         const brushAngle = qualifiedObservation(brush, 'low_to_high_angle_deg');
         const riseRatio = qualifiedObservation(brush, 'drop_depth_ratio');
-        const brushDirection = brushAngle != null ? `${brushAngle >= 0 ? "+" : ""}${brushAngle}°` : escapeHtml(observationReason(brush));
+        let brushDirection = "";
+        if (brushAngle != null) {
+          brushDirection = `${brushAngle >= 0 ? "+" : ""}${brushAngle}°`;
+        } else if (riseRatio === 0) {
+          brushDirection = "平击推进 (无下沉提拉)";
+        } else {
+          brushDirection = escapeHtml(observationReason(brush));
+        }
         const brushText = `${brushDirection}<small> · 上升比 ${riseRatio != null ? escapeHtml(String(riseRatio)) + "x" : "未观测"}</small>`;
 
         const seqMetric = ev.biomechanics?.metrics?.kinematic_sequence || {};
@@ -2071,7 +2190,14 @@
 
         const leg = ext.leg_drive || {};
         const hipRise = qualifiedObservation(leg, 'drive_px');
-        const legText = hipRise != null ? `${hipRise} <small>px · 像面髋中心</small>` : escapeHtml(observationReason(leg));
+        let legText = "";
+        if (hipRise != null) {
+          legText = `${hipRise} <small>px · 像面髋中心</small>`;
+        } else if (leg?.measurement_evidence?.reasons?.includes("below_motion_resolution_guard")) {
+          legText = `平立击球 <small>· 无显著下蹲蓄力 (上移极微)</small>`;
+        } else {
+          legText = escapeHtml(observationReason(leg));
+        }
 
         const advices = ev.coach_advices || (ev.coach_advice ? [ev.coach_advice] : []);
         const coachHtml = advices.length > 0 ? `

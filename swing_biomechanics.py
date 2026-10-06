@@ -539,6 +539,90 @@ def _calculate_extended_tier_biomechanics(
     }
 
 
+def _score_curve(value: float, curve: Sequence[Tuple[float, float]]) -> float:
+    points = sorted((float(x), float(y)) for x, y in curve)
+    if value <= points[0][0]:
+        return points[0][1]
+    if value >= points[-1][0]:
+        return points[-1][1]
+    for (left_x, left_y), (right_x, right_y) in zip(points, points[1:]):
+        if left_x <= value <= right_x:
+            ratio = (value - left_x) / max(1e-9, right_x - left_x)
+            return left_y + (right_y - left_y) * ratio
+    return points[-1][1]
+
+
+def extract_biomechanical_sub_scores(event: Dict) -> Dict[str, float]:
+    """Extract 0-100 diagnostic sub-scores for the 5-axis biomechanical quality radar.
+
+    RADAR_AXES:
+    1. shoulder_turn (转肩)
+    2. takeback (引拍)
+    3. arm_extension (延展)
+    4. racket_speed (挥速)
+    5. leg_drive (蹬地)
+    """
+    bio = event.get("biomechanics") or {}
+    metrics = bio.get("metrics") or event.get("metrics") or {}
+    ext = bio.get("extended_biomechanics") or event.get("extended_biomechanics") or {}
+    sub_scores: Dict[str, float] = {}
+
+    def _val(obj, key=None):
+        if key is not None and isinstance(obj, dict):
+            val = obj.get(key)
+        else:
+            val = obj
+        if isinstance(val, dict):
+            val = val.get("value")
+        if val is None or isinstance(val, bool):
+            return None
+        try:
+            f = float(val)
+            return f if math.isfinite(f) else None
+        except (ValueError, TypeError):
+            return None
+
+    # 1. shoulder_turn (转肩)
+    stc = _val(metrics.get("shoulder_turn_change")) or _val(ext.get("shoulder_turn_change"))
+    st_val = _val(metrics.get("shoulder_turn")) or _val(ext.get("shoulder_turn"))
+    if stc is not None:
+        sub_scores["shoulder_turn"] = round(_score_curve(stc, [(0, 35), (12, 50), (30, 80), (45, 100)]), 1)
+    elif st_val is not None:
+        sub_scores["shoulder_turn"] = round(_score_curve(st_val, [(0, 35), (20, 55), (40, 80), (60, 100)]), 1)
+
+    # 2. takeback (引拍)
+    tb = _val(metrics.get("takeback_depth")) or _val(ext.get("takeback_depth"))
+    scap = _val(metrics.get("scapular_retraction")) or _val(ext.get("scapular_retraction"))
+    if tb is not None:
+        sub_scores["takeback"] = round(_score_curve(tb, [(0.0, 35), (0.6, 50), (1.2, 75), (1.8, 90), (2.2, 100)]), 1)
+    elif scap is not None:
+        sub_scores["takeback"] = round(_score_curve(scap, [(0.5, 40), (0.8, 65), (1.1, 85), (1.3, 100)]), 1)
+
+    # 3. arm_extension (延展)
+    ae = _val(metrics.get("arm_extension")) or _val(ext.get("arm_extension"))
+    if ae is not None:
+        sub_scores["arm_extension"] = round(_score_curve(ae, [(60, 35), (120, 62), (145, 80), (165, 100)]), 1)
+
+    # 4. racket_speed (挥速)
+    rkt_ext = ext.get("racket_head_speed") or event.get("racket_speed") or {}
+    max_spd = _val(rkt_ext, "max_px_s")
+    c_spd = _val(rkt_ext, "contact_px_s") or _val(metrics.get("racket_head_speed"))
+    if max_spd is not None:
+        sub_scores["racket_speed"] = round(_score_curve(max_spd, [(0, 30), (800, 50), (1600, 70), (2400, 85), (3200, 100)]), 1)
+    elif c_spd is not None:
+        sub_scores["racket_speed"] = round(_score_curve(c_spd, [(0, 30), (400, 55), (700, 75), (1000, 90), (1400, 100)]), 1)
+
+    # 5. leg_drive (蹬地)
+    pkf = _val(metrics.get("preparation_knee_flexion")) or _val(ext.get("preparation_knee_flexion"))
+    ld_ratio = _val(ext.get("leg_drive"), "drive_ratio") or _val(metrics.get("leg_drive"))
+    if pkf is not None:
+        sub_scores["leg_drive"] = round(_score_curve(pkf, [(0, 35), (12, 50), (25, 75), (45, 100)]), 1)
+    elif ld_ratio is not None:
+        sub_scores["leg_drive"] = round(_score_curve(ld_ratio, [(0.0, 35), (0.03, 55), (0.06, 75), (0.10, 100)]), 1)
+
+    return sub_scores
+
+
 def aggregate_event_biomechanics(
     event: Dict,
     frames: Iterable[Dict],
@@ -883,6 +967,10 @@ def aggregate_event_biomechanics(
         'source_frames': rise_evidence['source_frames'],
         'sample_count': rise_evidence['sample_count'],
     }
+
+    sub_scores = extract_biomechanical_sub_scores(result) if pose_ratio > 0 else {}
+    ext["swing_quality_score"]["sub_scores"] = sub_scores
+    result["metrics"]["swing_quality_score"]["sub_scores"] = sub_scores
 
     from baseline_observations import baseline_profiles, normalized_view_trends
     baseline = baseline_profiles(frames, start_frame)
