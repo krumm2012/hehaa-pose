@@ -540,7 +540,7 @@ class DualViewRenderer:
         if box_to_draw is not None:
             px1, py1, px2, py2 = box_to_draw
             r_color = (0, 235, 255) if recovered_to_draw else (255, 220, 0)
-            r_tag = "RACKET (MIRROR)" if recovered_to_draw else "RACKET"
+            r_tag = "RACKET (RECOVERED)" if recovered_to_draw else "RACKET"
             cv2.rectangle(f_img, (px1, py1), (px2, py2), r_color, 2, cv2.LINE_AA)
             cv2.putText(
                 f_img,

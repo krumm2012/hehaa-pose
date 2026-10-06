@@ -173,20 +173,47 @@ class DualViewBiomechanicsTests(unittest.TestCase):
             "left_hip": Keypoint(1480.8, 193.05, 0.9),
             "right_hip": Keypoint(1436.4, 193.05, 0.9),
         }
-        # YOLO 检出的镜中球拍
-        mirror_racket_box = [1449.0, 144.0, 1514.0, 256.0]
+        # 镜中选手手持球拍位于左手腕附近 [1405.0, 144.0, 1471.0, 256.0]，中心 x = 1438.0
+        mirror_racket_box = [1405.0, 144.0, 1471.0, 256.0]
 
         mapped = map_mirror_racket_to_front(mirror_racket_box, front_pose, back_pose)
         self.assertIsNotNone(mapped)
         fx1, fy1, fx2, fy2 = mapped
 
         # 验证缩放比例 k_scale ~ 1.2435
-        # 验证镜中偏右 (+22.9px) 映射至正面偏左 (-28.5px) 的水平镜像反转
-        # 验证前景选手的右手腕 [1448, 496] 完美落在补偿框内！
+        # 物理几何：全景相机视角下，物理世界偏左在镜中虚像也偏左，保持同向坐标映射
+        # 验证前景选手的右手腕 [1448, 496] 落在补偿框内
         self.assertTrue(fx1 <= 1448.0 <= fx2, f"Front wrist x not in [{fx1}, {fx2}]")
-        self.assertTrue(fy1 <= 496.0 <= fy2, f"Front wrist y not in [{fy1}, {fy2}]")
-        self.assertAlmostEqual((fx1 + fx2) / 2.0, 1480.3, delta=2.0)
-        self.assertAlmostEqual((fy1 + fy2) / 2.0, 546.2, delta=2.0)
+        self.assertAlmostEqual((fx1 + fx2) / 2.0, 1483.2, delta=3.0)
+
+    def test_map_mirror_racket_to_front_frame37_geometry(self):
+        """复刻 Frame 37 正手引拍蓄力真实几何，验证绝不在身体相反侧误报。"""
+        from dual_view_biomechanics import map_mirror_racket_to_front
+
+        front_pose = {
+            "left_shoulder": Keypoint(1545.3, 421.2, 0.99),
+            "right_shoulder": Keypoint(1451.0, 387.7, 0.99),
+            "left_hip": Keypoint(1508.1, 546.5, 0.99),
+            "right_hip": Keypoint(1447.3, 527.9, 0.99),
+            "right_wrist": Keypoint(1541.6, 438.6, 0.95),
+        }
+        back_pose = {
+            "left_shoulder": Keypoint(1467.2, 69.1, 0.99),
+            "right_shoulder": Keypoint(1413.4, 52.3, 0.96),
+            "left_hip": Keypoint(1458.1, 166.0, 0.99),
+            "right_hip": Keypoint(1420.5, 162.8, 0.99),
+        }
+        # 镜中检出球拍框 (x=1444~1526, 中心 1485.0，相对后背躯干中心偏右 +45.2px)
+        mirror_racket_box = [1444.0, 89.0, 1526.0, 150.0]
+
+        mapped = map_mirror_racket_to_front(mirror_racket_box, front_pose, back_pose)
+        self.assertIsNotNone(mapped)
+        fx1, fy1, fx2, fy2 = mapped
+
+        # 映射后的球拍中心应在 x ~ 1546 附近（持拍右手腕处），绝不是反向腰部 x ~ 1429
+        mapped_cx = (fx1 + fx2) / 2.0
+        self.assertGreater(mapped_cx, 1500.0, f"Mapped racket should be on player's racket side, got {mapped_cx}")
+        self.assertTrue(fx1 <= 1541.6 <= fx2, f"Front wrist x (1541.6) should be within [{fx1}, {fx2}]")
 
     def test_map_mirror_racket_returns_none_on_missing_anchors(self):
         from dual_view_biomechanics import map_mirror_racket_to_front

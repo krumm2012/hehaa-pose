@@ -597,16 +597,26 @@ def map_mirror_racket_to_front(
     dx_back = bx_c - b_center[0]
     dy_back = by_c - b_center[1]
 
-    # 镜中空间距离缩放与水平镜像几何反转：
-    # 镜中背面选手解剖学右侧在原图中呈现为 +X (相对躯干偏右)，
-    # 正面对视选手解剖学右侧在原图中呈现为 -X (相对躯干偏左)
-    dx_front = -dx_back * scale
+    # 镜中空间距离缩放与全局全景几何投影对齐：
+    # 原图全景画面为同一视点，平面镜垂直于地面，在原图像素空间中物体的横向偏移矢量方向 (dx) 与其镜中虚像完全同向；
+    # 空间偏移向量 (dx_back, dy_back) 经视差尺度缩放后直接映射至正面选手的空间位置：
+    dx_front = dx_back * scale
     dy_front = dy_back * scale
 
     fx_c = f_center[0] + dx_front
     fy_c = f_center[1] + dy_front
     fw = bw * scale
     fh = bh * scale
+
+    # 解剖学合理性距离校验：若正面机位已明确检出手腕，校验映射球拍中心是否在解剖合理范围
+    f_r_wrist = _extract_pt(front_pose, "right_wrist")
+    f_l_wrist = _extract_pt(front_pose, "left_wrist")
+    wrists = [pt for pt in (f_r_wrist, f_l_wrist) if pt is not None]
+    if wrists:
+        min_wrist_dist = min(math.hypot(fx_c - w[0], fy_c - w[1]) for w in wrists)
+        max_allowed_dist = max(180.0, f_torso_h * 1.6)
+        if min_wrist_dist > max_allowed_dist:
+            return None
 
     fx1 = fx_c - fw / 2.0
     fy1 = fy_c - fh / 2.0
