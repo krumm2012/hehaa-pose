@@ -98,6 +98,31 @@ class RacketTemporalTrackerTests(unittest.TestCase):
         self.assertTrue(result['observed'])
         self.assertEqual(result['source_frame_id'], 21)
 
+    def test_shoulder_fallback_when_wrist_and_elbow_unidentifiable(self):
+        tracker = self.tracker()
+        seed = candidate([1090, 473, 1288, 568], .85)
+        tracker.select([seed], wrist(20), 20, clock(20, .80), [2560, 1440])
+        weak = candidate([1101, 498, 1294, 600], .40)
+        # Pose with only shoulder
+        shoulder_pose = {'right_shoulder': {'x': 1350, 'y': 480, 'confidence': .90, 'observed': True,
+                                            'source_frame_id': 21, 'confidence_source': 'model'}}
+        result, diag = tracker.select([weak], shoulder_pose, 21, clock(21, .84), [2560, 1440])
+        self.assertIsNotNone(result, "Should recover candidate using shoulder fallback")
+        self.assertTrue(result['observed'])
+
+    def test_high_confidence_candidate_continuity_retained_with_shifted_keypoints(self):
+        tracker = self.tracker()
+        seed = candidate([1584, 415, 1680, 500], .85)
+        tracker.select([seed], wrist(186, x=1590, y=460), 186, clock(186, 7.41), [2560, 1440])
+        # High confidence detection with noisy/shifted wrist
+        strong = candidate([1598, 430, 1695, 515], .897)
+        shifted_wrist_pose = {'right_wrist': {'x': 1100, 'y': 200, 'confidence': .40, 'observed': True,
+                                              'source_frame_id': 187, 'confidence_source': 'model'}}
+        result, diag = tracker.select([strong], shifted_wrist_pose, 187, clock(187, 7.45), [2560, 1440])
+        self.assertIsNotNone(result, "High confidence candidate should be retained via spatial trajectory continuity")
+        self.assertTrue(result['observed'])
+        self.assertEqual(result['source_frame_id'], 187)
+
 
 if __name__ == '__main__':
     unittest.main()

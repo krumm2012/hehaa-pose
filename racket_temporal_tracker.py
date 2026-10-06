@@ -43,9 +43,17 @@ class RacketTemporalTracker:
                 value, _ = qualified_front_point(point, frame_id)
                 if value: wrists.append(value[:2])
             used_elbow_fallback = bool(wrists)
+        used_shoulder_fallback = False
+        if not wrists:
+            for name, point in front_points.items():
+                if 'shoulder' not in name or point.get('source_frame_id') != frame_id:
+                    continue
+                value, _ = qualified_front_point(point, frame_id)
+                if value: wrists.append(value[:2])
+            used_shoulder_fallback = bool(wrists)
         t = self._time(source_time, frame_id)
         valid = []
-        allowed_ratio = self.wrist_dist_ratio * (1.6 if used_elbow_fallback else 1.0)
+        allowed_ratio = self.wrist_dist_ratio * (1.6 if used_elbow_fallback else (2.6 if used_shoulder_fallback else 1.0))
         for item in candidates:
             box = item.get('box')
             score = finite_number(item.get('confidence'))
@@ -58,7 +66,16 @@ class RacketTemporalTracker:
                                         max(box[1]-y, 0, y-box[3])) for x, y in wrists), default=math.inf)
             reason = None
             if distance > diagonal * allowed_ratio:
-                reason = 'no_fresh_front_elbow' if used_elbow_fallback else 'no_fresh_front_wrist'
+                if (score >= self.high and self.last is not None and t is not None and self.last['time'] is not None
+                        and 0 < t - self.last['time'] <= .12):
+                    old = self.last['box']
+                    step = math.hypot((box[0]+box[2]-old[0]-old[2])/2, (box[1]+box[3]-old[1]-old[3])/2)
+                    if step <= diagonal * .10:
+                        distance = step
+                    else:
+                        reason = 'no_fresh_front_shoulder' if used_shoulder_fallback else ('no_fresh_front_elbow' if used_elbow_fallback else 'no_fresh_front_wrist')
+                else:
+                    reason = 'no_fresh_front_shoulder' if used_shoulder_fallback else ('no_fresh_front_elbow' if used_elbow_fallback else 'no_fresh_front_wrist')
             elif score < self.low: reason = 'below_recovery_floor'
             elif score < self.high:
                 if self.anchor is None or self.last is None: reason = 'no_contiguous_anchor'
@@ -131,7 +148,15 @@ class RacketTemporalTracker:
                     value, _ = qualified_front_point(point, fid)
                     if value: wrists.append(value[:2])
                 used_elbow_fallback = bool(wrists)
-            allowed_ratio = self.wrist_dist_ratio * (1.6 if used_elbow_fallback else 1.0)
+            used_shoulder_fallback = False
+            if not wrists:
+                for name, point in (front_points_by_fid.get(fid) or {}).items():
+                    if 'shoulder' not in name or point.get('source_frame_id') != fid:
+                        continue
+                    value, _ = qualified_front_point(point, fid)
+                    if value: wrists.append(value[:2])
+                used_shoulder_fallback = bool(wrists)
+            allowed_ratio = self.wrist_dist_ratio * (1.6 if used_elbow_fallback else (2.6 if used_shoulder_fallback else 1.0))
             cands = frames_candidates[fid]
             if isinstance(cands, dict):
                 cands = [cands]

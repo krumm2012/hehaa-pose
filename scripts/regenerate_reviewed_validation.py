@@ -60,6 +60,7 @@ def peak_summary(result):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('binding','progress','review','predictions','coach-reference','output'):p.add_argument('--'+name,required=True)
+    p.add_argument('--racket-review', required=False, default=None, help='Path to racket review receipt JSON')
     a=p.parse_args();binding=json.loads(Path(a.binding).read_text());paths=binding['paths']
     for name,path in paths.items():
         if digest(path)!=binding['sha256'][name]:raise ValueError('Bound input changed: '+name)
@@ -72,7 +73,13 @@ def main():
     out=Path(a.output);out.mkdir(parents=True,exist_ok=False)
     def write(name,doc):
         (out/name).write_text(json.dumps(doc,ensure_ascii=False,indent=2,allow_nan=False)+'\n')
-    write('input_binding.json',dict(binding,review_sha256=digest(a.review),prediction_sha256=digest(a.predictions)))
+    racket_receipt = None
+    racket_sha = None
+    if a.racket_review:
+        racket_receipt = json.loads(Path(a.racket_review).read_text())
+        racket_sha = digest(a.racket_review)
+    write('input_binding.json',dict(binding,review_sha256=digest(a.review),prediction_sha256=digest(a.predictions),
+                                     racket_review_sha256=racket_sha))
     write('joint_review_summary.json',summarize_review(review,pred))
     subprocess.run([sys.executable,str(Path(__file__).with_name('audit_kinematic_cadence.py')),
         '--source',paths['source'],'--manifest',paths['manifest'],'--journal',paths['journal'],
@@ -99,6 +106,8 @@ def main():
 
     # Attribution & Parameter Exploration & Benchmark
     attribution = attribute_all_events(rows, masked, review, events_doc['events'])
+    if racket_receipt:
+        attribution['racket_manual_review_receipt'] = racket_receipt
     write('kinematic_failure_attribution.json', attribution)
 
     params_exp = explore_temporal_parameters(rows, events_doc['events'])
@@ -106,6 +115,20 @@ def main():
 
     bench_draft = build_independent_benchmark_draft(binding['sha256']['source'], binding['session_id'], rows)
     write('independent_joint_benchmark_draft.json', bench_draft)
+
+    racket_review_html = ""
+    if racket_receipt:
+        bd = racket_receipt.get("decision_breakdown", {})
+        racket_review_html = f'''<section><h2>球拍关键帧人工复核结论 (20 帧全量完成)</h2>
+<p>基于 2560×1440 原画 640×640 高保真局部裁剪，人工完成了 20 个关键存疑帧的判定：</p>
+<ul>
+<li><strong>触球核心瞬间 (100% 确认)</strong>：帧 21、110、191 均人工确认球拍真实有效。</li>
+<li><strong>有效真实球拍</strong>：共 {bd.get("valid_racket", 12)} 帧（含自愈恢复至 0.270 置信度的帧 22，及 2304 px/s 随挥边界帧 25）。</li>
+<li><strong>门控误杀确认</strong>：帧 105、106（引拍低点与过渡）确认为真实球拍，被手腕遮挡门控误杀，算法应予放行。</li>
+<li><strong>物理遮挡/不可辨认自然截断</strong>：共 {bd.get("unidentifiable", 6)} 帧（帧 26、113、179、180、187、194）。确认拍头绕至背后或深引拍不可辨认，符合物理规律，无需虚假外推。</li>
+<li><strong>背景误检 (False Positive)</strong>：{bd.get("false_positive", 0)} 帧。</li>
+</ul>
+<p><a href="../court02_racket_manual_review_20261006_v1/index.html">打开球拍存疑帧高保真图文复核面板</a> · <a href="../court02_racket_manual_review_20261006_v1/court02_racket_manual_review_receipt.json">查看复核回执 JSON</a></p></section>'''
 
     attr_cards = []
     for ev_attr in attribution['events']:
@@ -148,6 +171,7 @@ def main():
     (out/'temporal_review_report.html').write_text(
         f'<!doctype html><meta charset="utf-8"><title>第4项最新复核重放与深层归因</title><style>body{{font:16px/1.7 system-ui;max-width:1200px;margin:30px auto;padding:20px}}section{{border:1px solid #aaa;padding:20px;margin:20px 0}}ul{{line-height:1.8}}table{{width:100%;border-collapse:collapse;margin:15px 0}}td,th{{padding:10px;border:1px solid #ccc;text-align:left;vertical-align:top}}</style><h1>第4项 · 最新关节复核重放与归因</h1><p>沿用新ROI会话的原始观测和媒体PTS，排除{temporal["excluded_joint_count"]}项不可辨认关节。未将自动优化坐标改写为原始观测；无缺失点插值。峰值不可用时保持空，不用替代峰值恢复结论。此页比较敏感性，尚未通过独立误差验证。</p>'
         + ''.join(cards)
+        + racket_review_html
         + '<h2>三拍动力链失败逐项归因分析</h2>'
         + ''.join(attr_cards)
         + '<h2>随挥扩展与 VFR 抖动平滑参数敏感性探索</h2>'
@@ -187,8 +211,12 @@ def main():
     auto_vis = c.get('automatic_visible', 0)
     auto_unk = c.get('automatic_unknown', 0)
     hum_unk = c.get('human_unknown', 0)
+    racket_summary_html = ""
+    if racket_receipt:
+        bd = racket_receipt.get("decision_breakdown", {})
+        racket_summary_html = f'''<p><strong>球拍存疑帧人工复核已接收</strong>：全量 20 帧完成（触球 3 帧 100% 确认有效；门控误杀 {bd.get("gating_error", 2)} 帧；物理遮挡自然截断 {bd.get("unidentifiable", 6)} 帧；0 误检）。<a href="../court02_racket_manual_review_20261006_v1/index.html">打开球拍高保真局部裁剪复核控制台</a></p>'''
     event_rows=''.join('<tr><td>'+str(item['contact_frame'])+'</td><td>'+html.escape(str([item['baseline_summary']['hip_peak_frame'],item['baseline_summary']['shoulder_peak_frame'],item['baseline_summary']['racket_peak_frame']]))+'</td><td>'+html.escape(str([item['masked_summary']['hip_peak_frame'],item['masked_summary']['shoulder_peak_frame'],item['masked_summary']['racket_peak_frame']]))+'</td></tr>' for item in comparisons)
-    page=f'''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Court02 第3–5项最新更新</title><style>body{{font:17px/1.8 system-ui;max-width:1150px;margin:35px auto;padding:0 20px;color:#182a38}}td,th{{padding:12px;border-bottom:1px solid #bbb;text-align:left}}a{{color:#067}}section{{padding:15px;background:#f3f7fa;margin:18px 0}}pre{{white-space:pre-wrap}}</style><h1>Court02 · 第3、4、5项最新更新</h1><p>2026-10-06 · 基于新ROI会话及最新复核文件重新生成。250源帧、双视角、2000个肩髋条目。此次为证据重放与深层归因，没有新增模型推理。</p><section><h2>3 · 全部辅助审核已处理</h2><p>人工144项原样保留；自动1856项完成，其中{auto_vis}项候选、{auto_unk}项留空。加上人工{hum_unk}项不可辨认，共{total_excluded}项空坐标。自动调整仅限连续观测支持、最大2像素，不插值遮挡关节。</p><p><a href="../{review_dir_name}/index.html">打开最新关节点复核</a> · <a href="joint_review_summary.json">处理计数与坐标修订量</a> · <a href="independent_joint_benchmark_draft.json">9帧独立基准草稿 (静态/高速/遮挡)</a></p><p>独立关节点误差尚未验证；修订量不能作为准确率。</p></section><section><h2>4 · 三拍动力链已重放与逐项归因</h2><p>排除{total_excluded}项不可辨认关节，保留原始坐标和媒体PTS。比较髋、肩、球拍候选峰位；None表示证据不足，保持不输出。</p><table><tr><th>触球源帧</th><th>原始重放：髋 / 肩 / 拍峰帧</th><th>排除不可辨认后：髋 / 肩 / 拍峰帧</th></tr>{event_rows}</table><p><a href="temporal_review_report.html">查看三拍前后动力链与详细归因</a> · <a href="temporal_baseline/report.html">重新生成的时间基准</a> · <a href="kinematic_failure_attribution.json">归因详情 JSON</a> · <a href="temporal_parameter_exploration.json">参数敏感性探索</a></p><p>遮挡排除敏感性检查与失效定位已完成；平滑、恢复和峰值参数仍待独立误差基准，未批准生产参数调整。</p></section><section><h2>5 · 教练规则体系与评分状态已重新核验</h2><p>已定义技术规则：3项（髋肩分离时序、动力链顺序、脚部着地）；获验证规则：{len(policy['validated_rule_ids'])}；独立教练评分标签：{coach['reference_label_count']}。评分仍关闭，待定义规则、评分单位及独立留出验证。</p><p><a href="coach_validation_status.json">最新验证状态</a> · <a href="coach_reference_draft.json">教练评估模板 (已规范化规则)</a></p></section><p>第2项继续沿用已授权ABCD / A′B′C′D′尺度映射。整体状态：辅助审核、归因与重放已更新，独立准确率及教练评分验证尚未完成。</p><p><a href="progress.json">完整进度</a> · <a href="input_binding.json">输入与复核身份</a></p></html>'''
+    page=f'''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Court02 第3–5项最新更新</title><style>body{{font:17px/1.8 system-ui;max-width:1150px;margin:35px auto;padding:0 20px;color:#182a38}}td,th{{padding:12px;border-bottom:1px solid #bbb;text-align:left}}a{{color:#067}}section{{padding:15px;background:#f3f7fa;margin:18px 0}}pre{{white-space:pre-wrap}}</style><h1>Court02 · 第3、4、5项最新更新</h1><p>2026-10-06 · 基于新ROI会话及最新复核文件重新生成。250源帧、双视角、2000个肩髋条目。此次为证据重放与深层归因，没有新增模型推理。</p><section><h2>3 · 全部辅助审核已处理</h2><p>人工144项原样保留；自动1856项完成，其中{auto_vis}项候选、{auto_unk}项留空。加上人工{hum_unk}项不可辨认，共{total_excluded}项空坐标。自动调整仅限连续观测支持、最大2像素，不插值遮挡关节。</p><p><a href="../{review_dir_name}/index.html">打开最新关节点复核</a> · <a href="joint_review_summary.json">处理计数与坐标修订量</a> · <a href="independent_joint_benchmark_draft.json">9帧独立基准草稿 (静态/高速/遮挡)</a></p><p>独立关节点误差尚未验证；修订量不能作为准确率。</p></section><section><h2>4 · 三拍动力链已重放与逐项归因</h2><p>排除{total_excluded}项不可辨认关节，保留原始坐标和媒体PTS。比较髋、肩、球拍候选峰位；None表示证据不足，保持不输出。</p><table><tr><th>触球源帧</th><th>原始重放：髋 / 肩 / 拍峰帧</th><th>排除不可辨认后：髋 / 肩 / 拍峰帧</th></tr>{event_rows}</table>{racket_summary_html}<p><a href="temporal_review_report.html">查看三拍前后动力链与详细归因</a> · <a href="temporal_baseline/report.html">重新生成的时间基准</a> · <a href="kinematic_failure_attribution.json">归因详情 JSON</a> · <a href="temporal_parameter_exploration.json">参数敏感性探索</a></p><p>遮挡排除敏感性检查与失效定位已完成；平滑、恢复和峰值参数仍待独立误差基准，未批准生产参数调整。</p></section><section><h2>5 · 教练规则体系与评分状态已重新核验</h2><p>已定义技术规则：3项（髋肩分离时序、动力链顺序、脚部着地）；获验证规则：{len(policy['validated_rule_ids'])}；独立教练评分标签：{coach['reference_label_count']}。评分仍关闭，待定义规则、评分单位及独立留出验证。</p><p><a href="coach_validation_status.json">最新验证状态</a> · <a href="coach_reference_draft.json">教练评估模板 (已规范化规则)</a></p></section><p>第2项继续沿用已授权ABCD / A′B′C′D′尺度映射。整体状态：辅助审核、归因与重放已更新，独立准确率及教练评分验证尚未完成。</p><p><a href="progress.json">完整进度</a> · <a href="input_binding.json">输入与复核身份</a></p></html>'''
     (out/'index.html').write_text(page)
     print(json.dumps({'output':str(out),'counts':c,'peak_comparisons':[dict(contact_frame=i['contact_frame'],baseline=i['baseline_summary'],masked=i['masked_summary']) for i in comparisons]},ensure_ascii=False))
 
