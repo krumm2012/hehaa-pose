@@ -4,7 +4,7 @@ from pathlib import Path
 import cv2
 
 def add_annotation_workflow(page):
-    controls = '<button id="frame-prev">上一帧 ←</button><button id="frame-next">下一帧 →</button><button id="next-missing">下一未填项</button><label>导入续标<input type="file" id="draft-import" accept="application/json"></label><button id="draft-history">导出修订记录</button><p id="draft-state">编辑后自动保存本地草稿；导出文件可跨浏览器续标。</p>'
+    controls = '<button id="frame-prev">上一帧 ←</button><button id="frame-next">下一帧 →</button><button id="next-missing">下一未填项</button><label>导入续标<input type="file" id="draft-import" accept="application/json"></label><button id="draft-history">导出修订记录</button><button id="draft-retry">重试保存</button><p id="draft-state">编辑后自动保存本地草稿；导出文件可跨浏览器续标。</p>'
     page = page.replace('<svg id="canvas"', controls + '<svg id="canvas"', 1)
     workflow = Path(__file__).with_name('joint_annotation_workflow.js').read_text()
     return page.replace('</script>', workflow + '</script>', 1)

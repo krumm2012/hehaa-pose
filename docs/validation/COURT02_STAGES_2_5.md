@@ -61,6 +61,13 @@ suggestions for the current frame and view. Every item must be reviewed or
 marked unidentifiable before a complete confirmed export. The original model
 suggestions, raw model scores and source identities remain separate from human
 adjustments. Draft import and evaluation reject partial complete-review exports.
+Local autosave stores only changed labels and backwards revision deltas, with
+source metadata and suggestions supplied by the bound page. Legacy complete
+drafts are restored and compacted under the same key; unrelated drafts are
+never removed. If quota remains insufficient, the latest draft is retried without
+local history. Failed edits remain in memory and can be exported. Before
+refreshing a page that reported a failure, export its draft and then import it
+after loading the fixed page.
 Use `--assisted-joints --all-source-frames` in the preparation CLI to reproduce this workflow.
 
 After receiving a confirmed export:

@@ -1,0 +1,26 @@
+{
+  "schema": "tennis.annotation-quota-fix-validation.v1",
+  "source_commit_before_fix": "6004bca",
+  "planned_joint_items": 2000,
+  "simulated_quota_bytes": 1048576,
+  "metrics": {
+    "peakBytes": 659026,
+    "failures": 1
+  },
+  "checks": {
+    "all_2000_labels_restored": true,
+    "human_corrections_and_deletions_preserved": true,
+    "legacy_full_drafts_importable": true,
+    "latest_changes_not_lost_when_quota_fails": true,
+    "other_drafts_not_removed": true,
+    "repeated_navigation_does_not_duplicate_failed_revisions": true,
+    "browser_edit_saves_successfully": true,
+    "browser_reload_restores_test_edit": true,
+    "real_user_tab_not_reloaded": true
+  },
+  "storage_schema": "tennis.annotation-storage.v2",
+  "historical_identity_key_compatible": true,
+  "regression_tests_passed": 16,
+  "workflow_sha256": "ab4821ad90ce343c59cc0c5f52a7715f6a333594e2df89663283476f031341fe",
+  "metric_semantics": "failures counts the expected history-envelope quota rejection before retrying the latest state successfully"
+}

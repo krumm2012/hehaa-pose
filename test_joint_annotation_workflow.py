@@ -28,7 +28,7 @@ if(!$('confirm').checked || !data.confirmed) throw Error('bulk review confirmati
 data.labels['1:front:left_shoulder'].x=1; draw();
 if($('confirm').checked || data.confirmed) throw Error('coordinate edit kept confirmation');
 data.labels['1:front:left_shoulder'].x=0; draw();
-const draft=JSON.parse(localStorage.getItem(draftStorageKey)).current;
+const draft=decodeAnnotationStorage(JSON.parse(localStorage.getItem(draftStorageKey))).current;
 if(draft.labels['1:front:left_shoulder'].x!==0) throw Error('zero lost');
 data.labels={}; restoreAnnotationDraft(draft);
 if(!data.labels['1:front:left_shoulder']) throw Error('restore lost label');
