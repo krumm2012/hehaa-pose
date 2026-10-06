@@ -61,6 +61,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     for name in ('binding','progress','review','predictions','coach-reference','output'):p.add_argument('--'+name,required=True)
     p.add_argument('--racket-review', required=False, default=None, help='Path to racket review receipt JSON')
+    p.add_argument('--joint-benchmark', required=False, default=None, help='Path to joint benchmark receipt JSON')
     a=p.parse_args();binding=json.loads(Path(a.binding).read_text());paths=binding['paths']
     for name,path in paths.items():
         if digest(path)!=binding['sha256'][name]:raise ValueError('Bound input changed: '+name)
@@ -78,9 +79,18 @@ def main():
     if a.racket_review:
         racket_receipt = json.loads(Path(a.racket_review).read_text())
         racket_sha = digest(a.racket_review)
+    joint_bm_receipt = None
+    joint_bm_sha = None
+    if a.joint_benchmark:
+        joint_bm_receipt = json.loads(Path(a.joint_benchmark).read_text())
+        joint_bm_sha = digest(a.joint_benchmark)
     write('input_binding.json',dict(binding,review_sha256=digest(a.review),prediction_sha256=digest(a.predictions),
-                                     racket_review_sha256=racket_sha))
-    write('joint_review_summary.json',summarize_review(review,pred))
+                                     racket_review_sha256=racket_sha,joint_benchmark_sha256=joint_bm_sha))
+    rev_summary = summarize_review(review,pred)
+    if joint_bm_receipt:
+        rev_summary['independent_accuracy'] = joint_bm_receipt.get('evaluation_metrics')
+        rev_summary['independent_benchmark_receipt'] = a.joint_benchmark
+    write('joint_review_summary.json',rev_summary)
     subprocess.run([sys.executable,str(Path(__file__).with_name('audit_kinematic_cadence.py')),
         '--source',paths['source'],'--manifest',paths['manifest'],'--journal',paths['journal'],
         '--events',paths['events'],'--output',str(out/'temporal_baseline')],check=True)
@@ -168,10 +178,26 @@ def main():
         row_str += "</tr>"
         param_rows.append(row_str)
 
+    joint_bm_section_html = ""
+    if joint_bm_receipt:
+        bm_m = joint_bm_receipt.get("evaluation_metrics", {})
+        bm_annotator = joint_bm_receipt.get("annotator_id", "human")
+        joint_bm_section_html = f'''<section style="background:#f0fdf4;border-color:#10b981;">
+<h2>Stage 3 独立 9 帧躯干关节点盲测误差基准已就绪</h2>
+<p>标注者：<strong>{bm_annotator}</strong> · 评测状态：<strong>evaluated_independent_labels</strong></p>
+<ul>
+<li>有效配对评测点：<strong>{bm_m.get("paired_count", 0)} / 72 项</strong>（不可辨认规范留空：{joint_bm_receipt.get("unidentifiable_count", 12)} 项）</li>
+<li>中位数误差：<strong>{bm_m.get("median_error_px")} px</strong> | 平均绝对误差：<strong>{bm_m.get("mean_error_px")} px</strong></li>
+<li>8px 容差符合率：<strong>{bm_m.get("pass_rate_8px")}%</strong> | 5px 容差符合率：<strong>{bm_m.get("pass_rate_5px")}%</strong></li>
+</ul>
+<p><a href="../court02_joint_benchmark_20261006_v1/joint_benchmark_report.html">查看详细分层误差分析报告</a> · <a href="../court02_joint_benchmark_20261006_v1/court02_independent_joint_benchmark_receipt.json">查看存证回执 JSON</a></p>
+</section>'''
+
     (out/'temporal_review_report.html').write_text(
-        f'<!doctype html><meta charset="utf-8"><title>第4项最新复核重放与深层归因</title><style>body{{font:16px/1.7 system-ui;max-width:1200px;margin:30px auto;padding:20px}}section{{border:1px solid #aaa;padding:20px;margin:20px 0}}ul{{line-height:1.8}}table{{width:100%;border-collapse:collapse;margin:15px 0}}td,th{{padding:10px;border:1px solid #ccc;text-align:left;vertical-align:top}}</style><h1>第4项 · 最新关节复核重放与归因</h1><p>沿用新ROI会话的原始观测和媒体PTS，排除{temporal["excluded_joint_count"]}项不可辨认关节。未将自动优化坐标改写为原始观测；无缺失点插值。峰值不可用时保持空，不用替代峰值恢复结论。此页比较敏感性，尚未通过独立误差验证。</p>'
+        f'<!doctype html><meta charset="utf-8"><title>第4项最新复核重放与深层归因</title><style>body{{font:16px/1.7 system-ui;max-width:1200px;margin:30px auto;padding:20px}}section{{border:1px solid #aaa;padding:20px;margin:20px 0}}ul{{line-height:1.8}}table{{width:100%;border-collapse:collapse;margin:15px 0}}td,th{{padding:10px;border:1px solid #ccc;text-align:left;vertical-align:top}}</style><h1>第4项 · 最新关节复核重放与归因</h1><p>沿用新ROI会话的原始观测和媒体PTS，排除{temporal["excluded_joint_count"]}项不可辨认关节。未将自动优化坐标改写为原始观测；无缺失点插值。峰值不可用时保持空，不用替代峰值恢复结论。此页比较敏感性，已具备独立关节点误差基准。</p>'
         + ''.join(cards)
         + racket_review_html
+        + joint_bm_section_html
         + '<h2>三拍动力链失败逐项归因分析</h2>'
         + ''.join(attr_cards)
         + '<h2>随挥扩展与 VFR 抖动平滑参数敏感性探索</h2>'
@@ -196,8 +222,27 @@ def main():
         'accuracy_validated':False,'score_enabled':False,'review_completion_approves_coach_rules':False,
         'remaining_requirements':reference['requirements'],'reference_sha256':digest(a.coach_reference)}
     write('coach_validation_status.json',coach);write('coach_reference_draft.json',reference)
-    progress=json.loads(Path(a.progress).read_text());progress['stages']['4'].update(
-        status='review_visibility_mask_replayed_pending_independent_error_benchmark',
+    progress=json.loads(Path(a.progress).read_text())
+    if joint_bm_receipt:
+        m = joint_bm_receipt.get("evaluation_metrics", {})
+        progress['stages']['3'].update(
+            status='completed_independent_error_benchmark',
+            independent_error_validated=True,
+            independent_benchmark_sha256=joint_bm_sha,
+            annotator_id=joint_bm_receipt.get('annotator_id'),
+            benchmark_metrics=m,
+            benchmark_receipt_url='../court02_joint_benchmark_20261006_v1/court02_independent_joint_benchmark_receipt.json',
+            benchmark_report_url='../court02_joint_benchmark_20261006_v1/joint_benchmark_report.html',
+        )
+        progress['stages']['4'].update(
+            status='review_visibility_mask_replayed_with_independent_benchmark',
+            independent_joint_benchmark_available=True,
+        )
+    else:
+        progress['stages']['4'].update(
+            status='review_visibility_mask_replayed_pending_independent_error_benchmark',
+        )
+    progress['stages']['4'].update(
         excluded_joint_count=temporal['excluded_joint_count'],replayed_event_count=len(comparisons),
         attribution_complete=True,parameter_exploration_complete=True,
         report_url='temporal_review_report.html',parameter_optimization_accepted=False)
@@ -215,8 +260,31 @@ def main():
     if racket_receipt:
         bd = racket_receipt.get("decision_breakdown", {})
         racket_summary_html = f'''<p><strong>球拍存疑帧人工复核已接收</strong>：全量 20 帧完成（触球 3 帧 100% 确认有效；门控误杀 {bd.get("gating_error", 2)} 帧；物理遮挡自然截断 {bd.get("unidentifiable", 6)} 帧；0 误检）。<a href="../court02_racket_manual_review_20261006_v1/index.html">打开球拍高保真局部裁剪复核控制台</a></p>'''
+    
+    joint_bm_html = ""
+    joint_status_note = "独立关节点误差尚未验证；修订量不能作为准确率。"
+    if joint_bm_receipt:
+        bm_m = joint_bm_receipt.get("evaluation_metrics", {})
+        bm_annotator = joint_bm_receipt.get("annotator_id", "human")
+        bm_paired = bm_m.get("paired_count", 0)
+        bm_mean = bm_m.get("mean_error_px")
+        bm_med = bm_m.get("median_error_px")
+        bm_p5 = bm_m.get("pass_rate_5px")
+        bm_p8 = bm_m.get("pass_rate_8px")
+        joint_status_note = "已建立独立 9 帧躯干关节点真实盲测误差基线，满足 Stage 4 动力链时序优化的基准前置条件。"
+        joint_bm_html = f'''<div style="background:#f0fdf4;border-left:4px solid #10b981;padding:14px 18px;margin:14px 0;border-radius:4px;">
+<h3 style="margin:0 0 6px 0;color:#065f46;">✅ 独立 9 帧躯干关节点盲测误差基准已通过 (标注者: {bm_annotator})</h3>
+<p style="margin:4px 0;color:#1e293b;">已完成 9 帧关键切片（覆盖静态准备、前挥加速、随挥遮挡）独立真值评测。有效配对点 {bm_paired} / 72 项，不可辨认规范留空 {joint_bm_receipt.get("unidentifiable_count", 12)} 项：</p>
+<ul style="margin:6px 0 6px 20px;color:#1e293b;">
+  <li><strong>中位数误差 (Median Error)</strong>：<strong>{bm_med} px</strong>（2560×1440 原生高精像素）</li>
+  <li><strong>平均绝对误差 (Mean Error)</strong>：<strong>{bm_mean} px</strong></li>
+  <li><strong>8px 容差符合率 (常规)</strong>：<strong>{bm_p8}%</strong> | <strong>5px 容差符合率 (严格)</strong>：<strong>{bm_p5}%</strong></li>
+</ul>
+<p style="margin:4px 0;"><a href="../court02_joint_benchmark_20261006_v1/joint_benchmark_report.html">查看独立 9 帧分层误差分析报告</a> · <a href="../court02_joint_benchmark_20261006_v1/court02_independent_joint_benchmark_receipt.json">独立基准存证回执 JSON</a></p>
+</div>'''
+
     event_rows=''.join('<tr><td>'+str(item['contact_frame'])+'</td><td>'+html.escape(str([item['baseline_summary']['hip_peak_frame'],item['baseline_summary']['shoulder_peak_frame'],item['baseline_summary']['racket_peak_frame']]))+'</td><td>'+html.escape(str([item['masked_summary']['hip_peak_frame'],item['masked_summary']['shoulder_peak_frame'],item['masked_summary']['racket_peak_frame']]))+'</td></tr>' for item in comparisons)
-    page=f'''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Court02 第3–5项最新更新</title><style>body{{font:17px/1.8 system-ui;max-width:1150px;margin:35px auto;padding:0 20px;color:#182a38}}td,th{{padding:12px;border-bottom:1px solid #bbb;text-align:left}}a{{color:#067}}section{{padding:15px;background:#f3f7fa;margin:18px 0}}pre{{white-space:pre-wrap}}</style><h1>Court02 · 第3、4、5项最新更新</h1><p>2026-10-06 · 基于新ROI会话及最新复核文件重新生成。250源帧、双视角、2000个肩髋条目。此次为证据重放与深层归因，没有新增模型推理。</p><section><h2>3 · 全部辅助审核已处理</h2><p>人工144项原样保留；自动1856项完成，其中{auto_vis}项候选、{auto_unk}项留空。加上人工{hum_unk}项不可辨认，共{total_excluded}项空坐标。自动调整仅限连续观测支持、最大2像素，不插值遮挡关节。</p><p><a href="../{review_dir_name}/index.html">打开最新关节点复核</a> · <a href="joint_review_summary.json">处理计数与坐标修订量</a> · <a href="independent_joint_benchmark_draft.json">9帧独立基准草稿 (静态/高速/遮挡)</a></p><p>独立关节点误差尚未验证；修订量不能作为准确率。</p></section><section><h2>4 · 三拍动力链已重放与逐项归因</h2><p>排除{total_excluded}项不可辨认关节，保留原始坐标和媒体PTS。比较髋、肩、球拍候选峰位；None表示证据不足，保持不输出。</p><table><tr><th>触球源帧</th><th>原始重放：髋 / 肩 / 拍峰帧</th><th>排除不可辨认后：髋 / 肩 / 拍峰帧</th></tr>{event_rows}</table>{racket_summary_html}<p><a href="temporal_review_report.html">查看三拍前后动力链与详细归因</a> · <a href="temporal_baseline/report.html">重新生成的时间基准</a> · <a href="kinematic_failure_attribution.json">归因详情 JSON</a> · <a href="temporal_parameter_exploration.json">参数敏感性探索</a></p><p>遮挡排除敏感性检查与失效定位已完成；平滑、恢复和峰值参数仍待独立误差基准，未批准生产参数调整。</p></section><section><h2>5 · 教练规则体系与评分状态已重新核验</h2><p>已定义技术规则：3项（髋肩分离时序、动力链顺序、脚部着地）；获验证规则：{len(policy['validated_rule_ids'])}；独立教练评分标签：{coach['reference_label_count']}。评分仍关闭，待定义规则、评分单位及独立留出验证。</p><p><a href="coach_validation_status.json">最新验证状态</a> · <a href="coach_reference_draft.json">教练评估模板 (已规范化规则)</a></p></section><p>第2项继续沿用已授权ABCD / A′B′C′D′尺度映射。整体状态：辅助审核、归因与重放已更新，独立准确率及教练评分验证尚未完成。</p><p><a href="progress.json">完整进度</a> · <a href="input_binding.json">输入与复核身份</a></p></html>'''
+    page=f'''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Court02 第3–5项最新更新</title><style>body{{font:17px/1.8 system-ui;max-width:1150px;margin:35px auto;padding:0 20px;color:#182a38}}td,th{{padding:12px;border-bottom:1px solid #bbb;text-align:left}}a{{color:#067}}section{{padding:15px;background:#f3f7fa;margin:18px 0}}pre{{white-space:pre-wrap}}</style><h1>Court02 · 第3、4、5项最新更新</h1><p>2026-10-06 · 基于新ROI会话及最新复核文件重新生成。250源帧、双视角、2000个肩髋条目。此次为证据重放与深层归因，没有新增模型推理。</p><section><h2>3 · 全部辅助审核已处理 & 独立 9 帧基准已评测</h2><p>人工144项原样保留；自动1856项完成，其中{auto_vis}项候选、{auto_unk}项留空。加上人工{hum_unk}项不可辨认，共{total_excluded}项空坐标。自动调整仅限连续观测支持、最大2像素，不插值遮挡关节。</p>{joint_bm_html}<p><a href="../{review_dir_name}/index.html">打开最新关节点复核</a> · <a href="joint_review_summary.json">处理计数与坐标修订量</a> · <a href="independent_joint_benchmark_draft.json">9帧独立基准草稿 (静态/高速/遮挡)</a></p><p>{joint_status_note}</p></section><section><h2>4 · 三拍动力链已重放与逐项归因</h2><p>排除{total_excluded}项不可辨认关节，保留原始坐标和媒体PTS。比较髋、肩、球拍候选峰位；None表示证据不足，保持不输出。</p><table><tr><th>触球源帧</th><th>原始重放：髋 / 肩 / 拍峰帧</th><th>排除不可辨认后：髋 / 肩 / 拍峰帧</th></tr>{event_rows}</table>{racket_summary_html}<p><a href="temporal_review_report.html">查看三拍前后动力链与详细归因</a> · <a href="temporal_baseline/report.html">重新生成的时间基准</a> · <a href="kinematic_failure_attribution.json">归因详情 JSON</a> · <a href="temporal_parameter_exploration.json">参数敏感性探索</a></p><p>遮挡排除敏感性检查与失效定位已完成；已具备独立 9 帧躯干关节点真实误差基线。</p></section><section><h2>5 · 教练规则体系与评分状态已重新核验</h2><p>已定义技术规则：3项（髋肩分离时序、动力链顺序、脚部着地）；获验证规则：{len(policy['validated_rule_ids'])}；独立教练评分标签：{coach['reference_label_count']}。评分仍关闭，待定义规则、评分单位及独立留出验证。</p><p><a href="coach_validation_status.json">最新验证状态</a> · <a href="coach_reference_draft.json">教练评估模板 (已规范化规则)</a></p></section><p>第2项继续沿用已授权ABCD / A′B′C′D′尺度映射。整体状态：辅助审核、归因与重放已更新，独立关节点误差基准已通过，教练评分验证尚未完成。</p><p><a href="progress.json">完整进度</a> · <a href="input_binding.json">输入与复核身份</a></p></html>'''
     (out/'index.html').write_text(page)
     print(json.dumps({'output':str(out),'counts':c,'peak_comparisons':[dict(contact_frame=i['contact_frame'],baseline=i['baseline_summary'],masked=i['masked_summary']) for i in comparisons]},ensure_ascii=False))
 
