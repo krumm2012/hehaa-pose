@@ -83,7 +83,7 @@ def main():
     old="if(p&&p.visible){const c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',p.x);c.setAttribute('cy',p.y);c.setAttribute('r',8);c.setAttribute('fill','#00ffff');$('marks').append(c)}"
     new="""for(const [labelKey,point] of Object.entries(data.labels)){if(!labelKey.startsWith($('frame').value+':'+$('view').value+':')||!point.visible)continue;const c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',point.x);c.setAttribute('cy',point.y);c.setAttribute('r',labelKey===key()?10:6);c.setAttribute('fill',labelKey===key()?'#00ffff':point.reviewed?'#22ee88':'#ffb020');c.setAttribute('stroke','#000');c.setAttribute('stroke-width','2');$('marks').append(c)}"""
     assert old in page;page=page.replace(old,new)
-    page=page.replace("(p?JSON.stringify(p):'尚未标注')", "(p?('坐标 '+p.x+', '+p.y+' · '+(p.reviewed?'已复核':'待复核')+' · 模型分数 '+(p.model_confidence??'无')):'未提供可靠模型点，请人工标注或标记不可辨认')")
+    page=page.replace("(p?JSON.stringify(p):'尚未标注')", "(p?('坐标 '+(typeof p.x==='number'?p.x.toFixed(2):'—')+', '+(typeof p.y==='number'?p.y.toFixed(2):'—')+' · '+(p.reviewed?'已复核':'待复核')+' · 模型分数 '+(p.model_confidence??'无')):'未提供可靠模型点，请人工标注或标记不可辨认')")
     page=page.replace("'\\n已填项数：'+Object.keys(data.labels).length", "'\\n已复核：'+Object.values(data.labels).filter(p=>p.reviewed).length+' / 已填：'+Object.keys(data.labels).length")
     page=page.replace("visible:true,x:Math.round(point.x*100)/100,y:Math.round(point.y*100)/100", "visible:true,x:Math.round(point.x*100)/100,y:Math.round(point.y*100)/100,origin:'human_adjusted',reviewed:true")
     page=page.replace("reason:'not_identifiable'", "reason:'not_identifiable',origin:'human_review',reviewed:true")
