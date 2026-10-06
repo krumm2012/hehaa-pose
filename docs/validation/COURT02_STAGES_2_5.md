@@ -1,14 +1,24 @@
 # Court02 stages 2–5
 
 Current run: `court02_temporal_racket_20261005T161814Z_0ab2c2`.
-Preparation directory: `data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v2`.
+Preparation directory: `data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v4`.
 
 The preparation tool verifies the source, journal/event manifest hashes, session
 identity and the calibration actually used by every frame. It creates separate
 outputs and refuses to overwrite an existing iteration. Historical inputs remain
 unchanged. Engineering readiness is distinct from independent validation.
 
-## 2. Physical scale
+## 2. Existing scale mapping (operator-authorized)
+
+The user authorized reuse of ABCD and A′B′C′D′ on 2026-10-06.
+AB / A′B′ are 3.3 m and AD / A′D′ are 4.8 m. Both views map their
+A / A′ to (0,0), B / B′ to (3.3,0), C / C′ to (3.3,4.8) and
+D / D′ to (0,4.8). This completes the revised floor-mapping requirement.
+The source-bound frozen calibration is unchanged. Fit and round-trip checks
+verify numerical consistency; independent physical scale accuracy is untested.
+Pass `--reuse-existing-scale` to the preparation tool for this authorized scope.
+
+### Optional independent physical validation
 
 Record at least three non-collinear floor check points per evaluated view that
 were not used to fit the calibration. Measure their X/Y positions relative to A
@@ -46,7 +56,7 @@ confirmation. Existing model-assisted accepted points cannot replace this step.
 ```sh
 python3 scripts/evaluate_joint_labels.py \
   --labels /absolute/path/joint_labels_draft.json \
-  --predictions data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v2/predictions.json \
+  --predictions data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v4/predictions.json \
   --tolerance-px 15 \
   --output /absolute/path/new_joint_evaluation.json
 ```

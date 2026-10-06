@@ -1,0 +1,195 @@
+{
+  "schema": "tennis.existing-ground-mapping-audit.v1",
+  "status": "existing_corner_mapping_verified",
+  "calibration_id": "203952012b12c5634c16cc782cf914afe9a33c0c81a6377e7bf87a62edf3ecf9",
+  "binding": {
+    "kind": "video_sha256",
+    "stream_id": "court02-main",
+    "source_id": "addc4185013f0faf1a6b55eebe6e10d28d8720ad487310a391cef391cbbf5ec0"
+  },
+  "width_m": 3.3,
+  "length_m": 4.8,
+  "axis_convention": "A / A′ origin; AB / A′B′ positive X; AD / A′D′ positive Y",
+  "correspondence_confirmed": true,
+  "dimensions_measured": true,
+  "groups": [
+    {
+      "view": "front",
+      "H": [
+        [
+          0.0004712398262247362,
+          0.00012346756501682897,
+          -0.5993884115315844
+        ],
+        [
+          -3.223467951756033e-05,
+          0.0014323794328306167,
+          -0.7965798976648482
+        ],
+        [
+          -8.508401814530932e-06,
+          0.00010631346073512099,
+          0.07868733901862197
+        ]
+      ],
+      "corners": [
+        {
+          "label": "A",
+          "image": [
+            1119.63,
+            581.32
+          ],
+          "world_m": [
+            0,
+            0
+          ],
+          "mapped_world_m": [
+            0.0,
+            0.0
+          ],
+          "fit_residual_m": 0.0
+        },
+        {
+          "label": "B",
+          "image": [
+            1994.13,
+            601.0
+          ],
+          "world_m": [
+            3.3,
+            0
+          ],
+          "mapped_world_m": [
+            3.3,
+            0.0
+          ],
+          "fit_residual_m": 0.0
+        },
+        {
+          "label": "C",
+          "image": [
+            2290.63,
+            1252.14
+          ],
+          "world_m": [
+            3.3,
+            4.8
+          ],
+          "mapped_world_m": [
+            3.299999999999999,
+            4.799999999999998
+          ],
+          "fit_residual_m": 1.9860273225978185e-15
+        },
+        {
+          "label": "D",
+          "image": [
+            940.57,
+            1264.74
+          ],
+          "world_m": [
+            0,
+            4.8
+          ],
+          "mapped_world_m": [
+            0.0,
+            4.799999999999998
+          ],
+          "fit_residual_m": 1.7763568394002505e-15
+        }
+      ],
+      "max_grid_roundtrip_residual_m": 2.8435583831733384e-15
+    },
+    {
+      "view": "back",
+      "H": [
+        [
+          0.0005135566892852767,
+          9.461233593115501e-05,
+          -0.6348839405967108
+        ],
+        [
+          6.963524200309518e-05,
+          -0.001974121810787414,
+          0.7692759014428129
+        ],
+        [
+          -7.702000593334454e-06,
+          0.00013852287098290274,
+          0.07164339108302283
+        ]
+      ],
+      "corners": [
+        {
+          "label": "A′",
+          "image": [
+            1156.94,
+            430.49
+          ],
+          "world_m": [
+            0,
+            0
+          ],
+          "mapped_world_m": [
+            1.8146036136311623e-15,
+            0.0
+          ],
+          "fit_residual_m": 1.8146036136311623e-15
+        },
+        {
+          "label": "B′",
+          "image": [
+            1924.36,
+            457.56
+          ],
+          "world_m": [
+            3.3,
+            0
+          ],
+          "mapped_world_m": [
+            3.3000000000000025,
+            9.236119108787428e-16
+          ],
+          "fit_residual_m": 2.8200721815063864e-15
+        },
+        {
+          "label": "C′",
+          "image": [
+            1773.2,
+            232.82
+          ],
+          "world_m": [
+            3.3,
+            4.8
+          ],
+          "mapped_world_m": [
+            3.3000000000000016,
+            4.799999999999999
+          ],
+          "fit_residual_m": 1.9860273225978185e-15
+        },
+        {
+          "label": "D′",
+          "image": [
+            1197.64,
+            209.57
+          ],
+          "world_m": [
+            0,
+            4.8
+          ],
+          "mapped_world_m": [
+            2.4280595868948525e-15,
+            4.799999999999998
+          ],
+          "fit_residual_m": 3.0084741944042083e-15
+        }
+      ],
+      "max_grid_roundtrip_residual_m": 2.124706989126661e-15
+    }
+  ],
+  "independent_scale_accuracy_validated": false,
+  "coaching_eligible": false,
+  "residual_semantics": "Four-point fit and round-trip numerics, not held-out physical error",
+  "scope": "Floor-plane mapping only; body height/3D rotation require other evidence"
+}

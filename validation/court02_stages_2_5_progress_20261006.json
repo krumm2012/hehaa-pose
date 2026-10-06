@@ -5,7 +5,9 @@
   "all_stages_complete": false,
   "stages": {
     "2": {
-      "status": "awaiting_physical_measurements",
+      "status": "completed_existing_corner_mapping",
+      "mapping_reuse_authorized": true,
+      "independent_scale_accuracy_validated": false,
       "evaluation_tool_ready": true
     },
     "3": {
@@ -34,9 +36,9 @@
     "semantics": "Diagnostic parameters only; user acceptance criteria remain unset."
   },
   "validation_checks": {
-    "target_peak_frames_in_blind_board": true,
-    "prediction_source_identities_match": true,
-    "regression_tests_passed": 36,
-    "cadence_pts_match_original": true
+    "regression_tests_passed": 40,
+    "original_calibration_fingerprint_preserved": true,
+    "both_corner_mappings_verified": true,
+    "source_journal_calibration_match": true
   }
 }

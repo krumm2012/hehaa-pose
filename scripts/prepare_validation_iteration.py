@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from joint_annotation_evaluation import evaluate_joint_labels
 from coach_rule_contract import automatic_coach_policy
+from scripts.audit_existing_ground_mapping import mapping_reuse_report
 
 
 def digest(path):
@@ -29,6 +30,8 @@ def main():
         p.add_argument('--'+name, required=True)
     p.add_argument('--joint-tolerance-px', type=float, required=True)
     p.add_argument('--scale-tolerance-m', type=float, required=True)
+    p.add_argument("--reuse-existing-scale", action="store_true",
+                   help="Use operator-authorized ABCD and reflected dimensions; independent error remains unverified")
     a = p.parse_args()
     paths = {k:Path(getattr(a,k)).resolve() for k in ('source','manifest','journal','events','calibration')}
     hashes = {k:digest(v) for k,v in paths.items()}
@@ -59,6 +62,8 @@ def main():
     out.mkdir(parents=True, exist_ok=False)
     write(out/'input_binding.json', {'session_id':session_id,'paths':{k:str(v) for k,v in paths.items()},'sha256':hashes})
     write(out/'calibration_snapshot.json', cal)
+    if a.reuse_existing_scale:
+        write(out/'scale_mapping.json', mapping_reuse_report(cal))
     scripts = Path(__file__).resolve().parent
     def run(script, arguments):
         subprocess.run([sys.executable,str(scripts/script),*map(str,arguments)],check=True)
@@ -89,14 +94,15 @@ def main():
                         'Three swings alone do not validate general coaching accuracy.']})
     status={'schema':'tennis.iteration-validation-progress.v1','session_id':session_id,
         'source_sha256':hashes['source'],'all_stages_complete':False,
-        'stages':{'2':{'status':'awaiting_physical_measurements','evaluation_tool_ready':True},
+        'stages':{'2':{'status':('completed_existing_corner_mapping' if a.reuse_existing_scale else 'awaiting_physical_measurements'),
+                       'mapping_reuse_authorized':a.reuse_existing_scale,'independent_scale_accuracy_validated':False,'evaluation_tool_ready':True},
                   '3':{'status':'awaiting_independent_labels','frames':len(frames),'requested_points':len(frames)*8},
                   '4':{'status':'baseline_audited_pending_error_benchmark','parameter_optimization_accepted':False},
                   '5':{'status':'awaiting_independent_coach_rubric_and_heldout_labels','policy':automatic_coach_policy()}},
         'evaluation_parameters':{'joint_tolerance_px':a.joint_tolerance_px,'scale_tolerance_m':a.scale_tolerance_m,
             'semantics':'Diagnostic parameters only; user acceptance criteria remain unset.'}}
     write(out/'progress.json',status)
-    (out/'index.html').write_text('''<!doctype html><meta charset="utf-8"><title>Court02 第2–5项验收</title>
+    page = '''<!doctype html><meta charset="utf-8"><title>Court02 第2–5项验收</title>
 <style>body{font:18px/1.8 system-ui;max-width:1050px;margin:40px auto;padding:0 20px}a{color:#067}td,th{padding:12px;border-bottom:1px solid #bbb;text-align:left}pre{white-space:pre-wrap}</style>
 <h1>Court02 第2–5项验收</h1><p>绑定当前新ROI重跑会话。工程工具就绪不代表独立验证通过；原始历史数据保持原样。</p>
 <table><tr><th>项目</th><th>当前状态</th><th>下一输入或查看</th></tr>
@@ -106,7 +112,10 @@ def main():
 <tr><td>5 教练规则与评分</td><td>待教练独立规则、评分和留出验证集</td><td><a href="coach_reference_draft.json">教练评估模板</a></td></tr></table>
 <p>尺度检查只针对贴地参照，不能验证人体高度或真实3D转动。图像平面肩髋方向变化也不能当作真实轴向角速度。</p>
 <p>独立标注页面不显示模型预测；无法辨认的关节请明确标记，不要猜测。教练评分在独立验证前保持关闭。</p>
-<p><a href="progress.json">进度JSON</a> · <a href="input_binding.json">输入身份</a></p><pre>'''+html.escape(json.dumps(status,ensure_ascii=False,indent=2))+'</pre>')
+<p><a href="progress.json">进度JSON</a> · <a href="input_binding.json">输入身份</a></p><pre>'''+html.escape(json.dumps(status,ensure_ascii=False,indent=2))+'</pre>'
+    if a.reuse_existing_scale:
+        page = page.replace('待现场实测；误差计算工具就绪', '已沿用ABCD及A′B′C′D′长度映射；独立误差未验证').replace('2 独立尺度','2 尺度映射').replace('<a href="scale_reference/index.html">实测点录入</a>','<a href="scale_mapping.json">现有角点映射核验</a>')
+    (out/'index.html').write_text(page)
     print(json.dumps(status,ensure_ascii=False))
 
 
