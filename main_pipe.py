@@ -806,6 +806,38 @@ class MultiprocessPipeline:
                         dual_view_mgr.update_player_from_keypoints(pose_res.front_pose_orig or pose_res.fused_pose_orig)
                         current_player_bbox = dual_view_mgr.tracked_player_bbox
 
+                    # A. 优先识别镜中背面选手持拍候选 (Back View Mirror Racket)
+                    back_racket_entry = None
+                    back_racket_box = None
+                    back_body_pts = [
+                        kp for name, kp in (pose_res.back_pose_orig or {}).items()
+                        if ("wrist" in name or "elbow" in name or "shoulder" in name or "hip" in name)
+                        and getattr(kp, "conf", 0.0) >= 0.20
+                    ]
+                    for r in (raw_rackets or []):
+                        r_box = r.get("box")
+                        if not r_box:
+                            continue
+                        rx_c = (r_box[0] + r_box[2]) / 2.0
+                        ry_c = (r_box[1] + r_box[3]) / 2.0
+                        in_mirror = False
+                        if dual_view_mgr is not None:
+                            in_mirror = dual_view_mgr.is_point_in_mirror(rx_c, ry_c, self.width, self.height)
+                        elif 680 <= rx_c <= 1580 and ry_c < 620:
+                            in_mirror = True
+
+                        if in_mirror:
+                            if back_body_pts:
+                                dist_b = min(((rx_c - w.x) ** 2 + (ry_c - w.y) ** 2) ** 0.5 for w in back_body_pts)
+                                if dist_b <= 250.0:
+                                    if back_racket_entry is None or dist_b < back_racket_entry[0]:
+                                        back_racket_entry = (dist_b, r)
+                            elif back_racket_entry is None:
+                                back_racket_entry = (999.0, r)
+
+                    if back_racket_entry is not None:
+                        back_racket_box = list(back_racket_entry[1]["box"])
+
                     if racket_tracker is not None:
                         tracker_points = {name: {"x": kp.x, "y": kp.y, "confidence": kp.conf,
                             "observed": kp.observed, "source_frame_id": kp.source_frame_id,
@@ -857,6 +889,7 @@ class MultiprocessPipeline:
                             if not in_mirror:
                                 valid_rackets.append((0.0, r))
 
+                    is_racket_recovered = False
                     if valid_rackets:
                         valid_rackets.sort(key=lambda x: x[0])
                         racket = [{**item[1], "observed": True, "source_frame_id": task["idx"]} for item in valid_rackets]
@@ -864,6 +897,39 @@ class MultiprocessPipeline:
                         last_racket_box = racket_box
                         last_racket_entry = racket[0]
                         racket_missing_count = 0
+                    elif back_racket_box is not None:
+                        # 正面引拍躯干遮挡球拍：利用镜中背面球拍进行空间距离缩放与镜像反转补偿自愈
+                        from dual_view_biomechanics import map_mirror_racket_to_front
+                        mapped_front_box = map_mirror_racket_to_front(
+                            back_racket_box,
+                            pose_res.front_pose_orig or pose_res.fused_pose_orig,
+                            pose_res.back_pose_orig,
+                        )
+                        if mapped_front_box is not None:
+                            recovered_racket = {
+                                "box": list(mapped_front_box),
+                                "confidence": round(float(back_racket_entry[1].get("confidence", 0.6) * 0.85), 3),
+                                "observed": False,
+                                "recovered_from_mirror": True,
+                                "source_frame_id": task["idx"],
+                                "source_mirror_box": list(back_racket_box),
+                            }
+                            racket = [recovered_racket]
+                            racket_box = list(mapped_front_box)
+                            last_racket_box = racket_box
+                            last_racket_entry = racket[0]
+                            racket_missing_count = 0
+                            is_racket_recovered = True
+                        elif last_racket_box is not None and racket_missing_count < 2 and wrists:
+                            racket_missing_count += 1
+                            racket_box = list(last_racket_box)
+                            decayed = dict(last_racket_entry) if last_racket_entry else {"box": racket_box, "confidence": 0.5}
+                            decayed["observed"] = False
+                            racket = [decayed]
+                        else:
+                            racket_missing_count += 1
+                            racket = []
+                            racket_box = None
                     elif last_racket_box is not None and racket_missing_count < 2 and wrists:
                         # 挥拍动作模糊短时平滑自愈（最多保持 2 帧）
                         racket_missing_count += 1
@@ -922,6 +988,8 @@ class MultiprocessPipeline:
                         'ball': ball,
                         'racket': racket,
                         'racket_box': racket_box,
+                        'back_racket_box': back_racket_box,
+                        'is_racket_recovered': is_racket_recovered,
                         'pose': pose,
                         'healed_pose': healed_pose_dict,
                         'dual_pose_res': pose_res,
@@ -1335,6 +1403,8 @@ class MultiprocessPipeline:
             healed_pose = data.get('healed_pose')
             dv_biomech = data.get('dual_view_biomechanics')
             racket_box = data.get('racket_box')
+            back_racket_box = data.get('back_racket_box')
+            is_racket_recovered = data.get('is_racket_recovered', False)
             pose_res = data.get('dual_pose_res')
 
             # --- 保存每帧数据 ---
@@ -1412,6 +1482,8 @@ class MultiprocessPipeline:
                     coaching_text=ev_coach,
                     ball_trail=list(ball_trail),
                     racket_box=racket_box,
+                    back_racket_box=back_racket_box,
+                    is_racket_recovered=is_racket_recovered,
                     telemetry_card=telemetry_card,
                     ground_reference=frame_record.get('ground_reference') if frame_record else None,
                     ground_geometry=self.ground_reference.overlay_geometry if self.ground_reference else None,

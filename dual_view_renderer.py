@@ -84,6 +84,9 @@ class DualViewRenderer:
         self._eye_hold_counter: int = 0
         self._prev_racket_box: Optional[Tuple[int, int, int, int]] = None
         self._racket_hold_counter: int = 0
+        self._prev_is_recovered: bool = False
+        self._prev_back_racket_box: Optional[Tuple[int, int, int, int]] = None
+        self._back_racket_hold_counter: int = 0
         self._font_mgr = None
 
     @property
@@ -441,6 +444,8 @@ class DualViewRenderer:
         coaching_text: Optional[str] = None,
         ball_trail: Optional[List[Tuple[float, float]]] = None,
         racket_box: Optional[Tuple[float, float, float, float]] = None,
+        back_racket_box: Optional[Tuple[float, float, float, float]] = None,
+        is_racket_recovered: bool = False,
         mask_back_eyes: Optional[bool] = None,
         telemetry_card: Optional[Dict[str, Any]] = None,
         ground_reference: Optional[Dict[str, Any]] = None,
@@ -506,6 +511,7 @@ class DualViewRenderer:
 
         # 绘制球拍边界框 (正面视角局部映射，带帧间平滑与自愈保持)
         box_to_draw = None
+        recovered_to_draw = False
         if racket_box is not None and len(racket_box) >= 4:
             rx1, ry1, rx2, ry2 = racket_box[:4]
             fx1, fy1 = dual_frame.front_info.map_from_original(rx1, ry1)
@@ -523,20 +529,63 @@ class DualViewRenderer:
                 else:
                     box_to_draw = curr_box
                 self._prev_racket_box = box_to_draw
+                self._prev_is_recovered = is_racket_recovered
                 self._racket_hold_counter = 2
+                recovered_to_draw = is_racket_recovered
         elif self._racket_hold_counter > 0 and self._prev_racket_box is not None:
             self._racket_hold_counter -= 1
             box_to_draw = self._prev_racket_box
+            recovered_to_draw = getattr(self, "_prev_is_recovered", False)
 
         if box_to_draw is not None:
             px1, py1, px2, py2 = box_to_draw
-            cv2.rectangle(f_img, (px1, py1), (px2, py2), (255, 220, 0), 2, cv2.LINE_AA)
+            r_color = (0, 235, 255) if recovered_to_draw else (255, 220, 0)
+            r_tag = "RACKET (MIRROR)" if recovered_to_draw else "RACKET"
+            cv2.rectangle(f_img, (px1, py1), (px2, py2), r_color, 2, cv2.LINE_AA)
             cv2.putText(
                 f_img,
-                "RACKET",
+                r_tag,
                 (px1, max(18, py1 - 5)),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.45,
+                0.42,
+                r_color,
+                1,
+                cv2.LINE_AA,
+            )
+
+        # 绘制背面视角原始镜中球拍 (Back View Racket，带平滑保持)
+        back_box_to_draw = None
+        if back_racket_box is not None and len(back_racket_box) >= 4 and getattr(dual_frame, "back_info", None) is not None:
+            brx1, bry1, brx2, bry2 = back_racket_box[:4]
+            bx1, by1 = dual_frame.back_info.map_from_original(brx1, bry1)
+            bx2, by2 = dual_frame.back_info.map_from_original(brx2, bry2)
+            bpx1, bpy1 = int(round(min(bx1, bx2))), int(round(min(by1, by2)))
+            bpx2, bpy2 = int(round(max(bx1, bx2))), int(round(max(by1, by2)))
+            if bpx2 > 0 and bpy2 > 0 and bpx1 < b_img.shape[1] and bpy1 < b_img.shape[0]:
+                curr_back_box = (bpx1, bpy1, bpx2, bpy2)
+                if getattr(self, "_prev_back_racket_box", None) is not None:
+                    bsx1 = int(round(0.75 * bpx1 + 0.25 * self._prev_back_racket_box[0]))
+                    bsy1 = int(round(0.75 * bpy1 + 0.25 * self._prev_back_racket_box[1]))
+                    bsx2 = int(round(0.75 * bpx2 + 0.25 * self._prev_back_racket_box[2]))
+                    bsy2 = int(round(0.75 * bpy2 + 0.25 * self._prev_back_racket_box[3]))
+                    back_box_to_draw = (bsx1, bsy1, bsx2, bsy2)
+                else:
+                    back_box_to_draw = curr_back_box
+                self._prev_back_racket_box = back_box_to_draw
+                self._back_racket_hold_counter = 2
+        elif getattr(self, "_back_racket_hold_counter", 0) > 0 and getattr(self, "_prev_back_racket_box", None) is not None:
+            self._back_racket_hold_counter -= 1
+            back_box_to_draw = self._prev_back_racket_box
+
+        if back_box_to_draw is not None:
+            bpx1, bpy1, bpx2, bpy2 = back_box_to_draw
+            cv2.rectangle(b_img, (bpx1, bpy1), (bpx2, bpy2), (255, 220, 0), 2, cv2.LINE_AA)
+            cv2.putText(
+                b_img,
+                "RACKET",
+                (bpx1, max(18, bpy1 - 5)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.42,
                 (255, 220, 0),
                 1,
                 cv2.LINE_AA,

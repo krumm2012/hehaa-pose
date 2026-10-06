@@ -27,6 +27,25 @@ class DualViewRendererTests(unittest.TestCase):
 
         self.assertEqual(rendered.shape, (720, 1080, 3))
 
+    def test_render_dual_frame_with_mirror_racket_recovery(self):
+        mgr = DualViewManager()
+        dummy_frame = np.zeros((1440, 2560, 3), dtype=np.uint8)
+        dual_frame = mgr.split_frame(dummy_frame, frame_id=1)
+
+        estimator = DualPoseEstimator(backend="mock")
+        pose_res = estimator.estimate_dual_pose(dual_frame)
+
+        renderer = DualViewRenderer(show_hud=True, show_skeleton=True)
+        # 模拟正面自愈球拍与背面原始镜中球拍
+        rendered = renderer.render_dual_frame(
+            dual_frame,
+            pose_res,
+            racket_box=(1440.0, 480.0, 1520.0, 610.0),
+            back_racket_box=(1450.0, 140.0, 1510.0, 250.0),
+            is_racket_recovered=True,
+        )
+        self.assertEqual(rendered.shape, (720, 1080, 3))
+
     def test_end_to_end_real_video_clip(self):
         video_path = "/Users/krum5539/Desktop/Camera/49.35.mp4"
         if not Path(video_path).exists():

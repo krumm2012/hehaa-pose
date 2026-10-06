@@ -124,6 +124,75 @@ class DualViewBiomechanicsTests(unittest.TestCase):
         self.assertEqual(result.shot_classification.shot_type, FOREHAND)
         self.assertTrue(result.shot_classification.is_valid_contact)
 
+    def test_occlusion_healing_during_shoulder_collapse_with_torso_axis(self):
+        # 侧身引拍转肩时，双肩横向投影塌陷 (f_w = 6px < 12px)
+        # 但垂直躯干轴（双肩中点到双髋中点）高度清晰 (120px 对 100px, scale=1.2)
+        front_pose = {
+            "left_shoulder": (153.0, 200.0, 0.9),
+            "right_shoulder": (147.0, 200.0, 0.9), # f_w = 6.0px < 12
+            "left_hip": (153.0, 320.0, 0.9),
+            "right_hip": (147.0, 320.0, 0.9),      # f_torso_h = 120.0px
+            "right_wrist": (140.0, 220.0, 0.1),    # 正面严重遮挡
+        }
+        back_pose = {
+            "left_shoulder": (200.0, 150.0, 0.88),
+            "right_shoulder": (160.0, 150.0, 0.88), # b_sh_mid = (180, 150)
+            "left_hip": (200.0, 250.0, 0.88),
+            "right_hip": (160.0, 250.0, 0.88),      # b_hip_mid = (180, 250), b_torso_h = 100.0px
+            "right_wrist": (120.0, 200.0, 0.92),    # 背面镜中清晰，相对 b_cx 偏移 -60px, 相对 b_cy 偏移 +50px
+        }
+        healed, healed_names = self.engine.heal_occluded_pose(
+            self.engine.parse_pose_dict(front_pose),
+            self.engine.parse_pose_dict(back_pose),
+        )
+        self.assertIn("right_wrist", healed_names)
+        self.assertTrue(healed["right_wrist"].recovered_from_mirror)
+        self.assertFalse(healed["right_wrist"].observed)
+        # scale = 120 / 100 = 1.2
+        # mapped_x = 150.0 + (120 - 180) * 1.2 = 150 - 72 = 78.0
+        # mapped_y = 200.0 + (200 - 150) * 1.2 = 200 + 60 = 260.0
+        self.assertAlmostEqual(healed["right_wrist"].x, 78.0, places=1)
+        self.assertAlmostEqual(healed["right_wrist"].y, 260.0, places=1)
+
+    def test_map_mirror_racket_to_front_frame14_geometry(self):
+        from dual_view_biomechanics import map_mirror_racket_to_front
+
+        # 复刻真实 Frame 14 几何数据：
+        # 前景选手：躯干中心 (1508.8, 473.0), 垂直躯干高度 129.2px
+        front_pose = {
+            "left_shoulder": Keypoint(1530.0, 408.4, 0.9),
+            "right_shoulder": Keypoint(1487.6, 408.4, 0.9),
+            "left_hip": Keypoint(1530.0, 537.6, 0.9),
+            "right_hip": Keypoint(1487.6, 537.6, 0.9),
+            "right_wrist": Keypoint(1448.0, 496.0, 0.85),
+        }
+        # 镜中选手：躯干中心 (1458.6, 141.1), 垂直躯干高度 103.9px
+        back_pose = {
+            "left_shoulder": Keypoint(1480.8, 89.15, 0.9),
+            "right_shoulder": Keypoint(1436.4, 89.15, 0.9),
+            "left_hip": Keypoint(1480.8, 193.05, 0.9),
+            "right_hip": Keypoint(1436.4, 193.05, 0.9),
+        }
+        # YOLO 检出的镜中球拍
+        mirror_racket_box = [1449.0, 144.0, 1514.0, 256.0]
+
+        mapped = map_mirror_racket_to_front(mirror_racket_box, front_pose, back_pose)
+        self.assertIsNotNone(mapped)
+        fx1, fy1, fx2, fy2 = mapped
+
+        # 验证缩放比例 k_scale ~ 1.2435
+        # 验证镜中偏右 (+22.9px) 映射至正面偏左 (-28.5px) 的水平镜像反转
+        # 验证前景选手的右手腕 [1448, 496] 完美落在补偿框内！
+        self.assertTrue(fx1 <= 1448.0 <= fx2, f"Front wrist x not in [{fx1}, {fx2}]")
+        self.assertTrue(fy1 <= 496.0 <= fy2, f"Front wrist y not in [{fy1}, {fy2}]")
+        self.assertAlmostEqual((fx1 + fx2) / 2.0, 1480.3, delta=2.0)
+        self.assertAlmostEqual((fy1 + fy2) / 2.0, 546.2, delta=2.0)
+
+    def test_map_mirror_racket_returns_none_on_missing_anchors(self):
+        from dual_view_biomechanics import map_mirror_racket_to_front
+        self.assertIsNone(map_mirror_racket_to_front([], {}, {}))
+        self.assertIsNone(map_mirror_racket_to_front([10, 10, 50, 50], {}, {"right_shoulder": (10, 10)}))
+
 
 if __name__ == "__main__":
     unittest.main()

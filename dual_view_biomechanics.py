@@ -213,9 +213,41 @@ class DualViewBiomechanicsEngine:
             b_cy = (b_l_sh.y + b_r_sh.y) / 2.0
             f_w = math.hypot(f_l_sh.x - f_r_sh.x, f_l_sh.y - f_r_sh.y)
             b_w = math.hypot(b_l_sh.x - b_r_sh.x, b_l_sh.y - b_r_sh.y)
+
+            # 躯干垂直轴尺度对齐（抗引拍侧身转肩时双肩投影横向塌陷）
+            f_l_hip = front_pose.get("left_hip")
+            f_r_hip = front_pose.get("right_hip")
+            b_l_hip = back_pose.get("left_hip")
+            b_r_hip = back_pose.get("right_hip")
+            hip_anchors = (f_l_hip, f_r_hip, b_l_hip, b_r_hip)
+            has_hips = all(
+                kp is not None and getattr(kp, "observed", True) and not getattr(kp, "recovered_from_mirror", False)
+                and getattr(kp, "conf", 0.0) >= 0.5
+                and all(math.isfinite(v) for v in (kp.x, kp.y, kp.conf))
+                for kp in hip_anchors
+            )
+            torso_scale = None
+            if has_hips:
+                hip_frame_ids = {kp.source_frame_id for kp in hip_anchors if kp.source_frame_id is not None}
+                if not frame_ids or hip_frame_ids == frame_ids:
+                    f_hip_cx = (f_l_hip.x + f_r_hip.x) / 2.0
+                    f_hip_cy = (f_l_hip.y + f_r_hip.y) / 2.0
+                    b_hip_cx = (b_l_hip.x + b_r_hip.x) / 2.0
+                    b_hip_cy = (b_l_hip.y + b_r_hip.y) / 2.0
+                    f_torso_h = math.hypot(f_cx - f_hip_cx, f_cy - f_hip_cy)
+                    b_torso_h = math.hypot(b_cx - b_hip_cx, b_cy - b_hip_cy)
+                    if f_torso_h >= 18 and b_torso_h >= 18:
+                        torso_scale = f_torso_h / b_torso_h
+
             if min(f_w, b_w) < 12:
-                return healed_pose, healed_list
-            scale = f_w / b_w
+                if torso_scale is not None:
+                    scale = torso_scale
+                else:
+                    return healed_pose, healed_list
+            else:
+                scale = f_w / b_w
+                if torso_scale is not None and (scale < 0.35 or scale > 2.8):
+                    scale = torso_scale
         else:
             scale = 1.0
             f_cx, f_cy, b_cx, b_cy = 0.0, 0.0, 0.0, 0.0
@@ -463,3 +495,122 @@ class DualViewBiomechanicsEngine:
             relative_depth_z=relative_depth_z,
             occlusion_healed_points=healed_points,
         )
+
+
+def map_mirror_racket_to_front(
+    mirror_racket_box: Union[List[float], Tuple[float, float, float, float]],
+    front_pose: Dict[str, Any],
+    back_pose: Dict[str, Any],
+) -> Optional[Tuple[float, float, float, float]]:
+    """
+    引拍阶段球拍镜面互补映射：
+    当正面视角的引拍侧肢体/躯干遮挡球拍时，利用背面镜面视点中清晰检出的手持球拍，
+    结合镜中空间距离缩放（深度映射）与水平镜像几何反转，高精度映射至正面选手的解剖学持拍位置。
+
+    Args:
+        mirror_racket_box: 原图全局坐标系下的镜中球拍包围盒 (x1, y1, x2, y2)
+        front_pose: 正面选手关键点字典 (Keypoint 或包含 x, y 的字典/元组)
+        back_pose: 镜中背面选手关键点字典 (Keypoint 或包含 x, y 的字典/元组)
+
+    Returns:
+        映射至正面选手空间的包围盒 (fx1, fy1, fx2, fy2) 原图像素坐标，若几何基准不足则返回 None
+    """
+    if not mirror_racket_box or len(mirror_racket_box) < 4:
+        return None
+    if not front_pose or not back_pose:
+        return None
+
+    def _extract_pt(pose: Dict[str, Any], name: str) -> Optional[Tuple[float, float]]:
+        val = pose.get(name)
+        if val is None:
+            return None
+        if isinstance(val, (tuple, list)) and len(val) >= 2:
+            if len(val) >= 3 and val[2] is not None and val[2] < 0.20:
+                return None
+            return float(val[0]), float(val[1])
+        if hasattr(val, "x") and hasattr(val, "y"):
+            conf = getattr(val, "conf", 1.0)
+            if conf is not None and conf < 0.20:
+                return None
+            return float(val.x), float(val.y)
+        if isinstance(val, dict) and "x" in val and "y" in val:
+            conf = val.get("conf") or val.get("confidence", 1.0)
+            if conf is not None and conf < 0.20:
+                return None
+            return float(val["x"]), float(val["y"])
+        return None
+
+    f_l_sh = _extract_pt(front_pose, "left_shoulder")
+    f_r_sh = _extract_pt(front_pose, "right_shoulder")
+    f_l_hip = _extract_pt(front_pose, "left_hip")
+    f_r_hip = _extract_pt(front_pose, "right_hip")
+
+    b_l_sh = _extract_pt(back_pose, "left_shoulder")
+    b_r_sh = _extract_pt(back_pose, "right_shoulder")
+    b_l_hip = _extract_pt(back_pose, "left_hip")
+    b_r_hip = _extract_pt(back_pose, "right_hip")
+
+    # 计算双肩与双髋中点
+    f_sh = ((f_l_sh[0] + f_r_sh[0]) / 2.0, (f_l_sh[1] + f_r_sh[1]) / 2.0) if (f_l_sh and f_r_sh) else (f_l_sh or f_r_sh)
+    f_hip = ((f_l_hip[0] + f_r_hip[0]) / 2.0, (f_l_hip[1] + f_r_hip[1]) / 2.0) if (f_l_hip and f_r_hip) else (f_l_hip or f_r_hip)
+
+    b_sh = ((b_l_sh[0] + b_r_sh[0]) / 2.0, (b_l_sh[1] + b_r_sh[1]) / 2.0) if (b_l_sh and b_r_sh) else (b_l_sh or b_r_sh)
+    b_hip = ((b_l_hip[0] + b_r_hip[0]) / 2.0, (b_l_hip[1] + b_r_hip[1]) / 2.0) if (b_l_hip and b_r_hip) else (b_l_hip or b_r_hip)
+
+    # 躯干中心与垂直高度
+    if f_sh is not None and f_hip is not None:
+        f_center = ((f_sh[0] + f_hip[0]) / 2.0, (f_sh[1] + f_hip[1]) / 2.0)
+        f_torso_h = math.hypot(f_sh[0] - f_hip[0], f_sh[1] - f_hip[1])
+    elif f_sh is not None and f_l_sh and f_r_sh:
+        f_center = f_sh
+        f_torso_h = math.hypot(f_l_sh[0] - f_r_sh[0], f_l_sh[1] - f_r_sh[1]) * 1.35
+    elif f_hip is not None and f_l_hip and f_r_hip:
+        f_center = f_hip
+        f_torso_h = math.hypot(f_l_hip[0] - f_r_hip[0], f_l_hip[1] - f_r_hip[1]) * 1.45
+    else:
+        return None
+
+    if b_sh is not None and b_hip is not None:
+        b_center = ((b_sh[0] + b_hip[0]) / 2.0, (b_sh[1] + b_hip[1]) / 2.0)
+        b_torso_h = math.hypot(b_sh[0] - b_hip[0], b_sh[1] - b_hip[1])
+    elif b_sh is not None and b_l_sh and b_r_sh:
+        b_center = b_sh
+        b_torso_h = math.hypot(b_l_sh[0] - b_r_sh[0], b_l_sh[1] - b_r_sh[1]) * 1.35
+    elif b_hip is not None and b_l_hip and b_r_hip:
+        b_center = b_hip
+        b_torso_h = math.hypot(b_l_hip[0] - b_r_hip[0], b_l_hip[1] - b_r_hip[1]) * 1.45
+    else:
+        return None
+
+    if f_torso_h < 10.0 or b_torso_h < 10.0:
+        return None
+
+    # 空间深度尺度比例
+    scale = max(0.4, min(3.0, f_torso_h / b_torso_h))
+
+    bx1, by1, bx2, by2 = mirror_racket_box[:4]
+    bx_c = (bx1 + bx2) / 2.0
+    by_c = (by1 + by2) / 2.0
+    bw = max(10.0, bx2 - bx1)
+    bh = max(10.0, by2 - by1)
+
+    dx_back = bx_c - b_center[0]
+    dy_back = by_c - b_center[1]
+
+    # 镜中空间距离缩放与水平镜像几何反转：
+    # 镜中背面选手解剖学右侧在原图中呈现为 +X (相对躯干偏右)，
+    # 正面对视选手解剖学右侧在原图中呈现为 -X (相对躯干偏左)
+    dx_front = -dx_back * scale
+    dy_front = dy_back * scale
+
+    fx_c = f_center[0] + dx_front
+    fy_c = f_center[1] + dy_front
+    fw = bw * scale
+    fh = bh * scale
+
+    fx1 = fx_c - fw / 2.0
+    fy1 = fy_c - fh / 2.0
+    fx2 = fx_c + fw / 2.0
+    fy2 = fy_c + fh / 2.0
+
+    return (round(float(fx1), 2), round(float(fy1), 2), round(float(fx2), 2), round(float(fy2), 2))
