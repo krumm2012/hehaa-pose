@@ -35,8 +35,17 @@ class RacketTemporalTracker:
                 continue
             value, _ = qualified_front_point(point, frame_id)
             if value: wrists.append(value[:2])
+        used_elbow_fallback = False
+        if not wrists:
+            for name, point in front_points.items():
+                if 'elbow' not in name or point.get('source_frame_id') != frame_id:
+                    continue
+                value, _ = qualified_front_point(point, frame_id)
+                if value: wrists.append(value[:2])
+            used_elbow_fallback = bool(wrists)
         t = self._time(source_time, frame_id)
         valid = []
+        allowed_ratio = self.wrist_dist_ratio * (1.6 if used_elbow_fallback else 1.0)
         for item in candidates:
             box = item.get('box')
             score = finite_number(item.get('confidence'))
@@ -48,7 +57,8 @@ class RacketTemporalTracker:
             distance = min((math.hypot(max(box[0]-x, 0, x-box[2]),
                                         max(box[1]-y, 0, y-box[3])) for x, y in wrists), default=math.inf)
             reason = None
-            if distance > diagonal * self.wrist_dist_ratio: reason = 'no_fresh_front_wrist'
+            if distance > diagonal * allowed_ratio:
+                reason = 'no_fresh_front_elbow' if used_elbow_fallback else 'no_fresh_front_wrist'
             elif score < self.low: reason = 'below_recovery_floor'
             elif score < self.high:
                 if self.anchor is None or self.last is None: reason = 'no_contiguous_anchor'
@@ -113,6 +123,15 @@ class RacketTemporalTracker:
                     continue
                 value, _ = qualified_front_point(point, fid)
                 if value: wrists.append(value[:2])
+            used_elbow_fallback = False
+            if not wrists:
+                for name, point in (front_points_by_fid.get(fid) or {}).items():
+                    if 'elbow' not in name or point.get('source_frame_id') != fid:
+                        continue
+                    value, _ = qualified_front_point(point, fid)
+                    if value: wrists.append(value[:2])
+                used_elbow_fallback = bool(wrists)
+            allowed_ratio = self.wrist_dist_ratio * (1.6 if used_elbow_fallback else 1.0)
             cands = frames_candidates[fid]
             if isinstance(cands, dict):
                 cands = [cands]
@@ -127,7 +146,7 @@ class RacketTemporalTracker:
                     continue
                 distance = min((math.hypot(max(box[0]-x, 0, x-box[2]),
                                             max(box[1]-y, 0, y-box[3])) for x, y in wrists), default=math.inf)
-                if distance > diagonal * self.wrist_dist_ratio:
+                if distance > diagonal * allowed_ratio:
                     continue
                 step_dist = math.hypot((box[0]+box[2]-last_box[0]-last_box[2])/2,
                                        (box[1]+box[3]-last_box[1]-last_box[3])/2)

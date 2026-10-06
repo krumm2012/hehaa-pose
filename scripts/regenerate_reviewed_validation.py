@@ -113,12 +113,17 @@ def main():
         f_hip = ev_attr['views']['front']['hip']
         b_hip = ev_attr['views']['back']['hip']
         rkt = ev_attr['racket']
-        attr_cards.append(f'''<section><h3>触球帧 {cid} 动力链失效深层归因</h3>
+        cfr = rkt.get('contact_frame_racket', {})
+        cfr_desc = f"<span style='color:green;font-weight:bold'>✅ 触球瞬间已成功检出</span>（置信度 {cfr.get('confidence')}，检出模式: {cfr.get('detection_method')}，坐标: {cfr.get('box')}）" if cfr.get('racket_detected') else "<span style='color:red;font-weight:bold'>❌ 触球瞬间未检出</span>"
+        cand_p = rkt.get('candidate_peak') or {}
+        cand_desc = f"；候选峰值帧: 帧 {cand_p.get('frame_id')} (速度 {cand_p.get('speed')} px/s)" if cand_p else ""
+        attr_cards.append(f'''<section><h3>触球帧 {cid} 动力链失效深层归因与关键帧球拍识别</h3>
 <p>窗口范围：帧 {ev_attr['window_frames'][0]}–{ev_attr['window_frames'][-1]}（共 {ev_attr['total_window_frames']} 帧）</p>
 <ul>
+<li><strong>触球瞬间球拍检测</strong>：{cfr_desc}。</li>
 <li><strong>正面髋/肩</strong>：原始覆盖率 {f_hip['raw_coverage']*100:.1f}% ➔ 排除不可辨认后 {f_hip['masked_coverage']*100:.1f}%；人工未知 {f_hip['human_unknown_count']} 项，自动保守留空 {f_hip['automatic_abstention_count']} 项。主要原因：{html.escape(f_hip['primary_failure_reason'])}。</li>
 <li><strong>背面髋/肩</strong>：原始覆盖率 {b_hip['raw_coverage']*100:.1f}% ➔ 排除不可辨认后 {b_hip['masked_coverage']*100:.1f}%；人工未知 {b_hip['human_unknown_count']} 项，自动保守留空 {b_hip['automatic_abstention_count']} 项。主要原因：{html.escape(b_hip['primary_failure_reason'])}。</li>
-<li><strong>球拍检测点</strong>：有效帧 {rkt['valid_racket_frames_count']}/{ev_attr['total_window_frames']}（覆盖率 {rkt['coverage']*100:.1f}%）；丢失帧：{html.escape(str(rkt['missing_racket_frames']))}；归因：{html.escape(rkt['primary_failure_reason'])}。</li>
+<li><strong>球拍序列检测点</strong>：有效帧 {rkt['valid_racket_frames_count']}/{ev_attr['total_window_frames']}（覆盖率 {rkt['coverage']*100:.1f}%，含时序恢复帧 {len(rkt.get('recovered_racket_frames', []))} 帧）；连续有效段：{html.escape(str(rkt.get('valid_racket_frames', [])))}；丢失帧：{html.escape(str(rkt['missing_racket_frames']))}；证据状态：{html.escape(str(rkt.get('evidence_status')))}{cand_desc}；归因：{html.escape(rkt['primary_failure_reason'])}。</li>
 </ul></section>''')
 
     param_rows = []
@@ -131,9 +136,12 @@ def main():
             h = r.get('hip_peak_frame')
             s = r.get('shoulder_peak_frame')
             rk = r.get('racket_peak_frame')
+            cand_rk = r.get('racket_candidate_peak_frame')
+            cand_spd = r.get('racket_candidate_peak_speed')
             rks = r.get('racket_status', 'none')
             cv = r.get('status', 'unavailable')
-            row_str += f"<td>髋:{h} 肩:{s} 拍:{rk} ({rks})<br><small>状态:{cv}</small></td>"
+            rk_str = f"拍:{rk}" if rk is not None else f"拍:None (候选:{cand_rk})"
+            row_str += f"<td>髋:{h} 肩:{s} {rk_str}<br><small>拍状态:{rks} (候选速度:{cand_spd} px/s)<br>动力链:{cv}</small></td>"
         row_str += "</tr>"
         param_rows.append(row_str)
 

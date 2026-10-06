@@ -218,5 +218,27 @@ Report URL: `http://127.0.0.1:8765/artifacts/data/analysis_results/kinematic_val
   - 144 项人工复核真值原样保留，62 项不可辨认关节点严格留空不强行插值；
   - 教练规则保持 0 项独立验证，评分保持全面关闭。
 
+## Regenerated stages 3–5 with contact frame racket recovery and candidate peak tracking (2026-10-06, v9)
+
+The latest entry is `court02_stages_2_5_20261006_v9/index.html`.
+Report URL: `http://127.0.0.1:8765/artifacts/data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v9/temporal_review_report.html`
+
+- **关键触球瞬间球拍检出率 100% 确认与归因对齐**:
+  - 修复此前 `kinematic_attribution.py` 归因统计硬编码 `conf >= 0.50` 误将触球帧 21（置信度 0.478，时序自愈）列为“丢失帧”的问题；
+  - 核心触球关键帧全部成功检出：
+    - **Event 1 (触球帧 21)**：已成功检出（经运动模糊时序自愈，置信度 0.478，锚定帧 20，边界框 `[1101, 498, 1294, 600]`）；连续前挥段 19–25 帧全部检出；
+    - **Event 2 (触球帧 110)**：已成功检出（原生模型高置信度 0.659，边界框 `[1546, 449, 1744, 545]`）；
+    - **Event 3 (触球帧 191)**：已成功检出（原生模型高置信度 0.917，边界框 `[1686, 494, 1893, 598]`）；
+- **球拍部分识别与时序追踪优化**:
+  - `racket_temporal_tracker.py` 增加同侧/对侧肘部回退门控（`elbow fallback`），当高速挥拍中手腕不可辨认时自适应使用肘部放宽空间门控（1.6×），防止因手腕遮挡误杀球拍；
+  - `kinematic_sequence.py` 与 `kinematic_attribution.py` 全面支持**球拍候选峰值（Candidate Racket Peak）**提取与多级诊断呈现：
+    - Event 1 候选峰值：帧 25（速度 2304 px/s，受限于随挥截断 `boundary_peak`）；
+    - Event 2 候选峰值：帧 103（速度 1628 px/s，原始 PTS 受限于帧 102 处 2.18ms 抖动；标称 25fps 规整化下稳定于帧 101，速度 826 px/s）；
+    - Event 3 候选峰值：帧 193（速度 1845 px/s，受限于帧 181–187 运动模糊断裂 `discontinuous_evidence`）。
+- **Stage 3 & Stage 5 状态不变**:
+  - 144 项人工复核真值原样保留，62 项不可辨认关节点严格留空不强行插值；
+  - 教练规则保持 0 项独立验证，评分保持全面关闭。
+
+
 
 

@@ -84,37 +84,53 @@ def _peak(samples: List[Dict], minimum_speed: float) -> Dict:
         return _continuous_peak(samples, minimum_speed)
     candidates = [_continuous_peak(run, minimum_speed) for run in runs]
     usable = [item for item in candidates if item['peak'] is not None]
+    cand_peaks = [item['candidate_peak'] for item in candidates if item.get('candidate_peak')]
+    best_cand = max(cand_peaks, key=lambda c: c.get('speed', 0)) if cand_peaks else None
+    if not best_cand and samples:
+        best_s = max(samples, key=lambda s: s.get('speed', 0))
+        best_cand = {"frame_id": best_s["frame_id"], "time": best_s["time"], "speed": round(best_s["speed"], 4)}
     # Never choose between separate motion episodes by borrowing filter samples.
     if len(usable) != 1:
-        return {'status': 'discontinuous_evidence', 'peak': None}
-    return {**usable[0], 'continuous_segment_count': len(runs)}
+        return {'status': 'discontinuous_evidence', 'peak': None, 'candidate_peak': best_cand}
+    return {**usable[0], 'continuous_segment_count': len(runs), 'candidate_peak': usable[0].get('candidate_peak') or best_cand}
 
 
 def _continuous_peak(samples: List[Dict], minimum_speed: float) -> Dict:
     """Use a symmetric median and reject flat, broad, or boundary maxima."""
     if len(samples) < MIN_SAMPLES:
-        return {"status": "insufficient_samples", "peak": None}
+        cand_peak = None
+        if samples:
+            best_s = max(samples, key=lambda s: s.get('speed', 0))
+            cand_peak = {"frame_id": best_s["frame_id"], "time": best_s["time"], "speed": round(best_s["speed"], 4)}
+        return {"status": "insufficient_samples", "peak": None, "candidate_peak": cand_peak}
     smoothed = _smooth(samples)
     maximum = max(smoothed)
     prominence = (maximum - median(smoothed)) / maximum if maximum > 0 else 0
-    if maximum < minimum_speed or prominence < .2:
-        return {"status": "insufficient_motion", "peak": None}
     near_peak = [i for i, speed in enumerate(smoothed) if speed >= maximum * .9]
+    tied = [i for i in near_peak if maximum-smoothed[i] <= max(1e-6, maximum*1e-6)]
+    selected = tied[len(tied)//2] if tied else 0
+    cand_row = samples[selected]
+    candidate_peak = {
+        "frame_id": cand_row["frame_id"],
+        "time": cand_row["time"],
+        "speed": round(maximum, 4),
+    }
+    if maximum < minimum_speed or prominence < .2:
+        return {"status": "insufficient_motion", "peak": None, "candidate_peak": candidate_peak}
     # Treat the whole peak plateau as a timing interval, rather than pretending
     # a single frame gives exact timing. Multiple distant maxima are ambiguous.
     if 0 in near_peak or len(samples)-1 in near_peak:
-        return {"status": "boundary_peak", "peak": None}
+        return {"status": "boundary_peak", "peak": None, "candidate_peak": candidate_peak}
     width = samples[near_peak[-1]]["time"] - samples[near_peak[0]]["time"]
     if width > .16 + 1e-9:
-        return {"status": "ambiguous_peak", "peak": None}
-    tied = [i for i in near_peak if maximum-smoothed[i] <= max(1e-6, maximum*1e-6)]
-    selected = tied[len(tied)//2]
-    row = samples[selected]
+        return {"status": "ambiguous_peak", "peak": None, "candidate_peak": candidate_peak}
+    row = cand_row
     return {
         "status": "usable", "prominence": round(prominence, 4),
         "peak": {"frame_id": row["frame_id"], "time": row["time"],
                  "speed": round(maximum, 4),
                  "time_range": [samples[near_peak[0]]["time"], samples[near_peak[-1]]["time"]]},
+        "candidate_peak": candidate_peak,
     }
 
 
@@ -385,6 +401,9 @@ def analyze_kinematic_sequence(
     if short_frames:
         _audit_peak(racket, _racket_evidence(rows, times, cadence, .25*cadence), cadence)
     result['racket_evidence'] = racket
+    if racket.get("candidate_peak") is not None:
+        result["racket_candidate_peak_frame"] = racket["candidate_peak"]["frame_id"]
+        result["racket_candidate_peak_speed"] = racket["candidate_peak"]["speed"]
     usable = [view for view, evidence in result["views"].items() if evidence["status"] == "usable"]
     result["source_views"] = usable
     result["cross_validation"]["tolerance_ms"] = round(tolerance * 1000, 2)

@@ -112,23 +112,43 @@ def attribute_event_failures(rows: List[Dict], masked_rows: List[Dict], review: 
     # Racket tracking attribution
     racket_evidence = _racket_evidence(win_rows, win_times, cadence)
     racket_valid_frames = []
+    racket_recovered_frames = []
     for r in win_rows:
         dets = r.get("rackets") or []
         sel = dets[0] if isinstance(dets, (list, tuple)) and dets and isinstance(dets[0], dict) else {}
         box = sel.get("box") or r.get("racket")
         conf = sel.get("confidence")
+        is_rec = bool(sel.get("temporal_recovery"))
+        min_c = 0.25 if is_rec else MIN_CONFIDENCE
         if (
             isinstance(box, (list, tuple))
             and len(box) == 4
             and conf is not None
-            and conf >= MIN_CONFIDENCE
+            and conf >= min_c
             and sel.get("observed") is not False
         ):
-            racket_valid_frames.append(int(r["frame_id"]))
+            fid = int(r["frame_id"])
+            racket_valid_frames.append(fid)
+            if is_rec:
+                racket_recovered_frames.append(fid)
 
     racket_missing_frames = [fid for fid in frame_ids if fid not in racket_valid_frames]
     racket_cov = len(racket_valid_frames) / max(1, total_frames - 1)
     racket_reason = "motion_blur_dropout" if racket_cov < MIN_COVERAGE else racket_evidence.get("status", "unknown")
+
+    contact_row = next((r for r in win_rows if int(r["frame_id"]) == contact_frame), None)
+    c_dets = (contact_row.get("rackets") or []) if contact_row else []
+    c_sel = c_dets[0] if isinstance(c_dets, (list, tuple)) and c_dets and isinstance(c_dets[0], dict) else {}
+    c_conf = c_sel.get("confidence")
+    c_detected = bool(contact_row and int(contact_row["frame_id"]) in racket_valid_frames)
+    c_info = {
+        "contact_frame": contact_frame,
+        "racket_detected": c_detected,
+        "confidence": round(float(c_conf), 4) if c_conf is not None else None,
+        "box": c_sel.get("box"),
+        "detection_method": "temporal_recovery" if c_sel.get("temporal_recovery") else ("model" if c_detected else "not_detected")
+    }
+    cand_peak = racket_evidence.get("candidate_peak")
 
     return {
         "event_id": event_id,
@@ -138,10 +158,16 @@ def attribute_event_failures(rows: List[Dict], masked_rows: List[Dict], review: 
         "views": view_attributions,
         "racket": {
             "valid_racket_frames_count": len(racket_valid_frames),
+            "valid_racket_frames": racket_valid_frames,
+            "recovered_racket_frames": racket_recovered_frames,
             "missing_racket_frames": racket_missing_frames,
             "coverage": round(racket_cov, 4),
             "evidence_status": racket_evidence.get("status"),
+            "candidate_peak": cand_peak,
+            "candidate_peak_frame": cand_peak.get("frame_id") if cand_peak else None,
+            "candidate_peak_speed": cand_peak.get("speed") if cand_peak else None,
             "primary_failure_reason": racket_reason,
+            "contact_frame_racket": c_info,
         },
     }
 
@@ -184,6 +210,8 @@ def _run_parametric_analysis(
         "hip_peak_frame": res.get("hip_peak_frame"),
         "shoulder_peak_frame": res.get("shoulder_peak_frame"),
         "racket_peak_frame": res.get("racket_peak_frame"),
+        "racket_candidate_peak_frame": res.get("racket_candidate_peak_frame"),
+        "racket_candidate_peak_speed": res.get("racket_candidate_peak_speed"),
         "racket_status": res.get("racket_evidence", {}).get("status"),
         "latency_hip_to_shoulder_ms": res.get("latency_hip_to_shoulder_ms"),
         "latency_shoulder_to_racket_ms": res.get("latency_shoulder_to_racket_ms"),

@@ -55,6 +55,8 @@ class KinematicAttributionTests(unittest.TestCase):
         self.assertEqual(front_hip["human_unknown_count"], 1)
         self.assertEqual(front_hip["automatic_abstention_count"], 1)
         self.assertIn("projected_joint_pair_overlap", front_hip["automatic_reasons_tally"])
+        self.assertIn("contact_frame_racket", attr["racket"])
+        self.assertIn("candidate_peak", attr["racket"])
 
     def test_attribute_all_events(self):
         res = attribute_all_events(self.rows, self.masked, self.review, self.events)

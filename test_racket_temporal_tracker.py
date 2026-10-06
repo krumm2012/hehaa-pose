@@ -85,7 +85,20 @@ class RacketTemporalTrackerTests(unittest.TestCase):
         self.assertEqual(recovered[19]['temporal_recovery']['direction'], 'backward')
         self.assertEqual(recovered[19]['temporal_recovery']['anchor_source_frame_id'], 20)
         self.assertEqual(recovered[18]['temporal_recovery']['weak_frame_count'], 2)
+    def test_elbow_fallback_when_wrist_unidentifiable(self):
+        tracker = self.tracker()
+        seed = candidate([1090, 473, 1288, 568], .85)
+        tracker.select([seed], wrist(20), 20, clock(20, .80), [2560, 1440])
+        weak = candidate([1101, 498, 1294, 600], .40)
+        # Pose with only elbow (no wrist)
+        elbow_pose = {'right_elbow': {'x': 1300, 'y': 520, 'confidence': .85, 'observed': True,
+                                      'source_frame_id': 21, 'confidence_source': 'model'}}
+        result, diag = tracker.select([weak], elbow_pose, 21, clock(21, .84), [2560, 1440])
+        self.assertIsNotNone(result, "Should recover candidate using elbow fallback")
+        self.assertTrue(result['observed'])
+        self.assertEqual(result['source_frame_id'], 21)
 
 
 if __name__ == '__main__':
     unittest.main()
+
