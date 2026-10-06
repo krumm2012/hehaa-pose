@@ -121,11 +121,32 @@ def main():
 <li><strong>球拍检测点</strong>：有效帧 {rkt['valid_racket_frames_count']}/{ev_attr['total_window_frames']}（覆盖率 {rkt['coverage']*100:.1f}%）；丢失帧：{html.escape(str(rkt['missing_racket_frames']))}；归因：{html.escape(rkt['primary_failure_reason'])}。</li>
 </ul></section>''')
 
+    param_rows = []
+    for cand_item in params_exp['parameter_candidates']:
+        cand = cand_item['candidate']
+        runs = {r['event_id']: r['result'] for r in cand_item['runs']}
+        row_str = f"<tr><td><strong>{html.escape(cand['name'])}</strong><br><small>{html.escape(cand['description'])}</small></td>"
+        for eid in (1, 2, 3):
+            r = runs.get(eid, {})
+            h = r.get('hip_peak_frame')
+            s = r.get('shoulder_peak_frame')
+            rk = r.get('racket_peak_frame')
+            rks = r.get('racket_status', 'none')
+            cv = r.get('status', 'unavailable')
+            row_str += f"<td>髋:{h} 肩:{s} 拍:{rk} ({rks})<br><small>状态:{cv}</small></td>"
+        row_str += "</tr>"
+        param_rows.append(row_str)
+
     (out/'temporal_review_report.html').write_text(
-        f'<!doctype html><meta charset="utf-8"><title>第4项最新复核重放与深层归因</title><style>body{{font:16px/1.7 system-ui;max-width:1200px;margin:30px auto;padding:20px}}section{{border:1px solid #aaa;padding:20px;margin:20px 0}}ul{{line-height:1.8}}</style><h1>第4项 · 最新关节复核重放与归因</h1><p>沿用新ROI会话的原始观测和媒体PTS，排除{temporal["excluded_joint_count"]}项不可辨认关节。未将自动优化坐标改写为原始观测；无缺失点插值。峰值不可用时保持空，不用替代峰值恢复结论。此页比较敏感性，尚未通过独立误差验证。</p>'
+        f'<!doctype html><meta charset="utf-8"><title>第4项最新复核重放与深层归因</title><style>body{{font:16px/1.7 system-ui;max-width:1200px;margin:30px auto;padding:20px}}section{{border:1px solid #aaa;padding:20px;margin:20px 0}}ul{{line-height:1.8}}table{{width:100%;border-collapse:collapse;margin:15px 0}}td,th{{padding:10px;border:1px solid #ccc;text-align:left;vertical-align:top}}</style><h1>第4项 · 最新关节复核重放与归因</h1><p>沿用新ROI会话的原始观测和媒体PTS，排除{temporal["excluded_joint_count"]}项不可辨认关节。未将自动优化坐标改写为原始观测；无缺失点插值。峰值不可用时保持空，不用替代峰值恢复结论。此页比较敏感性，尚未通过独立误差验证。</p>'
         + ''.join(cards)
         + '<h2>三拍动力链失败逐项归因分析</h2>'
         + ''.join(attr_cards)
+        + '<h2>随挥扩展与 VFR 抖动平滑参数敏感性探索</h2>'
+        + '<p>在固定原始观测上对比 4 种参数配置（事件 1 为调优集，事件 2、3 为留出评估集）。窗口扩展至 +0.28s 覆盖高速击球后的随挥减速期，时间戳平滑消除了 2.18ms VFR 伪峰。参数敏感性变动不等于物理真值验证，生产参数保持冻结。</p>'
+        + '<table><tr><th>参数配置方案</th><th>事件 1 (调优, 帧 21)</th><th>事件 2 (留出, 帧 110)</th><th>事件 3 (留出, 帧 191)</th></tr>'
+        + ''.join(param_rows)
+        + '</table>'
         + '<p><a href="temporal_review_comparison.json">完整前后对照</a> · <a href="kinematic_failure_attribution.json">失效归因数据 JSON</a> · <a href="temporal_parameter_exploration.json">参数敏感性探索 JSON</a></p>'
     )
 

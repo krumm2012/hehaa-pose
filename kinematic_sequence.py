@@ -279,8 +279,15 @@ def _pair_interval(first, second, cadence):
             'order': 'forward' if low > 0 else 'reverse' if high < 0 else 'unresolved'}
 
 
-def analyze_kinematic_sequence(frames: List[Dict], contact_frame: int, fps: float) -> Dict:
+def analyze_kinematic_sequence(
+    frames: List[Dict],
+    contact_frame: int,
+    fps: float,
+    window_seconds: Optional[Tuple[float, float]] = None,
+    regularize_cadence: bool = False,
+) -> Dict:
     """Cross-check per-view timing; disagreement abstains from a combined estimate."""
+    win_start, win_end = window_seconds if window_seconds is not None else (-.6, .16)
     result = {
         "policy_version": POLICY_VERSION, "scope": "image_plane_peak_timing_only",
         "validation_status": "unvalidated_2d_projection", "coach_eligible": False,
@@ -293,8 +300,9 @@ def analyze_kinematic_sequence(frames: List[Dict], contact_frame: int, fps: floa
                         "mirror_views_share_errors", "not_3d_axial_rotation_or_energy_transfer"],
         "parameters": {"min_keypoint_confidence": MIN_CONFIDENCE,
                        "min_line_span_px": MIN_LINE_SPAN_PX, "min_samples": MIN_SAMPLES,
-                       "min_coverage": MIN_COVERAGE, "window_seconds": [-.6, .16],
-                       "min_curve_correlation": .5, "min_peak_prominence": .2},
+                       "min_coverage": MIN_COVERAGE, "window_seconds": [win_start, win_end],
+                       "min_curve_correlation": .5, "min_peak_prominence": .2,
+                       "regularize_cadence": regularize_cadence},
     }
     ordered = sorted(frames, key=lambda row: int(row["frame_id"]))
     if len(ordered) < MIN_SAMPLES or not any(row.get("kinematic_views") for row in ordered):
@@ -338,9 +346,14 @@ def analyze_kinematic_sequence(frames: List[Dict], contact_frame: int, fps: floa
         return result
     origin = times[0]
     times = [t-origin for t in times]
+    if regularize_cadence:
+        nominal_dt = 1.0 / max(1.0, float(fps))
+        times = [i * nominal_dt for i in range(len(ordered))]
+        time_basis = "regularized_cadence_sensitivity"
+        result["limitations"].append("cadence_regularization_applied_for_sensitivity_study_only")
     contact_index = min(range(len(ordered)), key=lambda i: abs(int(ordered[i]["frame_id"])-contact_frame))
     contact_time = times[contact_index]
-    selected = [(row, t) for row, t in zip(ordered, times) if contact_time-.6 <= t <= contact_time+.16]
+    selected = [(row, t) for row, t in zip(ordered, times) if contact_time + win_start <= t <= contact_time + win_end]
     rows, times = [pair[0] for pair in selected], [pair[1] for pair in selected]
     if len(rows) < MIN_SAMPLES:
         result["cross_validation"]["reason"] = "window_too_short"

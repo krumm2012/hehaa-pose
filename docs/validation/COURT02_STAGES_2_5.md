@@ -200,4 +200,23 @@ Active review board: `data/analysis_results/kinematic_validation/court02_joint_o
   - 保持 3 项技术规则定义与严格独立验证门槛；
   - 独立教练标签保持 0，评分保持严格关闭。
 
+## Regenerated stages 3–5 with hardened parameter sensitivity analysis (2026-10-06, v8)
+
+The latest entry is `court02_stages_2_5_20261006_v8/index.html`.
+Report URL: `http://127.0.0.1:8765/artifacts/data/analysis_results/kinematic_validation/court02_stages_2_5_20261006_v8/temporal_review_report.html`
+
+- **Stage 4 动力链时序参数敏感性固化 (Option 1 技术攻关)**:
+  - 针对触球后随挥截断（窗口扩展至 +0.28s）与 VFR 抖动平滑（25fps 标称规整化），构建 4 组参数候选矩阵并在调优集（Event 1）与保留集（Event 2, 3）上进行严格回测对比：
+    - **Candidate 0 (生产基线)**：`[-0.6s, +0.16s]`，原始媒体 PTS，严格 VFR 审计。Event 1 触球帧 21 挥拍峰值出现在边界帧 25（`boundary_peak`）；Event 2 帧 102 处 2.18ms 时间戳跳变导致正面被判定为 `cadence_sensitive_peak` 熔断，背面单视角输出髋峰 98、肩峰 108。
+    - **Candidate 1 (扩展随挥窗口 +0.28s)**：将分析窗口延伸至 +0.28s（包含帧 26–28）。Event 1 随挥持续加速（帧 25 速度 3491 px/s），但帧 26 因高速挥拍至身体侧后方发生严重遮挡留空，有效样本段仍收敛于帧 19–25，确认随挥截断本质受限于单目跟踪丢帧。
+    - **Candidate 2 (VFR 抖动规整化 25fps)**：模拟 25fps 均匀帧间隔消除容器级 2.18ms 采样跳变。消除虚假角速度尖峰后，Event 2 正面视角恢复可用（髋峰 105、肩峰 106，延迟 +40ms），球拍峰值恢复可用（帧 101，速度 826 px/s）；背面视角亦恢复可用（髋峰 113、肩峰 109）。正面与背面双视角交叉验证成功捕捉到显著视角冲突（`view_peak_times_conflict`，髋峰相差 320ms，肩峰相差 120ms），为“2D 投影平面角度存在视角视差、无法等同于 3D 真实旋转”提供了确凿证据！
+    - **Candidate 3 (综合敏感性探索)**：组合扩展窗口（+0.28s）、规整化抖动（25fps）与放宽覆盖率（0.50）。在 Event 2 完整重放动力链闭环：正面视角髋峰 105 -> 肩峰 106 -> 球拍峰 101。
+  - **参数治理准则与冻结状态**:
+    - 所有 4 组探索严格标记 `parameters_approved: false`；
+    - 坚持严谨实证：更低的抖动或更高的覆盖率不等同于物理真实，未经 3D 多目标定或独立基准授权，生产参数保持冻结。
+- **Stage 3 & Stage 5 状态不变**:
+  - 144 项人工复核真值原样保留，62 项不可辨认关节点严格留空不强行插值；
+  - 教练规则保持 0 项独立验证，评分保持全面关闭。
+
+
 

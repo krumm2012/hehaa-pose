@@ -163,17 +163,33 @@ def attribute_all_events(rows: List[Dict], masked_rows: List[Dict], review: Dict
     }
 
 
-def _run_parametric_analysis(rows: List[Dict], contact_frame: int, min_cov: float, min_span: float, prominence: float) -> Dict:
+def _run_parametric_analysis(
+    rows: List[Dict],
+    contact_frame: int,
+    window_seconds: Tuple[float, float],
+    regularize_cadence: bool,
+    min_cov: float,
+    min_span: float,
+    prominence: float,
+) -> Dict:
     """Run sequence analysis with adjusted heuristic parameters for sensitivity study only."""
-    # We run standard analyze_kinematic_sequence and note sensitivity
-    res = analyze_kinematic_sequence(rows, contact_frame, 25)
+    res = analyze_kinematic_sequence(
+        rows,
+        contact_frame,
+        25,
+        window_seconds=window_seconds,
+        regularize_cadence=regularize_cadence,
+    )
     return {
         "hip_peak_frame": res.get("hip_peak_frame"),
         "shoulder_peak_frame": res.get("shoulder_peak_frame"),
         "racket_peak_frame": res.get("racket_peak_frame"),
+        "racket_status": res.get("racket_evidence", {}).get("status"),
         "latency_hip_to_shoulder_ms": res.get("latency_hip_to_shoulder_ms"),
+        "latency_shoulder_to_racket_ms": res.get("latency_shoulder_to_racket_ms"),
         "status": res.get("cross_validation", {}).get("status"),
         "reason": res.get("cross_validation", {}).get("reason"),
+        "source_views": res.get("source_views", []),
     }
 
 
@@ -183,29 +199,46 @@ def explore_temporal_parameters(rows: List[Dict], events: List[Dict]) -> Dict:
         {
             "id": "candidate_0_baseline",
             "name": "Production Baseline (v8)",
+            "window_seconds": [-0.60, 0.16],
+            "regularize_cadence": False,
             "median_filter_size": 3,
             "min_line_span_px": 12.0,
             "min_coverage": 0.60,
             "prominence_ratio": 0.20,
-            "description": "Current strict baseline requiring 60% coverage and prominence >= 0.20.",
+            "description": "Current strict baseline requiring 60% coverage, [-0.6s, +0.16s] window, and raw PTS with VFR cadence audit.",
         },
         {
-            "id": "candidate_1_conservative",
-            "name": "Conservative High-Confidence",
+            "id": "candidate_1_extended_followthrough",
+            "name": "Extended Follow-Through Window (+0.28s)",
+            "window_seconds": [-0.60, 0.28],
+            "regularize_cadence": False,
             "median_filter_size": 3,
-            "min_line_span_px": 15.0,
+            "min_line_span_px": 12.0,
             "min_coverage": 0.60,
-            "prominence_ratio": 0.25,
-            "description": "Stricter projection span and prominence to reject weak rotations.",
+            "prominence_ratio": 0.20,
+            "description": "Expands post-contact analysis window to +0.28s to cover follow-through deceleration, preventing truncation at boundary frame 25.",
         },
         {
-            "id": "candidate_2_relaxed_coverage",
-            "name": "Relaxed Missing Tolerance",
+            "id": "candidate_2_cadence_regularized",
+            "name": "VFR Jitter Regularized (25fps nominal)",
+            "window_seconds": [-0.60, 0.16],
+            "regularize_cadence": True,
+            "median_filter_size": 3,
+            "min_line_span_px": 12.0,
+            "min_coverage": 0.60,
+            "prominence_ratio": 0.20,
+            "description": "Compensates for periodic 2.18ms VFR container jitter (e.g. frame 102) using nominal cadence, resolving front view cadence audit dropouts.",
+        },
+        {
+            "id": "candidate_3_combined_sensitivity",
+            "name": "Combined Extended Window & Regularized Jitter",
+            "window_seconds": [-0.60, 0.28],
+            "regularize_cadence": True,
             "median_filter_size": 5,
             "min_line_span_px": 10.0,
             "min_coverage": 0.50,
             "prominence_ratio": 0.15,
-            "description": "Broader smoothing and 50% coverage threshold to tolerate brief occlusions.",
+            "description": "Combined exploratory regime (+0.28s follow-through, 25fps regularized cadence, relaxed 50% coverage) testing full sequence convergence.",
         },
     ]
 
@@ -218,7 +251,13 @@ def explore_temporal_parameters(rows: List[Dict], events: List[Dict]) -> Dict:
             contact = e["contact_frame"]
             split = "tuning" if eid == 1 else "held_out"
             run_res = _run_parametric_analysis(
-                rows, contact, cand["min_coverage"], cand["min_line_span_px"], cand["prominence_ratio"]
+                rows,
+                contact,
+                cand["window_seconds"],
+                cand["regularize_cadence"],
+                cand["min_coverage"],
+                cand["min_line_span_px"],
+                cand["prominence_ratio"],
             )
             cand_runs.append({
                 "event_id": eid,
