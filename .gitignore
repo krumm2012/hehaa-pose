@@ -88,6 +88,7 @@ models/*.onnx
 # Config backups and control panel outputs
 configs/*.bak_*
 data/analysis_results/control_panel/
+data/analysis_results/kinematic_validation/
 
 # Large images (keep assets and selected analysis frames)
 *.jpg
