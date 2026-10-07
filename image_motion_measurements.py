@@ -77,6 +77,11 @@ def racket_physical_velocity(
     if current.get('frame_id', 0) - previous.get('frame_id', 0) != 1:
         return None, None, 'nonconsecutive_observations'
 
+    from ground_reference import validate_homography_matrix
+    valid_h, cond, det, reason = validate_homography_matrix(homography)
+    if not valid_h:
+        return None, None, f'degraded_ill_conditioned_homography: {reason}'
+
     h = height_m if height_m is not None else current.get('racket_height_m')
     try:
         from ground_reference import map_point, map_point_at_height
@@ -89,13 +94,19 @@ def racket_physical_velocity(
             p1_m = map_point(homography, current_point)
             status = 'homography_ground_calibrated'
     except Exception as exc:
-        return None, None, f'homography_mapping_failed: {exc}'
+        return None, None, f'degraded_homography_mapping_failed: {exc}'
+
+    if any(abs(v) > 100.0 for v in p0_m + p1_m):
+        return None, None, f'degraded_projection_out_of_bounds: p0={p0_m}, p1={p1_m}'
 
     dist_m = math.dist(p0_m, p1_m)
     dt = t1 - t0
     mps = dist_m / dt
     if not math.isfinite(mps):
         return None, None, 'nonfinite_metric_velocity'
+
+    if dist_m > 4.0 or mps > 90.0:
+        return None, None, f'degraded_unphysical_displacement: dist={dist_m:.2f}m, speed={mps*3.6:.0f}km/h'
 
     from kinematic_smoothing import clamp_centripetal_speed
     mps_filtered, _ = clamp_centripetal_speed(mps)

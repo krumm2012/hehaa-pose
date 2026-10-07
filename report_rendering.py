@@ -215,6 +215,12 @@ def render_standalone_report_html(payload: Dict, output_path: str) -> str:
                     kmh_text += f' <span style="font-size:10px;color:#d97706;font-weight:normal;display:block;margin-top:2px;">⚠️ [地面单应性投影 · 缺失高度去偏] (像面 {float(contact_px_s):.0f} px/s · 建议核验站位高度)</span>'
                 else:
                     kmh_text += ' <span style="font-size:10px;color:#d97706;font-weight:normal;display:block;margin-top:2px;">⚠️ [地面单应性投影 · 缺失高度去偏] (建议核验站位高度)</span>'
+            elif "degraded" in speed_status:
+                speed_label = "球拍像面像素速度 (单应性已自动降级)"
+                kmh_text = f"{contact_px_s:.0f} px/s" if contact_px_s is not None else "未观测"
+                if max_px_s is not None:
+                    kmh_text += f" · 原始峰值 {max_px_s:.0f} px/s"
+                kmh_text += ' <span style="font-size:10px;color:#d97706;font-weight:normal;display:block;margin-top:2px;">⚠️ [单应性几何退化/越界 · 已平滑降级至像面像素]</span>'
             else:
                 speed_label = "球拍框中心像素速度 (未标定)"
                 kmh_text = f"{contact_px_s:.0f} px/s" if contact_px_s is not None else "未观测"
@@ -687,6 +693,12 @@ def render_live_report_html(document: Dict, manager: Any) -> str:
                 speed_text += f' <span style="font-size:10px;color:#fbbf24;font-weight:normal;display:block;margin-top:2px;">⚠️ [地面单应性投影 · 缺失高度去偏] (像面 {float(contact_px_s):.0f} px/s · 建议核验站位高度)</span>'
             else:
                 speed_text += ' <span style="font-size:10px;color:#fbbf24;font-weight:normal;display:block;margin-top:2px;">⚠️ [地面单应性投影 · 缺失高度去偏] (建议核验站位高度)</span>'
+        elif "degraded" in speed_status:
+            speed_label = "球拍像面像素速度 (单应性已自动降级)"
+            speed_text = f"{float(contact_px_s):.0f} px/s" if contact_px_s is not None else "未观测"
+            if max_px_s is not None:
+                speed_text += f" · 事件峰值 {float(max_px_s):.0f} px/s"
+            speed_text += ' <span style="font-size:10px;color:#fbbf24;font-weight:normal;display:block;margin-top:2px;">⚠️ [单应性几何退化/越界 · 已平滑降级至像面像素]</span>'
         else:
             speed_label = '球拍框中心像素速度 (未标定)'
             speed_text = f"{float(contact_px_s):.0f} px/s" if contact_px_s is not None else '未观测'

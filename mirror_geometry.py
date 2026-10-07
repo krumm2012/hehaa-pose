@@ -95,6 +95,12 @@ def estimate_torso_planar_affine(
     src_pts = np.array(pts_back, dtype=np.float32)
     dst_pts = np.array(pts_front, dtype=np.float32)
 
+    # 几何退化与近共线防护：点集构成的包围盒不可过于狭窄或退化
+    src_w = float(np.ptp(src_pts[:, 0]))
+    src_h = float(np.ptp(src_pts[:, 1]))
+    if src_w < 5.0 or src_h < 5.0 or (src_w * src_h) < 60.0:
+        return None
+
     # 求解 2x3 仿射变换：dst = M * [src, 1]^T
     M, inliers = cv2.estimateAffine2D(src_pts, dst_pts, method=cv2.LMEDS)
     if M is None:
@@ -114,6 +120,14 @@ def estimate_torso_planar_affine(
     scale_x = math.hypot(a11, a12)
     scale_y = math.hypot(a21, a22)
     if not (0.35 <= scale_x <= 3.2 and 0.35 <= scale_y <= 3.2):
+        return None
+
+    # 仿射变换条件数检查，防止局部极端各向异性畸变
+    try:
+        s_vals = np.linalg.svd(M[:2, :2], compute_uv=False)
+        if s_vals[-1] < 1e-4 or (s_vals[0] / s_vals[-1]) > 20.0:
+            return None
+    except Exception:
         return None
 
     rotation_rad = math.atan2(a21, a11)
@@ -153,6 +167,12 @@ def extract_ground_mirror_homography(
         return None
 
     try:
+        from ground_reference import validate_homography_matrix
+        v_f, _, _, _ = validate_homography_matrix(h_f)
+        v_b, _, _, _ = validate_homography_matrix(h_b)
+        if not (v_f and v_b):
+            return None
+
         hf_mat = np.array(h_f, dtype=np.float64).reshape(3, 3)
         hb_mat = np.array(h_b, dtype=np.float64).reshape(3, 3)
         inv_hf = np.linalg.inv(hf_mat)
@@ -160,6 +180,10 @@ def extract_ground_mirror_homography(
         norm = np.linalg.norm(h_comp)
         if norm > 1e-9:
             h_comp = h_comp / norm
+
+        v_c, _, _, _ = validate_homography_matrix(h_comp)
+        if not v_c:
+            return None
         return h_comp
     except Exception:
         return None
@@ -181,15 +205,18 @@ def map_mirror_point_planar(
         M = affine_result.matrix
         fx = M[0, 0] * bx + M[0, 1] * by + M[0, 2]
         fy = M[1, 0] * bx + M[1, 1] * by + M[1, 2]
-        return float(fx), float(fy)
+        if -2000.0 <= fx <= 8000.0 and -2000.0 <= fy <= 8000.0:
+            return float(fx), float(fy)
+        return None
 
     if ground_homography is not None:
         vec = np.array([bx, by, 1.0], dtype=np.float64)
         mapped = ground_homography @ vec
-        if abs(mapped[2]) > 1e-9:
+        if abs(mapped[2]) >= 1e-4:
             fx = mapped[0] / mapped[2]
             fy = mapped[1] / mapped[2]
-            return float(fx), float(fy)
+            if -2000.0 <= fx <= 8000.0 and -2000.0 <= fy <= 8000.0:
+                return float(fx), float(fy)
 
     return None
 

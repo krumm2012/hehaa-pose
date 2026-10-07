@@ -41,11 +41,52 @@ def _positive(value, name):
     return value
 
 
+def validate_homography_matrix(
+    matrix: Any,
+    max_condition_number: float = 1e7,
+    min_abs_det: float = 1e-15,
+) -> Tuple[bool, float, float, str]:
+    """Validate 3x3 homography matrix for non-degeneracy and numerical stability.
+
+    Returns:
+        (is_valid, condition_number, determinant, status_message)
+    """
+    if matrix is None:
+        return False, float("inf"), 0.0, "matrix_is_none"
+    try:
+        mat = np.asarray(matrix, dtype=np.float64).reshape(3, 3)
+    except Exception:
+        return False, float("inf"), 0.0, "invalid_shape"
+
+    if not np.isfinite(mat).all():
+        return False, float("inf"), 0.0, "non_finite_elements"
+
+    try:
+        u, s, vt = np.linalg.svd(mat)
+        s_max = float(s[0])
+        s_min = float(s[-1])
+        if s_min < 1e-14:
+            return False, float("inf"), 0.0, "near_zero_singular_value"
+        cond = s_max / s_min
+        det = float(np.linalg.det(mat))
+    except Exception as exc:
+        return False, float("inf"), 0.0, f"svd_failed: {exc}"
+
+    if not math.isfinite(cond) or cond > max_condition_number:
+        return False, cond, det, f"ill_conditioned_matrix (cond={cond:.1e} > {max_condition_number:.1e})"
+
+    if not math.isfinite(det) or abs(det) < min_abs_det:
+        return False, cond, det, f"singular_matrix (abs(det)={abs(det):.1e} < {min_abs_det:.1e})"
+
+    return True, cond, det, "well_conditioned"
+
+
 def map_point(matrix, point):
     homogeneous = np.asarray(matrix, dtype=float).reshape(3, 3) @ np.array([*point, 1.])
-    if not np.isfinite(homogeneous).all() or abs(homogeneous[2]) < 1e-10:
+    denom = homogeneous[2]
+    if not np.isfinite(homogeneous).all() or abs(denom) < 1e-4:
         raise ValueError('地面映射接近奇点')
-    result = (homogeneous[:2] / homogeneous[2]).tolist()
+    result = (homogeneous[:2] / denom).tolist()
     if not all(math.isfinite(v) for v in result):
         raise ValueError('地面映射非有限')
     return result
@@ -100,6 +141,9 @@ def fit_homography(points, world):
     if not np.isfinite(h).all() or not math.isfinite(norm) or norm == 0:
         raise ValueError('标定数值无法稳定映射')
     h = h / norm
+    is_valid, cond, det, reason = validate_homography_matrix(h, max_condition_number=1e7)
+    if not is_valid:
+        raise ValueError(f'标定数值无法稳定映射: {reason}')
     return h.tolist()
 
 
