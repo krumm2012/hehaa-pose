@@ -245,7 +245,7 @@ class DualViewRenderer:
 
         # 5. 底部生物力学指标详情
         # 转肩角与 X-Factor
-        turn_text = f"Width-angle proxy: {bio.robust_shoulder_turn_deg:.1f}" if bio.robust_shoulder_turn_deg is not None else "Width-angle proxy: N/A"
+        turn_text = f"Width-angle proxy: {bio.robust_shoulder_turn_deg:.1f} deg" if bio.robust_shoulder_turn_deg is not None else "Width-angle proxy: N/A"
         if bio.shoulder_hip_separation_deg is not None:
             turn_text += f" | 2D shoulder-hip: {bio.shoulder_hip_separation_deg:.1f} deg"
         cv2.putText(canvas, turn_text, (20, h - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (255, 255, 255), 1, cv2.LINE_AA)
@@ -254,6 +254,8 @@ class DualViewRenderer:
         depth = f"{bio.takeback_depth_ratio:.2f}x" if bio.takeback_depth_ratio is not None else "N/A"
         width = f"{bio.scapular_retraction_ratio:.2f}x" if bio.scapular_retraction_ratio is not None else "N/A"
         back_text = f"Wrist-offset proxy: {depth} | Shoulder-width ratio: {width}"
+        if bio.relative_depth_z is not None:
+            back_text += f" | Rel-Z: {bio.relative_depth_z:.2f}x"
         if bio.occlusion_healed_points:
             back_text += f" | Healed: {','.join(bio.occlusion_healed_points)}"
         cv2.putText(
@@ -396,19 +398,46 @@ class DualViewRenderer:
         )
 
         # 4 行遥测核心指标
+        speed_kmh = card_data.get("racket_speed_kmh")
         speed_px_s = card_data.get("racket_speed_px_s")
         brush_deg = card_data.get("brush_angle_deg")
         drop_ratio = card_data.get("drop_depth_ratio")
         foot_angle = card_data.get("foot_line_angle_deg")
-        stance_str = f"{foot_angle:.0f} deg (2D)" if foot_angle is not None else "N/A"
+        stance_type = card_data.get("stance_type")
+        if foot_angle is not None:
+            stance_str = f"{foot_angle:.0f} deg (2D)"
+        elif stance_type is not None:
+            stance_str = str(stance_type)
+        else:
+            stance_str = "N/A"
+
         hip_rise_px = card_data.get("hip_rise_px")
+        leg_ratio = card_data.get("leg_drive_ratio")
         seq_text = str(card_data.get("kinematic_sequence_text") or "未观测")
 
-        drive_display = f"{float(hip_rise_px):.0f}px (2D)" if hip_rise_px is not None else str(card_data.get("hip_evidence_text") or "N/A")
+        if speed_kmh is not None:
+            if speed_px_s is not None:
+                speed_str = f"{speed_kmh:.1f} km/h ({speed_px_s:.0f}px/s)"
+            else:
+                speed_str = f"{speed_kmh:.1f} km/h"
+        elif speed_px_s is not None:
+            speed_str = f"{speed_px_s:.0f} px/s (2D centre)"
+        else:
+            speed_str = "N/A - uncalibrated"
+
+        if hip_rise_px is not None and leg_ratio is not None:
+            drive_display = f"{float(leg_ratio):.2f}x ({float(hip_rise_px):.0f}px)"
+        elif leg_ratio is not None:
+            drive_display = f"{float(leg_ratio):.2f}x"
+        elif hip_rise_px is not None:
+            drive_display = f"{float(hip_rise_px):.0f}px (2D)"
+        else:
+            drive_display = str(card_data.get("hip_evidence_text") or "N/A")
+
         drop_display = f"{float(drop_ratio):.2f}x" if drop_ratio is not None else "N/A"
 
         items = [
-            ("RACKET SPEED", (f"{speed_px_s:.0f} px/s (2D centre)" if speed_px_s is not None else "N/A - uncalibrated"), (0, 255, 180)),
+            ("RACKET SPEED", speed_str, (0, 255, 180)),
             ("PATH & RISE", (f"{brush_deg:+.1f} deg | Rise: {drop_display}" if brush_deg is not None else str(card_data.get("brush_evidence_text") or "观测证据不足") + f" | Rise: {drop_display}"), (0, 220, 255)),
             ("ANKLE & HIP", f"{stance_str} | Rise: {drive_display}", (255, 230, 100)),
             ("2D PEAK ORDER", f"{seq_text}", (255, 180, 255)),
