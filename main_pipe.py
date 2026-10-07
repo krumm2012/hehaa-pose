@@ -816,6 +816,7 @@ class MultiprocessPipeline:
                         racket_tracker=racket_tracker,
                         detector=detector,
                         base_diagnostics=racket_diagnostics,
+                        ground_calibration=self.ground_reference.calibration if self.ground_reference else None,
                     )
                     racket = racket_res.rackets
                     racket_box = racket_res.racket_box

@@ -67,3 +67,4 @@ racket_resolution:
   recovered_confidence_scale: 0.85
   min_kp_conf_wrist: 0.20
   min_kp_conf_body: 0.20
+  mirror_mapping_mode: auto

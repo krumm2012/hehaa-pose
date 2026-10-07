@@ -504,16 +504,25 @@ def map_mirror_racket_to_front(
     mirror_racket_box: Union[List[float], Tuple[float, float, float, float]],
     front_pose: Dict[str, Any],
     back_pose: Dict[str, Any],
+    ground_calibration: Optional[Dict[str, Any]] = None,
+    method: str = "torso_scale",  # 'torso_scale' (默认/基准模式) | 'planar_affine' (仿射升维) | 'ground_homography' | 'auto'
 ) -> Optional[Tuple[float, float, float, float]]:
     """
     引拍阶段球拍镜面互补映射：
     当正面视角的引拍侧肢体/躯干遮挡球拍时，利用背面镜面视点中清晰检出的手持球拍，
     结合镜中空间距离缩放（深度映射）与水平镜像几何反转，高精度映射至正面选手的解剖学持拍位置。
 
+    支持两种映射模式：
+    1. 'torso_scale' (默认)：基于双肩双髋中心与躯干垂直高度标量比例的稳定基准算法。
+    2. 'planar_affine'：基于解剖躯干 4 对应点解算的最优 2D 仿射变换矩阵，显式解耦横向与纵向缩放比 (sx, sy)，
+       消除相机俯角引起的 ~30% 横向低估畸变。若仿射解算失败，安全回退至 torso_scale。
+
     Args:
         mirror_racket_box: 原图全局坐标系下的镜中球拍包围盒 (x1, y1, x2, y2)
         front_pose: 正面选手关键点字典 (Keypoint 或包含 x, y 的字典/元组)
         back_pose: 镜中背面选手关键点字典 (Keypoint 或包含 x, y 的字典/元组)
+        ground_calibration: 可选的地面标定字典 (含 views.front.H 与 views.back.H)
+        method: 映射方法选择 ('torso_scale' | 'planar_affine' | 'ground_homography' | 'auto')
 
     Returns:
         映射至正面选手空间的包围盒 (fx1, fy1, fx2, fy2) 原图像素坐标，若几何基准不足则返回 None
@@ -522,6 +531,20 @@ def map_mirror_racket_to_front(
         return None
     if not front_pose or not back_pose:
         return None
+
+    # 若请求高精度平面仿射或地面单应性模式：
+    if method in ("planar_affine", "ground_homography") or (method == "auto" and ground_calibration is not None):
+        from mirror_geometry import map_mirror_box_planar
+        mapped_box, _diag = map_mirror_box_planar(
+            mirror_racket_box=mirror_racket_box,
+            front_pose=front_pose,
+            back_pose=back_pose,
+            ground_calibration=ground_calibration,
+            method=method,
+        )
+        if mapped_box is not None:
+            return mapped_box
+        # 若平面模式因关键点缺失/退化未解出，优雅回退至躯干标量基准模式
 
     def _extract_pt(pose: Dict[str, Any], name: str) -> Optional[Tuple[float, float]]:
         val = pose.get(name)

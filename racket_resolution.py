@@ -41,6 +41,8 @@ class RacketResolutionConfig:
     # 关键点有效性置信度阈值
     min_kp_conf_wrist: float = 0.20
     min_kp_conf_body: float = 0.20
+    # 镜中投影映射模式: 'auto' | 'planar_affine' | 'ground_homography' | 'torso_scale'
+    mirror_mapping_mode: str = "auto"
 
     @classmethod
     def from_dict(cls, d: Optional[Dict[str, Any]]) -> "RacketResolutionConfig":
@@ -64,6 +66,7 @@ class RacketResolutionConfig:
             recovered_confidence_scale=float(sub.get("recovered_confidence_scale", 0.85)),
             min_kp_conf_wrist=float(sub.get("min_kp_conf_wrist", 0.20)),
             min_kp_conf_body=float(sub.get("min_kp_conf_body", 0.20)),
+            mirror_mapping_mode=str(sub.get("mirror_mapping_mode", "auto")),
         )
 
     @classmethod
@@ -133,6 +136,7 @@ class RacketResolver:
         detector: Optional[Any] = None,
         base_diagnostics: Optional[Dict[str, Any]] = None,
         pose_res: Optional[Any] = None,
+        ground_calibration: Optional[Dict[str, Any]] = None,
     ) -> RacketResolutionResult:
         """
         核心解算方法：综合正面模型检测、时序跟踪、镜中虚像关联与衰减平滑。
@@ -280,10 +284,13 @@ class RacketResolver:
 
         elif back_racket_box is not None:
             # 正面引拍躯干遮挡球拍：利用镜中背面球拍进行空间投影补偿自愈
+            method_to_use = self.config.mirror_mapping_mode
             mapped_front_box = map_mirror_racket_to_front(
                 back_racket_box,
                 front_pose or fused_pose,
                 back_pose,
+                ground_calibration=ground_calibration,
+                method=method_to_use,
             )
             if mapped_front_box is not None:
                 base_conf = float(back_racket_entry[1].get("confidence", 0.6)) if back_racket_entry else 0.6
