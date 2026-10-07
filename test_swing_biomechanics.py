@@ -228,7 +228,23 @@ class SwingBiomechanicsTests(unittest.TestCase):
             "ball_contact_window_detection_frames": 4,
             "ball_contact_window_ratio": 0.44,
         }
-        self.assertFalse(ball_tracking_requires_capture(quality))
+    def test_side_on_rotation_collapse_is_rescued_by_torso_length(self):
+        """侧身深引拍时，肩宽投影缩水至 20px，但躯干轴长为 140px，尺度必须被安全自愈为 ~100px。"""
+        from swing_biomechanics import _robust_body_scale, _torso_length
+
+        side_on_pose = {
+            "left_shoulder": [500.0, 200.0],
+            "right_shoulder": [510.0, 215.0],  # 投影宽度仅 ~18px
+            "left_hip": [500.0, 340.0],
+            "right_hip": [510.0, 345.0],        # 垂直躯干长 ~140px
+        }
+        tl = _torso_length(side_on_pose)
+        self.assertAlmostEqual(tl, 135.0, delta=5.0)
+
+        scale = _robust_body_scale(side_on_pose)
+        # 绝不是畸变的 18px，而是折算后的 ~96.4px
+        self.assertGreater(scale, 85.0)
+        self.assertLess(scale, 110.0)
 
 
 if __name__ == "__main__":

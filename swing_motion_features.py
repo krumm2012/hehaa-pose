@@ -14,7 +14,7 @@ import re
 from typing import Dict, Iterable, List, Optional, Tuple
 from observation_policy import (measurement_pose_with_evidence, finite_number,
                                 finite_point, image_joint_angle)
-from image_motion_measurements import racket_image_velocity, source_timestamp
+from image_motion_measurements import racket_image_velocity, racket_physical_velocity, source_timestamp
 from motion_time_contract import REFERENCE_HZ, RACKET_GAP_SECONDS, POLICY_VERSION
 
 
@@ -127,12 +127,22 @@ def _heal_short_racket_gaps(
 def extract_motion_features(
     frames: List[Dict],
     dominant_hand: str = "right",
+    homography: Optional[Any] = None,
 ) -> List[Dict]:
     """Return one feature dictionary per frame.
 
     The output deliberately keeps both raw detections and derived metrics so
     later stages can be audited frame by frame.
     """
+    if homography is None:
+        for f in frames:
+            cal = f.get('ground_calibration') or (f.get('ground_reference') or {}).get('calibration')
+            if isinstance(cal, dict) and 'views' in cal:
+                front_v = cal['views'].get('front')
+                if isinstance(front_v, dict) and 'H' in front_v:
+                    homography = front_v['H']
+                    break
+
     features: List[Dict] = []
     prev = {}
 
@@ -263,6 +273,10 @@ def extract_motion_features(
         image_speed, speed_time_basis = racket_image_velocity(
             frames[idx-1] if idx else None, frame,
             raw_rackets[idx-1] if idx else None, raw_rackets[idx])
+        racket_mps, racket_kmh, speed_status = racket_physical_velocity(
+            frames[idx-1] if idx else None, frame,
+            raw_rackets[idx-1] if idx else None, raw_rackets[idx],
+            homography=homography)
 
         ball_racket_distance = _distance(ball, raw_rackets[idx])
         ball_wrist_distance = _distance(ball, wrist)
@@ -368,10 +382,11 @@ def extract_motion_features(
             "dual_view_is_two_handed": dv_is_two_handed,
             "dual_view_contact_valid": dv_contact_valid,
             "hip_shoulder_sep_deg": round(hip_shoulder_sep, 4) if hip_shoulder_sep is not None else _metric(metrics, "power_indicators", "hip_shoulder_sep"),
-            "racket_head_speed_kmh": None,
-            "racket_speed_mps": None,
+            "racket_head_speed_kmh": racket_kmh,
+            "racket_speed_mps": racket_mps,
             "racket_speed_px_s": image_speed,
             "racket_speed_time_basis": speed_time_basis,
+            "racket_speed_calibration_status": speed_status,
             "racket_measurement_point": raw_rackets[idx],
             "stance_angle": round(stance_angle, 1) if stance_angle is not None else None,
             "stance_type": stance_type,

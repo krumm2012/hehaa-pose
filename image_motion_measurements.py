@@ -43,3 +43,42 @@ def racket_image_velocity(previous, current, previous_point, current_point):
         return None, 'nonconsecutive_observations'
     speed = math.dist(previous_point, current_point) / (t1-t0)
     return (round(speed, 3), b1) if math.isfinite(speed) else (None, 'nonfinite_position')
+
+
+def racket_physical_velocity(previous, current, previous_point, current_point, homography=None):
+    """Compute physical ground-plane speed (m/s and km/h) via calibrated Homography.
+
+    Adheres strictly to the source-time measurement contract:
+    - Same consecutive frame and time criteria as racket_image_velocity.
+    - Requires non-singular 3x3 Homography projection to ground meters.
+    - Returns: (speed_mps, speed_kmh, status_or_basis)
+      When uncalibrated or homography is absent, returns (None, None, 'uncalibrated').
+    """
+    if homography is None:
+        return None, None, 'uncalibrated'
+    if previous is None or previous_point is None or current_point is None:
+        return None, None, 'missing_observation'
+    t0, b0 = source_timestamp(previous)
+    t1, b1 = source_timestamp(current)
+    if t0 is None or t1 is None or b0 != b1 or t1 <= t0:
+        return None, None, 'invalid_source_time'
+    if b1 == 'nominal_fps':
+        return None, None, 'estimated_time_not_a_speed_measurement'
+    if current.get('frame_id', 0) - previous.get('frame_id', 0) != 1:
+        return None, None, 'nonconsecutive_observations'
+
+    try:
+        from ground_reference import map_point
+        p0_m = map_point(homography, previous_point)
+        p1_m = map_point(homography, current_point)
+    except Exception as exc:
+        return None, None, f'homography_mapping_failed: {exc}'
+
+    dist_m = math.dist(p0_m, p1_m)
+    dt = t1 - t0
+    mps = dist_m / dt
+    if not math.isfinite(mps):
+        return None, None, 'nonfinite_metric_velocity'
+    kmh = mps * 3.6
+    return round(mps, 3), round(kmh, 2), 'homography_ground_calibrated'
+

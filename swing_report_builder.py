@@ -19,7 +19,7 @@ from practice_score_adapter import resolve_practice_score
 from swing_session_quality import build_session_quality_dashboard
 from event_source_timing import analyze_event_source_timing, source_frame_navigation, POLICY_VERSION as PHASE_TIME_POLICY
 from observation_policy import finite_number
-from report_identity_contract import normalize_report_document, report_identity_info
+from report_identity_contract import normalize_report_document, report_identity_info, verify_source_session_binding
 from swing_biomechanics import extract_biomechanical_sub_scores
 
 EVIDENCE_QUALITY_NOTE = '证据参考为启发式质量，未经准确率校准，不是技术评分。'
@@ -441,6 +441,9 @@ def build_report_payload(
     coach_data = normalize_report_document(
         load_json(coach_json_path) if coach_json_path and os.path.exists(coach_json_path)
         else {"events": []}, 'Coach报告输入')
+    source_binding_verified = False
+    if coach_data.get('events'):
+        source_binding_verified = verify_source_session_binding(event_data, coach_data)
     evaluation_data = (
         load_json(evaluation_json_path)
         if evaluation_json_path and os.path.exists(evaluation_json_path)
@@ -565,7 +568,7 @@ def build_report_payload(
         )
 
     return {
-        'report_identity': report_identity_info(),
+        'report_identity': report_identity_info(source_binding_verified=source_binding_verified),
         "paths": {
             "frame_json": frame_json_path,
             "event_json": event_json_path,

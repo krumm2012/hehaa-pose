@@ -227,6 +227,8 @@ class DualViewBiomechanicsEngine:
                 for kp in hip_anchors
             )
             torso_scale = None
+            f_torso_h = None
+            b_torso_h = None
             if has_hips:
                 hip_frame_ids = {kp.source_frame_id for kp in hip_anchors if kp.source_frame_id is not None}
                 if not frame_ids or hip_frame_ids == frame_ids:
@@ -239,7 +241,8 @@ class DualViewBiomechanicsEngine:
                     if f_torso_h >= 18 and b_torso_h >= 18:
                         torso_scale = f_torso_h / b_torso_h
 
-            if min(f_w, b_w) < 12:
+            collapse_thresh = max(12.0, 0.15 * min(f_torso_h, b_torso_h)) if (f_torso_h is not None and b_torso_h is not None) else 12.0
+            if min(f_w, b_w) < collapse_thresh:
                 if torso_scale is not None:
                     scale = torso_scale
                 else:

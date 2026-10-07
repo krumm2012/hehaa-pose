@@ -120,6 +120,30 @@ class ReportIdentityContractTests(unittest.TestCase):
             with self.subTest(events=events),self.assertRaises(ValueError):
                 manager._render_live_html({'events':events,'summary':{}})
 
+    def test_cross_session_id_conflict_is_strictly_rejected(self):
+        model, coach = report_case()
+        model['session_id'] = 'session_session_A'
+        coach['session_id'] = 'session_session_B'
+        with self.assertRaises(ValueError) as ctx:
+            build_case(model, coach)
+        self.assertIn("跨会话冲突拒绝", str(ctx.exception))
+
+    def test_cross_video_sha256_conflict_is_strictly_rejected(self):
+        model, coach = report_case()
+        model['source'] = {'video_sha256': '1111222233334444'}
+        coach['source'] = {'video_sha256': '9999888877776666'}
+        with self.assertRaises(ValueError) as ctx:
+            build_case(model, coach)
+        self.assertIn("源视频 SHA 不符", str(ctx.exception))
+
+    def test_matching_session_id_marks_source_binding_verified(self):
+        model, coach = report_case()
+        model['session_id'] = 'live_session_20261007_match'
+        coach['session_id'] = 'live_session_20261007_match'
+        payload = build_case(model, coach)
+        self.assertTrue(payload['report_identity']['source_binding_verified'])
+        self.assertEqual(payload['report_identity']['coach_join'], 'declared_event_id_with_session_binding')
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -215,13 +215,9 @@ class CoachTtsSidecar:
             if self._closed:
                 return
             self._closed = True
-        # Gracefully wait up to 2.5s for in-flight task to finish
-        deadline = time.monotonic() + 2.5
-        while self._queue.unfinished_tasks > 0 and time.monotonic() < deadline:
-            time.sleep(0.05)
+
+        # 1. 设置取消事件，打断所有等待与播放
         self._cancel.set()
-        if hasattr(self._client, "closed"):
-            self._client.closed.set()
         with self._play_lock:
             if self._active_play_process and self._active_play_process.poll() is None:
                 try:
@@ -229,6 +225,14 @@ class CoachTtsSidecar:
                 except Exception:
                     pass
                 self._active_play_process = None
+
+        # 2. 优先关闭底层通信客户端！中断正在进行的 request 同步阻塞
+        try:
+            self._client.close()
+        except Exception as exc:
+            self.logger(f"⚠️ [Qwen3-TTS] worker client close error: {exc}")
+
+        # 3. 清理队列中尚未执行的任务，向回调报告 session_closed
         while True:
             try:
                 item = self._queue.get_nowait()
@@ -240,13 +244,14 @@ class CoachTtsSidecar:
                 self.logger(f"⚠️ [Qwen3-TTS] cancellation callback failed: {exc}")
             finally:
                 self._queue.task_done()
+
+        # 4. 塞入结束哨兵，优雅回收工作线程
         self._queue.put(self._sentinel)
-        self._thread.join(timeout=1.5)
-        self._client.close()
+        self._thread.join(timeout=2.0)
+
+        # 若仍有僵尸线程，记录告警但不硬性挂起主流程
         if self._thread.is_alive():
-            self._thread.join(timeout=1.0)
-        if self._thread.is_alive():
-            self.logger("⚠️ [Qwen3-TTS] worker thread did not stop within deadline")
+            self.logger("⚠️ [Qwen3-TTS] 工作线程未能在预定时间内完全退出，已由后台守护进程回收")
 
     def _run(self) -> None:
         while True:
