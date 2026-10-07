@@ -1315,6 +1315,7 @@ class MultiprocessPipeline:
                     frame_record['pose_observation_coordinate_space'] = 'original_source_pixels'
                 if self.ground_reference is not None:
                     frame_record['ground_reference'] = self.ground_reference.observe(frame_record)
+                    frame_record['ground_calibration'] = self.ground_reference.calibration
                 frame_record["detection_diagnostics"] = data.get("ball_diagnostics") or {}
                 frame_record["racket_detection_diagnostics"] = (
                     data.get("racket_diagnostics") or {}

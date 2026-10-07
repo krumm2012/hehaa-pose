@@ -70,6 +70,41 @@ def _racket_center(rackets: Iterable[Dict]) -> Optional[Point]:
     return best
 
 
+def estimate_racket_height_from_pose(
+    racket_point: Optional[Point],
+    wrist_point: Optional[Point],
+    left_ankle: Optional[Point],
+    right_ankle: Optional[Point],
+    left_shoulder: Optional[Point],
+    right_shoulder: Optional[Point],
+    nominal_shoulder_height_m: float = 1.40,
+) -> Optional[float]:
+    """Estimate physical elevation of racket (meters above ground) from 2D pose keypoints.
+
+    Uses anatomical proportion: human shoulder height averages ~1.40m above court ground.
+    In perspective geometry, the vertical pixel span from ankles (ground) to shoulders
+    serves as a robust local vertical yardstick.
+    """
+    target = racket_point if racket_point is not None else wrist_point
+    if target is None:
+        return None
+    ankles = [pt for pt in (left_ankle, right_ankle) if pt is not None]
+    shoulders = [pt for pt in (left_shoulder, right_shoulder) if pt is not None]
+    if not ankles or not shoulders:
+        return None
+    ground_y = max(pt[1] for pt in ankles)
+    shoulder_y = sum(pt[1] for pt in shoulders) / len(shoulders)
+    body_span = ground_y - shoulder_y
+    if body_span < 25.0:
+        return None
+    target_y = target[1]
+    elev_px = ground_y - target_y
+    ratio = elev_px / body_span
+    h = nominal_shoulder_height_m * ratio
+    # Clamp to realistic tennis racket elevation range [0.15m, 2.70m]
+    return round(float(max(0.15, min(2.70, h))), 3)
+
+
 def _metric(metrics: Dict, category: str, key: str) -> Optional[float]:
     if not isinstance(metrics, dict):
         return None
@@ -142,6 +177,26 @@ def extract_motion_features(
                 if isinstance(front_v, dict) and 'H' in front_v:
                     homography = front_v['H']
                     break
+            g_ref = f.get('ground_reference')
+            if isinstance(g_ref, dict):
+                app = g_ref.get('application') or {}
+                src_id = app.get('source_calibration_id') or g_ref.get('calibration_id')
+                if src_id:
+                    from pathlib import Path
+                    import json
+                    for candidate_dir in [Path('data/control_ground_calibrations'), Path('data/control_camera_profiles')]:
+                        cand_file = candidate_dir / f"{src_id}.json"
+                        if cand_file.exists():
+                            try:
+                                doc = json.loads(cand_file.read_text(encoding='utf-8'))
+                                front_v = (doc.get('calibration') or doc).get('views', {}).get('front', {})
+                                if isinstance(front_v, dict) and 'H' in front_v:
+                                    homography = front_v['H']
+                                    break
+                            except Exception:
+                                pass
+                    if homography is not None:
+                        break
 
     features: List[Dict] = []
     prev = {}
@@ -274,6 +329,10 @@ def extract_motion_features(
             frames[idx-1] if idx else None, frame,
             raw_rackets[idx-1] if idx else None, raw_rackets[idx])
         racket_height = frame.get('racket_height_m')
+        if racket_height is None and homography is not None:
+            racket_height = estimate_racket_height_from_pose(
+                raw_rackets[idx], wrist, left_ankle, right_ankle, left_shoulder, right_shoulder
+            )
         racket_mps, racket_kmh, speed_status = racket_physical_velocity(
             frames[idx-1] if idx else None, frame,
             raw_rackets[idx-1] if idx else None, raw_rackets[idx],

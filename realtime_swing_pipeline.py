@@ -1319,6 +1319,15 @@ class RealtimeSwingOutputManager:
         version_html += '<p class="summary">' + EVIDENCE_QUALITY_NOTE + '</p>'
         session_dashboard = self._render_live_session_dashboard(document)
         roi = summary.get("roi") or self.roi_metadata
+        cal_meta = (document.get("session") or getattr(self, "session_metadata", None) or {}).get("ground_calibration")
+        has_cal = bool(cal_meta and isinstance(cal_meta, dict) and cal_meta.get("views", {}).get("front", {}).get("H"))
+        cal_banner_html = (
+            '<div style="margin-top:10px;padding:9px 12px;border-radius:7px;background:rgba(16,185,129,0.12);border:1px solid #10b981;color:#6ee7b7;font-size:12px;display:flex;align-items:center;gap:8px;">'
+            '<span>✅</span><div><strong>机位场地标定有效</strong> · 已加载正面单应性矩阵 H · 支持三维高度去偏真实物理挥速 (km/h)</div></div>'
+            if has_cal else
+            '<div style="margin-top:10px;padding:9px 12px;border-radius:7px;background:rgba(239,68,68,0.12);border:1px solid #ef4444;color:#fca5a5;font-size:12px;display:flex;align-items:center;gap:8px;">'
+            '<span>⚠️</span><div><strong>当前机位未完成场地标定</strong> · 缺少单应性矩阵 H · 球拍挥速仅能提供图像像素参考，请在控制面板「场地标定」工具完成机位四角标定以解锁真实物理挥速 (km/h)</div></div>'
+        )
         stream_content = ""
         if self.preview_path is not None and roi.get("enabled"):
             preview_href = os.path.relpath(
@@ -1334,6 +1343,7 @@ class RealtimeSwingOutputManager:
               </div>
               <img id="roi-preview" src="{html.escape(preview_href)}" alt="Live stream ROI preview">
               <p class="stream-note">实时截图 · 黄色区域为推理 ROI · P1–P4 为配置点</p>
+              {cal_banner_html}
             </section>
             """
         cards = []
@@ -1531,13 +1541,45 @@ class RealtimeSwingOutputManager:
             def qualified(section, field):
                 return display_value(section, field) if section.get('measurement_evidence') else None
             contact_px_s, max_px_s = rkt.get('contact_px_s'), rkt.get('max_px_s')
+            contact_kmh = rkt.get('contact_kmh') if rkt.get('contact_kmh') is not None else rkt.get('contact_speed_kmh')
+            max_kmh = rkt.get('max_kmh') if rkt.get('max_kmh') is not None else rkt.get('max_speed_kmh')
+            speed_status = rkt.get('status', 'uncalibrated')
+
+            if speed_status == 'homography_height_debiased':
+                speed_label = '球拍物理真速 (km/h · 高度去偏)'
+                val_parts = []
+                if contact_kmh is not None:
+                    val_parts.append(f"{float(contact_kmh):.1f} km/h (触球)")
+                if max_kmh is not None:
+                    val_parts.append(f"峰值 {float(max_kmh):.1f} km/h")
+                speed_text = ' · '.join(val_parts) if val_parts else '已标定'
+                if contact_px_s is not None:
+                    speed_text += f' <span style="font-size:10px;color:#34d399;font-weight:normal;display:block;margin-top:2px;">⚡ [单应性高度去偏 · 物理真速] (像面 {float(contact_px_s):.0f} px/s)</span>'
+                else:
+                    speed_text += ' <span style="font-size:10px;color:#34d399;font-weight:normal;display:block;margin-top:2px;">⚡ [单应性高度去偏 · 物理真速]</span>'
+            elif speed_status in ('ground_homography_calibrated', 'homography_ground_calibrated'):
+                speed_label = '球拍物理估速 (km/h · 地面投影)'
+                val_parts = []
+                if contact_kmh is not None:
+                    val_parts.append(f"{float(contact_kmh):.1f} km/h (触球)")
+                if max_kmh is not None:
+                    val_parts.append(f"峰值 {float(max_kmh):.1f} km/h")
+                speed_text = ' · '.join(val_parts) if val_parts else '已标定'
+                if contact_px_s is not None:
+                    speed_text += f' <span style="font-size:10px;color:#fbbf24;font-weight:normal;display:block;margin-top:2px;">⚠️ [地面单应性投影 · 缺失高度去偏] (像面 {float(contact_px_s):.0f} px/s · 建议核验站位高度)</span>'
+                else:
+                    speed_text += ' <span style="font-size:10px;color:#fbbf24;font-weight:normal;display:block;margin-top:2px;">⚠️ [地面单应性投影 · 缺失高度去偏] (建议核验站位高度)</span>'
+            else:
+                speed_label = '球拍框中心像素速度 (未标定)'
+                speed_text = f"{float(contact_px_s):.0f} px/s" if contact_px_s is not None else '未观测'
+                if max_px_s is not None:
+                    speed_text += f" · 事件峰值 {float(max_px_s):.0f} px/s"
+                speed_text += ' <span style="font-size:10px;color:#f87171;font-weight:normal;display:block;margin-top:2px;">⚠️ [缺少机位场地标定矩阵 H · km/h 未标定]</span>'
+
             brush_angle = qualified(brush, 'low_to_high_angle_deg')
             drop_ratio = qualified(brush, 'drop_depth_ratio')
             foot_angle = qualified(stc, 'image_foot_line_angle_deg')
             leg_ratio = qualified(leg, 'drive_ratio')
-            speed_text = f"{float(contact_px_s):.0f} px/s" if contact_px_s is not None else '未观测'
-            if max_px_s is not None: speed_text += f" · 事件峰值 {float(max_px_s):.0f} px/s"
-            speed_text += '（框中心二维参考；km/h 未标定）'
             brush_text = f"{float(brush_angle):+.1f}°" if brush_angle is not None else evidence_label(brush)
             if drop_ratio is not None:
                 if float(drop_ratio) == 0.0:
@@ -1557,11 +1599,11 @@ class RealtimeSwingOutputManager:
             for metric, label, unit in ((sh_turn,'肩宽角度代理','°'),(tb,'镜面手腕偏移比','x'),(scap,'正背肩宽比','x')):
                 if metric.get('value') is not None: proxy_parts.append(f"{label} {float(metric['value']):.2f}{unit}")
             telemetry_html = '<div class="telemetry-grid">' + ''.join(
-                f'<div class="telem-item"><span class="telem-label">{html.escape(label)}</span><strong class="telem-val">{html.escape(value)}</strong></div>'
-                for label,value in [('球拍框中心像素速度 · 事件窗口',speed_text),
-                                    ('球拍像面轨迹 / 上升比 · 触球窗口',brush_text),
-                                    ('足部连线 / 髋部像面上移 · 触球窗口',foot_text),
-                                    ('双视角投影代理 · 未验证',' · '.join(proxy_parts) or '缺观测')]) + '</div>'
+                f'<div class="telem-item"><span class="telem-label">{html.escape(label)}</span><strong class="telem-val">{value}</strong></div>'
+                for label,value in [(speed_label, speed_text),
+                                    ('球拍像面轨迹 / 上升比 · 触球窗口', html.escape(brush_text)),
+                                    ('足部连线 / 髋部像面上移 · 触球窗口', html.escape(foot_text)),
+                                    ('双视角投影代理 · 未验证', html.escape(' · '.join(proxy_parts) or '缺观测'))]) + '</div>'
             from analysis_metric_delivery import scoring_blockers
             reason_labels = {'automatic_rubric_not_independently_validated':'评分标准未独立验证',
                              'contact_not_confirmed':'触球尚未确认', 'missing_observations':'缺少相关观测', 'shadow_swing':'空挥'}

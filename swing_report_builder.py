@@ -872,15 +872,46 @@ def render_report_html(payload: Dict, output_path: str) -> str:
         max_px_s = rkt.get("max_px_s")
         contact_kmh = rkt.get("contact_kmh") if rkt.get("contact_kmh") is not None else rkt.get("contact_speed_kmh")
         max_kmh = rkt.get("max_kmh") if rkt.get("max_kmh") is not None else rkt.get("max_speed_kmh")
+        speed_status = rkt.get("status", "uncalibrated")
         brush_angle = brush.get("low_to_high_angle_deg") if brush.get("low_to_high_angle_deg") is not None else brush.get("angle_deg")
         drop_ratio = brush.get("drop_depth_ratio")
         stance_type = stc.get("stance_type") or stc.get("value")
         leg_ratio = leg.get("drive_ratio") if leg.get("drive_ratio") is not None else leg.get("value")
 
-        has_telemetry = any(v is not None for v in [contact_px_s, max_px_s, brush_angle, drop_ratio, stance_type, leg_ratio])
+        has_telemetry = any(v is not None for v in [contact_px_s, max_px_s, contact_kmh, max_kmh, brush_angle, drop_ratio, stance_type, leg_ratio])
         telemetry_html = ""
         if has_telemetry:
-            kmh_text = f"{contact_px_s:.0f} px/s（候选触球帧）；原始峰值 {max_px_s:.0f} px/s（未验证）" if contact_px_s is not None and max_px_s is not None else "未观测；km/h 未标定"
+            if speed_status == "homography_height_debiased":
+                speed_label = "球拍物理真速 (km/h · 高度去偏)"
+                val_parts = []
+                if contact_kmh is not None:
+                    val_parts.append(f"{float(contact_kmh):.1f} km/h (触球)")
+                if max_kmh is not None:
+                    val_parts.append(f"峰值 {float(max_kmh):.1f} km/h")
+                kmh_text = " · ".join(val_parts) if val_parts else "已标定"
+                if contact_px_s is not None:
+                    kmh_text += f' <span style="font-size:10px;color:#059669;font-weight:normal;display:block;margin-top:2px;">⚡ [单应性高度去偏 · 物理真速] (像面 {float(contact_px_s):.0f} px/s)</span>'
+                else:
+                    kmh_text += ' <span style="font-size:10px;color:#059669;font-weight:normal;display:block;margin-top:2px;">⚡ [单应性高度去偏 · 物理真速]</span>'
+            elif speed_status in ("ground_homography_calibrated", "homography_ground_calibrated"):
+                speed_label = "球拍物理估速 (km/h · 地面投影)"
+                val_parts = []
+                if contact_kmh is not None:
+                    val_parts.append(f"{float(contact_kmh):.1f} km/h (触球)")
+                if max_kmh is not None:
+                    val_parts.append(f"峰值 {float(max_kmh):.1f} km/h")
+                kmh_text = " · ".join(val_parts) if val_parts else "已标定"
+                if contact_px_s is not None:
+                    kmh_text += f' <span style="font-size:10px;color:#d97706;font-weight:normal;display:block;margin-top:2px;">⚠️ [地面单应性投影 · 缺失高度去偏] (像面 {float(contact_px_s):.0f} px/s · 建议核验站位高度)</span>'
+                else:
+                    kmh_text += ' <span style="font-size:10px;color:#d97706;font-weight:normal;display:block;margin-top:2px;">⚠️ [地面单应性投影 · 缺失高度去偏] (建议核验站位高度)</span>'
+            else:
+                speed_label = "球拍框中心像素速度 (未标定)"
+                kmh_text = f"{contact_px_s:.0f} px/s" if contact_px_s is not None else "未观测"
+                if max_px_s is not None:
+                    kmh_text += f" · 原始峰值 {max_px_s:.0f} px/s"
+                kmh_text += ' <span style="font-size:10px;color:#dc2626;font-weight:normal;display:block;margin-top:2px;">⚠️ [缺少机位场地标定矩阵 H · km/h 未标定]</span>'
+
             if brush_angle is not None:
                 brush_text = f"{float(brush_angle):+.1f}°"
             else:
@@ -904,7 +935,7 @@ def render_report_html(payload: Dict, output_path: str) -> str:
                 stance_text += " · 平立击球 · 无显著下蹲蓄力 (上移极微)"
             telemetry_html = f"""
             <div class="telemetry-grid">
-              <div class="telem-item"><span class="telem-label">球拍框中心像素速度</span><strong class="telem-val">{html.escape(kmh_text)}</strong></div>
+              <div class="telem-item"><span class="telem-label">{html.escape(speed_label)}</span><strong class="telem-val">{kmh_text}</strong></div>
               <div class="telem-item"><span class="telem-label">球拍像面轨迹与上升比</span><strong class="telem-val">{html.escape(brush_text)}</strong></div>
               <div class="telem-item"><span class="telem-label">足部连线倾角与髋部上移比</span><strong class="telem-val">{html.escape(stance_text)}</strong></div>
             </div>

@@ -207,6 +207,65 @@ class PhysicalSpeedHomographyTests(unittest.TestCase):
         self.assertIsNone(mps_rev)
         self.assertEqual(status_rev, "invalid_source_time")
 
+    def test_estimate_racket_height_from_pose(self):
+        from swing_motion_features import estimate_racket_height_from_pose
+        # Ground ankle at y=800, shoulder at y=400 (span=400px -> ~1.40m)
+        # Target at y=550 (elev=250px -> 1.40 * 250/400 = 0.875m)
+        h = estimate_racket_height_from_pose(
+            racket_point=(100, 550),
+            wrist_point=None,
+            left_ankle=(150, 800),
+            right_ankle=(140, 780),
+            left_shoulder=(150, 400),
+            right_shoulder=(130, 400),
+        )
+        self.assertAlmostEqual(h, 0.875, places=3)
+
+        # Degenerate: no ankles
+        h_no_ankle = estimate_racket_height_from_pose((100, 550), None, None, None, (150, 400), (130, 400))
+        self.assertIsNone(h_no_ankle)
+
+    def test_extract_motion_features_auto_estimates_racket_height_from_pose(self):
+        f0 = source_frame(0, 10, 550, 0.0)
+        f0["pose"] = {
+            "left_ankle": [100, 800], "right_ankle": [120, 800],
+            "left_shoulder": [100, 400], "right_shoulder": [120, 400],
+            "right_wrist": [110, 550],
+        }
+        f1 = source_frame(1, 50, 550, 0.04)
+        f1["pose"] = {
+            "left_ankle": [100, 800], "right_ankle": [120, 800],
+            "left_shoulder": [100, 400], "right_shoulder": [120, 400],
+            "right_wrist": [110, 550],
+        }
+        features = extract_motion_features([f0, f1], homography=self.H)
+        self.assertEqual(features[1]["racket_speed_calibration_status"], "homography_height_debiased")
+        self.assertIsNotNone(features[1]["racket_height_m"])
+        self.assertAlmostEqual(features[1]["racket_height_m"], 0.875, places=2)
+
+    def test_analyze_frame_records_extracts_homography_from_session_metadata(self):
+        from swing_event_analyzer import analyze_frame_records
+        frames = [source_frame(i, 10 + i * 2, 20, i * 0.04) for i in range(12)]
+        for f in frames:
+            f["pose"] = {
+                "left_ankle": [100, 800], "right_ankle": [120, 800],
+                "left_shoulder": [100, 400], "right_shoulder": [120, 400],
+                "right_wrist": [110, 550],
+            }
+        session_metadata = {
+            "ground_calibration": {
+                "views": {
+                    "front": {
+                        "H": self.H,
+                    }
+                }
+            }
+        }
+        res = analyze_frame_records(frames, session_metadata=session_metadata)
+        # Verify features have debiased status
+        features = res["features"]
+        self.assertTrue(any(f.get("racket_speed_calibration_status") == "homography_height_debiased" for f in features[1:]))
+
 
 if __name__ == "__main__":
     unittest.main()

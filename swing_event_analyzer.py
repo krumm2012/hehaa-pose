@@ -203,7 +203,14 @@ def analyze_frame_records(
     """Build event-level analysis and auditable frame features."""
     if execution_mode not in ('live', 'replay', 'offline'):
         raise ValueError('Unsupported analysis execution mode')
-    features = extract_motion_features(frames, dominant_hand=dominant_hand)
+    homography = kwargs.get('homography')
+    if homography is None and session_metadata:
+        cal = session_metadata.get('ground_calibration') or session_metadata.get('calibration')
+        if isinstance(cal, dict) and 'views' in cal:
+            front_v = cal['views'].get('front')
+            if isinstance(front_v, dict) and 'H' in front_v:
+                homography = front_v['H']
+    features = extract_motion_features(frames, dominant_hand=dominant_hand, homography=homography)
     segmentation = segment_swing_events(
         features,
         min_peak_energy=min_peak_energy,
@@ -219,7 +226,7 @@ def analyze_frame_records(
     # raw observations still belong to the next contact measurement window.
     evidence_frames = frames if measurement_frames is None else measurement_frames
     evidence_features = features if measurement_frames is None else extract_motion_features(
-        evidence_frames, dominant_hand=dominant_hand
+        evidence_frames, dominant_hand=dominant_hand, homography=homography
     )
     events = enrich_events_with_biomechanics(
         segmentation["events"],
