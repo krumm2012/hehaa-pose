@@ -383,6 +383,30 @@ def render_standalone_report_html(payload: Dict, output_path: str) -> str:
         payload.get("session_quality") or {}
     )
 
+    # 🪞 算法 2.0 室内光路立体几何与镜面深度剖面卡片
+    ground_calib = payload.get("ground_calibration")
+    dual_view_info = payload.get("dual_view") or {}
+    has_mirror = bool(ground_calib or dual_view_info or any(
+        e.get("dual_view") or e.get("mirror_racket_box") or e.get("relative_depth_z")
+        for e in payload.get("events", [])
+    ))
+    mirror_depth_block = ""
+    if has_mirror:
+        from mirror_depth_visualization import render_mirror_depth_card_html, compute_mirror_depth_geometry
+        rel_zs = [
+            float(e["relative_depth_z"])
+            for e in payload.get("events", [])
+            if e.get("relative_depth_z") is not None
+        ]
+        avg_rel_z = (sum(rel_zs) / len(rel_zs)) if rel_zs else None
+        geom = compute_mirror_depth_geometry()
+        mirror_depth_block = render_mirror_depth_card_html(
+            geometry_data=geom,
+            measured_relative_z=avg_rel_z,
+            ground_calibration=ground_calib,
+            card_id="session-mirror-depth-card",
+        )
+
     env = get_jinja_environment()
     template = env.get_template("standalone_report.html.j2")
     return template.render(
@@ -392,6 +416,7 @@ def render_standalone_report_html(payload: Dict, output_path: str) -> str:
         summary_types=json.dumps(summary.get("swing_event_type_counts", {}), ensure_ascii=False),
         frame_json=payload["paths"].get("frame_json") or "",
         session_dashboard_block=session_dashboard_block,
+        mirror_depth_block=mirror_depth_block,
         video_src=video_src or "",
         evaluation_block=evaluation_block,
         event_cards_html="".join(event_cards),
@@ -928,6 +953,37 @@ def render_live_report_html(document: Dict, manager: Any) -> str:
         output_html.parent,
     ).replace(os.sep, "/")
 
+    # 🪞 算法 2.0 室内光路立体几何与镜面深度剖面卡片
+    ground_calib = (
+        getattr(manager, "ground_calibration", None)
+        or getattr(manager, "roi_metadata", {}).get("ground_calibration")
+        or document.get("ground_calibration")
+    )
+    has_mirror = bool(
+        ground_calib
+        or getattr(manager, "is_dual_view", False)
+        or any(
+            e.get("dual_view") or e.get("mirror_racket_box") or e.get("relative_depth_z")
+            for e in document.get("events", [])
+        )
+    )
+    mirror_depth_block = ""
+    if has_mirror:
+        from mirror_depth_visualization import render_mirror_depth_card_html, compute_mirror_depth_geometry
+        rel_zs = [
+            float(e["relative_depth_z"])
+            for e in document.get("events", [])
+            if e.get("relative_depth_z") is not None
+        ]
+        avg_rel_z = (sum(rel_zs) / len(rel_zs)) if rel_zs else None
+        geom = compute_mirror_depth_geometry()
+        mirror_depth_block = render_mirror_depth_card_html(
+            geometry_data=geom,
+            measured_relative_z=avg_rel_z,
+            ground_calibration=ground_calib,
+            card_id="live-mirror-depth-card",
+        )
+
     env = get_jinja_environment()
     template = env.get_template("live_report.html.j2")
     return template.render(
@@ -936,6 +992,7 @@ def render_live_report_html(document: Dict, manager: Any) -> str:
         summary_event_count=int(summary.get("swing_event_count") or 0),
         summary_latest_frame=int(summary.get("latest_frame") or -1),
         session_dashboard=session_dashboard,
+        mirror_depth_block=mirror_depth_block,
         stream_content=stream_content,
         cards_content=content,
         event_json_href=event_json_href,

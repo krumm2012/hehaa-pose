@@ -273,6 +273,67 @@
             <div class="switches" style="margin-bottom: 10px;">
               <label class="switch"><input id="algo2_dual_view" type="checkbox">启用算法 2.0 虚拟双机位 (Side-by-Side)</label>
             </div>
+
+            <!-- 🪞 镜面深度立体几何与光路微缩示意 -->
+            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 10px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;">
+                <span style="color:var(--blue);font-weight:600;">🪞 空间立体光路与虚像深度</span>
+                <span style="color:var(--text);background:rgba(0,240,255,0.12);padding:1px 6px;border-radius:4px;border:1px solid rgba(0,240,255,0.3);">各向异性仿射解耦</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;margin-bottom:8px;">
+                <div style="background:var(--panel-2);padding:5px 8px;border-radius:5px;">
+                  <span style="color:var(--muted);display:block;font-size:10px;">相机安装 / 俯角</span>
+                  <strong style="color:var(--blue);">H=3.3m / 35°</strong>
+                </div>
+                <div style="background:var(--panel-2);padding:5px 8px;border-radius:5px;">
+                  <span style="color:var(--muted);display:block;font-size:10px;">站位与平镜深度</span>
+                  <strong style="color:var(--text);">Y_p=4.68m / Y_w=6.2m</strong>
+                </div>
+                <div style="background:var(--panel-2);padding:5px 8px;border-radius:5px;">
+                  <span style="color:var(--muted);display:block;font-size:10px;">镜中虚像 / 相对视差</span>
+                  <strong style="color:#c084fc;">Y_v=7.72m (ΔY=3.04m)</strong>
+                </div>
+                <div style="background:var(--panel-2);padding:5px 8px;border-radius:5px;">
+                  <span style="color:var(--muted);display:block;font-size:10px;">横纵尺度比 (k_x / k_y)</span>
+                  <strong style="color:#f5d04c;">×1.65 / ×1.27 (+30%)</strong>
+                </div>
+              </div>
+              <svg viewBox="0 0 320 80" style="width:100%;height:auto;display:block;background:#090e17;border-radius:6px;border:1px solid #1c2738;">
+                <defs>
+                  <marker id="ar-cp" viewBox="0 0 6 6" refX="4" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto-start-reverse">
+                    <path d="M 0 1 L 6 3 L 0 5 z" fill="#00f0ff"/>
+                  </marker>
+                  <marker id="ar-yp" viewBox="0 0 6 6" refX="4" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto-start-reverse">
+                    <path d="M 0 1 L 6 3 L 0 5 z" fill="#f5d04c"/>
+                  </marker>
+                </defs>
+                <line x1="20" y1="62" x2="300" y2="62" stroke="#25354c" stroke-width="1"/>
+                <!-- 相机 -->
+                <line x1="35" y1="62" x2="35" y2="22" stroke="#4a5f78" stroke-width="1.5"/>
+                <rect x="28" y="16" width="14" height="10" rx="2" fill="#182336" stroke="#00f0ff" stroke-width="1"/>
+                <text x="35" y="11" fill="#00f0ff" font-size="8.5" text-anchor="middle">📷 3.3m</text>
+                <!-- 真实选手 -->
+                <ellipse cx="145" cy="62" rx="10" ry="3" fill="rgba(64,214,139,0.3)"/>
+                <line x1="145" y1="62" x2="145" y2="35" stroke="#40d68b" stroke-width="2"/>
+                <circle cx="145" cy="32" r="3" fill="#40d68b"/>
+                <text x="145" y="73" fill="#40d68b" font-size="8.5" text-anchor="middle">👤 4.68m</text>
+                <!-- 平面镜 -->
+                <line x1="205" y1="62" x2="205" y2="20" stroke="#f5d04c" stroke-width="2"/>
+                <polygon points="202,20 208,20 208,62 202,62" fill="rgba(0,240,255,0.15)"/>
+                <text x="205" y="14" fill="#f5d04c" font-size="8.5" text-anchor="middle">🪞 6.20m</text>
+                <!-- 虚像 -->
+                <ellipse cx="265" cy="62" rx="10" ry="3" fill="rgba(168,85,247,0.2)"/>
+                <line x1="265" y1="62" x2="265" y2="35" stroke="#a855f7" stroke-width="2" stroke-dasharray="2,2"/>
+                <circle cx="265" cy="32" r="3" fill="#a855f7"/>
+                <text x="265" y="73" fill="#c084fc" font-size="8.5" text-anchor="middle">🪞 7.72m</text>
+                <!-- 光路 -->
+                <line x1="42" y1="22" x2="142" y2="42" stroke="#00f0ff" stroke-width="1.2" marker-end="url(#ar-cp)"/>
+                <line x1="42" y1="22" x2="205" y2="46" stroke="#f5d04c" stroke-width="1.2" marker-end="url(#ar-yp)"/>
+                <line x1="205" y1="46" x2="147" y2="42" stroke="#f5d04c" stroke-width="1.2" stroke-dasharray="2,2"/>
+                <line x1="205" y1="46" x2="263" y2="42" stroke="#a855f7" stroke-width="1" stroke-dasharray="2,2" opacity="0.8"/>
+              </svg>
+            </div>
+
             <a href="/mirror-calibration" target="_blank" class="button" style="text-decoration:none;display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(0,240,255,0.12);border:1px solid var(--blue);color:var(--text);font-weight:600;padding:10px;">
               🪞 打开镜面与人像遮挡标定工具 ↗
             </a>

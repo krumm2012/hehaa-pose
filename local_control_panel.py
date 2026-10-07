@@ -1708,6 +1708,16 @@ def create_handler(controller: LocalPipelineController):
                     query = parse_qs(urlsplit(self.path).query)
                     s_id = query.get("stream_id", [None])[0]
                     self._send_json(controller.mirror_info(stream_id=s_id), head_only=head_only)
+                elif path == "/api/mirror/depth-geometry":
+                    from urllib.parse import parse_qs, urlsplit
+                    from mirror_depth_visualization import compute_mirror_depth_geometry
+                    query = parse_qs(urlsplit(self.path).query)
+                    p_y = float(query.get("player_y", ["4.68"])[0])
+                    w_y = float(query.get("wall_y", ["6.20"])[0])
+                    cam_h = float(query.get("cam_h", ["3.30"])[0])
+                    pitch = float(query.get("pitch", ["35.0"])[0])
+                    geom = compute_mirror_depth_geometry(player_y=p_y, wall_y=w_y, cam_h=cam_h, cam_pitch_deg=pitch)
+                    self._send_json(geom, head_only=head_only)
                 elif path in ("/api/mirror/frame", "/api/frame"):
                     from urllib.parse import parse_qs, urlsplit
                     query = parse_qs(urlsplit(self.path).query)
