@@ -168,9 +168,17 @@ def sequence_osd_label(seq):
 
 
 def evidence_label(metric):
-    reasons=(metric.get('measurement_evidence') or {}).get('reasons') or []
-    if 'below_motion_resolution_guard' in reasons: return '位移先不作解读'
+    reasons = (metric.get('measurement_evidence') or {}).get('reasons') or []
+    if 'below_motion_resolution_guard' in reasons: return '位移未达标定阈值'
     if 'contact_anchor_unconfirmed' in reasons: return '触球待确认'
+    if 'contact_racket_missing' in reasons: return '触球帧球拍遮挡'
+    if 'too_few_racket_observations' in reasons: return '有效观测过少'
     if 'low_observation_coverage' in reasons or 'racket_track_has_gaps' in reasons: return '观测不连续'
+    if 'source_frame_gap' in reasons: return '抽帧丢帧过大'
     if 'path_endpoints_coincide' in reasons: return '轨迹方向不明确'
+    if 'ankle_span_too_narrow' in reasons: return '站姿脚距过窄'
+    if 'excessive_foot_line_range' in reasons: return '脚位抖动过大'
+    if 'hip_motion_below_floor' in reasons: return '蹬地起伏不显著'
+    if 'body_scale_unavailable' in reasons: return '人体比例未标定'
+    if 'source_time_unavailable' in reasons or 'incomplete_source_time' in reasons: return '时间戳不完整'
     return '观测证据不足'

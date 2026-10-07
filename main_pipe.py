@@ -733,9 +733,8 @@ class MultiprocessPipeline:
             recovery_config = self.config.get("unified_detection", {})
             racket_tracker = (RacketTemporalTracker(recovery_config)
                               if recovery_config.get("racket_temporal_recovery_enabled", False) else None)
-            last_racket_box = None
-            last_racket_entry = None
-            racket_missing_count = 0
+            from racket_resolution import RacketResolver, RacketResolutionConfig
+            racket_resolver = RacketResolver(RacketResolutionConfig.from_dict(self.config))
 
             while not self.stop_event.is_set():
                 try:
@@ -806,141 +805,23 @@ class MultiprocessPipeline:
                         dual_view_mgr.update_player_from_keypoints(pose_res.front_pose_orig or pose_res.fused_pose_orig)
                         current_player_bbox = dual_view_mgr.tracked_player_bbox
 
-                    # A. 优先识别镜中背面选手持拍候选 (Back View Mirror Racket)
-                    back_racket_entry = None
-                    back_racket_box = None
-                    back_body_pts = [
-                        kp for name, kp in (pose_res.back_pose_orig or {}).items()
-                        if ("wrist" in name or "elbow" in name or "shoulder" in name or "hip" in name)
-                        and getattr(kp, "conf", 0.0) >= 0.20
-                    ]
-                    for r in (raw_rackets or []):
-                        r_box = r.get("box")
-                        if not r_box:
-                            continue
-                        rx_c = (r_box[0] + r_box[2]) / 2.0
-                        ry_c = (r_box[1] + r_box[3]) / 2.0
-                        in_mirror = False
-                        if dual_view_mgr is not None:
-                            in_mirror = dual_view_mgr.is_point_in_mirror(rx_c, ry_c, self.width, self.height)
-                        elif 680 <= rx_c <= 1580 and ry_c < 620:
-                            in_mirror = True
-
-                        if in_mirror:
-                            if back_body_pts:
-                                dist_b = min(((rx_c - w.x) ** 2 + (ry_c - w.y) ** 2) ** 0.5 for w in back_body_pts)
-                                if dist_b <= 250.0:
-                                    if back_racket_entry is None or dist_b < back_racket_entry[0]:
-                                        back_racket_entry = (dist_b, r)
-                            elif back_racket_entry is None:
-                                back_racket_entry = (999.0, r)
-
-                    if back_racket_entry is not None:
-                        back_racket_box = list(back_racket_entry[1]["box"])
-
-                    if racket_tracker is not None:
-                        tracker_points = {name: {"x": kp.x, "y": kp.y, "confidence": kp.conf,
-                            "observed": kp.observed, "source_frame_id": kp.source_frame_id,
-                            "recovered_from_mirror": kp.recovered_from_mirror,
-                            "confidence_source": kp.confidence_source}
-                            for name, kp in (pose_res.front_pose_orig or {}).items()}
-                        selected, temporal_diagnostics = racket_tracker.select(
-                            raw_rackets or [], tracker_points, task['idx'], task.get('source_time'),
-                            (self.width, self.height))
-                        raw_rackets = [selected] if selected else []
-                        racket_diagnostics = dict(racket_diagnostics or {})
-                        racket_diagnostics['temporal_tracking'] = temporal_diagnostics
-                        racket_diagnostics['model_candidates'] = dict(
-                            (getattr(detector, 'last_parse_diagnostics', {}) or {}).get('racket') or {})
-
-                    # 关联手腕位置并防误判后墙纯镜面虚影
-                    wrists = [
-                        kp for name, kp in (pose_res.front_pose_orig or {}).items()
-                        if "wrist" in name and getattr(kp, "conf", 0.0) >= 0.20
-                    ]
-                    if not wrists:
-                        wrists = [
-                            kp for name, kp in (pose_res.front_pose_orig or {}).items()
-                            if "elbow" in name and getattr(kp, "conf", 0.0) >= 0.20
-                        ]
-
-                    valid_rackets = []
-                    for r in (raw_rackets or []):
-                        r_box = r.get("box")
-                        if not r_box:
-                            continue
-                        rx_c = (r_box[0] + r_box[2]) / 2.0
-                        ry_c = (r_box[1] + r_box[3]) / 2.0
-
-                        in_mirror = False
-                        if dual_view_mgr is not None:
-                            in_mirror = dual_view_mgr.is_point_in_mirror(rx_c, ry_c, self.width, self.height)
-                        elif 680 <= rx_c <= 1580 and ry_c < 620:
-                            in_mirror = True
-
-                        if wrists:
-                            dist = min(((rx_c - w.x) ** 2 + (ry_c - w.y) ** 2) ** 0.5 for w in wrists)
-                            if dist <= 420.0:
-                                # 手持球拍（即便后墙背景处于镜面投影区，也是真实前景球拍）
-                                valid_rackets.append((dist, r))
-                            elif not in_mirror:
-                                valid_rackets.append((dist + 200.0, r))
-                        else:
-                            if not in_mirror:
-                                valid_rackets.append((0.0, r))
-
-                    is_racket_recovered = False
-                    if valid_rackets:
-                        valid_rackets.sort(key=lambda x: x[0])
-                        racket = [{**item[1], "observed": True, "source_frame_id": task["idx"]} for item in valid_rackets]
-                        racket_box = valid_rackets[0][1].get("box")
-                        last_racket_box = racket_box
-                        last_racket_entry = racket[0]
-                        racket_missing_count = 0
-                    elif back_racket_box is not None:
-                        # 正面引拍躯干遮挡球拍：利用镜中背面球拍进行空间距离缩放与镜像反转补偿自愈
-                        from dual_view_biomechanics import map_mirror_racket_to_front
-                        mapped_front_box = map_mirror_racket_to_front(
-                            back_racket_box,
-                            pose_res.front_pose_orig or pose_res.fused_pose_orig,
-                            pose_res.back_pose_orig,
-                        )
-                        if mapped_front_box is not None:
-                            recovered_racket = {
-                                "box": list(mapped_front_box),
-                                "confidence": round(float(back_racket_entry[1].get("confidence", 0.6) * 0.85), 3),
-                                "observed": False,
-                                "recovered_from_mirror": True,
-                                "source_frame_id": task["idx"],
-                                "source_mirror_box": list(back_racket_box),
-                            }
-                            racket = [recovered_racket]
-                            racket_box = list(mapped_front_box)
-                            last_racket_box = racket_box
-                            last_racket_entry = racket[0]
-                            racket_missing_count = 0
-                            is_racket_recovered = True
-                        elif last_racket_box is not None and racket_missing_count < 2 and wrists:
-                            racket_missing_count += 1
-                            racket_box = list(last_racket_box)
-                            decayed = dict(last_racket_entry) if last_racket_entry else {"box": racket_box, "confidence": 0.5}
-                            decayed["observed"] = False
-                            racket = [decayed]
-                        else:
-                            racket_missing_count += 1
-                            racket = []
-                            racket_box = None
-                    elif last_racket_box is not None and racket_missing_count < 2 and wrists:
-                        # 挥拍动作模糊短时平滑自愈（最多保持 2 帧）
-                        racket_missing_count += 1
-                        racket_box = list(last_racket_box)
-                        decayed = dict(last_racket_entry) if last_racket_entry else {"box": racket_box, "confidence": 0.5}
-                        decayed["observed"] = False
-                        racket = [decayed]
-                    else:
-                        racket_missing_count += 1
-                        racket = []
-                        racket_box = None
+                    # A~D. 调用 RacketResolver 完成镜中候选关联、手腕解剖门控、正面遮挡自愈与时序平滑
+                    racket_res = racket_resolver.resolve(
+                        raw_rackets=raw_rackets,
+                        pose_res=pose_res,
+                        frame_idx=task['idx'],
+                        source_time=task.get('source_time'),
+                        frame_size=(self.width, self.height),
+                        dual_view_mgr=dual_view_mgr,
+                        racket_tracker=racket_tracker,
+                        detector=detector,
+                        base_diagnostics=racket_diagnostics,
+                    )
+                    racket = racket_res.rackets
+                    racket_box = racket_res.racket_box
+                    back_racket_box = racket_res.back_racket_box
+                    is_racket_recovered = racket_res.is_racket_recovered
+                    racket_diagnostics = racket_res.diagnostics
 
                     front_pose_dict = {
                         k: (int(round(kp.x)), int(round(kp.y)))
