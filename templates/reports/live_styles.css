@@ -1,0 +1,277 @@
+    :root { color-scheme: dark; --bg:#0a0f1a; --panel:#151d2b; --line:#2b3a51; --accent:#f4c95d; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:#edf3fb; font:15px/1.5 system-ui,sans-serif; }
+    header,main { width:min(1180px,calc(100% - 32px)); margin:auto; }
+    header { padding:28px 0 18px; display:flex; justify-content:space-between; gap:20px; align-items:end; }
+    h1,h2,p { margin:0; }
+    .summary { color:#aab8cc; }
+    .header-tools { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:10px; }
+    #report-summary { white-space:nowrap; }
+    .refresh-controls { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+    .refresh-status { border:1px solid #46643c; border-radius:999px; background:#182317; color:#baf1c8; padding:5px 10px; white-space:nowrap; }
+    .refresh-status[data-state="paused"] { border-color:#725f2d; background:#1e1b13; color:#f4d995; }
+    .refresh-button { border:1px solid var(--line); border-radius:8px; background:#17253a; color:#dceaff; padding:7px 11px; font:inherit; font-weight:700; cursor:pointer; }
+    .refresh-button:hover:not(:disabled),.refresh-button:focus-visible { border-color:#6f8fb6; outline:none; }
+    .refresh-button-stop { background:#2a2112; border-color:#725f2d; color:#f4d995; }
+    .refresh-button:disabled { opacity:.42; cursor:not-allowed; }
+    main { display:grid; gap:18px; padding-bottom:40px; }
+    .session-monitor { border:1px solid #365d8c; border-radius:14px; background:#111d2d; padding:16px; }
+    .session-monitor-head { display:flex; justify-content:space-between; gap:16px; align-items:start; }
+    .session-monitor-head p { margin-top:4px; color:#93a4bb; }
+    .session-monitor-head > strong { border-radius:999px; background:#27364c; color:#b8c8dc; padding:5px 10px; }
+    .session-monitor-head > strong[data-state="stable"],.session-monitor-head > strong[data-state="improving"] { background:#23432f; color:#baf1c8; }
+    .session-monitor-head > strong[data-state="attention"],.session-monitor-head > strong[data-state="integrity_blocked"] { background:#512c2c; color:#ffb3b3; }
+    .session-monitor-kpis { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin-top:14px; }
+    .session-monitor-kpis div { display:grid; gap:2px; border:1px solid var(--line); border-radius:8px; padding:9px 11px; }
+    .session-monitor-kpis span { color:#93a4bb; font-size:12px; }
+    .session-monitor-kpis strong { font-size:20px; }
+    .live-trends { display:grid; gap:6px; margin-top:14px; }
+    .live-trend-row { display:grid; grid-template-columns:32px minmax(100px,1fr) 58px; gap:8px; align-items:center; font-size:12px; }
+    .live-trend-bars { position:relative; height:17px; border-radius:5px; background:#243247; overflow:hidden; }
+    .live-trend-bars i { position:absolute; left:0; height:8px; }
+    .live-trend-bars .technique { top:0; background:#9b86ff; }
+    .live-trend-bars .evidence { bottom:0; background:#44c4a1; }
+    .session-monitor-alerts { margin-top:12px; color:#ffbf91; }
+    .session-monitor-alerts ul { margin:0; padding-left:20px; }
+    .stream-card { border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }
+    .stream-heading { display:flex; justify-content:space-between; gap:20px; align-items:center; margin-bottom:12px; }
+    .stream-heading p,.stream-note { color:#93a4bb; overflow-wrap:anywhere; }
+    .stream-heading strong { color:#0a0f1a; background:var(--accent); border-radius:999px; padding:5px 10px; white-space:nowrap; }
+    #roi-preview { display:block; width:100%; max-height:680px; object-fit:contain; background:#000; border-radius:9px; }
+    .stream-note { margin-top:10px; }
+    .live-coach-feed { border:1px solid #46643c; border-radius:14px; background:#182317; padding:16px; }
+    .live-coach-feed h2 { color:#dff7d4; }
+    .live-coach-feed p { margin-top:6px; color:#a9c99e; }
+    .live-coach-feed ol { margin:12px 0 0; padding-left:22px; display:grid; gap:6px; }
+    .live-coach-feed strong { color:#e8ffd8; font-size:18px; }
+    .event-card { border:1px solid var(--line); border-radius:14px; background:var(--panel); padding:16px; }
+    .event-heading { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+    .event-heading span { color:var(--accent); font-weight:700; }
+    video { display:block; width:100%; max-height:620px; background:#000; border-radius:9px; }
+    .clip-state { padding:48px 20px; text-align:center; color:#93a4bb; border:1px dashed var(--line); border-radius:9px; }
+    .clip-failed { color:#ff9d9d; }
+    .clip-partial { margin-top:8px; padding:10px; color:#ffd28a; }
+    .coach-advice { margin-top:14px; padding:14px 16px; border-radius:9px; background:#202b1d; border:1px solid #46643c; }
+    .coach-title { display:flex; justify-content:space-between; color:#a9c99e; }
+    .coach-title small { color:#78906f; }
+    .coach-advice ol { list-style:none; display:grid; gap:8px; margin:10px 0 0; padding:0; }
+    .coach-advice li { display:grid; grid-template-columns:28px 1fr auto; align-items:center; gap:10px; }
+    .coach-advice li span { display:grid; place-items:center; width:24px; height:24px; border-radius:50%; background:#46643c; color:#fff; }
+    .coach-advice li strong { color:#e8ffd8; font-size:18px; }
+    .coach-advice li small { color:#b9dcae; font-variant-numeric:tabular-nums; }
+    .biomechanics { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:10px; }
+    .bio-metric { display:grid; grid-template-columns:1fr auto; gap:2px 8px; padding:9px 11px; border:1px solid var(--line); border-radius:8px; }
+    .bio-metric span { color:#93a4bb; font-size:12px; } .bio-metric strong { grid-column:1; } .bio-metric small { grid-column:2; grid-row:1/3; align-self:center; color:#7890ad; }
+    .deepseek-advice { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:10px; padding:12px 16px; border-radius:9px; background:#17253a; border:1px solid #365d8c; }
+    .deepseek-advice span,.deepseek-advice small { color:#9bbce2; } .deepseek-advice strong { color:#e3f1ff; font-size:18px; }
+    .deepseek-advice.pending,.deepseek-advice.unavailable { opacity:.72; }
+    .coach-tts { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-top:10px; padding:12px 16px; border-radius:9px; background:#1e2933; border:1px solid #3e7181; }
+    .coach-tts span { color:#a9e3f2; font-weight:700; } .coach-tts small { display:block; margin-top:3px; color:#aab8bf; } .coach-tts audio { height:30px; max-width:260px; }
+    .coach-tts.pending,.coach-tts.unavailable { opacity:.72; }
+    .annotation-workspace { border:1px solid #725f2d; border-radius:14px; background:#1e1b13; padding:16px; }
+    .annotation-workspace h2 { color:#ffe39a; }
+    .annotation-actions { display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-top:12px; }
+    .annotation-actions button { border:1px solid var(--accent); border-radius:8px; background:var(--accent); color:#17130a; padding:8px 12px; font-weight:700; cursor:pointer; }
+    .timeline-review { display:block; margin-top:10px; color:#d8c99f; }
+    .annotation-readiness { margin-top:8px; color:#ffb68c; }
+    .annotation-readiness[data-state="ready"] { color:#a9e99a; }
+    .annotation-box { display:grid; gap:9px; margin-top:14px; padding-top:14px; border-top:1px solid var(--line); }
+    .annotation-box label { color:#c6d2e2; font-size:13px; }
+    .annotation-box input[type="number"],.annotation-box select,.annotation-box textarea { width:100%; margin-top:4px; border:1px solid var(--line); border-radius:7px; background:#0e1521; color:#edf3fb; padding:8px; }
+    .annotation-frames { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .annotation-checks { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:7px; }
+    .manual-events { display:grid; gap:10px; margin-top:12px; }
+    .manual-event-card { border:1px solid #927438; border-radius:10px; background:#272115; padding:12px; }
+    .manual-event-heading { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    .manual-event-heading button { border:1px solid #d98c8c; border-radius:7px; background:transparent; color:#ffb1b1; padding:5px 8px; cursor:pointer; }
+    .review-workflow { border:1px solid #8a6d2f; border-radius:14px; background:#17170f; padding:16px; }
+    .review-workflow-head { display:flex; justify-content:space-between; align-items:start; gap:18px; }
+    .review-workflow-head h2 { color:#f4d995; }
+    .review-workflow-head p { margin-top:5px; color:#b9ad8d; }
+    .review-workflow-state { border:1px solid #5d5134; border-radius:999px; padding:5px 10px; color:#d8c99f; white-space:nowrap; }
+    .review-workflow-state[data-state="finalized"] { border-color:#507a49; color:#bce7b2; background:#1b2a18; }
+    .review-workflow-state[data-state="error"],.review-workflow-state[data-state="needs_review"] { border-color:#9a5b43; color:#ffc0a8; background:#2b1913; }
+    .workflow-track { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:7px; margin-top:14px; counter-reset:stage; }
+    .workflow-track span { counter-increment:stage; border-top:3px solid #4a4534; padding:7px 2px 0; color:#887f68; font-size:12px; }
+    .workflow-track span::before { content:counter(stage) '. '; }
+    .workflow-track span[data-active="true"] { border-color:#f4c76b; color:#f4d995; }
+    .review-actions { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:15px; }
+    .review-file { position:relative; overflow:hidden; display:inline-flex; border:1px solid #8a6d2f; border-radius:8px; padding:8px 12px; color:#f4d995; cursor:pointer; }
+    .review-file input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+    .review-actions button { border:1px solid #f4c76b; border-radius:8px; background:#f4c76b; color:#17130a; padding:8px 12px; font-weight:700; cursor:pointer; }
+    .review-actions button.secondary { background:transparent; color:#f4d995; }
+    .review-actions button:disabled { opacity:.45; cursor:not-allowed; }
+    .review-message { margin-top:10px; color:#d5c9a9; }
+    .review-message[data-state="error"] { color:#f6a487; }
+    .review-metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin-top:14px; }
+    .review-metrics div { border:1px solid #4a4534; border-radius:8px; padding:9px 11px; }
+    .review-metrics span { display:block; color:#9e957d; font-size:12px; }
+    .review-metrics strong { font-size:20px; }
+    .coach-comparisons { display:grid; gap:10px; margin-top:14px; }
+    .coach-comparison { border:1px solid #4a4534; border-radius:10px; padding:12px; }
+    .coach-comparison-head { display:flex; justify-content:space-between; gap:12px; color:#d8c99f; }
+    .coach-columns { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+    .coach-column { border:1px solid #3c4d3a; border-radius:8px; background:#172017; padding:10px; }
+    .coach-column.manual { border-color:#8a6d2f; background:#241f12; }
+    .coach-column h3 { margin:0; color:#a8d5a2; font-size:13px; }
+    .coach-column.manual h3 { color:#f4c76b; }
+    .coach-column ol { margin:7px 0 0; padding-left:20px; }
+    .coach-column small { color:#9e957d; }
+    dl { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:14px 0 0; }
+    dl div { border:1px solid var(--line); border-radius:8px; padding:9px 11px; }
+    dt { color:#93a4bb; font-size:12px; text-transform:uppercase; } dd { margin:2px 0 0; }
+    .waiting { padding:50px; text-align:center; border:1px dashed var(--line); border-radius:14px; color:#93a4bb; }
+    /* 算法2.0 / 生物力学与动作质量视觉组件 */
+    .tier-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      border: 1px solid var(--line);
+    }
+    .tier-pro {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.28), rgba(0, 240, 255, 0.32));
+      border-color: #f59e0b;
+      color: #ffd875;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.2);
+    }
+    .tier-advanced {
+      background: rgba(16, 185, 129, 0.22);
+      border-color: #10b981;
+      color: #72f7be;
+    }
+    .tier-intermediate {
+      background: rgba(56, 189, 248, 0.22);
+      border-color: #38bdf8;
+      color: #9fe2ff;
+    }
+    .tier-developing {
+      background: rgba(249, 115, 22, 0.22);
+      border-color: #f97316;
+      color: #ffaa7a;
+    }
+    .impact-freeze-container {
+      margin: 12px 0;
+    }
+    .impact-freeze-link {
+      display: block;
+      position: relative;
+      border-radius: 9px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    }
+    .impact-freeze-link:hover {
+      transform: translateY(-2px);
+      border-color: #00f0ff;
+      box-shadow: 0 6px 18px rgba(0, 240, 255, 0.25);
+    }
+    .impact-freeze-img {
+      display: block;
+      width: 100%;
+      max-height: 480px;
+      object-fit: contain;
+      background: #000;
+    }
+    .impact-freeze-badge {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      padding: 4px 9px;
+      border-radius: 5px;
+      background: rgba(10, 15, 26, 0.88);
+      color: #00f0ff;
+      font-size: 11px;
+      font-weight: 600;
+      backdrop-filter: blur(4px);
+      border: 1px solid rgba(0, 240, 255, 0.4);
+    }
+    .bio-radar-wrapper {
+      margin: 12px 0 8px;
+      padding: 12px;
+      background: #111a28;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      text-align: center;
+    }
+    .bio-radar-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #93a4bb;
+      margin-bottom: 6px;
+    }
+    .kinematic-box {
+      margin: 10px 0;
+      padding: 12px 14px;
+      background: #111a28;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+    }
+    .kinematic-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .seq-badge {
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .seq-optimal { background: #13392a; color: #72f7be; border: 1px solid #10b981; }
+    .seq-acceptable { background: #112d42; color: #9fe2ff; border: 1px solid #38bdf8; }
+    .seq-suboptimal { background: #3d1c1c; color: #ff9d9d; border: 1px solid #ef4444; }
+    .kinematic-bars { display: grid; gap: 6px; }
+    .kinematic-bar-row {
+      display: grid;
+      grid-template-columns: 160px 65px 1fr;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+    }
+    .k-label { color: #93a4bb; }
+    .k-val { font-weight: 600; text-align: right; color: #edf3fb; }
+    .k-track {
+      height: 6px;
+      background: #233348;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .k-fill {
+      height: 100%;
+      background: #00f0ff;
+      border-radius: 999px;
+    }
+    .k-fill-rkt { background: #a78bfa; }
+    .telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      margin: 10px 0;
+    }
+    .telem-item {
+      padding: 8px 10px;
+      background: #111a28;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: grid;
+      gap: 3px;
+    }
+    .telem-label { font-size: 10px; color: #93a4bb; }
+    .telem-val { font-size: 11px; color: #edf3fb; font-weight: 600; word-break: break-word; }
+    @media(max-width:720px) {
+      header { align-items:start; flex-direction:column; }
+      .header-tools { justify-content:flex-start; }
+      .session-monitor-kpis,.review-metrics { grid-template-columns:1fr 1fr; }
+      dl,.biomechanics,.annotation-frames,.annotation-checks,.coach-columns,.telemetry-grid { grid-template-columns:1fr; }
+      .workflow-track { grid-template-columns:1fr 1fr; }
+      .kinematic-bar-row { grid-template-columns: 1fr auto; }
+      .k-track { grid-column: 1 / -1; }
+    }

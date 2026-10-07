@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Live Swing Events</title>
+  <style>
+{{ styles }}
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>Live Swing Events</h1><p class="summary">Coach 建议每 200 ms 增量更新。</p>{{ version_html | safe }}</div>
+    <div class="header-tools">
+      <strong id="report-summary">{{ summary_event_count }} events · frame {{ summary_latest_frame }}</strong>
+      <div class="refresh-controls" role="group" aria-label="页面刷新控制">
+        <span id="refresh-status" class="refresh-status" data-state="running" aria-live="polite">自动刷新中</span>
+        <button id="refresh-start" class="refresh-button" type="button" aria-pressed="true">自动刷新</button>
+        <button id="refresh-stop" class="refresh-button refresh-button-stop" type="button" aria-pressed="false">停止刷新</button>
+      </div>
+    </div>
+  </header>
+  <main>
+    {{ session_dashboard | safe }}
+    <section id="live-coach-feed" class="live-coach-feed" aria-live="polite"><h2>实时 Coach</h2><p>等待第一条建议…</p></section>
+    <section id="annotation-workspace" class="annotation-workspace">
+      <h2>挥拍边界辅助复核 V2</h2>
+      <p class="summary">可修正事件边界；系统漏检的挥拍请单独补录。标注会保存在当前浏览器，页面刷新后仍保留。</p>
+      <label class="timeline-review"><input id="timeline-review-complete" type="checkbox"> 已完整检查整段视频（完成后才计算 Precision / Recall / F1）</label>
+      <p id="annotation-readiness" class="annotation-readiness"></p>
+      <div class="annotation-actions">
+        <button id="add-missed-event" type="button">新增漏检挥拍</button>
+        <button id="download-annotations" type="button">下载标注 JSON</button>
+        <span id="annotation-status" class="summary"></span>
+      </div>
+      <div id="manual-events" class="manual-events"></div>
+    </section>
+    <section id="manual-review-workflow" class="review-workflow">
+      <div class="review-workflow-head">
+        <div><h2>人工校准闭环</h2><p>导入人工标注，生成评估，并对比实时 Coach 与人工边界重算结果。</p></div>
+        <strong id="review-workflow-state" class="review-workflow-state" data-state="waiting">等待标注</strong>
+      </div>
+      <div class="workflow-track" aria-label="人工校准流程">
+        <span id="review-stage-import" data-active="true">导入标注</span>
+        <span id="review-stage-validate">完整性校验</span>
+        <span id="review-stage-evaluate">生成评估</span>
+        <span id="review-stage-coach">重算 Coach</span>
+      </div>
+      <div class="review-actions">
+        <label class="review-file">选择人工标注 JSON<input id="manual-review-file" type="file" accept="application/json,.json"></label>
+        <button id="evaluate-imported-review" type="button" disabled>评估导入标注</button>
+        <button id="evaluate-current-review" class="secondary" type="button">评估页面当前标注</button>
+      </div>
+      <p id="manual-review-message" class="review-message">使用本地 workflow 服务打开本页后，可生成持久化评估与人工 Coach。</p>
+      <div id="manual-review-metrics" class="review-metrics" hidden></div>
+      <div id="coach-comparisons" class="coach-comparisons"></div>
+    </section>
+    {{ stream_content | safe }}{{ cards_content | safe }}
+  </main>
+  <script>
+    const eventJsonUrl = {{ event_json_href | tojson }};
+    const modelEventIds = {{ model_event_ids | tojson }};
+{{ script | safe }}
+  </script>
+</body>
+</html>

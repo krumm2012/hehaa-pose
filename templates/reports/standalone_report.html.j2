@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Swing Analysis Report</title>
+  <style>
+{{ styles }}
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Swing Analysis Report</h1>
+      <div class="summary">events {{ summary_event_count | e }} · frames {{ summary_frames | e }} · types {{ summary_types | e }}</div>
+    </div>
+    <div class="summary">{{ frame_json | e }}</div>
+  </header>
+  <main class="layout">
+    {{ session_dashboard_block | safe }}
+    <section class="panel event-explorer" aria-label="挥拍事件时间轴">
+      <div class="event-explorer-head">
+        <h2>事件时间轴</h2>
+        <span id="timeline-status" class="timeline-status">Frame - · -</span>
+      </div>
+      <div id="event-timeline" class="event-timeline"></div>
+      <div class="timeline-controls">
+        <input id="frame-scrubber" type="range" min="0" value="0" aria-label="按帧定位视频">
+        <button id="play-event" type="button">播放当前事件</button>
+      </div>
+      <div class="timeline-legend"><span><i></i>当前播放帧</span><span><i class="contact-dot"></i>触球候选</span><span><i class="peak-dot"></i>动作峰值</span></div>
+    </section>
+    <section class="panel">
+      <video id="swing-video" controls src="{{ video_src | e }}"></video>
+      <div class="actions">
+        <button type="button" onclick="refreshAnnotations()">生成标注 JSON</button>
+        <button type="button" onclick="downloadAnnotations()">下载标注 JSON</button>
+        <label class="file-label">导入标注 JSON
+          <input id="annotation-import-file" type="file" accept="application/json,.json" onchange="importAnnotations(event)">
+        </label>
+        <span id="import-status" class="import-status"></span>
+      </div>
+      <label class="timeline-review">
+        <input id="timeline-review-complete" type="checkbox">
+        已完整检查整段视频（勾选后才计算 Precision / Recall / F1）
+      </label>
+      <p id="annotation-readiness" class="annotation-readiness"></p>
+      <button id="add-missed-event" type="button" onclick="addMissedEvent()">新增漏检挥拍</button>
+      <div id="manual-events" class="manual-events"></div>
+      {{ evaluation_block | safe }}
+      <h2>Raw Summary</h2>
+      <pre id="raw-summary"></pre>
+      <h2>Manual Annotations</h2>
+      <pre id="annotation-json"></pre>
+    </section>
+    <aside class="events filter-only-valid">
+      <div class="events-filter-bar">
+        <div class="filter-toggle-group">
+          <button id="report-filter-valid" class="report-filter-btn active" type="button" onclick="setReportFilter(true)">🎯 仅看有效击球</button>
+          <button id="report-filter-all" class="report-filter-btn" type="button" onclick="setReportFilter(false)">全部记录</button>
+        </div>
+        <span id="report-events-count" class="report-events-badge"></span>
+      </div>
+      {{ event_cards_html | safe }}
+    </aside>
+  </main>
+  <script type="application/json" id="report-data">{{ payload_json | safe }}</script>
+  <script>
+{{ script | safe }}
+  </script>
+</body>
+</html>
