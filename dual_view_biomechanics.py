@@ -89,6 +89,13 @@ class DualViewBiomechanicsResult:
     robust_shoulder_turn_deg: Optional[float]  # Uncalibrated shoulder-width projection proxy
     shoulder_hip_separation_deg: Optional[float] = None  # X-Factor (肩髋分离角)
 
+    # 3D 绝对旋转动力学解算
+    shoulder_yaw_3d_deg: Optional[float] = None
+    shoulder_pitch_3d_deg: Optional[float] = None
+    shoulder_roll_3d_deg: Optional[float] = None
+    hip_yaw_3d_deg: Optional[float] = None
+    x_factor_3d_deg: Optional[float] = None
+
     # 后背特色指标与 3D 相对深度
     takeback_depth_ratio: Optional[float] = None
     scapular_retraction_ratio: Optional[float] = None
@@ -487,12 +494,21 @@ class DualViewBiomechanicsEngine:
         # 7. 双重视角视差拟合与相对 3D 深度比率推算 (Relative 3D Depth Ratio)
         relative_depth_z = round(float(f_w / max(1.0, b_w)), 3) if (f_w > 15.0 and b_w > 15.0) else None
 
+        # 8. 3D 躯干动力学绝对旋转解算 (Torso 3D Kinematics)
+        from mirror_geometry import estimate_torso_3d_kinematics
+        kin_3d = estimate_torso_3d_kinematics(fused_pose, b_pose)
+
         return DualViewBiomechanicsResult(
             shot_classification=shot_res,
             front_shoulder_width=round(f_w, 2),
             back_shoulder_width=round(b_w, 2),
             robust_shoulder_turn_deg=round(robust_turn_deg, 2) if robust_turn_deg is not None else None,
             shoulder_hip_separation_deg=round(sep_deg, 2) if sep_deg is not None else None,
+            shoulder_yaw_3d_deg=kin_3d.shoulder_yaw_deg,
+            shoulder_pitch_3d_deg=kin_3d.shoulder_pitch_deg,
+            shoulder_roll_3d_deg=kin_3d.shoulder_roll_deg,
+            hip_yaw_3d_deg=kin_3d.hip_yaw_deg,
+            x_factor_3d_deg=kin_3d.x_factor_3d_deg,
             takeback_depth_ratio=round(takeback_depth_ratio, 4) if takeback_depth_ratio is not None else None,
             scapular_retraction_ratio=round(scapular_ratio, 4) if scapular_ratio is not None else None,
             relative_depth_z=relative_depth_z,

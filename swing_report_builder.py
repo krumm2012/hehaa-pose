@@ -780,6 +780,40 @@ def _session_dashboard_html(dashboard: Dict) -> str:
         readiness = f"至少需要 {int(drift.get('minimum_event_count') or 6)} 次挥拍；当前只展示观察值。"
     else:
         readiness = f"前 {int(drift.get('window_size') or 1)} 次与最近 {int(drift.get('window_size') or 1)} 次对比。"
+
+    fc = dashboard.get("fatigue_and_consistency") or {}
+    fc_html = ""
+    if fc.get("fatigue_status") and fc.get("fatigue_status") != "WARMING_UP":
+        status_map = {
+            "CONSISTENT": ("动作节奏稳定", "#10b981", "rgba(16,185,129,0.12)"),
+            "FATIGUE_OBSERVED": ("体能疲劳显现", "#ef4444", "rgba(239,68,68,0.12)"),
+            "WARMED_UP": ("状态逐步提升", "#3b82f6", "rgba(59,130,246,0.12)"),
+        }
+        title, color, bg = status_map.get(fc.get("fatigue_status"), ("监测中", "#94a3b8", "rgba(148,163,184,0.12)"))
+        decay = fc.get("speed_decay_percent")
+        decay_text = f"{decay:+.1f}%" if decay is not None else "-"
+        speed_std = fc.get("speed_std")
+        speed_std_text = f"±{speed_std:.1f}" if speed_std is not None else "-"
+        jitter = fc.get("latency_jitter_std_ms")
+        jitter_text = f"±{jitter:.1f}ms" if jitter is not None else "-"
+
+        fc_html = f"""
+      <div class="fatigue-consistency-card" style="margin-top:12px;padding:10px 14px;background:{bg};border:1px solid {color};border-radius:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:18px;">⚡</span>
+          <div>
+            <strong style="color:{color};font-size:13px;display:block;">体能疲劳与一致性：{html.escape(title)}</strong>
+            <small style="color:#94a3b8;font-size:11px;">挥速衰减趋势与动力链时序抖动</small>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;font-size:12px;">
+          <div><span style="color:#94a3b8;">挥速衰减:</span> <strong style="color:{color};">{html.escape(decay_text)}</strong></div>
+          <div><span style="color:#94a3b8;">挥速标准差:</span> <strong style="color:#e2e8f0;">{html.escape(speed_std_text)}</strong></div>
+          <div><span style="color:#94a3b8;">动力链抖动:</span> <strong style="color:#e2e8f0;">{html.escape(jitter_text)}</strong></div>
+        </div>
+      </div>
+      """
+
     return f"""
     <section class="panel session-dashboard" aria-label="会话质量与漂移看板">
       <div class="session-dashboard-head">
@@ -787,6 +821,7 @@ def _session_dashboard_html(dashboard: Dict) -> str:
         <strong data-state="{html.escape(state)}">{html.escape(status_labels.get(state, state))}</strong>
       </div>
       <div class="session-kpis">{kpi_html}</div>
+      {fc_html}
       <div class="session-dashboard-grid">
         <div><h3>逐拍趋势</h3><div class="session-series">{''.join(series_rows) or '<p>等待挥拍事件。</p>'}</div></div>
         <div><h3>前段 → 最近</h3><div class="drift-rows">{''.join(indicator_rows)}</div></div>

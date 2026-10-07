@@ -40,6 +40,20 @@ class PlanarAffineResult:
     status: str                    # 'optimal' | 'fallback' | 'invalid'
 
 
+@dataclass
+class Torso3DKinematics:
+    """3D 躯干动力学绝对旋转与立体力学指标。"""
+    shoulder_yaw_deg: Optional[float] = None    # 3D 绝对转肩偏航角 (-180° ~ 180°, 0° = 正面朝向相机, 90° = 侧身引拍)
+    shoulder_pitch_deg: Optional[float] = None  # 3D 肩部俯仰角 (前倾 / 后仰)
+    shoulder_roll_deg: Optional[float] = None   # 3D 肩部侧倾角 (右肩高/低)
+    hip_yaw_deg: Optional[float] = None         # 3D 骨盆绝对偏航角
+    hip_pitch_deg: Optional[float] = None       # 3D 骨盆俯仰角
+    x_factor_3d_deg: Optional[float] = None     # 真实 3D X-Factor (肩髋空间绝对分离角: |shoulder_yaw - hip_yaw|)
+    relative_depth_z: Optional[float] = None    # 虚实视差解算的相对 3D 深度比率
+    confidence: float = 0.0                     # 解算置信度
+    status: str = "invalid"                     # 'optimal' | 'fallback' | 'invalid'
+
+
 def extract_keypoint_xy(kp: Any, min_conf: float = 0.20) -> Optional[Tuple[float, float]]:
     """安全提取姿态关键点的 (x, y) 坐标，置信度不足时返回 None。"""
     if kp is None:
@@ -331,3 +345,138 @@ def map_mirror_box_planar(
 
     mapped_box = (round(float(fx1), 2), round(float(fy1), 2), round(float(fx2), 2), round(float(fy2), 2))
     return mapped_box, diagnostics
+
+
+def estimate_torso_3d_kinematics(
+    front_pose: Dict[str, Any],
+    back_pose: Dict[str, Any],
+    k_x: float = 1.65,
+    k_y: float = 1.27,
+    min_conf: float = 0.20,
+) -> Torso3DKinematics:
+    """
+    基于正面机位与后墙镜面虚拟机位的双重视角视差几何，
+    解算人体躯干在 3D 欧氏坐标系下的绝对旋转动力学指标：
+    1. 转肩偏航角 (Shoulder Yaw)
+    2. 肩部俯仰角 (Shoulder Pitch)
+    3. 肩部侧倾角 (Shoulder Roll)
+    4. 骨盆偏航角 (Hip Yaw)
+    5. 真实 3D X-Factor (肩髋三维绝对分离角)
+    6. 虚实视差相对深度 Z (Relative Depth Z)
+    """
+    if not front_pose or not back_pose:
+        return Torso3DKinematics(status="invalid")
+
+    # 提取正面与背面肩部关键点
+    f_l_sh = extract_keypoint_xy(front_pose.get("left_shoulder"), min_conf=min_conf)
+    f_r_sh = extract_keypoint_xy(front_pose.get("right_shoulder"), min_conf=min_conf)
+    b_l_sh = extract_keypoint_xy(back_pose.get("left_shoulder"), min_conf=min_conf)
+    b_r_sh = extract_keypoint_xy(back_pose.get("right_shoulder"), min_conf=min_conf)
+
+    # 提取正面与背面髋部关键点
+    f_l_hp = extract_keypoint_xy(front_pose.get("left_hip"), min_conf=min_conf)
+    f_r_hp = extract_keypoint_xy(front_pose.get("right_hip"), min_conf=min_conf)
+    b_l_hp = extract_keypoint_xy(back_pose.get("left_hip"), min_conf=min_conf)
+    b_r_hp = extract_keypoint_xy(back_pose.get("right_hip"), min_conf=min_conf)
+
+    confs = []
+    for p_dict in (front_pose, back_pose):
+        for name in ("left_shoulder", "right_shoulder", "left_hip", "right_hip"):
+            v = p_dict.get(name)
+            if v is not None:
+                c = getattr(v, "conf", None) or (v.get("conf") if isinstance(v, dict) else (v[2] if isinstance(v, (list, tuple)) and len(v) >= 3 else None))
+                if c is not None:
+                    confs.append(float(c))
+    mean_conf = round(float(np.mean(confs)), 3) if confs else 0.50
+
+    has_front_sh = f_l_sh is not None and f_r_sh is not None
+    has_back_sh = b_l_sh is not None and b_r_sh is not None
+    has_front_hp = f_l_hp is not None and f_r_hp is not None
+    has_back_hp = b_l_hp is not None and b_r_hp is not None
+
+    if not has_front_sh:
+        return Torso3DKinematics(confidence=mean_conf, status="invalid")
+
+    # 1. 前视角肩部投影
+    dx_sf = f_r_sh[0] - f_l_sh[0]
+    dy_sf = f_r_sh[1] - f_l_sh[1]
+    w_sf = math.hypot(dx_sf, dy_sf)
+    if w_sf < 5.0:
+        return Torso3DKinematics(confidence=mean_conf, status="invalid")
+
+    # 肩部侧倾角 (Roll)
+    shoulder_roll_deg = round(math.degrees(math.atan2(dy_sf, max(1e-4, abs(dx_sf)))), 2)
+
+    # 2. 结合背部视角计算 3D 转肩偏航角 (Yaw)
+    shoulder_yaw_deg = None
+    rel_depth_z = None
+    if has_back_sh:
+        dx_sb = b_r_sh[0] - b_l_sh[0]
+        dy_sb = b_r_sh[1] - b_l_sh[1]
+        w_sb = math.hypot(dx_sb, dy_sb)
+        w_sb_norm = w_sb * k_x
+
+        w_max = max(w_sf, w_sb_norm, 15.0)
+        x_ratio = max(-1.0, min(1.0, dx_sf / w_max))
+        # 深度梯度：背部相对展开程度
+        depth_gradient = (w_sb_norm - w_sf) / w_max
+        y_sign = 1.0 if depth_gradient >= -0.05 else -1.0
+        y_ratio = y_sign * math.sqrt(max(0.0, 1.0 - x_ratio ** 2))
+
+        yaw_rad = math.atan2(y_ratio, x_ratio)
+        shoulder_yaw_deg = round(math.degrees(yaw_rad), 2)
+        rel_depth_z = round(float(w_sf / max(1.0, w_sb)), 3) if w_sb > 0 else None
+    else:
+        # 仅有单机位时的启发式降级
+        shoulder_yaw_deg = round(math.degrees(math.acos(max(-1.0, min(1.0, dx_sf / max(w_sf, 15.0))))), 2)
+
+    # 3. 计算 3D 骨盆偏航角 (Hip Yaw)
+    hip_yaw_deg = None
+    if has_front_hp:
+        dx_hf = f_r_hp[0] - f_l_hp[0]
+        dy_hf = f_r_hp[1] - f_l_hp[1]
+        w_hf = math.hypot(dx_hf, dy_hf)
+        if has_back_hp and w_hf >= 5.0:
+            dx_hb = b_r_hp[0] - b_l_hp[0]
+            dy_hb = b_r_hp[1] - b_l_hp[1]
+            w_hb = math.hypot(dx_hb, dy_hb)
+            w_hb_norm = w_hb * k_x
+            w_hmax = max(w_hf, w_hb_norm, 15.0)
+            hx_ratio = max(-1.0, min(1.0, dx_hf / w_hmax))
+            h_gradient = (w_hb_norm - w_hf) / w_hmax
+            hy_sign = 1.0 if h_gradient >= -0.05 else -1.0
+            hy_ratio = hy_sign * math.sqrt(max(0.0, 1.0 - hx_ratio ** 2))
+            hip_yaw_deg = round(math.degrees(math.atan2(hy_ratio, hx_ratio)), 2)
+        elif w_hf >= 5.0:
+            hip_yaw_deg = round(math.degrees(math.acos(max(-1.0, min(1.0, dx_hf / max(w_hf, 15.0))))), 2)
+
+    # 4. 躯干俯仰角 (Pitch)
+    shoulder_pitch_deg = None
+    if has_front_hp:
+        mid_sh = ((f_l_sh[0] + f_r_sh[0]) / 2.0, (f_l_sh[1] + f_r_sh[1]) / 2.0)
+        mid_hp = ((f_l_hp[0] + f_r_hp[0]) / 2.0, (f_l_hp[1] + f_r_hp[1]) / 2.0)
+        trunk_dx = mid_sh[0] - mid_hp[0]
+        trunk_dy = mid_hp[1] - mid_sh[1]  # 向上为正
+        if trunk_dy > 10.0:
+            pitch_rad = math.atan2(trunk_dx, trunk_dy)
+            shoulder_pitch_deg = round(math.degrees(pitch_rad), 2)
+
+    # 5. 真实 3D X-Factor (肩髋三维空间分离角)
+    x_factor_3d_deg = None
+    if shoulder_yaw_deg is not None and hip_yaw_deg is not None:
+        diff = (shoulder_yaw_deg - hip_yaw_deg + 180.0) % 360.0 - 180.0
+        x_factor_3d_deg = round(abs(diff), 2)
+
+    status = "optimal" if (has_back_sh and has_back_hp) else "fallback"
+
+    return Torso3DKinematics(
+        shoulder_yaw_deg=shoulder_yaw_deg,
+        shoulder_pitch_deg=shoulder_pitch_deg,
+        shoulder_roll_deg=shoulder_roll_deg,
+        hip_yaw_deg=hip_yaw_deg,
+        x_factor_3d_deg=x_factor_3d_deg,
+        relative_depth_z=rel_depth_z,
+        confidence=mean_conf,
+        status=status,
+    )
+

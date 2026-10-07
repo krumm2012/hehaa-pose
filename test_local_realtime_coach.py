@@ -5,7 +5,8 @@ from unittest.mock import patch
 SYNTHETIC_RULES = frozenset({
     "contact_too_close", "limited_arm_extension", "limited_separation",
     "unstable_balance", "limited_weight_transfer", "limited_knee_flexion",
-    "disconnected_kinetic_chain", "limited_leg_drive", "limited_brush_drop"})
+    "disconnected_kinetic_chain", "limited_leg_drive", "limited_brush_drop",
+    "excessive_takeback_depth", "asymmetric_shoulder_tilt", "limited_3d_x_factor"})
 
 from local_realtime_coach import LocalRealtimeCoach
 
@@ -614,6 +615,41 @@ class LocalRealtimeCoachTests(unittest.TestCase):
         result = calibrate_coaching_event(event)
         self.assertEqual(result["status"], "skipped_shadow_swing")
         self.assertIsNone(result["visible_technique_score_9"])
+
+    @patch("coach_rule_contract.VALIDATED_TECHNIQUE_RULES", SYNTHETIC_RULES)
+    def test_dual_view_specific_coaching_rules(self):
+        """测试虚拟双机位专属教练规则：后背引拍过大、耸肩与核心扭转不足。"""
+        coach = LocalRealtimeCoach(max_chars=15, max_suggestions=3, min_confidence=0.45)
+        event = {
+            "event_id": 105,
+            "confidence": 0.90,
+            "quality_flags": {"warnings": [], "pose_frame_ratio": 0.95},
+            "phase_counts": {"backswing": 10, "follow_through": 10},
+            "biomechanics": {
+                "metrics": {
+                    "takeback_depth": {"value": 2.10, "confidence": 0.88, "coach_eligible": True},
+                    "shoulder_roll": {"value": 28.5, "confidence": 0.85, "coach_eligible": True},
+                    "x_factor_3d": {"value": 12.0, "confidence": 0.82, "coach_eligible": True},
+                }
+            },
+        }
+        advices = coach.advise_all(event)
+        codes = [a["code"] for a in advices]
+        self.assertIn("excessive_takeback_depth", codes)
+        self.assertIn("asymmetric_shoulder_tilt", codes)
+        self.assertIn("limited_3d_x_factor", codes)
+
+        takeback_adv = next(a for a in advices if a["code"] == "excessive_takeback_depth")
+        self.assertEqual(takeback_adv["message"], "控制后拉幅度前迎击球")
+        self.assertLessEqual(len(takeback_adv["message"]), 15)
+
+        roll_adv = next(a for a in advices if a["code"] == "asymmetric_shoulder_tilt")
+        self.assertEqual(roll_adv["message"], "击球时双肩保持平稳")
+        self.assertLessEqual(len(roll_adv["message"]), 15)
+
+        xf_adv = next(a for a in advices if a["code"] == "limited_3d_x_factor")
+        self.assertEqual(xf_adv["message"], "加大核心肩髋扭转")
+        self.assertLessEqual(len(xf_adv["message"]), 15)
 
 
 if __name__ == "__main__":

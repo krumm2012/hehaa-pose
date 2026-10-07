@@ -25,10 +25,13 @@ class LocalRealtimeCoach:
         "min_weight_transfer_body_widths": 0.08,
         "max_balance_drift_body_widths": 0.65,
         "min_takeback_depth_ratio": 0.35,
+        "max_takeback_depth_ratio": 1.80,
         "min_scapular_retraction_ratio": 0.20,
         "min_leg_drive_ratio": 0.15,
         "min_brush_angle_deg": 15.0,
         "min_drop_depth_ratio": 0.25,
+        "max_shoulder_roll_deg": 22.0,
+        "min_x_factor_3d_deg": 18.0,
     }
 
     def __init__(
@@ -426,6 +429,15 @@ class LocalRealtimeCoach:
             "takeback_depth",
             "preparation",
         )
+        add_high(
+            "takeback_depth",
+            "max_takeback_depth_ratio",
+            84,
+            "excessive_takeback_depth",
+            "控制后拉幅度前迎击球",
+            "takeback_depth",
+            "preparation",
+        )
         add_low(
             "scapular_retraction",
             "min_scapular_retraction_ratio",
@@ -442,6 +454,24 @@ class LocalRealtimeCoach:
             "limited_shoulder_turn",
             "提前转肩充分引拍",
             "shoulder_turn",
+            "rotation",
+        )
+        add_high(
+            "shoulder_roll",
+            "max_shoulder_roll_deg",
+            81,
+            "asymmetric_shoulder_tilt",
+            "击球时双肩保持平稳",
+            "shoulder_tilt",
+            "balance",
+        )
+        add_low(
+            "x_factor_3d",
+            "min_x_factor_3d_deg",
+            80,
+            "limited_3d_x_factor",
+            "加大核心肩髋扭转",
+            "rotation",
             "rotation",
         )
         return candidates

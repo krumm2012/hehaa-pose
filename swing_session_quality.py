@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from statistics import mean, median
+from statistics import mean, median, stdev
 from typing import Dict, Iterable, List, Optional, Sequence
 
 from practice_scoring import number
@@ -32,6 +32,11 @@ def _mean(values: Iterable[Optional[float]]) -> Optional[float]:
 def _median(values: Iterable[Optional[float]]) -> Optional[float]:
     usable = [float(value) for value in values if value is not None]
     return median(usable) if usable else None
+
+
+def _stdev(values: Iterable[Optional[float]]) -> Optional[float]:
+    usable = [float(v) for v in values if v is not None]
+    return round(float(stdev(usable)), 2) if len(usable) >= 2 else None
 
 
 def _metric_value(event: Dict, name: str) -> Optional[float]:
@@ -137,6 +142,22 @@ def _event_point(event: Dict, index: int) -> Dict:
         ),
         "deepseek_status": deepseek.get("status"),
         "deepseek_latency_ms": _number(deepseek.get("latency_ms")),
+        "racket_speed_kmh": _number(
+            ((event.get("extended_biomechanics") or (event.get("biomechanics") or {}).get("extended_biomechanics") or {}).get("racket_head_speed") or event.get("racket_speed") or {}).get("contact_kmh")
+            if isinstance((event.get("extended_biomechanics") or (event.get("biomechanics") or {}).get("extended_biomechanics") or {}).get("racket_head_speed") or event.get("racket_speed"), dict)
+            else ((event.get("extended_biomechanics") or (event.get("biomechanics") or {}).get("extended_biomechanics") or {}).get("racket_head_speed") or event.get("racket_speed"))
+        ),
+        "racket_speed_px_s": _number(
+            ((event.get("extended_biomechanics") or (event.get("biomechanics") or {}).get("extended_biomechanics") or {}).get("racket_head_speed") or {}).get("contact_px_s")
+        ),
+        "latency_hip_to_shoulder_ms": _number(
+            ((event.get("extended_biomechanics") or (event.get("biomechanics") or {}).get("extended_biomechanics") or {}).get("kinematic_sequence") or {}).get("latency_hip_to_shoulder_ms")
+        ),
+        "shoulder_turn_deg": (
+            _metric_value(event, "shoulder_turn")
+            or _metric_value(event, "shoulder_turn_change")
+            or _number((event.get("biomechanics") or {}).get("robust_shoulder_turn_deg"))
+        ),
     }
 
 
@@ -446,6 +467,60 @@ def build_session_quality_dashboard(events: Iterable[Dict]) -> Dict:
         else:
             drift_status = "stable"
 
+    # 疲劳衰减与动作一致性分析 (Fatigue and Consistency Analytics)
+    speeds = [
+        _number(p.get("racket_speed_kmh")) or _number(p.get("racket_speed_px_s"))
+        for p in series
+        if (_number(p.get("racket_speed_kmh")) or _number(p.get("racket_speed_px_s"))) is not None
+    ]
+    latencies = [
+        _number(p.get("latency_hip_to_shoulder_ms"))
+        for p in series
+        if _number(p.get("latency_hip_to_shoulder_ms")) is not None
+    ]
+    shoulder_turns = [
+        _number(p.get("shoulder_turn_deg"))
+        for p in series
+        if _number(p.get("shoulder_turn_deg")) is not None
+    ]
+
+    speed_decay_percent = None
+    if len(speeds) >= 4 and baseline and recent:
+        base_speeds = [
+            _number(p.get("racket_speed_kmh")) or _number(p.get("racket_speed_px_s"))
+            for p in baseline
+            if (_number(p.get("racket_speed_kmh")) or _number(p.get("racket_speed_px_s"))) is not None
+        ]
+        rec_speeds = [
+            _number(p.get("racket_speed_kmh")) or _number(p.get("racket_speed_px_s"))
+            for p in recent
+            if (_number(p.get("racket_speed_kmh")) or _number(p.get("racket_speed_px_s"))) is not None
+        ]
+        if base_speeds and rec_speeds and _mean(base_speeds) and _mean(base_speeds) > 0:
+            speed_decay_percent = round(((_mean(rec_speeds) - _mean(base_speeds)) / _mean(base_speeds)) * 100.0, 2)
+
+    speed_std = _stdev(speeds)
+    latency_jitter_std = _stdev(latencies)
+    shoulder_turn_std = _stdev(shoulder_turns)
+
+    if event_count < 4:
+        fatigue_status = "WARMING_UP"
+    elif speed_decay_percent is not None and speed_decay_percent <= -8.0:
+        fatigue_status = "FATIGUE_OBSERVED"
+    elif speed_decay_percent is not None and speed_decay_percent >= 5.0:
+        fatigue_status = "WARMED_UP"
+    else:
+        fatigue_status = "CONSISTENT"
+
+    fatigue_and_consistency = {
+        "speed_decay_percent": speed_decay_percent,
+        "speed_std": speed_std,
+        "latency_jitter_std_ms": latency_jitter_std,
+        "shoulder_turn_std_deg": shoulder_turn_std,
+        "fatigue_status": fatigue_status,
+        "samples_evaluated": len(speeds),
+    }
+
     ready_deepseek = int(deepseek_status_counts.get("ready", 0))
     attempted_deepseek = sum(deepseek_status_counts.values())
     return {
@@ -531,6 +606,7 @@ def build_session_quality_dashboard(events: Iterable[Dict]) -> Dict:
             "indicators": indicators,
             "camera_confounded": camera_shifted,
         },
+        "fatigue_and_consistency": fatigue_and_consistency,
         "recurring": {
             "warnings": recurring_warnings,
             "warning_counts": dict(sorted(warning_counts.items())),
