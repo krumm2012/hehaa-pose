@@ -45,12 +45,22 @@ def racket_image_velocity(previous, current, previous_point, current_point):
     return (round(speed, 3), b1) if math.isfinite(speed) else (None, 'nonfinite_position')
 
 
-def racket_physical_velocity(previous, current, previous_point, current_point, homography=None):
-    """Compute physical ground-plane speed (m/s and km/h) via calibrated Homography.
+def racket_physical_velocity(
+    previous,
+    current,
+    previous_point,
+    current_point,
+    homography=None,
+    height_m=None,
+    camera_height_m=2.4,
+):
+    """Compute physical ground-plane or height-compensated speed (m/s and km/h) via calibrated Homography.
 
     Adheres strictly to the source-time measurement contract:
     - Same consecutive frame and time criteria as racket_image_velocity.
     - Requires non-singular 3x3 Homography projection to ground meters.
+    - When height_m > 0, debiases perspective ground-dilation of elevated racket/ball.
+    - Applies biomechanical centripetal acceleration ceiling to prevent detection jitter spikes.
     - Returns: (speed_mps, speed_kmh, status_or_basis)
       When uncalibrated or homography is absent, returns (None, None, 'uncalibrated').
     """
@@ -67,10 +77,17 @@ def racket_physical_velocity(previous, current, previous_point, current_point, h
     if current.get('frame_id', 0) - previous.get('frame_id', 0) != 1:
         return None, None, 'nonconsecutive_observations'
 
+    h = height_m if height_m is not None else current.get('racket_height_m')
     try:
-        from ground_reference import map_point
-        p0_m = map_point(homography, previous_point)
-        p1_m = map_point(homography, current_point)
+        from ground_reference import map_point, map_point_at_height
+        if h is not None and float(h) > 0.0:
+            p0_m = map_point_at_height(homography, previous_point, height_m=float(h), camera_height_m=camera_height_m)
+            p1_m = map_point_at_height(homography, current_point, height_m=float(h), camera_height_m=camera_height_m)
+            status = 'homography_height_debiased'
+        else:
+            p0_m = map_point(homography, previous_point)
+            p1_m = map_point(homography, current_point)
+            status = 'homography_ground_calibrated'
     except Exception as exc:
         return None, None, f'homography_mapping_failed: {exc}'
 
@@ -79,6 +96,10 @@ def racket_physical_velocity(previous, current, previous_point, current_point, h
     mps = dist_m / dt
     if not math.isfinite(mps):
         return None, None, 'nonfinite_metric_velocity'
-    kmh = mps * 3.6
-    return round(mps, 3), round(kmh, 2), 'homography_ground_calibrated'
+
+    from kinematic_smoothing import clamp_centripetal_speed
+    mps_filtered, _ = clamp_centripetal_speed(mps)
+    kmh = mps_filtered * 3.6
+    return round(mps_filtered, 3), round(kmh, 2), status
+
 

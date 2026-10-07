@@ -532,11 +532,13 @@ def _calculate_extended_tier_biomechanics(
             "sample_count": len(speed_samples),
             "source_frames": [f["frame_id"] for f in speed_samples],
             "measurement_policy": IMAGE_MOTION_POLICY,
-            "status": "ground_homography_calibrated" if speed_calibrated else "uncalibrated",
+            "status": ("homography_height_debiased" if any(f.get("racket_speed_calibration_status") == "homography_height_debiased" for f in features_in_event)
+                       else "ground_homography_calibrated" if speed_calibrated else "uncalibrated"),
             "contact_time_basis": contact_f.get("racket_speed_time_basis"),
-            "confidence": 0.85 if speed_calibrated else 0.0,
+            "confidence": 0.88 if any(f.get("racket_speed_calibration_status") == "homography_height_debiased" for f in features_in_event) else (0.85 if speed_calibrated else 0.0),
             "coach_eligible": False,
-            "observability": "ground_plane_projected_speed" if speed_calibrated else "image_box_center_speed",
+            "observability": ("height_debiased_projected_speed" if any(f.get("racket_speed_calibration_status") == "homography_height_debiased" for f in features_in_event)
+                              else "ground_plane_projected_speed" if speed_calibrated else "image_box_center_speed"),
         },
         "brush_angle": {
             "low_to_high_angle_deg": low_to_high_angle if brush_observed else None,

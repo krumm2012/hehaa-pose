@@ -51,6 +51,24 @@ def map_point(matrix, point):
     return result
 
 
+def map_point_at_height(matrix, point, height_m=0.0, camera_height_m=2.4, camera_center_xy=(0.0, 0.0)):
+    """Map image point to physical world coordinates at given elevation height_m above ground plane.
+
+    In perspective camera geometry, an elevated point at height h produces a ground-plane intercept
+    dilated away from the camera optical projection center. This function cancels the perspective dilation:
+    P = C_xy + (P_ground - C_xy) * (1.0 - h / H_cam).
+    """
+    ground_pt = map_point(matrix, point)
+    h = float(height_m or 0.0)
+    cam_h = float(camera_height_m or 2.4)
+    if h <= 0.0 or cam_h <= h:
+        return ground_pt
+    scale = max(0.20, 1.0 - h / cam_h)
+    cx, cy = camera_center_xy
+    return [round(cx + (ground_pt[0] - cx) * scale, 4), round(cy + (ground_pt[1] - cy) * scale, 4)]
+
+
+
 def fit_homography(points, world):
     # Normalize both coordinate domains; solve the 8 DoF system once at save/load.
     def normalize(p):

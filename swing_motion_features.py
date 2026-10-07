@@ -273,10 +273,12 @@ def extract_motion_features(
         image_speed, speed_time_basis = racket_image_velocity(
             frames[idx-1] if idx else None, frame,
             raw_rackets[idx-1] if idx else None, raw_rackets[idx])
+        racket_height = frame.get('racket_height_m')
         racket_mps, racket_kmh, speed_status = racket_physical_velocity(
             frames[idx-1] if idx else None, frame,
             raw_rackets[idx-1] if idx else None, raw_rackets[idx],
-            homography=homography)
+            homography=homography,
+            height_m=racket_height)
 
         ball_racket_distance = _distance(ball, raw_rackets[idx])
         ball_wrist_distance = _distance(ball, wrist)
@@ -388,6 +390,7 @@ def extract_motion_features(
             "racket_speed_time_basis": speed_time_basis,
             "racket_speed_calibration_status": speed_status,
             "racket_measurement_point": raw_rackets[idx],
+            "racket_height_m": racket_height,
             "stance_angle": round(stance_angle, 1) if stance_angle is not None else None,
             "stance_type": stance_type,
             "hip_vertical_pos": round(hip_vertical_pos, 2) if hip_vertical_pos is not None else None,
