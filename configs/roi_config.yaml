@@ -10,34 +10,34 @@ streams:
   - 2560
   - 1440
   roi_points:
-  - - 720
-    - 792
-  - - 1598
-    - 811
-  - - 1808
-    - 1430
-  - - 499
-    - 1421
-  roi_description: '4-point ROI: [[720, 792], [1598, 811], [1808, 1430], [499, 1421]]'
-  last_updated: '2026-09-28 16:03:09'
+  - - 491
+    - 615
+  - - 1346
+    - 581
+  - - 1649
+    - 1181
+  - - 326
+    - 1303
+  roi_description: '4-point ROI: [[491, 615], [1346, 581], [1649, 1181], [326, 1303]]'
+  last_updated: '2026-10-08 08:49:18'
   created_by: Tennis Analyzer ROI Calibration
   version: '2.0'
   mirror_view:
     enabled: true
     reflection_roi:
-    - 0.4238
-    - 0.0011
-    - 0.8317
-    - 0.3237
+    - 0.4239
+    - 0.0
+    - 0.8168
+    - 0.3244
     polygon:
-    - - 0.4292
-      - 0.0011
-    - - 0.8317
-      - 0.0024
-    - - 0.8124
-      - 0.3237
-    - - 0.4238
-      - 0.2976
+    - - 0.4239
+      - 0.0
+    - - 0.8168
+      - 0.0
+    - - 0.8036
+      - 0.3244
+    - - 0.4239
+      - 0.3
     padding: 0.0
     horizontal_flip: true
     target_size:
@@ -63,16 +63,16 @@ streams:
   - 2560
   - 1440
   roi_points:
-  - - 1121
-    - 349
-  - - 1924
-    - 373
-  - - 2253
-    - 1204
-  - - 893
-    - 1200
-  roi_description: '4-point ROI: [[1121, 349], [1924, 373], [2253, 1204], [893, 1200]]'
-  last_updated: '2026-10-05 20:24:59'
+  - - 1134
+    - 371
+  - - 1918
+    - 389
+  - - 2263
+    - 1202
+  - - 948
+    - 1216
+  roi_description: '4-point ROI: [[1134, 371], [1918, 389], [2263, 1202], [948, 1216]]'
+  last_updated: '2026-10-08 08:50:50'
   created_by: Tennis Analyzer ROI Calibration
   version: '2.0'
   mirror_view:
@@ -97,7 +97,6 @@ streams:
     - 540
     - 720
     mask_polygon: []
-    exclusion_enabled: true
   front_view:
     enabled: true
     default_roi:
@@ -117,40 +116,41 @@ streams:
   - 2560
   - 1440
   roi_points:
-  - - 954
-    - 540
-  - - 1766
-    - 542
+  - - 791
+    - 551
+  - - 1718
+    - 546
   - - 2036
     - 1314
-  - - 716
-    - 1306
-  roi_description: '4-point ROI: [[954, 540], [1766, 542], [2036, 1314], [716, 1306]]'
-  last_updated: '2026-07-27 15:47:32'
+  - - 584
+    - 1319
+  roi_description: '4-point ROI: [[791, 551], [1718, 546], [2036, 1314], [584, 1319]]'
+  last_updated: '2026-10-08 08:50:16'
   created_by: Tennis Analyzer ROI Calibration
   version: '2.0'
   mirror_view:
     enabled: true
     reflection_roi:
-    - 0.4244
+    - 0.2344
     - 0.0
-    - 0.8145
-    - 0.3199
+    - 0.6805
+    - 0.4437
     polygon:
-    - - 0.4244
-      - 0.2993
-    - - 0.4267
+    - - 0.2344
       - 0.0
-    - - 0.8145
-      - 0.0021
-    - - 0.8029
-      - 0.3199
+    - - 0.6805
+      - 0.0049
+    - - 0.6703
+      - 0.4271
+    - - 0.257
+      - 0.4437
     padding: 0.0
     horizontal_flip: true
     target_size:
     - 540
     - 720
     mask_polygon: []
+    exclusion_enabled: true
   front_view:
     enabled: true
     default_roi:

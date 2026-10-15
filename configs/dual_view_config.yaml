@@ -2,19 +2,19 @@ camera_profile: camera04_mirror_booth
 mirror_view:
   enabled: true
   reflection_roi:
-  - 0.6787
+  - 0.4266
   - 0.0
-  - 1.0
-  - 0.5122
+  - 0.8145
+  - 0.3229
   polygon:
-  - - 0.6825
+  - - 0.4266
     - 0.0
-  - - 1.0
-    - 0.0033
-  - - 1.0
-    - 0.5122
-  - - 0.6787
-    - 0.4789
+  - - 0.8145
+    - 0.0021
+  - - 0.8
+    - 0.3229
+  - - 0.4301
+    - 0.2896
   padding: 0.0
   horizontal_flip: true
   target_size:
@@ -51,7 +51,6 @@ visualization:
   - 0
   - 255
   - 0
-
 racket_resolution:
   mirror_fallback_zone:
   - 680.0
@@ -65,6 +64,6 @@ racket_resolution:
   max_missing_smooth_frames: 2
   decay_confidence: 0.5
   recovered_confidence_scale: 0.85
-  min_kp_conf_wrist: 0.20
-  min_kp_conf_body: 0.20
+  min_kp_conf_wrist: 0.2
+  min_kp_conf_body: 0.2
   mirror_mapping_mode: auto
