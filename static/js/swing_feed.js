@@ -103,7 +103,7 @@
       const poly = `<polygon points="${dataPts.join(' ')}" fill="rgba(0, 240, 255, 0.22)" stroke="#00f0ff" stroke-width="1.8"/>`;
       return `
         <div class="radar-box">
-          <div style="font-size:9.5px;font-weight:600;color:var(--muted);margin-bottom:1px;letter-spacing:0.3px;">5维生物力学雷达</div>
+          <div style="font-size:9.5px;font-weight:600;color:var(--muted);margin-bottom:1px;letter-spacing:0.3px;">五维模型观测雷达</div>
           <svg viewBox="0 0 ${width} ${height}" style="width:130px;height:125px;display:block;">
             ${ringsSvg}${spokes.join('')}${poly}${dots.join('')}${labels.join('')}
           </svg>
@@ -468,7 +468,7 @@
             <div style="font-size:12px; margin-top:8px; line-height:1.6;">
               ${ev.scoring_blockers.map(b => `<p style="margin:4px 0;"><strong>${escapeHtml(b.label)}</strong>：${(b.reasons || []).map(r => escapeHtml(reasonNames[r] || r)).join('；')}${b.missing_observations?.length ? `（待测：${escapeHtml(b.missing_observations.join(', '))}）` : ''}</p>`).join('')}
               <div style="color:var(--muted); font-size:11px; margin-top:6px; border-top:1px dashed rgba(255,255,255,0.08); padding-top:6px;">
-                💡 五维综合评分（准备、到位、击球、协调、随挥）属于教练人工专项评审；单目视觉已在右侧【5维生物力学技术雷达】中完整透出转肩、引拍、延展、挥速、蹬地等客观表现。
+                💡 五维综合评分（准备、到位、击球、协调、随挥）属于教练人工专项评审；单目视觉已在右侧【五维模型观测雷达】中完整透出转肩、引拍、延展、挥速、蹬地等像面代理参考，不能代替人工教练评分。
               </div>
             </div>
           </details>` : "";

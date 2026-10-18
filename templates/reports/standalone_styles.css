@@ -447,3 +447,12 @@ pre { white-space: pre-wrap; word-break: break-word; background: #17211f; color:
 .badge-pending {
   color: #8d9caf;
 }
+
+    .human-review-fields { margin:12px 0; padding:12px; border:1px solid #76663b; border-radius:8px; }
+    .human-review-fields label { display:grid; gap:5px; margin:8px 0; }
+    .human-review-fields input:not([type="checkbox"]), .human-review-fields select, .human-review-fields textarea { width:100%; box-sizing:border-box; }
+    .human-coach-editor summary { cursor:pointer; font-weight:bold; }
+    .manual-rating-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px; }
+    .human-review-fields small { display:block; color:#b9b6a7; }
+
+    .human-review-fields input:not([type="checkbox"]), .human-review-fields select, .human-review-fields textarea { font:inherit; padding:8px 10px; background:#101722; color:#edf3fb; border:1px solid #3c4b60; border-radius:6px; }

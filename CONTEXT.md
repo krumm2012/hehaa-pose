@@ -19,3 +19,19 @@ _Avoid_: confidence boost, proximity guess
 **重捕获窗口 (Reacquisition Window)**:
 The maximum consecutive-frame interval during which missing Active Ball observations retain Trajectory Support before a new Active Ball must be selected. The current window is eight frames.
 _Avoid_: permanent track hold, unlimited history
+
+**启动球拍方案 (Startup Racket Profile)**: A per-session choice fixed before model loading.
+`legacy` uses the unified detector's racket boxes; `exclusive` uses only current
+seven-point racket observations and their explicitly derived recovery. The
+exclusive profile also excludes legacy boxes from Active Ball support, while
+retaining the shared detector for ball inference. See ADR 0005.
+
+## Human Coach Review
+
+**有效事件 (Valid Event)**: An observed swing/hit accepted for event matching by the reviewer. Unknown stroke type does not invalidate an accepted event.
+
+**触球候选帧 (Candidate Contact Frame)**: A source-frame anchor used to inspect a possible contact; it is not human confirmation of impact.
+
+**人工触球确认 (Human Contact Confirmation)**: An explicit reviewer decision recorded separately from candidate frame alignment. Missing legacy decisions remain unreviewed.
+
+**人工教练意见 (Human Coach Review)**: A named reviewer’s observation, evidence and judgment on the system advice, separate from recomputed system rules and optional five-dimension practice ratings. See `docs/HUMAN_COACH_REVIEW_V3.md`.

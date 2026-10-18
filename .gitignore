@@ -89,6 +89,7 @@ models/*.onnx
 configs/*.bak_*
 data/analysis_results/control_panel/
 data/analysis_results/kinematic_validation/
+data/analysis_results/racket_pose_acceptance_*/
 
 # Large images (keep assets and selected analysis frames)
 *.jpg

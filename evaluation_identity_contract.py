@@ -59,6 +59,9 @@ def _normalize_row(row, label, model):
     for key in ('valid_hit', 'needs_review', 'count_correct'):
         if key in row and type(row[key]) is not bool:
             raise ValueError(f'{label}.{key}必须是布尔值')
+    if not model:
+        from manual_review_policy import validate_review_fields
+        validate_review_fields(result)
     quality = row.get('quality_flags')
     if quality is not None and not isinstance(quality, dict):
         raise ValueError(f'{label}.quality_flags必须是对象')

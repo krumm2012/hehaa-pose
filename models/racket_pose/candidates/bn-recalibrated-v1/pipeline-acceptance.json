@@ -1,0 +1,109 @@
+{
+  "schema": "tennis.racket-pipeline-acceptance.v1",
+  "model_sha256": "d4c3e527969f391e9808d522f0080026caa2844fb0897b8a1be5ddfcf500dc4e",
+  "backend": "coreml",
+  "compute_units": "ANE",
+  "profiles": {
+    "single": {
+      "passed": true,
+      "runs": 27,
+      "source_dimensions": [
+        2560,
+        1440
+      ],
+      "max_source_fps": 25.1,
+      "inference_stride": 2,
+      "imgsz": 960,
+      "confidence_threshold": 0.25,
+      "keypoint_threshold": 0.5,
+      "iou_threshold": 0.45,
+      "measurements": {
+        "runs": 27,
+        "passed_runs": 27,
+        "min_output_fps": 25.000721174649268,
+        "max_p95_ms": 55.971399999999996,
+        "max_drop_rate": 0.008000000000000007
+      },
+      "attempts": {
+        "1": {
+          "runs": 0,
+          "passed_runs": 0,
+          "min_output_fps": null,
+          "max_p95_ms": null,
+          "max_drop_rate": null
+        },
+        "2": {
+          "runs": 27,
+          "passed_runs": 27,
+          "min_output_fps": 25.000721174649268,
+          "max_p95_ms": 55.971399999999996,
+          "max_drop_rate": 0.008000000000000007
+        }
+      }
+    },
+    "dual": {
+      "passed": true,
+      "runs": 27,
+      "source_dimensions": [
+        2560,
+        1440
+      ],
+      "max_source_fps": 25.1,
+      "inference_stride": 3,
+      "imgsz": 960,
+      "confidence_threshold": 0.25,
+      "keypoint_threshold": 0.5,
+      "iou_threshold": 0.45,
+      "measurements": {
+        "runs": 27,
+        "passed_runs": 27,
+        "min_output_fps": 24.90813085098629,
+        "max_p95_ms": 98.41049999999997,
+        "max_drop_rate": 0.020000000000000018
+      },
+      "attempts": {
+        "1": {
+          "runs": 3,
+          "passed_runs": 0,
+          "min_output_fps": 19.360864072290394,
+          "max_p95_ms": 183.63984999999994,
+          "max_drop_rate": 0.24
+        },
+        "2": {
+          "runs": 27,
+          "passed_runs": 14,
+          "min_output_fps": 16.676599303777557,
+          "max_p95_ms": 232.94164999999998,
+          "max_drop_rate": 0.344
+        },
+        "3": {
+          "runs": 27,
+          "passed_runs": 27,
+          "min_output_fps": 24.90813085098629,
+          "max_p95_ms": 98.41049999999997,
+          "max_drop_rate": 0.020000000000000018
+        }
+      }
+    }
+  },
+  "soak_passed": true,
+  "evidence_root": "/Users/krum5539/Documents/tennis_analyzer/data/analysis_results/racket_pose_acceptance_20261018",
+  "environment": {
+    "executable": "/Users/krum5539/Documents/tennis_analyzer/venv_yolo26/bin/python",
+    "python": "3.9.6 (default, Dec  2 2025, 07:27:58) \n[Clang 17.0.0 (clang-1700.6.3.2)]",
+    "platform": "macOS-26.7.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "packages": {
+      "coremltools": "9.0",
+      "torch": "2.8.0",
+      "ultralytics": "8.4.8",
+      "opencv-python": "4.13.0.90",
+      "numpy": "2.0.2"
+    },
+    "hardware": [
+      "Apple M5",
+      "34359738368"
+    ]
+  },
+  "scope": "Local engineering regression with report refresh, clip encoding and local Coach. Optional voice/network failure tests are separate. Not independent accuracy or exposure-to-display latency."
+}

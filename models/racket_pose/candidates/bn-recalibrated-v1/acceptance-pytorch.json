@@ -1,0 +1,31 @@
+{
+  "schema": "tennis.racket-model-acceptance.v1",
+  "backend": "pytorch",
+  "compute_units": "CPU",
+  "model_sha256": "9d9c4e95df161c1bb0dc04f3b179a5d85e4c17eca1ba52a902219046c1e2eb0f",
+  "model_path": "/Users/krum5539/Documents/tennis_analyzer/models/racket_pose/candidates/bn-recalibrated-v1/bn_repaired_fp32.pt",
+  "numerical_valid": true,
+  "quality_gate_passed": true,
+  "quality": {
+    "original": {
+      "pose_map": 0.7837716652480803,
+      "pose_map50": 0.916373697089538,
+      "box_map": 0.6331230427918599,
+      "box_map50": 0.9422691920521987
+    },
+    "candidate": {
+      "pose_map": 0.7837629599293476,
+      "pose_map50": 0.916365687016211,
+      "box_map": 0.6336499397629006,
+      "box_map50": 0.9422677074516703
+    },
+    "candidate_all_bn": {
+      "pose_map": 0.7869044068242894,
+      "pose_map50": 0.931712511875403,
+      "box_map": 0.5773645859327289,
+      "box_map50": 0.9539463317584899
+    }
+  },
+  "accuracy_validated": false,
+  "scope": "Float32 reference raw outputs on 9 original first frames and the same 108-image correlated validation split. Per-frame runtime numerical gate remains mandatory."
+}

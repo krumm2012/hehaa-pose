@@ -686,7 +686,8 @@ class RealtimeSwingOutputManagerTests(unittest.TestCase):
         self.assertIn("headers['X-Manual-Review-Report']", html)
         self.assertIn("headers: await manualReviewRequestHeaders()", html)
         self.assertIn("实时 Coach（原始）", html)
-        self.assertIn("人工校准 Coach", html)
+        self.assertIn("人工边界重算（系统规则）", html)
+        self.assertIn("人工教练意见", html)
         self.assertTrue(clip_exists)
         self.assertEqual(clip_frames, 5)
 
@@ -734,6 +735,40 @@ class RealtimeSwingOutputManagerTests(unittest.TestCase):
         self.assertEqual(payload["events"][0]["clip_status"], "partial")
         self.assertEqual(payload["events"][0]["clip_missing_frame_count"], 2)
         self.assertEqual(payload["events"][0]["clip_missing_frames"], [3, 5])
+
+
+class OwnedOutputPayloadTests(unittest.TestCase):
+    def test_internal_output_can_share_frozen_history_while_public_snapshot_stays_independent(self):
+        engine=RealtimeSwingEventEngine(fps=25)
+        event={'event_id':1,'stroke_type':'Forehand','evidence':{'value':[1]}}
+        trace={'frame':7,'evidence':{'value':[2]}}
+        engine._events=[event];engine._frame_trace=[trace]
+        engine.enable_owned_output()
+        internal=engine.snapshot_for_output()
+        self.assertIs(internal['frame_trace'][0],trace)
+        public=engine.snapshot()
+        public['events'][0]['evidence']['value'][0]=99
+        public['frame_trace'][0]['evidence']['value'][0]=99
+        self.assertEqual(event['evidence']['value'],[1])
+        self.assertEqual(trace['evidence']['value'],[2])
+
+    def test_owned_publication_does_not_mutate_engine_event_or_copy_its_large_evidence(self):
+        from copy import deepcopy
+        with TemporaryDirectory() as directory:
+            root=Path(directory)
+            event={'event_id':1,'stroke_type':'Forehand','start_frame':0,'peak_frame':1,'contact_frame':1,'end_frame':2,
+                   'confidence':.9,'timing':{},'coach_advices':[],'evidence':{'nested':list(range(1000))}}
+            before=deepcopy(event)
+            manager=RealtimeSwingOutputManager(output_json=str(root/'events.json'),output_html=str(root/'report.html'),
+                clips_dir=str(root/'clips'),fps=25,frame_size=(64,48),buffer_frames=4,clip_workers=1)
+            manager.publish_owned_events([event],{'summary':{},'events':[],'frame_trace':[]})
+            self.assertIs(manager._events[0]['evidence'],event['evidence'])
+            manager.update_event(1,{'evidence':{'another':True}})
+            manager.close()
+            self.assertEqual(event,before)
+            output=json.loads((root/'events.json').read_text())
+            self.assertEqual(len(output['events']),1)
+            self.assertTrue(output['events'][0]['evidence']['another'])
 
 
 if __name__ == "__main__":

@@ -25,8 +25,8 @@
     {{ mirror_depth_block | safe }}
     <section id="live-coach-feed" class="live-coach-feed" aria-live="polite"><h2>实时 Coach</h2><p>等待第一条建议…</p></section>
     <section id="annotation-workspace" class="annotation-workspace">
-      <h2>挥拍边界辅助复核 V2</h2>
-      <p class="summary">可修正事件边界；系统漏检的挥拍请单独补录。标注会保存在当前浏览器，页面刷新后仍保留。</p>
+      <h2>人工 Coach 审核 · V3</h2>
+      <p class="summary">按事件有效性 → 动作类型 → 边界与触球 → 教练建议审核。Unclear 不会否定有效事件；触球候选帧不等于已确认触球。修改先存浏览器草稿，点击评估后保存到会话。</p>
       <label class="timeline-review"><input id="timeline-review-complete" type="checkbox"> 已完整检查整段视频（完成后才计算 Precision / Recall / F1）</label>
       <p id="annotation-readiness" class="annotation-readiness"></p>
       <div class="annotation-actions">
@@ -38,19 +38,19 @@
     </section>
     <section id="manual-review-workflow" class="review-workflow">
       <div class="review-workflow-head">
-        <div><h2>人工校准闭环</h2><p>导入人工标注，生成评估，并对比实时 Coach 与人工边界重算结果。</p></div>
+        <div><h2>审核提交与规则重算</h2><p>事件对照、触球确认和教练评分分别记录；人工边界重算的规则建议不代表教练意见。</p></div>
         <strong id="review-workflow-state" class="review-workflow-state" data-state="waiting">等待标注</strong>
       </div>
       <div class="workflow-track" aria-label="人工校准流程">
         <span id="review-stage-import" data-active="true">导入标注</span>
         <span id="review-stage-validate">完整性校验</span>
         <span id="review-stage-evaluate">生成评估</span>
-        <span id="review-stage-coach">重算 Coach</span>
+        <span id="review-stage-coach">规则重算与人工意见</span>
       </div>
       <div class="review-actions">
         <label class="review-file">选择人工标注 JSON<input id="manual-review-file" type="file" accept="application/json,.json"></label>
         <button id="evaluate-imported-review" type="button" disabled>评估导入标注</button>
-        <button id="evaluate-current-review" class="secondary" type="button">评估页面当前标注</button>
+        <button id="evaluate-current-review" class="secondary" type="button">保存并评估当前审核</button>
       </div>
       <p id="manual-review-message" class="review-message">使用本地 workflow 服务打开本页后，可生成持久化评估与人工 Coach。</p>
       <div id="manual-review-metrics" class="review-metrics" hidden></div>

@@ -8,12 +8,30 @@ save_video: true                               # 是否保存结果视频
 
 # 🆕 使用 YOLO26-pose 模型 (Core ML 格式)
 yolo_pose_model_path: "yolo26m-pose.mlpackage"
-pose_compute_units: "ANE"                      # 👈 锁定在 ANE (Neural Engine)
+pose_compute_units: "ALL"                      # 显式沿用原双视角实际后端；ANE 独占对照未带来收益
 
 tracknet_model_path: "models/tracknetv2_weights.pth"
 racket_yolo_model_path: "models/yolov8n.pt"
 
 # ==================== 🎯 YOLO26n 统一检测配置 ====================
+racket_pose:
+  mode: legacy  # 启动方案 legacy / exclusive（七点独占）；shadow / active 保留兼容诊断
+  # 原始交付模型有非有限 BN 统计及 FP16 解码溢出；保留原包，使用独立验收候选。
+  model_path: models/racket_pose/candidates/bn-recalibrated-v1/racket_pose_validated_fp16.mlpackage
+  acceptance_path: models/racket_pose/candidates/bn-recalibrated-v1/acceptance-release.json
+  runtime_acceptance_path: models/racket_pose/candidates/bn-recalibrated-v1/pipeline-acceptance.json
+  acceptance_run: false  # 仅验收脚本显式开启；日常增强须匹配三轮整链路验收配置
+  use_accepted_schedule: true  # 使用对应单/双视角已通过验收的最高推理频率
+  backend: coreml
+  compute_units: ANE
+  imgsz: 960
+  confidence_threshold: 0.25
+  keypoint_threshold: 0.5
+  inference_stride: 1
+  join_ms: 8
+  timeout_seconds: 10
+  # active 仍会核对模型内容哈希、后端与验收结果；默认 legacy 不加载该模型。
+
 unified_detection:
   enabled: true                                # 启用统一检测（替代 HSV + YOLOv8n）
   model_path: "models/detectors/tennis-yolo26n-exp004-960-fp16/model.mlpackage"
@@ -364,6 +382,8 @@ performance_monitoring:
 
 # ==================== 🚄 Pipeline性能开关 ====================
 pipeline_perf:
+  processing_mode: buffered              # 默认连续处理；启动预热后逐帧，不丢旧帧/不采样新球拍
+  async_display_enabled: true             # 独立显示进程；有界背压，逐帧提交，正常结束排空
   inference_workers: 8                    # 推理线程池大小；当前每帧最多并行检测和姿态两个任务
   limit_reader_fps: true                  # Reader按原视频FPS节流（false可提升离线吞吐）
   live_limit_reader_fps: true             # 直播突发码流按源FPS整形，避免批量读帧导致过度丢帧

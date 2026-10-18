@@ -226,6 +226,8 @@ class ControlSettings:
     display_origin_y: int
     algo2_dual_view: bool = False
     mapped_stream_id: str = ""
+    racket_pose_mode: str = "legacy"
+    processing_mode: str = "buffered"
 
     @classmethod
     def from_payload(cls, payload: Dict[str, Any]) -> "ControlSettings":
@@ -259,10 +261,22 @@ class ControlSettings:
         roi_enabled = _bool(payload, "roi_enabled", True)
         if stream_id == LOCAL_VIDEO_ID and not mapped_stream_id:
             roi_enabled = False
+        racket_pose_mode = str(payload.get('racket_pose_mode') or 'legacy')
+        processing_mode = str(payload.get('processing_mode') or 'buffered')
+        if racket_pose_mode not in ('legacy', 'exclusive', 'shadow', 'active'):
+            raise ValueError('无效的球拍模式')
+        if processing_mode not in ('auto', 'realtime', 'buffered', 'offline'):
+            raise ValueError('无效的处理模式')
+        if racket_pose_mode == 'exclusive' and processing_mode == 'realtime':
+            raise ValueError('新版七点球拍方案要求连续处理或完整分析，不支持丢帧预览')
+        if processing_mode == 'offline' and stream_id != LOCAL_VIDEO_ID:
+            raise ValueError('完整分析模式仅支持本地视频')
 
         return cls(
             stream_id=stream_id,
             mapped_stream_id=mapped_stream_id,
+            racket_pose_mode=racket_pose_mode,
+            processing_mode=processing_mode,
             output_dir=output_dir,
             session_name=session_name,
             output_fps=_number(payload, "output_fps", 25, 1, 60),
@@ -518,6 +532,8 @@ class LocalPipelineController:
                 "show_roi_fill": False,
                 "show_roi_points": True,
                 "live_mode": True,
+                "racket_pose_mode": "legacy",
+                "processing_mode": "buffered",
                 "save_video": False,
                 "realtime_swing_events": True,
                 "realtime_frame_output": bool(
@@ -1316,6 +1332,9 @@ class LocalPipelineController:
             "--inference-workers",
             str(settings.inference_workers),
         ]
+        command.extend(['--racket-pose-mode', settings.racket_pose_mode])
+        if settings.processing_mode != 'auto':
+            command.extend(['--processing-mode', settings.processing_mode])
         target_stream_id = (
             settings.mapped_stream_id
             if settings.stream_id == LOCAL_VIDEO_ID
@@ -1331,7 +1350,7 @@ class LocalPipelineController:
             command.append("--algo2-dual-view")
         else:
             command.append("--no-dual-view")
-        if settings.live_mode:
+        if settings.live_mode and settings.processing_mode in ('auto', 'realtime'):
             command.extend(["--live-mode", "--drop-stale-frames"])
         if not settings.save_video:
             command.append("--no-save-video")

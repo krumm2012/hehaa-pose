@@ -13,7 +13,7 @@ class ReportFrontendIdentityTests(unittest.TestCase):
         cls.pages = rendered_pages()
 
     def execute(self, surface, names, assertions):
-        helpers = ['sourceFrameValue', 'sourceIdentityAttribute', 'annotationIdentity',
+        helpers = ['validateHumanReview','applyHumanReview','humanReviewFromCard','sourceFrameValue', 'sourceIdentityAttribute', 'annotationIdentity',
                    'annotationFrames', 'validateAnnotationFrames', 'validateAnnotationPayload',
                    'prepareAnnotationImport', 'showAnnotationError']
         functions = '\n'.join(function_source(self.pages[surface], name)

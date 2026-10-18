@@ -126,6 +126,7 @@ class YOLO26nUnifiedDetector:
         coordinate_offset=(0, 0),
         full_frame_size=None,
         retain_racket_candidates=False,
+        racket_source='legacy',
     ):
         """
         统一检测球和球拍
@@ -136,6 +137,8 @@ class YOLO26nUnifiedDetector:
         Returns:
             tuple: (ball_detections, racket_detections, inference_time)
         """
+        if racket_source not in ('legacy','external'):
+            raise ValueError('Unsupported racket source')
         # 保存原始尺寸
         self.original_height, self.original_width = frame.shape[:2]
         self.tracking_frame_width = (
@@ -200,6 +203,16 @@ class YOLO26nUnifiedDetector:
                 detection_type="ball",
             )
 
+        if racket_source == 'external':
+            # Keep the shared inference for balls, but do not use legacy racket
+            # boxes even as ball-selection support. Finalize after the pose worker.
+            self.last_racket_diagnostics={
+                'final_decision':'ignored_by_exclusive_startup_profile',
+                'ignored_legacy_candidates':len(racket_detections),
+                'candidate_source':'racket_pose_model',
+            }
+            return ball_detections, [], inference_time
+
         # 在已有候选中选择真实运动球/主拍；不增加模型推理，只做轻量距离打分。
         strong_rackets = [r for r in racket_detections if r.get("confidence", 0) >= self.racket_conf_threshold]
         ball_detections = self._filter_static_balls(ball_detections, strong_rackets)
@@ -217,6 +230,15 @@ class YOLO26nUnifiedDetector:
             }
         
         return ball_detections, racket_detections, inference_time
+
+    def finalize_external_ball_candidates(self, balls, rackets, *, confidence_threshold):
+        """Run stateful ball selection once, supported only by current new poses."""
+        support=[r for r in rackets if r.get('source')=='racket_pose_model'
+                 and r.get('confidence',0)>=confidence_threshold]
+        result=self._filter_static_balls(balls,support)
+        self.last_ball_diagnostics['model_candidates']=dict(self.last_parse_diagnostics.get('ball') or {})
+        self.last_ball_diagnostics['racket_support_source']='racket_pose_model'
+        return result
 
     @staticmethod
     def _offset_detections(detections, coordinate_offset):

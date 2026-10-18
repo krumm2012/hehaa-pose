@@ -697,7 +697,7 @@ def _session_dashboard_html(dashboard: Dict) -> str:
             f"{int(dashboard.get('event_count') or 0)} 次挥拍",
         ),
         (
-            "触球证据",
+            "模型触球候选覆盖",
             _dashboard_number(
                 (quality.get("contact_supported_ratio") or 0.0) * 100,
                 0,

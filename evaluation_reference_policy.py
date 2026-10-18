@@ -47,7 +47,8 @@ def comparison_metric_rows(evaluation):
               ('事件Recall（对照）', summary.get('recall')),
               ('事件F1（对照）', summary.get('f1')),
               ('类型匹配比例', summary.get('stroke_type_match_ratio', summary.get('stroke_type_accuracy'))),
-              ('触球帧容差匹配比例', summary.get('contact_within_tolerance_ratio', summary.get('contact_accuracy')))]
+              ('候选帧对照（非触球确认）', summary.get('contact_within_tolerance_ratio', summary.get('contact_accuracy'))),
+              ('已确认触球帧匹配', summary.get('confirmed_contact_within_tolerance_ratio'))]
     rows = []
     for label, value in values:
         number = finite_number(value)
@@ -71,7 +72,8 @@ def reference_metric_script():
         ['事件Recall（对照）', summary.recall],
         ['事件F1（对照）', summary.f1],
         ['类型匹配比例', ratio('stroke_type_match_ratio','stroke_type_accuracy')],
-        ['触球帧容差匹配比例', ratio('contact_within_tolerance_ratio','contact_accuracy')],
+        ['候选帧对照（非触球确认）', ratio('contact_within_tolerance_ratio','contact_accuracy')],
+        ['已确认触球帧匹配', summary.confirmed_contact_within_tolerance_ratio],
       ].map(([label,value]) => [label, complete ? percent(value) : '待复核']);
     }
     function reviewReferenceNote(evaluation) {

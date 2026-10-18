@@ -5,7 +5,7 @@
       "realtime_swing_events", "realtime_coach", "coach_tts", "coach_tts_playback", "deepseek_coach",
       "realtime_frame_output", "evidence_bundle", "inference_workers", "display_origin_x",
       "display_origin_y", "live_mode", "save_video", "hdmi_output", "algo2_dual_view",
-      "output_dir", "session_name"
+      "output_dir", "session_name", "racket_pose_mode", "processing_mode"
     ];
     const checkboxIds = new Set([
       "roi_enabled", "show_roi_boundary", "show_roi_fill", "show_roi_points",
@@ -98,6 +98,13 @@
     }
 
     function updateStreamMeta() {
+      const exclusive = $("racket_pose_mode")?.value === "exclusive";
+      const processing = $("processing_mode");
+      if (processing) {
+        const freshness = processing.querySelector('option[value="realtime"]');
+        if (freshness) freshness.disabled = exclusive;
+        if (exclusive && processing.value === "realtime") processing.value = "buffered";
+      }
       const video = $("stream_id").value === "local_video";
       $("local-video-field").hidden = !video;
       $("username").disabled = video;
@@ -109,7 +116,7 @@
       $("password").placeholder = configured ? "当前通道已配置，无需重复输入" : "不在浏览器中保存";
       $("custom-stream-field").hidden = !custom;
       $("custom_stream_source").required = custom;
-      $("live_mode").disabled = video;
+      $("live_mode").disabled = video || ["buffered", "offline"].includes($("processing_mode")?.value);
       if (video) {
         const mappedId = $("mapped_stream_id") ? $("mapped_stream_id").value : "";
         const mappedStream = mappedId ? state.streams.find(item => item.stream_id === mappedId) : null;
@@ -121,7 +128,9 @@
           ).join("") || "<span>已绑定机位，但该机位未配置有效ROI</span>";
         } else {
           $("stream-meta").textContent = "本地视频 · " + (state.videoName || "请先选择视频文件");
-          $("point-list").textContent = "全画面分析 · 未绑定机位 ROI · 不启用直播丢帧";
+          $("point-list").textContent = $("processing_mode")?.value === "realtime"
+            ? "全画面实时预览 · 未绑定机位 ROI · 跟不上时跳过旧帧"
+            : "全画面连续处理 · 未绑定机位 ROI · 逐帧处理，积压会增加延迟";
         }
         updateRoiBoundaryEditor(mappedStream);
         savePreset();
@@ -456,8 +465,14 @@
           if (saved) {
             if (saved.stream_id === CUSTOM_STREAM_ID) delete saved.stream_id;
             if (saved.stream_id !== "local_video") delete saved.mapped_stream_id;
+            // Migrate the prior implicit dropping default once; later explicit
+            // mode selections continue to persist in the same control panel.
+            if (!localStorage.getItem("tennis-continuous-default-v1")) {
+              saved.processing_mode = "buffered";
+            }
             applyValues(saved);
           }
+          localStorage.setItem("tennis-continuous-default-v1", "1");
         } catch (_) {}
         updateStreamMeta();
         const filterValidBtn = $("filter-valid-btn");
@@ -531,6 +546,10 @@
       if (stp) stp.addEventListener("click", stopAnalysis);
       const sid = $("stream_id");
       if (sid) sid.addEventListener("change", updateStreamMeta);
+      const processingMode = $("processing_mode");
+      if (processingMode) processingMode.addEventListener("change", updateStreamMeta);
+      const racketMode = $("racket_pose_mode");
+      if (racketMode) racketMode.addEventListener("change", updateStreamMeta);
       const css = $("custom_stream_source");
       if (css) css.addEventListener("input", updateStreamMeta);
       const sf = $("settings-form");

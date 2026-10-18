@@ -105,6 +105,8 @@ class MultiprocessPipeline:
         algo2_dual_view=False,
         algo2_config=None,
         stream_id=None,
+        racket_pose_mode=None,
+        processing_mode=None,
     ):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
@@ -146,6 +148,37 @@ class MultiprocessPipeline:
         perf_cfg = self.config.setdefault('pipeline_perf', {})
         self.live_mode = bool(live_mode or perf_cfg.get('live_mode', False))
         self.drop_stale_frames = bool(drop_stale_frames or perf_cfg.get('drop_stale_frames', False))
+        requested_processing = processing_mode or perf_cfg.get('processing_mode', 'auto')
+        if requested_processing not in ('auto', 'realtime', 'buffered', 'offline'):
+            raise ValueError('processing_mode must be auto, realtime, buffered or offline')
+        self.lossless_realtime = requested_processing == 'buffered'
+        if self.lossless_realtime:
+            self.live_mode = True
+            self.drop_stale_frames = False
+        elif requested_processing == 'realtime':
+            self.live_mode = True
+            self.drop_stale_frames = True
+        elif requested_processing == 'offline':
+            self.live_mode = False
+            self.drop_stale_frames = False
+            perf_cfg['limit_reader_fps'] = False
+        self.processing_mode = 'buffered' if self.lossless_realtime else ('realtime' if self.live_mode else 'offline')
+        from racket_pose_detector import pose_config
+        racket_cfg = dict(self.config.get('racket_pose') or {})
+        if racket_pose_mode is not None:
+            racket_cfg['mode'] = racket_pose_mode
+            racket_cfg['selection_policy'] = 'exclusive' if racket_pose_mode=='exclusive' else 'mixed'
+        self.racket_pose_config = pose_config(racket_cfg)
+        from racket_source_policy import is_exclusive
+        self.exclusive_racket_source = is_exclusive(self.racket_pose_config)
+        if self.exclusive_racket_source and self.processing_mode=='realtime':
+            raise ValueError('新版七点独占方案要求 buffered 或 offline 逐帧处理')
+        print('🎾 [Startup] 球拍方案: '+('新版七点独占，禁止旧拍框回退' if self.exclusive_racket_source
+              else ('旧版' if self.racket_pose_config['mode']=='legacy' else '兼容诊断 '+self.racket_pose_config['mode'])))
+        self.config['racket_pose'] = dict(self.racket_pose_config)
+        if requested_processing != 'auto':
+            perf_cfg['processing_mode'] = requested_processing
+        self.racket_pose_journal = None
 
         self.algo2_dual_view = bool(
             algo2_dual_view
@@ -163,7 +196,7 @@ class MultiprocessPipeline:
             realtime_coach = True
 
         if self.live_mode:
-            self.drop_stale_frames = True
+            self.drop_stale_frames = not self.lossless_realtime
             perf_cfg['dual_view_enabled'] = False
             perf_cfg['draw_metrics_text'] = False
             perf_cfg['collect_frame_results'] = False
@@ -443,6 +476,24 @@ class MultiprocessPipeline:
                 f"⚠️ [ROI] 未启用裁剪: {self.roi_profile.reason}"
                 f" | {self.roi_profile.source}"
             )
+        racket_model_metadata = {}
+        if self.racket_pose_config['mode'] != 'legacy':
+            from racket_pose_detector import model_digest
+            try:
+                racket_model_digest = model_digest(self.racket_pose_config['model_path'])
+            except OSError:
+                # Optional-model failure is handled by the isolated runtime, not Reader setup.
+                racket_model_digest = None
+            racket_model_metadata = {'racket_pose': {
+                'path': self.racket_pose_config['model_path'],
+                'sha256': racket_model_digest,
+                'backend': self.racket_pose_config['backend'],
+                'compute_units': self.racket_pose_config['compute_units'],
+                'mode': self.racket_pose_config['mode'],
+                'selection_policy': self.racket_pose_config.get('selection_policy','mixed'),
+                'selection_policy_version': self.racket_pose_config.get('selection_policy_version'),
+            }}
+            self.racket_pose_journal = str(Path(self.config['video_output_path']).with_suffix('')) + '_racket_pose.jsonl'
         self.session_metadata = build_session_metadata(
             session_id=self.session_id,
             source=self.video_path,
@@ -456,6 +507,7 @@ class MultiprocessPipeline:
                     or ""
                 ),
                 "pose": str(self.config.get("yolo_pose_model_path") or ""),
+                **racket_model_metadata,
             },
         )
         self.ground_reference = None
@@ -502,6 +554,7 @@ class MultiprocessPipeline:
 
         self.stop_event = mp.Event()
         self.inf_ready = mp.Event()
+        self.analyzer_ready = mp.Event()
         self.rd_done = mp.Event()
         self.inf_done = mp.Event()
         self.dropped_stale_frames = mp.Value('i', 0)
@@ -532,6 +585,9 @@ class MultiprocessPipeline:
             self.rd_done.set()
             return
 
+        if getattr(self, 'lossless_realtime', False):
+            while not self.analyzer_ready.wait(timeout=.25):
+                if self.stop_event.is_set():self.rd_done.set();return
         cap = self._open_capture()
         shms = [shared_memory.SharedMemory(name=name) for name in self.shm_names]
         shared_frames = [
@@ -546,7 +602,7 @@ class MultiprocessPipeline:
             limit_reader_fps = bool(perf_cfg.get('limit_reader_fps', True))
         max_lag_intervals = (
             float(perf_cfg.get('live_reader_max_lag_frames', 1.0))
-            if self.live_mode
+            if self.live_mode and not getattr(self, 'lossless_realtime', False)
             else None
         )
         pacer = DeadlinePacer(
@@ -558,11 +614,14 @@ class MultiprocessPipeline:
         if self.live_mode:
             print(
                 f"⚡ [Reader] 直播缓冲槽: {self.shm_num} | "
-                f"推理邮箱: 1 | 时间线节流: {'开启' if limit_reader_fps else '关闭'}"
+                f"推理邮箱: {1 if self.drop_stale_frames else self.shm_num} | "
+                f"时间线节流: {'开启' if limit_reader_fps else '关闭'} | "
+                f"{'允许丢旧帧' if self.drop_stale_frames else '连续处理，满槽等待'}"
             )
         elif limit_reader_fps:
             print(f"⏱️ [Reader] 绝对时间线节流: {self.fps:.2f} FPS")
 
+        source_schedule_start = time.perf_counter()
         try:
             while not self.stop_event.is_set():
                 if self.max_frames and frame_clock.processed_count >= self.max_frames:
@@ -589,6 +648,13 @@ class MultiprocessPipeline:
                                 frame_clock.dropped()
                                 with self.dropped_stale_frames.get_lock():
                                     self.dropped_stale_frames.value += 1
+                                # Discarded frames still consume source time. Without
+                                # pacing, one transient stall fast-forwards local video.
+                                delay = pacer.next_delay()
+                                if delay > 0 and self.stop_event.wait(delay):
+                                    break
+                            elif not self.is_stream_source:
+                                break
                             continue
                         print("⚠️ [Reader] 延迟积压，等待消费...")
                         continue
@@ -624,6 +690,7 @@ class MultiprocessPipeline:
                     'slot': slot,
                     'captured_at': captured_at,
                     'captured_at_unix_ns': captured_at_unix_ns,
+                    'reader_schedule_lag_ms': max(0., (captured_at-source_schedule_start-source_frame_id/self.fps)*1000) if self.fps else None,
                     'source_time': source_time,
                 })
 
@@ -646,9 +713,11 @@ class MultiprocessPipeline:
         ignore_child_interrupts()
         print("🚀 [Inference] 加载 Core ML 并行架构...")
         from concurrent.futures import ThreadPoolExecutor
+        from performance_metrics import timed_call
         shms = []
         executor = None
         dual_pose_estimator = None
+        racket_pose_runtime = None
         try:
             from detection_frame_context import DetectionFrameContext
             from pose_estimator_yolo26 import PoseEstimatorYOLO26
@@ -696,8 +765,9 @@ class MultiprocessPipeline:
                     model_path=self.config.get('yolo_pose_model_path'),
                     dominant_hand=self.swing_analysis_options.get('dominant_hand', 'right'),
                     backend='auto',
+                    compute_units=self.config.get('pose_compute_units', 'ALL'),
                 )
-                print("🚀 [Inference] 算法 2.0 虚拟双机位 CoreML ANE 姿态自愈引擎已就绪")
+                print(f"🚀 [Inference] 双视角姿态引擎就绪 | 后端: {dual_pose_estimator.backend} | 请求计算单元: {dual_pose_estimator.compute_units}")
             else:
                 pose_estimator = PoseEstimatorYOLO26(
                     self.config['yolo_pose_model_path'],
@@ -727,6 +797,21 @@ class MultiprocessPipeline:
                 )
             if self.drop_stale_frames:
                 print("⚡ [Inference] 直播新鲜度模式：Reader只保留最新待推理帧")
+            if self.racket_pose_config['mode'] != 'legacy':
+                from racket_pose_runtime import RacketPoseRuntime
+                racket_pose_runtime = RacketPoseRuntime(
+                    {**self.racket_pose_config,'pipeline_profile':'dual' if self.algo2_dual_view else 'single',
+                     'source_dimensions':[self.width,self.height],'source_fps':self.fps},
+                    self.processing_mode, self.racket_pose_journal,
+                )
+                if racket_pose_runtime.disabled_reason:
+                    print('⚠️ [RacketPose] 旁路停用，保留旧链路: ' + racket_pose_runtime.disabled_reason)
+            if self.lossless_realtime:
+                from pipeline_startup import warm_coreml_wrappers
+                wrappers = ([detector, dual_pose_estimator.model_front, dual_pose_estimator.model_back]
+                            if dual_pose_estimator is not None else [detector, pose_estimator])
+                warming = warm_coreml_wrappers(wrappers)
+                print(f'🔥 [Inference] 源帧开始前完成 Core ML 内核预热: {warming} ms')
             self.inf_ready.set()
 
             from racket_temporal_tracker import RacketTemporalTracker
@@ -751,9 +836,16 @@ class MultiprocessPipeline:
                 slot = task['slot']
                 frame_ptr = shared_frames[slot]
                 inference_started_at_unix_ns = time.time_ns()
+                dispatch_started = time.perf_counter()
                 frame_context = None
                 detection_frame = frame_ptr
                 pose_detection_frame = frame_ptr
+                pose_submitted = (
+                    racket_pose_runtime.submit(frame_ptr, task['idx'], task.get('source_time'))
+                    if racket_pose_runtime is not None else False
+                )
+                racket_pose_observation = None
+                racket_dispatch_ms = (time.perf_counter() - dispatch_started) * 1000
                 if roi_manager is not None:
                     frame_context = DetectionFrameContext.build(
                         task['idx'],
@@ -767,16 +859,50 @@ class MultiprocessPipeline:
                 if self.algo2_dual_view and dual_view_mgr is not None and dual_pose_estimator is not None:
                     dual_frame = dual_view_mgr.split_frame(frame_ptr, frame_id=task['idx'])
                     f1 = executor.submit(
+                        timed_call,
                         detector.detect_unified,
                         frame_ptr,
                         (0, 0),
                         (self.width, self.height),
                         retain_racket_candidates=racket_tracker is not None,
+                        racket_source='external' if self.exclusive_racket_source else 'legacy',
                     )
-                    f2 = executor.submit(dual_pose_estimator.estimate_dual_pose, dual_frame)
+                    f2 = executor.submit(timed_call, dual_pose_estimator.estimate_dual_pose, dual_frame)
 
-                    ball, raw_rackets, _ = f1.result()
+                    (ball, raw_rackets, _), legacy_detection_ms = f1.result()
                     from ball_observation_contract import stamp_ball_detections
+                    pose_res, human_pose_ms = f2.result()
+                    join_started = time.perf_counter()
+                    legacy_rackets = list(raw_rackets or [])
+                    if racket_pose_runtime is not None:
+                        racket_pose_observation = racket_pose_runtime.resolve(task['idx'], pose_submitted)
+                        if self.racket_pose_config['mode'] == 'active' and not self.exclusive_racket_source:
+                            from racket_pose_detector import select_pose_candidate
+                            wrists = [
+                                {'x': kp.x, 'y': kp.y, 'observed': kp.observed,
+                                 'source_frame_id': kp.source_frame_id, 'confidence': kp.conf}
+                                for name, kp in pose_res.front_pose_orig.items() if 'wrist' in name
+                            ]
+                            selected_pose = select_pose_candidate(
+                                racket_pose_observation, task['idx'], wrists,
+                                (self.width, self.height), {**self.racket_pose_config,'association_view':'front'},
+                            )
+                            if selected_pose is not None:
+                                raw_rackets = [selected_pose] + list(raw_rackets or [])
+                    racket_join_ms = (time.perf_counter() - join_started) * 1000
+                    association_started = time.perf_counter()
+                    if self.exclusive_racket_source:
+                        from racket_source_policy import associated_pose_candidates
+                        wrists_by_view = {
+                            view: [{'x':kp.x,'y':kp.y,'observed':kp.observed,
+                                    'source_frame_id':kp.source_frame_id,'confidence':kp.conf}
+                                   for name,kp in points.items() if 'wrist' in name]
+                            for view,points in (('front',pose_res.front_pose_orig),('back',pose_res.back_pose_orig))
+                        }
+                        raw_rackets = associated_pose_candidates(racket_pose_observation, task['idx'],
+                            wrists_by_view, (self.width,self.height), self.racket_pose_config)
+                        ball = detector.finalize_external_ball_candidates(
+                            ball, raw_rackets, confidence_threshold=self.racket_pose_config['confidence_threshold'])
                     stamp_ball_detections(ball, task['idx'])
                     # 双重保障：排除镜面反射球与ROI范围外球，防止镜中虚像被锁定追踪
                     if ball:
@@ -794,7 +920,6 @@ class MultiprocessPipeline:
                         ball = valid_balls
                     ball_diagnostics = detector.get_last_ball_diagnostics()
                     racket_diagnostics = detector.get_last_racket_diagnostics()
-                    pose_res = f2.result()
                     # Both futures already finished: associate existing observations without inference.
                     if ball and ball[0].get("position") is not None:
                         observed_front = {k:v for k,v in pose_res.front_pose_local.items() if v.observed}
@@ -819,6 +944,9 @@ class MultiprocessPipeline:
                         ground_calibration=self.ground_reference.calibration if self.ground_reference else None,
                     )
                     racket = racket_res.rackets
+                    if self.exclusive_racket_source:
+                        from racket_source_policy import validate_exclusive_output
+                        validate_exclusive_output(racket, task['idx'])
                     racket_box = racket_res.racket_box
                     back_racket_box = racket_res.back_racket_box
                     is_racket_recovered = racket_res.is_racket_recovered
@@ -880,6 +1008,13 @@ class MultiprocessPipeline:
                         'front_crop_bbox': dual_frame.front_info.bbox_orig if dual_frame is not None else None,
                         'ball_diagnostics': ball_diagnostics,
                         'racket_diagnostics': racket_diagnostics,
+                        'racket_pose': racket_pose_observation,
+                        'legacy_rackets': legacy_rackets,
+                        'inference_stage_ms': {'legacy_detection_ms': legacy_detection_ms,
+                            'human_pose_ms': human_pose_ms, 'racket_dispatch_ms': racket_dispatch_ms,
+                            'racket_join_ms': racket_join_ms,
+                            'association_ms': (time.perf_counter() - association_started) * 1000},
+                        'reader_schedule_lag_ms': task.get('reader_schedule_lag_ms'),
                         'captured_at': task.get('captured_at'),
                         'captured_at_unix_ns': task.get('captured_at_unix_ns'),
                         'source_time': task.get('source_time'),
@@ -889,19 +1024,18 @@ class MultiprocessPipeline:
                 else:
                     # 使用 ThreadPool 同时驱动检测和姿态模型。
                     f1 = executor.submit(
+                        timed_call,
                         detector.detect_unified,
                         detection_frame,
                         frame_context.roi_offset if frame_context is not None else (0, 0),
                         (self.width, self.height),
+                        racket_source='external' if self.exclusive_racket_source else 'legacy',
                     )
-                    f2 = executor.submit(pose_estimator.get_keypoints, pose_detection_frame)
+                    f2 = executor.submit(timed_call, pose_estimator.get_keypoints, pose_detection_frame)
 
-                    ball, racket, _ = f1.result()
+                    (ball, racket, _), legacy_detection_ms = f1.result()
                     from ball_observation_contract import stamp_ball_detections
-                    stamp_ball_detections(ball, task['idx'])
-                    ball_diagnostics = detector.get_last_ball_diagnostics()
-                    racket_diagnostics = detector.get_last_racket_diagnostics()
-                    pose = f2.result()
+                    pose, human_pose_ms = f2.result()
                     if frame_context is not None:
                         pose, ball, racket = frame_context.adjust_detections(
                             pose,
@@ -909,6 +1043,36 @@ class MultiprocessPipeline:
                             racket,
                             object_coordinates_are_full_frame=True,
                         )
+                    legacy_rackets = list(racket or [])
+                    join_started = time.perf_counter()
+                    if racket_pose_runtime is not None:
+                        racket_pose_observation = racket_pose_runtime.resolve(task['idx'], pose_submitted)
+                        if self.racket_pose_config['mode'] == 'active' and not self.exclusive_racket_source:
+                            from racket_pose_detector import select_pose_candidate
+                            wrists = [value for person in (pose or []) for name, value in person.items() if 'wrist' in name]
+                            selected_pose = select_pose_candidate(
+                                racket_pose_observation, task['idx'], wrists,
+                                (self.width, self.height), self.racket_pose_config,
+                            )
+                            if selected_pose is not None:
+                                racket = [selected_pose] + list(racket or [])
+                    if self.exclusive_racket_source:
+                        from racket_source_policy import current_pose_candidates
+                        from racket_pose_detector import select_pose_candidate
+                        fresh = current_pose_candidates(racket_pose_observation, task['idx'])
+                        wrists = [value for person in (pose or []) for name, value in person.items() if 'wrist' in name]
+                        selected_pose = select_pose_candidate(
+                            {**racket_pose_observation, 'candidates': fresh}, task['idx'], wrists,
+                            (self.width, self.height), self.racket_pose_config)
+                        racket = [selected_pose] if selected_pose is not None else []
+                        ball = detector.finalize_external_ball_candidates(
+                            ball, racket, confidence_threshold=self.racket_pose_config['confidence_threshold'])
+                    stamp_ball_detections(ball, task['idx'])
+                    ball_diagnostics = detector.get_last_ball_diagnostics()
+                    racket_diagnostics = detector.get_last_racket_diagnostics()
+                    if self.exclusive_racket_source:
+                        from racket_source_policy import validate_exclusive_output
+                        validate_exclusive_output(racket, task['idx'])
                     inference_completed_at_unix_ns = time.time_ns()
 
                     self.q_analyzer.put({
@@ -920,6 +1084,12 @@ class MultiprocessPipeline:
                         'pose': pose,
                         'ball_diagnostics': ball_diagnostics,
                         'racket_diagnostics': racket_diagnostics,
+                        'racket_pose': racket_pose_observation,
+                        'legacy_rackets': legacy_rackets,
+                        'inference_stage_ms': {'legacy_detection_ms': legacy_detection_ms,
+                            'human_pose_ms': human_pose_ms, 'racket_dispatch_ms': racket_dispatch_ms,
+                            'racket_join_ms': (time.perf_counter() - join_started) * 1000},
+                        'reader_schedule_lag_ms': task.get('reader_schedule_lag_ms'),
                         'captured_at': task.get('captured_at'),
                         'captured_at_unix_ns': task.get('captured_at_unix_ns'),
                         'source_time': task.get('source_time'),
@@ -932,6 +1102,8 @@ class MultiprocessPipeline:
             self.inf_ready.set()
             raise
         finally:
+            if racket_pose_runtime is not None:
+                racket_pose_runtime.close()
             if executor is not None:
                 executor.shutdown()
             if dual_pose_estimator is not None and hasattr(dual_pose_estimator, "close"):
@@ -949,7 +1121,7 @@ class MultiprocessPipeline:
         ignore_child_interrupts()
         print("🚀 [Analyzer] 初始化高清渲染引擎...")
         from frame_processor import FrameProcessor
-        from performance_metrics import FpsTracker
+        from performance_metrics import FpsTracker, timed_call
         from pose_renderer import draw_pose_keypoints
         from video_writer_backend import create_video_writer
 
@@ -1025,6 +1197,18 @@ class MultiprocessPipeline:
                 f' | origin: ({int(display_origin[0])}, {int(display_origin[1])})'
                 ' | ESC/q 退出'
             )
+        queued_display = None
+        if perf_cfg.get('async_display_enabled', False) and (hdmi_output_enabled or self.algo2_dual_view or dual_view_enabled):
+            from queued_video_display import QueuedVideoDisplay
+            if hdmi_output_enabled or self.algo2_dual_view:
+                display_shape = (sbs_height, sbs_width, 3)
+            else:
+                display_shape = (int(self.height*dual_view_scale), int(self.width*dual_view_scale)*2, 3)
+            queued_display = QueuedVideoDisplay(display_shape, self.stop_event,
+                origin=tuple(display_origin), fullscreen=hdmi_output_enabled,
+                window_name='Tennis AI - HDMI Output' if hdmi_output_enabled else ('Tennis AI Analyzer - Algo 2.0 Dual View (ESC to Quit)' if self.algo2_dual_view else 'Tennis AI Analyer - Dual Comparison (ESC to Quit)'),
+                journal_path=str(Path(self.config['video_output_path']).with_suffix(''))+'_display.jsonl',
+                preserve_frames=True)
         analysis_stride = max(1, int(perf_cfg.get('analysis_stride', 1)))
         draw_metrics_text = bool(perf_cfg.get('draw_metrics_text', True))
         collect_frame_results = bool(perf_cfg.get('collect_frame_results', True))
@@ -1248,6 +1432,7 @@ class MultiprocessPipeline:
                 queue_size=max(64, int(round(self.fps * 12))),
             )
 
+        self.analyzer_ready.set()
         while not self.stop_event.is_set():
             try:
                 data = self.q_analyzer.get(timeout=2.0)
@@ -1321,6 +1506,20 @@ class MultiprocessPipeline:
                 frame_record["racket_detection_diagnostics"] = (
                     data.get("racket_diagnostics") or {}
                 )
+                frame_record['reader_schedule_lag_ms'] = data.get('reader_schedule_lag_ms')
+                frame_record['inference_stage_ms'] = data.get('inference_stage_ms', {})
+                if data.get('racket_pose') is not None:
+                    frame_record['racket_pose'] = data['racket_pose']
+                    frame_record['racket_selection_policy'] = self.racket_pose_config.get('selection_policy','mixed')
+                    frame_record['racket_selection_policy_version'] = self.racket_pose_config.get('selection_policy_version')
+                    frame_record['legacy_rackets'] = data.get('legacy_rackets', [])
+                    frame_record['racket_selection_source'] = (
+                        racket_list[0].get('source', 'legacy') if racket_list else 'missing'
+                    )
+                    if (racket_list and frame_record['racket_selection_source']=='racket_pose_model'
+                            and (racket_list[0].get('observed') is not True
+                                 or racket_list[0].get('source_frame_id')!=fid)):
+                        frame_record['racket_selection_source']='racket_pose_model_derived'
                 analysis_completed_at_unix_ns = time.time_ns()
                 stamp_frame_record(
                     frame_record,
@@ -1341,6 +1540,9 @@ class MultiprocessPipeline:
                     analysis_completed_at_unix_ns=analysis_completed_at_unix_ns,
                 )
             # --- 2. 视觉渲染流程 ---
+            if data.get('racket_pose') and self.racket_pose_config.get('render_skeleton', True):
+                from racket_pose_detector import draw_racket_pose
+                draw_racket_pose(canvas, data['racket_pose'])
             if self.algo2_dual_view and dual_view_mgr is not None and dual_view_renderer is not None and pose_res is not None:
                 if norm_ball_pos:
                     ball_trail.append(norm_ball_pos)
@@ -1399,21 +1601,28 @@ class MultiprocessPipeline:
                     draw_ball_outline(canvas, norm_ball_pos)
 
                 for ra in racket_list:
-                    x1, y1, x2, y2 = ra['box']
+                    x1, y1, x2, y2 = [int(round(v)) for v in ra['box']]
                     cv2.rectangle(canvas, (x1, y1), (x2, y2), (255, 128, 0), 2)
                 rendered_canvas = canvas
 
             # --- 3. 提交并释放 ---
             render_completed_at_unix_ns = time.time_ns()
-            if out_writer: out_writer.write(rendered_canvas)
+            output_stages = {'encoder_write_ms': 0.0, 'display_submit_ms': 0.0, 'display_wait_ms': 0.0}
+            if out_writer:
+                _, output_stages['encoder_write_ms'] = timed_call(out_writer.write, rendered_canvas)
+            display_started = time.perf_counter()
 
             # HDMI 单路输出、双视角全屏输出与双窗口对比显示
             if processed_display is not None:
-                if processed_display.show(rendered_canvas):
+                if (queued_display.show(rendered_canvas, fid) if queued_display else processed_display.show(rendered_canvas)):
                     self.stop_event.set()
             elif self.algo2_dual_view:
-                cv2.imshow("Tennis AI Analyzer - Algo 2.0 Dual View (ESC to Quit)", rendered_canvas)
-                key = cv2.waitKey(1) & 0xFF
+                if queued_display:
+                    key = 27 if queued_display.show(rendered_canvas, fid) else -1
+                else:
+                    cv2.imshow("Tennis AI Analyzer - Algo 2.0 Dual View (ESC to Quit)", rendered_canvas)
+                    key, output_stages['display_wait_ms'] = timed_call(cv2.waitKey, 1)
+                    key &= 0xFF
                 if key == 27 or key == ord('q'):
                     self.stop_event.set()
             elif dual_view_enabled:
@@ -1435,12 +1644,19 @@ class MultiprocessPipeline:
                     2
                 )
 
-                cv2.imshow("Tennis AI Analyer - Dual Comparison (ESC to Quit)", dual_view)
-                key = cv2.waitKey(1) & 0xFF
+                if queued_display:
+                    key = 27 if queued_display.show(dual_view, fid) else -1
+                else:
+                    cv2.imshow("Tennis AI Analyer - Dual Comparison (ESC to Quit)", dual_view)
+                    key, output_stages['display_wait_ms'] = timed_call(cv2.waitKey, 1)
+                    key &= 0xFF
                 if key == 27:
                     self.stop_event.set()
 
+            output_stages['display_submit_ms'] = (time.perf_counter() - display_started) * 1000
             if frame_record is not None:
+                frame_record['output_stage_ms'] = output_stages
+                frame_record['display_submission_scope'] = 'bounded_queue_preserve_all' if queued_display else 'synchronous_highgui_return'
                 from analysis_data_contracts import stamp_render_output
                 stamp_render_output(frame_record, render_completed_at_unix_ns, time.time_ns())
                 queue_depths = {}
@@ -1492,6 +1708,8 @@ class MultiprocessPipeline:
             if frame_journal is not None:
                 print("✅ [Frame-Live] 实时逐帧输出结束")
 
+        if queued_display:
+            queued_display.close()
         if out_writer:
             out_writer.release()
         if processed_display is not None:
@@ -1658,6 +1876,9 @@ class MultiprocessPipeline:
 
     def _process_entry(self, role):
         ignore_child_interrupts()
+        threads = self.config.get('pipeline_perf', {}).get('opencv_threads')
+        if threads is not None:
+            cv2.setNumThreads(max(1, int(threads)))
         target = {
             "Reader": self.reader_process,
             "Inference": self.inference_process,
@@ -1727,6 +1948,14 @@ class MultiprocessPipeline:
             {'role': 'event_log', 'path': event_log},
             {'role': 'report', 'path': event_html},
         ]
+        if self.racket_pose_journal:
+            for role, path in (
+                ('racket_pose_journal', Path(self.racket_pose_journal)),
+                ('racket_pose_summary', Path(self.racket_pose_journal).with_suffix('.summary.json')),
+            ):
+                if path.is_file(): artifacts.append({'role': role, 'path': str(path)})
+        display_journal = Path(str(Path(self.config['video_output_path']).with_suffix(''))+'_display.jsonl')
+        if display_journal.is_file():artifacts.append({'role':'display_completion_journal','path':str(display_journal)})
         if bool(self.config.get('save_video', True)):
             artifacts.append({'role': 'annotated_video', 'path': output_base})
         if not self.is_stream_source and Path(self.video_path).expanduser().is_file():
@@ -1777,6 +2006,10 @@ class MultiprocessPipeline:
             },
         }
         capture = {
+            'processing_mode': self.processing_mode,
+            'racket_pose_mode': self.racket_pose_config['mode'],
+            'racket_selection_policy': self.racket_pose_config.get('selection_policy','mixed'),
+            'racket_selection_policy_version': self.racket_pose_config.get('selection_policy_version'),
             'source_kind': 'stream' if self.is_stream_source else 'video_file',
             'source_time_schema_version': SOURCE_TIME_SCHEMA_VERSION,
             'source_time_policy': 'input_media_pts_or_explicit_fps_estimate; stream_device_time_unavailable',
@@ -1785,6 +2018,8 @@ class MultiprocessPipeline:
             'output_fps': self.output_fps,
             'resolution': [self.width, self.height],
             'drop_stale_frames': self.drop_stale_frames,
+            'startup_readiness_barrier': self.lossless_realtime,
+            'continuous_frame_scope': 'all decoded frames; upstream camera/network losses cannot be verified',
             'dropped_stale_frames': int(self.dropped_stale_frames.value),
             'max_frames': self.max_frames,
             'roi': self.roi_profile.as_metadata(),
@@ -1903,6 +2138,10 @@ def build_argument_parser():
                         help='配置文件路径')
     parser.add_argument('--input', '-i', default=None, help='输入视频路径，覆盖配置文件')
     parser.add_argument('--output', '-o', default=None, help='输出视频路径，覆盖配置文件')
+    parser.add_argument('--racket-pose-mode', choices=('legacy','exclusive','shadow','active'), default=None,
+                        help='启动方案：legacy旧版／exclusive新版七点独占；shadow/active保留兼容诊断')
+    parser.add_argument('--processing-mode', choices=('realtime','buffered','offline'), default=None,
+                        help='buffered 连续处理不丢帧，允许启动缓冲；realtime 可丢旧帧；offline 完整分析')
     parser.add_argument(
         '--session-id',
         default=None,
@@ -2141,6 +2380,8 @@ def main_cli(argv=None):
         algo2_dual_view=args.algo2_dual_view,
         algo2_config=args.algo2_config,
         stream_id=args.stream_id,
+        racket_pose_mode=args.racket_pose_mode,
+        processing_mode=args.processing_mode,
     ).run()
 
 

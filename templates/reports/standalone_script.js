@@ -130,6 +130,7 @@
       const sourceEventId = sourceIdentityAttribute(card.dataset.sourceEventId, '来源事件ID');
       const original = data.events.find(event => event.event_id === sourceEventId) || {};
       return {
+        ...humanReviewFromCard(card),
         annotation_id: card.dataset.annotationId,
         source_event_id: sourceEventId,
         predicted_stroke_type: original.stroke_type || null,
@@ -151,6 +152,7 @@
     function collectAnnotations() {
       return {
         schema_version: 'swing_manual_annotations_v2',
+        review_policy_version: 'human_coach_review_v3',
         timeline_review_complete: timelineReviewComplete.checked,
         source: {...data.paths, reference_method: 'model_assisted_review', model_predictions_visible: true},
         summary: data.summary,
@@ -206,6 +208,8 @@
     function applyAnnotationToCard(card, imported) {
       const identity = annotationIdentity(imported);
       const frames = validateAnnotationFrames(imported);
+      validateHumanReview(imported);
+      applyHumanReview(card, imported);
       card.dataset.annotationId = identity.annotation_id;
       card.dataset.peakFrame = frames.peak == null ? '' : String(frames.peak);
       setField(card, 'actual_stroke_type', imported.actual_stroke_type);
@@ -238,7 +242,7 @@
         <div class="annotation-box">
           <div class="annotation-frame-grid">
             <label>人工开始帧<input type="number" min="0" step="1" data-field="start_frame"></label>
-            <label>人工触球帧<input type="number" min="0" step="1" data-field="contact_frame"></label>
+            <label>触球候选 / 人工帧<input type="number" min="0" step="1" data-field="contact_frame"></label>
             <label>人工结束帧<input type="number" min="0" step="1" data-field="end_frame"></label>
           </div>
           <label>人工类型
@@ -261,6 +265,7 @@
             <label><input type="checkbox" data-tag="missed_event"> 漏检事件</label>
           </div>
           <label>备注<textarea rows="2" data-field="note" placeholder="漏检原因、动作特点等"></textarea></label>
+          ${humanReviewFields()}
         </div>`;
       card.querySelector('.remove-manual-event').addEventListener('click', () => {
         card.remove();

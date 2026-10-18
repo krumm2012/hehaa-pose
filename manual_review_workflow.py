@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from manual_annotation_contract import require_manual_frame_id
+from manual_review_policy import VERSION as REVIEW_POLICY_VERSION, review_summary
 
 import argparse
 import hashlib
@@ -334,6 +335,12 @@ def derive_manual_coach_events(
         event["event_id"] = manual_id
         event["source_event_id"] = source_event_id
         event["stroke_type"] = str(annotation.get("actual_stroke_type") or "Unclear")
+        # Human decisions never come from copied model-event fields.
+        event.pop('practice_review', None)
+        event['human_coach_review'] = deepcopy(annotation.get('coach_review') or {})
+        event['human_contact_review'] = annotation.get('contact_review', 'unreviewed')
+        if annotation.get('practice_review') is not None:
+            event['practice_review'] = deepcopy(annotation['practice_review'])
         summary = summarize_manual_event_range(
             features,
             start,
@@ -352,6 +359,8 @@ def derive_manual_coach_events(
         event["biomechanics"] = aggregate_event_biomechanics(event, frame_records, features)
         from practice_scoring import attach_score
         attach_score(event)
+        from practice_scoring import score_review
+        event['human_practice_score'] = score_review(annotation.get('practice_review') or {})
         advices = coach.advise_all(event)
         event["coach_advices"] = advices
         event["coach_advice"] = advices[0] if advices else None
@@ -409,6 +418,9 @@ def _comparison_rows(event_document: Dict, manual_document: Optional[Dict]) -> L
                 },
                 "original_coach": _coach_messages(original),
                 "manual_coach": _coach_messages(manual),
+                "human_coach_review": deepcopy(manual.get('human_coach_review') or {}),
+                "human_contact_review": manual.get('human_contact_review', 'unreviewed'),
+                "human_practice_score": deepcopy(manual.get('human_practice_score') or {}),
                 "changed_fields": (manual.get("review_provenance") or {}).get(
                     "changed_fields"
                 )
@@ -450,12 +462,33 @@ def _process_manual_review(paths: Dict[str, Path], annotation_document: Dict) ->
             frame_records,
         )
 
+    comparisons = _comparison_rows(event_document, manual_document)
+    if manual_document is not None:
+        originals = {row['event_id']: row for row in event_document.get('events', [])}
+        from practice_scoring import score_review
+        for annotation in annotation_document['events']:
+            if annotation.get('valid_hit', True):
+                continue
+            source_id = annotation.get('source_event_id')
+            start, contact, end = _annotation_frames(annotation)
+            comparisons.append({'event_id':None, 'source_event_id':source_id,
+                'annotation_id':annotation.get('annotation_id'), 'excluded_event':True,
+                'stroke_type':annotation.get('actual_stroke_type'), 'frames':{'start':start, 'contact':contact, 'end':end},
+                'original_coach':_coach_messages(originals.get(source_id)), 'manual_coach':[],
+                'human_coach_review':deepcopy(annotation.get('coach_review') or {}),
+                'human_contact_review':annotation.get('contact_review', 'unreviewed'),
+                'human_practice_score':score_review(annotation.get('practice_review') or {}),
+                'changed_fields':['valid_hit']})
     state = {
         "schema_version": "tennis.manual-review-state.v1",
         "status": "finalized" if manual_document else "needs_review",
+        "review_policy_version": REVIEW_POLICY_VERSION,
+        "human_review_summary": review_summary(annotation_document['events']),
+        "annotation_sha256": _sha256_json(annotation_document),
+        "annotations": deepcopy(annotation_document),
         "validation": validation,
         "evaluation": evaluation,
-        "comparisons": _comparison_rows(event_document, manual_document),
+        "comparisons": comparisons,
         "paths": {
             key: str(path)
             for key, path in paths.items()

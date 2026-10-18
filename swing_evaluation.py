@@ -75,9 +75,8 @@ def _norm_label(value: Optional[str]) -> Optional[str]:
 
 def _is_valid_manual_event(annotation: Dict) -> bool:
     actual = _norm_label(annotation.get("actual_stroke_type"))
-    if actual in UNCLEAR_LABELS:
-        return False
-    return bool(annotation.get("valid_hit", True))
+    # Event existence and stroke classification are independent decisions.
+    return actual != "No Swing" and bool(annotation.get("valid_hit", True))
 
 
 def _safe_ratio(numerator: int, denominator: int) -> Optional[float]:
@@ -365,6 +364,9 @@ def _evaluate_v2(
     }
 
     type_correct = 0
+    type_comparable = 0
+    confirmed_contact_errors = []
+    confirmed_contact_correct = 0
     contact_within_tolerance = 0
     contact_errors: List[float] = []
     start_errors: List[float] = []
@@ -376,11 +378,15 @@ def _evaluate_v2(
         annotation = valid_annotations[annotation_index]
         predicted = _norm_label(event.get("stroke_type"))
         actual = _norm_label(annotation.get("actual_stroke_type"))
+        type_known = predicted not in UNCLEAR_LABELS and actual not in UNCLEAR_LABELS
+        type_comparable += int(type_known)
         stroke_match = (
             predicted not in UNCLEAR_LABELS
             and actual not in UNCLEAR_LABELS
             and predicted == actual
         )
+        if not type_known:
+            stroke_match = None
         if stroke_match:
             type_correct += 1
 
@@ -400,6 +406,10 @@ def _evaluate_v2(
             contact_errors.append(abs(contact_delta))
             if contact_ok:
                 contact_within_tolerance += 1
+
+        if annotation.get('contact_review') == 'confirmed' and contact_delta is not None:
+            confirmed_contact_errors.append(abs(contact_delta))
+            confirmed_contact_correct += int(bool(contact_ok))
 
         model_start = _row_frame(event, "start")
         manual_start = _row_frame(annotation, "start")
@@ -434,6 +444,7 @@ def _evaluate_v2(
                 "stroke_type_correct": stroke_match,
                 "model_contact_frame": model_contact,
                 "manual_contact_frame": manual_contact,
+                "contact_review": annotation.get("contact_review", "unreviewed"),
                 "contact_delta_frames": contact_delta,
                 "contact_within_tolerance": contact_ok,
                 "model_start_frame": model_start,
@@ -526,9 +537,14 @@ def _evaluate_v2(
             "precision": precision,
             "recall": recall,
             "f1": f1,
-            "stroke_type_comparable": len(matches),
+            "stroke_type_comparable": type_comparable,
+            "stroke_type_unresolved_count": len(matches) - type_comparable,
             "stroke_type_correct": type_correct,
-            "stroke_type_accuracy": _safe_ratio(type_correct, len(matches)),
+            "stroke_type_accuracy": _safe_ratio(type_correct, type_comparable),
+            "confirmed_contact_comparable": len(confirmed_contact_errors),
+            "confirmed_contact_within_tolerance_ratio": _safe_ratio(confirmed_contact_correct, len(confirmed_contact_errors)) if metrics_finalized else None,
+            "confirmed_contact_mean_abs_error_frames": _mean(confirmed_contact_errors),
+            "contact_comparison_scope": "candidate_frame_alignment_not_contact_confirmation",
             "contact_comparable": len(contact_errors),
             "contact_within_tolerance": contact_within_tolerance,
             "contact_accuracy": _safe_ratio(
@@ -581,6 +597,8 @@ def evaluate_swing_events(
             annotation_data,
             contact_tolerance_frames=contact_tolerance_frames,
         )
+    from manual_review_policy import VERSION
+    report["settings"]["review_policy_version"] = VERSION
     report["settings"]["identity_policy"] = EVALUATION_IDENTITY_POLICY
     return qualify_reference_comparison(report, annotation_data)
 

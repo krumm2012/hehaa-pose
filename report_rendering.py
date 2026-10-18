@@ -19,6 +19,7 @@ from evaluation_reference_policy import (
     reference_note,
 )
 from manual_annotation_contract import annotation_contract_script
+from manual_review_policy import review_fields_html
 EVIDENCE_QUALITY_NOTE = '证据参考为启发式质量，未经准确率校准，不是技术评分。'
 from practice_score_adapter import resolve_practice_score
 from practice_scoring import POLICY
@@ -154,7 +155,7 @@ def render_standalone_report_html(payload: Dict, output_path: str) -> str:
 
         meter_pct = f"{float(swing_score):.0f}" if swing_score is not None else _score_text(event.get('overall_score'))
 
-        # 2. 5维生物力学技术雷达图
+        # 2. 五维模型观测雷达图
         sqs = event.get("swing_quality_score") or {}
         sub_scores = sqs.get("sub_scores") if isinstance(sqs, dict) else {}
         if not sub_scores:
@@ -162,7 +163,7 @@ def render_standalone_report_html(payload: Dict, output_path: str) -> str:
         radar_svg = _build_radar_svg(sub_scores) if sub_scores else ""
         radar_html = f"""
         <div class="bio-radar-wrapper">
-          <div class="bio-radar-title">5维生物力学技术雷达 <small style="font-size:10px;color:var(--muted);font-weight:normal;">(诊断参考 · 像面投影)</small></div>
+          <div class="bio-radar-title">五维模型观测雷达 <small style="font-size:10px;color:var(--muted);font-weight:normal;">(像面代理 · 非教练评分)</small></div>
           {radar_svg}
         </div>
         """ if radar_svg else ""
@@ -192,22 +193,22 @@ def render_standalone_report_html(payload: Dict, output_path: str) -> str:
         telemetry_html = ""
         if has_telemetry:
             if speed_status == "homography_height_debiased":
-                speed_label = "球拍物理真速 (km/h · 高度去偏)"
+                speed_label = "球拍速度估计 (km/h · 几何换算)"
                 val_parts = []
                 if contact_kmh is not None:
-                    val_parts.append(f"{float(contact_kmh):.1f} km/h (触球)")
+                    val_parts.append(f"{float(contact_kmh):.1f} km/h (候选触球帧)")
                 if max_kmh is not None:
                     val_parts.append(f"峰值 {float(max_kmh):.1f} km/h")
                 kmh_text = " · ".join(val_parts) if val_parts else "已标定"
                 if contact_px_s is not None:
-                    kmh_text += f' <span style="font-size:10px;color:#059669;font-weight:normal;display:block;margin-top:2px;">⚡ [单应性高度去偏 · 物理真速] (像面 {float(contact_px_s):.0f} px/s)</span>'
+                    kmh_text += f' <span style="font-size:10px;color:#059669;font-weight:normal;display:block;margin-top:2px;">⚡ [几何换算估计 · 未独立验证] (像面 {float(contact_px_s):.0f} px/s)</span>'
                 else:
-                    kmh_text += ' <span style="font-size:10px;color:#059669;font-weight:normal;display:block;margin-top:2px;">⚡ [单应性高度去偏 · 物理真速]</span>'
+                    kmh_text += ' <span style="font-size:10px;color:#059669;font-weight:normal;display:block;margin-top:2px;">⚡ [几何换算估计 · 未独立验证]</span>'
             elif speed_status in ("ground_homography_calibrated", "homography_ground_calibrated"):
                 speed_label = "球拍物理估速 (km/h · 地面投影)"
                 val_parts = []
                 if contact_kmh is not None:
-                    val_parts.append(f"{float(contact_kmh):.1f} km/h (触球)")
+                    val_parts.append(f"{float(contact_kmh):.1f} km/h (候选触球帧)")
                 if max_kmh is not None:
                     val_parts.append(f"峰值 {float(max_kmh):.1f} km/h")
                 kmh_text = " · ".join(val_parts) if val_parts else "已标定"
@@ -330,7 +331,7 @@ def render_standalone_report_html(payload: Dict, output_path: str) -> str:
                   <label>人工开始帧
                     <input type="number" min="0" step="1" data-field="start_frame" value="{_frame_input_value(event.get('start_frame'))}">
                   </label>
-                  <label>人工触球帧
+                  <label>触球候选 / 人工帧
                     <input type="number" min="0" step="1" data-field="contact_frame" value="{_frame_input_value(event.get('contact_frame'))}">
                   </label>
                   <label>人工结束帧
@@ -354,6 +355,7 @@ def render_standalone_report_html(payload: Dict, output_path: str) -> str:
                   <label><input type="checkbox" data-tag="bad_pose"> 姿态错</label>
                 </div>
                 <textarea class="annotation-note" data-field="note" rows="2" placeholder="可选备注"></textarea>
+                {review_fields_html()}
               </div>
             </article>
             """
@@ -469,10 +471,10 @@ def render_live_report_html(document: Dict, manager: Any) -> str:
     )
     cal_banner_html = (
         '<div style="margin-top:10px;padding:9px 12px;border-radius:7px;background:rgba(16,185,129,0.12);border:1px solid #10b981;color:#6ee7b7;font-size:12px;display:flex;align-items:center;gap:8px;">'
-        '<span>✅</span><div><strong>机位场地标定有效</strong> · 已加载正面单应性矩阵 H · 支持三维高度去偏真实物理挥速 (km/h)</div></div>'
+        '<span>✅</span><div><strong>机位场地标定有效</strong> · 已加载正面单应性矩阵 H · 可提供几何换算估计，不能据此确认三维拍头真速</div></div>'
         if has_cal
         else '<div style="margin-top:10px;padding:9px 12px;border-radius:7px;background:rgba(239,68,68,0.12);border:1px solid #ef4444;color:#fca5a5;font-size:12px;display:flex;align-items:center;gap:8px;">'
-        '<span>⚠️</span><div><strong>当前机位未完成场地标定</strong> · 缺少单应性矩阵 H · 球拍挥速仅能提供图像像素参考，请在控制面板「场地标定」工具完成机位四角标定以解锁真实物理挥速 (km/h)</div></div>'
+        '<span>⚠️</span><div><strong>当前机位未完成场地标定</strong> · 缺少单应性矩阵 H · 球拍挥速仅能提供图像像素参考，请在控制面板「场地标定」工具完成机位四角标定以提供几何换算参考</div></div>'
     )
 
     stream_content = ""
@@ -586,7 +588,7 @@ def render_live_report_html(document: Dict, manager: Any) -> str:
         if is_shadow_swing:
             coach_content = (
                 '<div class="coach-advice" style="opacity: 0.85;"><div class="coach-title">'
-                '<span>实时动作纠错</span><small>空挥练习</small></div>'
+                '<span>系统建议（待人工审核）</span><small>空挥练习</small></div>'
                 '<p style="margin:6px 0 0 0; color:#9ca3af; font-size:13px;">无来球击打 · 不派发纠错建议</p></div>'
             )
         elif coach_advices:
@@ -604,7 +606,7 @@ def render_live_report_html(document: Dict, manager: Any) -> str:
             if advice_rows:
                 coach_content = (
                     '<div class="coach-advice"><div class="coach-title">'
-                    f'<span>实时动作纠错</span><small>{html.escape(coach_origin_text)}</small></div>'
+                    f'<span>系统建议（待人工审核）</span><small>{html.escape(coach_origin_text)}</small></div>'
                     f'<ol>{"".join(advice_rows)}</ol></div>'
                 )
 
@@ -635,14 +637,14 @@ def render_live_report_html(document: Dict, manager: Any) -> str:
                 '<small>文字建议继续生效</small></div>'
             )
 
-        # 5维生物力学技术雷达图
+        # 五维模型观测雷达图
         sub_scores = sqs.get("sub_scores") if isinstance(sqs, dict) and isinstance(sqs.get("sub_scores"), dict) else {}
         if not sub_scores:
             sub_scores = extract_biomechanical_sub_scores(event)
         radar_svg = _build_radar_svg(sub_scores, dark_theme=True) if sub_scores else ""
         radar_html = f"""
         <div class="bio-radar-wrapper">
-          <div class="bio-radar-title">5维生物力学技术雷达 <small style="font-size:10px;color:var(--muted);font-weight:normal;">(诊断参考 · 像面投影)</small></div>
+          <div class="bio-radar-title">五维模型观测雷达 <small style="font-size:10px;color:var(--muted);font-weight:normal;">(像面代理 · 非教练评分)</small></div>
           {radar_svg}
         </div>
         """ if radar_svg else ""
@@ -695,22 +697,22 @@ def render_live_report_html(document: Dict, manager: Any) -> str:
         speed_status = rkt.get('status', 'uncalibrated')
 
         if speed_status == 'homography_height_debiased':
-            speed_label = '球拍物理真速 (km/h · 高度去偏)'
+            speed_label = '球拍速度估计 (km/h · 几何换算)'
             val_parts = []
             if contact_kmh is not None:
-                val_parts.append(f"{float(contact_kmh):.1f} km/h (触球)")
+                val_parts.append(f"{float(contact_kmh):.1f} km/h (候选触球帧)")
             if max_kmh is not None:
                 val_parts.append(f"峰值 {float(max_kmh):.1f} km/h")
             speed_text = ' · '.join(val_parts) if val_parts else '已标定'
             if contact_px_s is not None:
-                speed_text += f' <span style="font-size:10px;color:#34d399;font-weight:normal;display:block;margin-top:2px;">⚡ [单应性高度去偏 · 物理真速] (像面 {float(contact_px_s):.0f} px/s)</span>'
+                speed_text += f' <span style="font-size:10px;color:#34d399;font-weight:normal;display:block;margin-top:2px;">⚡ [几何换算估计 · 未独立验证] (像面 {float(contact_px_s):.0f} px/s)</span>'
             else:
-                speed_text += ' <span style="font-size:10px;color:#34d399;font-weight:normal;display:block;margin-top:2px;">⚡ [单应性高度去偏 · 物理真速]</span>'
+                speed_text += ' <span style="font-size:10px;color:#34d399;font-weight:normal;display:block;margin-top:2px;">⚡ [几何换算估计 · 未独立验证]</span>'
         elif speed_status in ('ground_homography_calibrated', 'homography_ground_calibrated'):
             speed_label = '球拍物理估速 (km/h · 地面投影)'
             val_parts = []
             if contact_kmh is not None:
-                val_parts.append(f"{float(contact_kmh):.1f} km/h (触球)")
+                val_parts.append(f"{float(contact_kmh):.1f} km/h (候选触球帧)")
             if max_kmh is not None:
                 val_parts.append(f"峰值 {float(max_kmh):.1f} km/h")
             speed_text = ' · '.join(val_parts) if val_parts else '已标定'
@@ -771,7 +773,7 @@ def render_live_report_html(document: Dict, manager: Any) -> str:
         if blocks:
             telemetry_html += '<details><summary>教练五维评审 · 待评定说明 (人工专项)</summary>' + ''.join(
                 '<p>' + html.escape(b['label']) + '：' + '；'.join(html.escape(reason_labels.get(r,r)) for r in b['reasons']) + '</p>'
-                for b in blocks) + '<small>客观单目 5 维技术雷达已在上方展示；此处为教练人工复核专项评定标准。</small></details>'
+                for b in blocks) + '<small>上方雷达是模型投影代理指标；人工五维评分请在下方审核表填写。</small></details>'
 
         metric_labels = {
             "shoulder_turn": "肩宽角度代理",
@@ -920,7 +922,7 @@ def render_live_report_html(document: Dict, manager: Any) -> str:
               <div class="annotation-box">
                 <div class="annotation-frames">
                   <label>人工开始帧<input type="number" min="0" step="1" data-field="start_frame" value="{int(event['start_frame'])}"></label>
-                  <label>人工触球帧<input type="number" min="0" step="1" data-field="contact_frame" value="{html.escape(str('' if event.get('contact_frame') is None else event.get('contact_frame')))}"></label>
+                  <label>触球候选 / 人工帧<input type="number" min="0" step="1" data-field="contact_frame" value="{html.escape(str('' if event.get('contact_frame') is None else event.get('contact_frame')))}"></label>
                   <label>人工结束帧<input type="number" min="0" step="1" data-field="end_frame" value="{int(event['end_frame'])}"></label>
                 </div>
                 <label>人工类型
@@ -942,6 +944,7 @@ def render_live_report_html(document: Dict, manager: Any) -> str:
                   <label><input type="checkbox" data-tag="event_boundary"> 边界偏差</label>
                 </div>
                 <label>备注<textarea rows="2" data-field="note"></textarea></label>
+                {review_fields_html()}
               </div>
             </article>
             """
@@ -958,6 +961,7 @@ def render_live_report_html(document: Dict, manager: Any) -> str:
         getattr(manager, "ground_calibration", None)
         or getattr(manager, "roi_metadata", {}).get("ground_calibration")
         or document.get("ground_calibration")
+        or (document.get("session") or {}).get("ground_calibration")
     )
     has_mirror = bool(
         ground_calib

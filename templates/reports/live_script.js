@@ -23,6 +23,9 @@
     let manualCounter = 0;
     let lastAnnotationInteraction = 0;
     let importedReviewPayload = null;
+    let savedReviewFingerprint = null;
+    let lastPublishedReviewState = null;
+    let restoredBrowserDraft = false;
 
     try {
       autoRefreshEnabled = sessionStorage.getItem(refreshStorageKey) !== 'false';
@@ -61,6 +64,7 @@
       const sourceEventId = sourceIdentityAttribute(card.dataset.sourceEventId, '来源事件ID');
       const peakNumber = sourceIdentityAttribute(card.dataset.peakFrame, '动作峰值帧');
       return {
+        ...humanReviewFromCard(card),
         annotation_id: card.dataset.annotationId,
         source_event_id: sourceEventId,
         predicted_stroke_type: card.dataset.predictedStrokeType || null,
@@ -82,6 +86,7 @@
     function collectAnnotations() {
       return {
         schema_version: 'swing_manual_annotations_v2',
+        review_policy_version: 'human_coach_review_v3',
         timeline_review_complete: timelineReviewComplete.checked,
         source: { event_json: eventJsonUrl, reference_method: 'model_assisted_review', model_predictions_visible: true },
         events: [...document.querySelectorAll('[data-annotation-card]')].map(annotationFromCard)
@@ -110,6 +115,7 @@
         const payload = validateAnnotationPayload(collectAnnotations(), false, modelEventIds);
         localStorage.setItem(annotationStorageKey, JSON.stringify(payload));
         updateAnnotationReadiness(payload);
+        if (typeof markReviewDirty === 'function') markReviewDirty(payload);
         annotationStatus.textContent = `已在浏览器保存 ${payload.events.length} 条草稿`;
         return payload;
       } catch (error) { showAnnotationError(error); return null; }
@@ -131,6 +137,8 @@
     function applyAnnotation(card, imported) {
       const identity = annotationIdentity(imported);
       const frames = validateAnnotationFrames(imported);
+      validateHumanReview(imported);
+      applyHumanReview(card, imported);
       card.dataset.annotationId = identity.annotation_id;
       card.dataset.peakFrame = frames.peak == null ? '' : String(frames.peak);
       setAnnotationField(card, 'actual_stroke_type', imported.actual_stroke_type);
@@ -162,7 +170,7 @@
         <div class="annotation-box">
           <div class="annotation-frames">
             <label>人工开始帧<input type="number" min="0" step="1" data-field="start_frame"></label>
-            <label>人工触球帧<input type="number" min="0" step="1" data-field="contact_frame"></label>
+            <label>触球候选 / 人工帧<input type="number" min="0" step="1" data-field="contact_frame"></label>
             <label>人工结束帧<input type="number" min="0" step="1" data-field="end_frame"></label>
           </div>
           <label>人工类型<select data-field="actual_stroke_type"><option>Forehand</option><option>Backhand</option><option>Two-Handed Backhand</option><option>Serve</option><option>Volley</option><option selected>Unclear</option></select></label>
@@ -175,6 +183,7 @@
             <label><input type="checkbox" data-tag="event_boundary"> 边界偏差</label>
           </div>
           <label>备注<textarea rows="2" data-field="note"></textarea></label>
+          ${humanReviewFields()}
         </div>`;
       card.querySelector('button').addEventListener('click', () => { card.remove(); saveAnnotations(); });
       if (imported) applyAnnotation(card, imported);
@@ -192,6 +201,7 @@
       try { plan = prepareAnnotationImport(payload); }
       catch (error) { showAnnotationError(error); return; }
       payload = plan.payload;
+      restoredBrowserDraft = true;
       timelineReviewComplete.checked = Boolean(payload.timeline_review_complete);
       manualEvents.replaceChildren();
       for (const {annotation: imported, card} of plan.assignments) {
@@ -216,6 +226,8 @@
 
     function handleAnnotationEdit(event) {
       if (event.target?.closest('[data-annotation-card]') || annotationWorkspace.contains(event.target)) {
+        importedReviewPayload = null;
+        evaluateImportedReview.disabled = true;
         saveAnnotations();
       }
     }
@@ -272,12 +284,37 @@
       return column;
     }
 
+    function reviewFingerprint(payload) {
+      if (!payload) return null;
+      const rows = payload.events.map(row => ({
+        id:row.annotation_id, source:row.source_event_id ?? null, frames:validateAnnotationFrames(row),
+        type:row.actual_stroke_type, valid:row.valid_hit ?? true, count:row.count_correct ?? true,
+        pending:row.needs_review ?? false, tags:[...(row.issue_tags || [])].sort(), note:row.note || '',
+        contact:row.contact_review || 'unreviewed',
+        coach:['reviewer','verdict','observed_fact','suggestion','evidence'].map(k => row.coach_review?.[k] || (k === 'verdict' ? 'unreviewed' : '')),
+        ratings:['preparation','positioning','contact','coordination','recovery'].map(k => row.practice_review?.ratings?.[k] ?? null),
+        confirmed:row.practice_review?.confirmed === true,
+      })).sort((a,b) => String(a.id).localeCompare(String(b.id)));
+      return JSON.stringify({complete:payload.timeline_review_complete === true, rows});
+    }
+
+    function markReviewDirty(payload) {
+      if (savedReviewFingerprint !== null && reviewFingerprint(payload) !== savedReviewFingerprint) {
+        setReviewStatus('草稿已修改，待重新评估', 'dirty', '下方对照属于上次提交；本次修改已保存到浏览器，点击“保存并评估当前审核”更新。');
+        manualReviewMetrics.hidden = true;
+        coachComparisons.style.opacity = '.55';
+      } else if (manualReviewState.dataset.state === 'dirty' && lastPublishedReviewState) {
+        renderReviewState(lastPublishedReviewState);
+      }
+    }
+
     function renderReviewState(state) {
+      lastPublishedReviewState = state;
       const status = state?.status || 'waiting_for_annotations';
       const validation = state?.validation || null;
       const summary = state?.evaluation?.summary || null;
       if (status === 'finalized') {
-        setReviewStatus('边界复核对照已定稿', 'finalized', '人工 Coach 已按确认边界重新计算；对照定稿不代表独立准确性验证。');
+        setReviewStatus('事件对照已完成', 'finalized', '已按审核边界重算规则建议；触球确认和人工教练意见分别记录，事件对照完成不代表教练评分完成。');
         setReviewStage('coach');
       } else if (status === 'needs_review') {
         const pending = validation?.pending_count ?? 0;
@@ -302,6 +339,10 @@
         }
         const note = document.createElement('p');
         note.textContent = reviewReferenceNote(state.evaluation);
+        const human = state.human_review_summary;
+        if (human) {
+          note.textContent += ` 事件可比 ${summary.true_positive_count}/${summary.predicted_event_count}；类型可比 ${summary.stroke_type_comparable}/${summary.true_positive_count}；触球已确认 ${human.contact_confirmed_count}/${human.event_count}；教练已审核 ${human.coach_reviewed_count}/${human.event_count}；人工总分已确认 ${human.coach_score_confirmed_count}/${human.event_count}。`;
+        }
         manualReviewMetrics.append(note);
         manualReviewMetrics.hidden = false;
       } else {
@@ -315,7 +356,7 @@
         const head = document.createElement('div');
         head.className = 'coach-comparison-head';
         const title = document.createElement('strong');
-        title.textContent = `Swing #${comparison.source_event_id ?? comparison.event_id} · ${comparison.stroke_type || 'Unknown'}`;
+        title.textContent = `Swing #${comparison.source_event_id ?? comparison.event_id} · ${comparison.stroke_type || 'Unknown'}${comparison.excluded_event ? ' · 已排除非有效事件' : ''}`;
         const changes = document.createElement('span');
         changes.textContent = comparison.changed_fields?.length
           ? `变化：${comparison.changed_fields.join('、')}`
@@ -325,10 +366,29 @@
         columns.className = 'coach-columns';
         columns.append(
           coachColumn('实时 Coach（原始）', comparison.original_coach, false),
-          coachColumn('人工校准 Coach', comparison.manual_coach, true),
+          coachColumn('人工边界重算（系统规则）', comparison.manual_coach, true),
         );
+        const review = comparison.human_coach_review || {};
+        const humanColumn = document.createElement('div');
+        humanColumn.className = 'coach-column manual';
+        const humanTitle = document.createElement('h3'); humanTitle.textContent = '人工教练意见';
+        const humanText = document.createElement('p');
+        const verdictLabels = {unreviewed:'未审核',supported:'证据支持',rejected:'不采纳',insufficient:'证据不足'};
+        const score = comparison.human_practice_score;
+        humanText.textContent = `${verdictLabels[review.verdict] || '未审核'} · 审核人：${review.reviewer || '未填写'}\n事实：${review.observed_fact || '未填写'}\n证据：${review.evidence || '未填写'}\n建议：${review.suggestion || '未填写'}\n人工五维评分：${score?.status === 'coach_confirmed' ? score.score + '/100' : '草稿 / 未评'}`;
+        humanText.style.whiteSpace = 'pre-wrap';
+        humanColumn.append(humanTitle, humanText); columns.append(humanColumn);
         card.append(head, columns);
         coachComparisons.append(card);
+      }
+      coachComparisons.style.opacity = '1';
+      if (state.review_policy_version !== 'human_coach_review_v3' && state.status !== 'waiting_for_annotations') {
+        setReviewStatus('历史审核，待按 V3 重算', 'needs_review', '旧结果保留。点击“保存并评估当前审核”更新事件口径；不会自动确认触球或教练评分。');
+        manualReviewMetrics.hidden = true;
+      }
+      if (state.annotations) {
+        savedReviewFingerprint = reviewFingerprint(state.annotations);
+        markReviewDirty(collectAnnotations());
       }
     }
 
@@ -449,6 +509,7 @@
         });
         const state = await response.json();
         if (!response.ok) throw new Error(state.message || state.error || '人工校准服务不可用');
+        if (!restoredBrowserDraft && state.annotations) applyImportedReviewToEditor(state.annotations);
         renderReviewState(state);
       } catch (error) {
         setReviewStatus('服务不可用', 'error', error.message || String(error));

@@ -149,7 +149,7 @@ class RealtimeFrameJournal:
         }
         temporary = self.snapshot_path.with_name(f".{self.snapshot_path.name}.tmp")
         temporary.write_text(
-            json.dumps(document, ensure_ascii=False, indent=2),
+            json.dumps(document, ensure_ascii=False, separators=(',',':')),
             encoding="utf-8",
         )
         os.replace(temporary, self.snapshot_path)
@@ -353,6 +353,7 @@ class RealtimeSwingEventEngine:
         self.session_metadata = deepcopy(session_metadata or {})
         self._frames: Deque[Dict] = deque(maxlen=self.window_frames)
         self._events: List[Dict] = []
+        self._owned_output = False
         self._frame_trace: List[Dict] = []
         self._emitted_peaks: List[int] = []
         self._total_frames = 0
@@ -380,7 +381,7 @@ class RealtimeSwingEventEngine:
         """Finalize any valid Swing remaining when the source stream ends."""
         return self._analyze(force=True)
 
-    def snapshot(self) -> Dict:
+    def snapshot(self, include_events: bool = True) -> Dict:
         """Return the complete live event document written to JSON/frontends."""
         type_counts = Counter(event["stroke_type"] for event in self._events)
         return {
@@ -414,9 +415,17 @@ class RealtimeSwingEventEngine:
                 "threshold_reference_hz": REFERENCE_HZ,
                 "session_quality": build_session_quality_dashboard(self._events),
             },
-            "events": deepcopy(self._events),
-            "frame_trace": deepcopy(self._frame_trace),
+            "events": deepcopy(self._events) if include_events else [],
+            "frame_trace": deepcopy(self._frame_trace) if include_events or not self._owned_output else list(self._frame_trace),
         }
+
+    def snapshot_for_output(self) -> Dict:
+        # OutputManager already owns the complete published event history.
+        return self.snapshot(include_events=False)
+
+    def enable_owned_output(self) -> None:
+        """Internal Runtime/OutputManager contract: published evidence is immutable."""
+        self._owned_output = True
 
     def frame_records_for_event(self, event: Dict) -> List[Dict]:
         """Return retained per-frame analysis records for one Swing event."""
@@ -531,7 +540,7 @@ class RealtimeSwingEventEngine:
             self._events.append(event)
             self._emitted_peaks.append(int(event["peak_frame"]))
             self._append_event_trace(analysis.get("frame_trace", []), candidate, event)
-            emitted.append(deepcopy(event))
+            emitted.append(dict(event) if self._owned_output else deepcopy(event))
         return emitted
 
     @staticmethod
@@ -728,7 +737,11 @@ class RealtimeSwingOutputManager:
                 except queue.Empty:
                     continue
 
-    def publish_events(self, new_events: List[Dict], snapshot: Dict) -> None:
+    def publish_owned_events(self, new_events: List[Dict], snapshot: Dict) -> None:
+        """Accept immutable engine payloads; copy headers and replace update roots."""
+        self.publish_events(new_events,snapshot,_owned_payloads=True)
+
+    def publish_events(self, new_events: List[Dict], snapshot: Dict, *, _owned_payloads: bool = False) -> None:
         """Update JSON/HTML immediately and queue clip encoding in the background."""
         pending_jobs = []
         expected_frames_by_event: Dict[int, List[int]] = {}
@@ -741,7 +754,7 @@ class RealtimeSwingOutputManager:
             )
         with self._output_lock:
             for event in new_events:
-                published = deepcopy(event)
+                published = dict(event) if _owned_payloads else deepcopy(event)
                 stamp_swing_event(
                     published,
                     session=self.session_metadata,
@@ -792,8 +805,10 @@ class RealtimeSwingOutputManager:
                     )
                 )
 
-            self._document = deepcopy(snapshot)
-            self._document["events"] = deepcopy(self._events)
+            excluded=('events','frame_trace') if _owned_payloads else ('events',)
+            self._document = deepcopy({k:v for k,v in snapshot.items() if k not in excluded})
+            if _owned_payloads:self._document['frame_trace']=list(snapshot.get('frame_trace') or [])
+            self._document["events"] = list(self._events)
             summary = self._document.setdefault("summary", {})
             summary["swing_event_count"] = len(self._events)
             summary["realtime"] = True
@@ -819,20 +834,22 @@ class RealtimeSwingOutputManager:
     def update_event(self, event_id: int, patch: Dict) -> bool:
         """Merge an asynchronous sidecar result into one published event."""
         with self._output_lock:
-            for event in self._events:
+            for index,event in enumerate(self._events):
                 if int(event["event_id"]) != int(event_id):
                     continue
+                event=dict(event)
                 for key, value in deepcopy(patch).items():
                     if isinstance(event.get(key), dict) and isinstance(value, dict):
                         event[key] = {**event[key], **value}
                     else:
                         event[key] = value
+                self._events[index]=event
                 self._event_journal.append(
                     "event_updated",
                     int(event_id),
                     {"patch": patch},
                 )
-                self._document["events"] = deepcopy(self._events)
+                self._document["events"] = list(self._events)
                 self._queue_live_outputs(self._document)
                 return True
         return False
@@ -1049,16 +1066,16 @@ class RealtimeSwingOutputManager:
             }
 
         with self._output_lock:
-            for event in self._events:
+            for index,event in enumerate(self._events):
                 if int(event["event_id"]) == event_id:
-                    event.update(updates)
+                    self._events[index]={**event,**updates}
                     break
             self._event_journal.append(
                 "event_updated",
                 int(event_id),
                 {"patch": updates},
             )
-            self._document["events"] = deepcopy(self._events)
+            self._document["events"] = list(self._events)
             self._document.setdefault("summary", {})[
                 "clip_buffer_dropped_frames"
             ] = self._dropped_compression_frames
@@ -1091,13 +1108,13 @@ class RealtimeSwingOutputManager:
         )
 
     def _write_live_outputs(self, document: Dict) -> None:
-        document = deepcopy(document)
+        document = {**document,'summary':dict(document.get('summary') or {})}
         document.setdefault("summary", {})[
             "session_quality"
         ] = build_session_quality_dashboard(document.get("events") or [])
         self._atomic_write(
             self.output_json,
-            json.dumps(document, ensure_ascii=False, indent=2),
+            json.JSONEncoder(ensure_ascii=False,separators=(',',':')).iterencode(document),
         )
         self._atomic_write(
             self.output_html,
@@ -1106,7 +1123,13 @@ class RealtimeSwingOutputManager:
 
     def _queue_live_outputs(self, document: Dict) -> None:
         self.check_health()
-        self._output_queue.publish(deepcopy(document))
+        # Event roots are replaced, never edited after publication. Trace rows
+        # belong to this document and are immutable. Share those payloads while
+        # isolating mutable summary metadata and the list containers.
+        snapshot=deepcopy({k:v for k,v in document.items() if k not in ('events','frame_trace')})
+        snapshot['events']=list(document.get('events') or [])
+        snapshot['frame_trace']=list(document.get('frame_trace') or [])
+        self._output_queue.publish(snapshot)
 
     def check_health(self) -> None:
         if self._output_worker_error is not None:
@@ -1126,9 +1149,14 @@ class RealtimeSwingOutputManager:
                 self._output_queue.task_done()
 
     @staticmethod
-    def _atomic_write(path: Path, content: str) -> None:
+    def _atomic_write(path: Path, content) -> None:
         temporary = path.with_name(f".{path.name}.tmp")
-        temporary.write_text(content, encoding="utf-8")
+        if isinstance(content,str):
+            temporary.write_text(content, encoding="utf-8")
+        else:
+            # Cooperative encoding bounds contiguous GIL holds and temporary
+            # buffers as full session history grows; the file stays atomic.
+            with temporary.open('w',encoding='utf-8') as stream:stream.writelines(content)
         os.replace(temporary, path)
 
     @staticmethod
@@ -1241,11 +1269,11 @@ class RealtimeSwingOutputManager:
                 number((quality.get("calibrated_event_ratio") or 0.0) * 100, 0, "%"),
             ),
             (
-                "触球证据",
+                "模型触球候选覆盖",
                 number((quality.get("contact_supported_ratio") or 0.0) * 100, 0, "%"),
             ),
             (
-                "复核比例",
+                "模型建议复核",
                 number((quality.get("review_recommended_ratio") or 0.0) * 100, 0, "%"),
             ),
         ]

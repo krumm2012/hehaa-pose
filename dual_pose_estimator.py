@@ -115,6 +115,7 @@ class DualPoseEstimator:
         max_contact_distance: float = 200.0,
         backend: str = "auto",  # 'auto' | 'coreml' | 'ultralytics'
         concurrent: bool = True,
+        compute_units: str = "ALL",
     ):
         self.conf_threshold = conf_threshold
         self.biomech_engine = DualViewBiomechanicsEngine(
@@ -124,6 +125,9 @@ class DualPoseEstimator:
         )
         self.backend = backend
         self.concurrent = bool(concurrent)
+        self.compute_units = str(compute_units).upper()
+        if self.compute_units not in {"ANE", "ALL", "CPU", "GPU"}:
+            raise ValueError("Unsupported pose compute units")
         self.model_front = None
         self.model_back = None
         self.model = None  # 兼容原有单实例属性访问 (指向 model_front)
@@ -158,6 +162,7 @@ class DualPoseEstimator:
                             "pose_confidence_threshold": self.conf_threshold,
                             "pose_keypoint_confidence": self.conf_threshold * 0.7,
                             "pose_smoothing_enabled": False,
+                            "pose_compute_units": self.compute_units,
                         }
                         self.model_front = PoseEstimatorYOLO26(str(cp), cfg)
                         if self.concurrent:

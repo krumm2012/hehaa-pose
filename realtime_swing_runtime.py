@@ -69,6 +69,8 @@ class RealtimeSwingRuntime:
         self.frame_journal = frame_journal
         self.deepseek_sidecar = deepseek_sidecar
         self.coach_tts_sidecar = coach_tts_sidecar
+        self._owned_output = callable(getattr(engine,'enable_owned_output',None)) and callable(getattr(output,'publish_owned_events',None))
+        if self._owned_output:engine.enable_owned_output()
         self.stop_event = stop_event
         self.logger = logger
         self._queue: queue.Queue = queue.Queue(maxsize=max(1, int(queue_size)))
@@ -182,7 +184,9 @@ class RealtimeSwingRuntime:
             for event in events:
                 event["coach_tts"] = self.coach_tts_sidecar.pending_payload(event)
         if events or final:
-            self.output.publish_events(events, self.engine.snapshot())
+            snapshot_for_output=getattr(self.engine,'snapshot_for_output',self.engine.snapshot)
+            publish=self.output.publish_owned_events if getattr(self,'_owned_output',False) else self.output.publish_events
+            publish(events, snapshot_for_output())
         for event in events:
             prefix = "Final Event" if final else "Event"
             self.logger(

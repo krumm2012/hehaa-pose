@@ -1,0 +1,19 @@
+{
+  "source": "/Users/krum5539/Documents/yolo26pose-racket/runs/pose/experiments/exp-007-racket-pose-yolo26m-v2.0-gold/weights/best.pt",
+  "original_nonfinite_buffers": {
+    "model.10.m.0.ffn.1.bn.running_var": 1,
+    "model.23.cv2.1.0.bn.running_var": 5,
+    "model.23.cv2.1.1.bn.running_mean": 1,
+    "model.23.cv2.1.1.bn.running_var": 10,
+    "model.23.cv4.1.0.bn.running_var": 7,
+    "model.23.cv4.1.1.bn.running_mean": 5,
+    "model.23.cv4.1.1.bn.running_var": 49
+  },
+  "calibration_split": "train",
+  "calibration_images": 444,
+  "learned_parameters_unchanged": true,
+  "nonfinite_after": {},
+  "accuracy_validated": false,
+  "checkpoint": "/Users/krum5539/Documents/tennis_analyzer/models/racket_pose/candidates/bn-recalibrated-v1/bn_recalibrated_fp32.pt",
+  "reason": "Re-estimate lost BN inference statistics; not a numerically equivalent export."
+}

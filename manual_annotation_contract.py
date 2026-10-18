@@ -12,7 +12,8 @@ def require_manual_frame_id(value):
 
 def annotation_contract_script():
     """Inline the same validation in live and standalone reports; no network asset."""
-    return r'''
+    from manual_review_policy import review_contract_script
+    return review_contract_script() + r'''
     function sourceFrameValue(value, label, allowMissing = false) {
       if (value === null || value === undefined) {
         if (allowMissing) return null;
@@ -109,6 +110,7 @@ def annotation_contract_script():
       const identities = new Set(), sourceIds = new Set();
       const events = payload.events.map((event, index) => {
         validateAnnotationFrames(event, complete);
+        validateHumanReview(event);
         const identity = annotationIdentity(event, index);
         if (identities.has(identity.annotation_id)) throw new Error(`标注身份重复: ${identity.annotation_id}`);
         identities.add(identity.annotation_id);

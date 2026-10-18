@@ -90,7 +90,15 @@ flowchart LR
 检测/姿态推理关键路径。
 
 `--realtime-swing-events` 同时支持直播地址与按时间线播放的本地视频。HTTP/RTSP
-等直播源建议配合 `--live-mode` 使用，以关闭逐帧落盘并优先处理最新帧。
+等直播源和本地视频默认采用 `buffered` 连续处理：源开始前完成模型/窗口预热，
+队列满时等待，逐帧推理和保留证据。处理能力不足时会增加延迟；启动缓冲不能弥补
+长期吞吐不足。原低延迟丢帧策略需显式选择 `--processing-mode realtime`。
+本地文件可核验完整源帧；摄像头上游采集或网络传输损失不在程序可证明的范围内。
+
+启动时可选择 `--racket-pose-mode legacy`（默认旧版）或 `--racket-pose-mode exclusive`
+（新版七点球拍独占）。新版保持人体、球检测和报告工作流，球拍选择及主球辅助不使用旧拍框；
+缺失不回退旧模型，派生恢复保留明确标记。新版要求 `buffered` 或 `offline` 逐帧处理。
+控制面板提供同样的启动选项；`shadow/active` 留作兼容诊断，不会在运行中切换来源。
 
 DeepSeek 旁路需要先在当前终端配置密钥，不要把密钥写进 YAML 或命令行：
 
@@ -103,8 +111,7 @@ venv_yolo26/bin/python main_pipe.py \
   --config configs/yolo26_tennis_config.yaml \
   --input http://127.0.0.1:1234/ \
   --output data/analysis_results/live_session.mp4 \
-  --live-mode \
-  --drop-stale-frames \
+  --processing-mode buffered \
   --no-save-video \
   --realtime-swing-events \
   --realtime-swing-json data/analysis_results/live_session_swing_events.json \
@@ -524,6 +531,8 @@ V2 使用事件时间范围和触球帧做一对一时间匹配，不依赖模�
 如果同目录存在 `*_swing_evaluation.json`，`swing_report_builder.py` 会在报告页显示 `Evaluation Summary`。
 
 ### 7. 在实时报告中完成人工校准闭环
+
+人工审核已更新至 [V3 业务规则](docs/HUMAN_COACH_REVIEW_V3.md)：事件存在性、类型、触球确认及教练评价分开记录；系统重算建议与人工意见分栏展示。
 
 推荐通过“本地 ROI / Pipeline 控制台”启动会话，并从该控制台的 Swing 报告入口打开
 `final_report.html`。控制面板已经集成校准 API，不需要额外启动 workflow 服务。不要通过

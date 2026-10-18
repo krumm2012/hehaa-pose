@@ -38,7 +38,7 @@ class ManualAnnotationFrontendTests(unittest.TestCase):
 
     def execute(self, surface, names, assertions):
         page = self.pages[surface]
-        helpers = ['sourceFrameValue', 'sourceIdentityAttribute', 'annotationIdentity',
+        helpers = ['validateHumanReview', 'applyHumanReview', 'humanReviewFromCard', 'sourceFrameValue', 'sourceIdentityAttribute', 'annotationIdentity',
                    'annotationFrames', 'validateAnnotationFrames',
                    'validateAnnotationPayload', 'showAnnotationError']
         functions = '\n'.join(function_source(page, n) for n in dict.fromkeys(helpers + names))
@@ -175,7 +175,7 @@ c.dataset.peakFrame='0';assert.equal(annotationFromCard(c).frames.peak,0);
             r"(?:document|annotationWorkspace)\.addEventListener\('(?:input|change)'[^;]+;",
             self.pages['live']))
         self.execute('live',['handleAnnotationEdit'],"""
-const listeners=[];
+const listeners=[];let importedReviewPayload=null;const evaluateImportedReview={};
 document.addEventListener=(name,fn)=>listeners.push({root:'document',name,fn});
 const annotationWorkspace={contains(){return false;},addEventListener(name,fn){listeners.push({root:'workspace',name,fn});}};
 function saveAnnotations(){writes++;}

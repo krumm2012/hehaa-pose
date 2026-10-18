@@ -74,7 +74,7 @@ class EvaluationReferencePolicyTests(unittest.TestCase):
         funcs='\n'.join(function_source(page,name) for name in ['reviewPercent','reviewMetricRows','reviewReferenceNote','renderReviewState'])
         script=r'''
 const assert=require('node:assert/strict');
-function element(){return {children:[],textContent:'',dataset:{},append(...items){this.children.push(...items);},replaceChildren(){this.children=[];}};}
+function element(){return {children:[],textContent:'',dataset:{},style:{},append(...items){this.children.push(...items);},replaceChildren(){this.children=[];}};}
 const document={createElement(){return element();}};
 const manualReviewMetrics=element(),coachComparisons=element();
 function setReviewStatus(){}function setReviewStage(){}

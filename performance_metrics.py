@@ -5,6 +5,13 @@ from dataclasses import dataclass
 import time
 
 
+def timed_call(function, *args, **kwargs):
+    """Return a call's value and elapsed ms, including actual backend submission."""
+    started = time.perf_counter()
+    value = function(*args, **kwargs)
+    return value, (time.perf_counter() - started) * 1000
+
+
 @dataclass(frozen=True)
 class FpsSnapshot:
     frame_count: int

@@ -195,6 +195,7 @@ class RacketResolver:
         # ---------------------------------------------------------
         # B. 前景候选送入 RacketTemporalTracker 进行时序连续性初选
         # ---------------------------------------------------------
+        front_candidates=[r for r in (raw_rackets or []) if r.get('association_view') != 'back']
         if racket_tracker is not None:
             tracker_points = {
                 name: {
@@ -209,7 +210,7 @@ class RacketResolver:
                 for name, kp in front_pose.items()
             }
             selected, temporal_diagnostics = racket_tracker.select(
-                raw_rackets or [],
+                front_candidates,
                 tracker_points,
                 frame_idx,
                 source_time,
@@ -222,7 +223,7 @@ class RacketResolver:
                     (getattr(detector, "last_parse_diagnostics", {}) or {}).get("racket") or {}
                 )
         else:
-            candidates_to_eval = list(raw_rackets or [])
+            candidates_to_eval = list(front_candidates)
 
         # ---------------------------------------------------------
         # C. 关联手腕位置并防误判后墙纯镜面虚影
@@ -302,6 +303,9 @@ class RacketResolver:
                     "source_frame_id": frame_idx,
                     "source_mirror_box": list(back_racket_box),
                 }
+                if back_racket_entry[1].get('source') == 'racket_pose_model':
+                    recovered_racket.update(source='racket_pose_model',measurement_eligible=False,
+                        recovery_source_frame_id=back_racket_entry[1].get('source_frame_id'))
                 racket = [recovered_racket]
                 racket_box = list(mapped_front_box)
                 self.last_racket_box = racket_box
