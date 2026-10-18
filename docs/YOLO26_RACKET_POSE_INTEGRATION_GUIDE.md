@@ -1,6 +1,6 @@
 # 七关键点球拍 Pose 渐进集成指南
 
-版本：v2.4，2026-10-18。适用工程：`tennis_analyzer`；模型开发工程：`yolo26pose-racket`。
+版本：v2.5，2026-10-18。适用工程：`tennis_analyzer`；模型开发工程：`yolo26pose-racket`。
 
 本版本以实际代码与数值检查为依据。目标是改善二维球拍观测及归属，保留已有实时工作流。二维接近、骨架连线和模型一致性不能独立确认真实触球、物理握拍贴合或三维拍面方向。
 
@@ -11,7 +11,7 @@ flowchart LR
     R[Reader：原帧与源时间] --> I[Inference：原球检测与人体姿态]
     I --> A[Analyzer：关联、渲染、帧记录]
     A --> S[Swing Runtime：事件、Coach、报告]
-    I -.独立图像副本.-> P[可终止的球拍 Pose 进程]
+    I -.独立副本／连续模式租用源槽.-> P[可终止的球拍 Pose 进程]
     P -.同源帧结果；独占方案不回退旧框.-> I
     P --> J[球拍旁路 JSONL]
 ```
@@ -33,7 +33,7 @@ flowchart LR
 | `realtime` | 按源节奏预览，允许跳过旧帧；增强额外等待最多 8 ms |
 | `offline` | 本地视频完整逐帧分析；增强等待每帧结果，单帧 10 秒失败则明确停止 |
 
-旧 `realtime` 旁路最多一项执行、一项待处理；新待处理帧可替换旧帧。`buffered/offline` 逐帧等待结果，不替换待处理任务，实际 stride 固定为 1。图像在父进程生成独立 RGB letterbox 副本后发送，不持有可被复用的源共享内存。迟到结果进入原帧旁路日志，不套到当前帧、不改写已发布事件。
+旧 `realtime` 旁路最多一项执行、一项待处理；新待处理帧可替换旧帧。`buffered/offline` 逐帧等待结果，不替换待处理任务，实际 stride 固定为 1。默认 queue 传输在父进程生成独立 RGB letterbox 副本；显式 shared_memory 仅在连续模式租用源槽，sidecar 检查代际并完成推理后才允许交给 Analyzer 回收，预处理移到 sidecar。迟到结果进入原帧旁路日志，不套到当前帧、不改写已发布事件。
 
 ## 2. 原模型异常与独立修复候选
 
@@ -204,3 +204,41 @@ venv_yolo26/bin/python main_pipe.py --processing-mode buffered --racket-pose-mod
 独占方案要求新模型每帧对应结果；工作进程失败、输出非有限或单帧十秒超时使增强会话失败，不自动切回旧版。旧版可另行启动。`legacy_rackets` 兼容字段在独占记录中保留为空列表；`racket_selection_policy: exclusive`、主球诊断 `racket_support_source: racket_pose_model` 以及逐帧原始/派生来源用于验收。
 
 只移除候选混用并不会省掉整次旧模型计算。新方案仍为一个球／框共享检测、两个身体姿态实例和一个新球拍实例，不能把这项逻辑隔离当成 25 FPS 性能放行，也不能把“更多帧选择新候选”解释为准确率提高。性能与独占来源的实测报告：`data/analysis_results/racket_pose_acceptance_20261018/startup-profiles-20261018/index.html`。
+
+## 两阶段跨帧与共享源帧实验（2026-10-18）
+
+默认仍为旧版球拍、`barrier` 调度和 `queue` 图像传输。控制台新增两个启动选项，
+不支持会话内热切换。新版独占连续处理可显式试验：
+
+```bash
+venv_yolo26/bin/python main_pipe.py --input /path/to/video.mp4 \
+  --racket-pose-mode exclusive --processing-mode buffered \
+  --racket-ipc shared_memory --inference-schedule interframe
+```
+
+共享传输直接借用 Reader 源图槽，检查代际并保持至球拍结果完成；预处理仍有必要的
+resize/RGB/model-input 转换。跨帧准备仅提前原始候选和球拍，不提前动态人体裁剪，
+所有时序状态按源帧顺序更新。两帧在途、有界背压、正常结束排空，不采样、不替换帧。
+
+用 `scripts/benchmark_interframe_pipeline.py --output <新目录>` 可轮换顺序比较
+queue/barrier、shared/barrier、shared/interframe，默认三段原视频并保留编码和显示。
+这只是核心链路工程对照，外部网络/语音关闭；不能替代完整工作流和三轮实时验收。
+实测通过前不承诺 25 FPS。详见 ADR 0006。
+
+### 本轮实测结果
+
+三段各一轮，三组共 2250 帧，另有旧版、单人体和旁路故障各 250 帧冒烟。
+主对照源帧／PTS、人体观测、球选择、球拍、运动学字段和事件语义逐帧一致；
+全部处理、编码、显示、证据重放完整。204 项回归测试通过。
+
+| 配置 | 三段输出 FPS 中位数 | 父进程派发 P50 | 球拍队列 P50（含调度） |
+|---|---:|---:|---:|
+| 同帧＋queue | 20.54 | 0.648 ms | 2.193 ms |
+| 同帧＋shared_memory | 20.26 | 0.130 ms | 0.086 ms |
+| 跨帧＋shared_memory | 20.83 | 0.052 ms | 0.206 ms |
+
+跨帧准备与聚合阶段各约 46／47 ms，尚未恢复到 30–33 ms。
+本轮没有稳定吞吐提升，25 FPS 未通过，默认保持 barrier＋queue。
+单轮顺序对照仍受系统负载影响；网络／语音冒烟验证失败隔离，不能代替真实旁路并发性能测试。
+报告：`data/analysis_results/racket_pose_acceptance_20261018/interframe-20261018/index.html`。
+可用 `scripts/summarize_interframe_pipeline.py <实验目录>` 重新审计和生成报告。

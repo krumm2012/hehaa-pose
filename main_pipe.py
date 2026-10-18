@@ -107,6 +107,8 @@ class MultiprocessPipeline:
         stream_id=None,
         racket_pose_mode=None,
         processing_mode=None,
+        inference_schedule=None,
+        racket_ipc=None,
     ):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
@@ -168,11 +170,22 @@ class MultiprocessPipeline:
         if racket_pose_mode is not None:
             racket_cfg['mode'] = racket_pose_mode
             racket_cfg['selection_policy'] = 'exclusive' if racket_pose_mode=='exclusive' else 'mixed'
+        if racket_ipc is not None:
+            racket_cfg['ipc_transport'] = racket_ipc
         self.racket_pose_config = pose_config(racket_cfg)
         from racket_source_policy import is_exclusive
         self.exclusive_racket_source = is_exclusive(self.racket_pose_config)
         if self.exclusive_racket_source and self.processing_mode=='realtime':
             raise ValueError('新版七点独占方案要求 buffered 或 offline 逐帧处理')
+        self.inference_schedule = inference_schedule or perf_cfg.get('inference_schedule', 'barrier')
+        if self.inference_schedule not in ('barrier','interframe'):
+            raise ValueError('Unsupported inference schedule')
+        if self.inference_schedule=='interframe' and (not self.exclusive_racket_source or self.processing_mode=='realtime'):
+            raise ValueError('Interframe scheduling requires exclusive buffered/offline processing')
+        if (self.racket_pose_config['mode']!='legacy' and self.racket_pose_config['ipc_transport']=='shared_memory'
+                and self.processing_mode=='realtime'):
+            raise ValueError('Shared source IPC requires buffered/offline processing')
+        perf_cfg['inference_schedule'] = self.inference_schedule
         print('🎾 [Startup] 球拍方案: '+('新版七点独占，禁止旧拍框回退' if self.exclusive_racket_source
               else ('旧版' if self.racket_pose_config['mode']=='legacy' else '兼容诊断 '+self.racket_pose_config['mode'])))
         self.config['racket_pose'] = dict(self.racket_pose_config)
@@ -685,6 +698,8 @@ class MultiprocessPipeline:
                     cap.get(cv2.CAP_PROP_POS_MSEC) if not self.is_stream_source else None,
                 )
                 shared_frames[slot][:] = frame[:]
+                import struct
+                struct.pack_into('<q', shms[slot].buf, self.frame_size, source_frame_id)
                 self.q_inference.put({
                     'idx': source_frame_id,
                     'slot': slot,
@@ -718,6 +733,7 @@ class MultiprocessPipeline:
         executor = None
         dual_pose_estimator = None
         racket_pose_runtime = None
+        interframe = None
         try:
             from detection_frame_context import DetectionFrameContext
             from pose_estimator_yolo26 import PoseEstimatorYOLO26
@@ -789,8 +805,12 @@ class MultiprocessPipeline:
             inference_workers = max(1, int(perf_cfg.get('inference_workers', unified_workers)))
             executor = ThreadPoolExecutor(max_workers=inference_workers)
             print(f"⚙️ [Inference] 线程池并发数: {inference_workers}")
-            print("⚙️ [Inference] 单帧并行任务数: 2（目标检测 + 姿态估计）")
-            if inference_workers > 2:
+            print(f"⚙️ [Inference] 启动调度: {self.inference_schedule} | 球拍 IPC: {self.racket_pose_config['ipc_transport']}")
+            if self.inference_schedule=='interframe':
+                print('⚙️ [Inference] 两帧在途：候选/球拍准备与同帧人体/时序聚合重叠')
+            else:
+                print("⚙️ [Inference] 单帧并行任务数: 2（目标检测 + 姿态估计）")
+            if inference_workers > 2 and self.inference_schedule=='barrier':
                 print(
                     f"ℹ️ [Inference] 当前执行图每帧最多使用 2 个 worker；"
                     f"其余 {inference_workers - 2} 个用于后续多帧并发扩展"
@@ -821,31 +841,65 @@ class MultiprocessPipeline:
             from racket_resolution import RacketResolver, RacketResolutionConfig
             racket_resolver = RacketResolver(RacketResolutionConfig.from_dict(self.config))
 
-            while not self.stop_event.is_set():
-                try:
-                    task = self.q_inference.get(timeout=1.0)
-                except queue.Empty:
-                    if self.rd_done.is_set():
-                        break
-                    continue
-                except Exception as exc:
-                    print(f"❌ [Inference] 获取推理任务失败: {exc}")
-                    self.stop_event.set()
-                    raise RuntimeError("Inference queue read failed") from exc
+            def read_next(cancelled=None):
+                while not self.stop_event.is_set() and not (cancelled and cancelled.is_set()):
+                    try:
+                        return self.q_inference.get(timeout=.1)
+                    except queue.Empty:
+                        if self.rd_done.is_set():
+                            return None
+                return None
 
+            def source_descriptor(task):
+                return {'name':self.shm_names[task['slot']], 'slot':task['slot'],
+                        'shape':[self.height,self.width,3], 'dtype':'uint8', 'generation':task['idx']}
+
+            def serial_tasks():
+                while not self.stop_event.is_set():
+                    task=read_next()
+                    if task is None:
+                        return
+                    yield task
+
+            if self.inference_schedule=='interframe':
+                from interframe_pipeline import InterframePipeline
+                raw_detector=detector.candidate_inference_view()
+                def prepare(task):
+                    started=time.perf_counter()
+                    started_unix_ns=time.time_ns()
+                    frame=shared_frames[task['slot']]
+                    submitted=racket_pose_runtime.submit(frame,task['idx'],task.get('source_time'),source_descriptor(task))
+                    dispatch_ms=(time.perf_counter()-started)*1000
+                    ctx=(DetectionFrameContext.build(task['idx'],frame,roi_manager,self.config)
+                         if roi_manager is not None and not self.algo2_dual_view else None)
+                    packet,detection_ms=timed_call(raw_detector.external_candidate_packet,
+                        ctx.detection_frame if ctx else frame,task['idx'],(self.width,self.height),
+                        ctx.roi_offset if ctx else (0,0))
+                    join=time.perf_counter()
+                    observation=racket_pose_runtime.resolve(task['idx'],submitted)
+                    return {**task,'_stage_a':{'packet':packet,'observation':observation,
+                        'started_at_unix_ns':started_unix_ns,'racket_dispatch_ms':dispatch_ms,
+                        'legacy_detection_ms':detection_ms,'racket_join_ms':(time.perf_counter()-join)*1000,
+                        'stage_a_ms':(time.perf_counter()-started)*1000}}
+                interframe=InterframePipeline(read_next,prepare,self.stop_event,
+                    close_timeout=self.racket_pose_config['timeout_seconds']+2)
+            tasks=interframe if interframe is not None else serial_tasks()
+            for task in tasks:
                 slot = task['slot']
                 frame_ptr = shared_frames[slot]
-                inference_started_at_unix_ns = time.time_ns()
+                stage_a=task.get('_stage_a')
+                stage_b_started=time.perf_counter()
+                inference_started_at_unix_ns = stage_a['started_at_unix_ns'] if stage_a else time.time_ns()
                 dispatch_started = time.perf_counter()
                 frame_context = None
                 detection_frame = frame_ptr
                 pose_detection_frame = frame_ptr
                 pose_submitted = (
-                    racket_pose_runtime.submit(frame_ptr, task['idx'], task.get('source_time'))
-                    if racket_pose_runtime is not None else False
+                    racket_pose_runtime.submit(frame_ptr, task['idx'], task.get('source_time'),source_descriptor(task))
+                    if racket_pose_runtime is not None and not stage_a else False
                 )
-                racket_pose_observation = None
-                racket_dispatch_ms = (time.perf_counter() - dispatch_started) * 1000
+                racket_pose_observation = stage_a['observation'] if stage_a else None
+                racket_dispatch_ms = stage_a['racket_dispatch_ms'] if stage_a else (time.perf_counter() - dispatch_started) * 1000
                 if roi_manager is not None:
                     frame_context = DetectionFrameContext.build(
                         task['idx'],
@@ -858,15 +912,21 @@ class MultiprocessPipeline:
 
                 if self.algo2_dual_view and dual_view_mgr is not None and dual_pose_estimator is not None:
                     dual_frame = dual_view_mgr.split_frame(frame_ptr, frame_id=task['idx'])
-                    f1 = executor.submit(
-                        timed_call,
-                        detector.detect_unified,
-                        frame_ptr,
-                        (0, 0),
-                        (self.width, self.height),
-                        retain_racket_candidates=racket_tracker is not None,
-                        racket_source='external' if self.exclusive_racket_source else 'legacy',
-                    )
+                    if stage_a:
+                        from concurrent.futures import Future
+                        f1=Future()
+                        candidates=detector.adopt_external_packet(stage_a['packet'],task['idx'])
+                        f1.set_result(((candidates,[],0.),stage_a['legacy_detection_ms']))
+                    else:
+                        f1 = executor.submit(
+                            timed_call,
+                            detector.detect_unified,
+                            frame_ptr,
+                            (0, 0),
+                            (self.width, self.height),
+                            retain_racket_candidates=racket_tracker is not None,
+                            racket_source='external' if self.exclusive_racket_source else 'legacy',
+                        )
                     f2 = executor.submit(timed_call, dual_pose_estimator.estimate_dual_pose, dual_frame)
 
                     (ball, raw_rackets, _), legacy_detection_ms = f1.result()
@@ -874,7 +934,7 @@ class MultiprocessPipeline:
                     pose_res, human_pose_ms = f2.result()
                     join_started = time.perf_counter()
                     legacy_rackets = list(raw_rackets or [])
-                    if racket_pose_runtime is not None:
+                    if racket_pose_runtime is not None and not stage_a:
                         racket_pose_observation = racket_pose_runtime.resolve(task['idx'], pose_submitted)
                         if self.racket_pose_config['mode'] == 'active' and not self.exclusive_racket_source:
                             from racket_pose_detector import select_pose_candidate
@@ -889,7 +949,7 @@ class MultiprocessPipeline:
                             )
                             if selected_pose is not None:
                                 raw_rackets = [selected_pose] + list(raw_rackets or [])
-                    racket_join_ms = (time.perf_counter() - join_started) * 1000
+                    racket_join_ms = stage_a['racket_join_ms'] if stage_a else (time.perf_counter() - join_started) * 1000
                     association_started = time.perf_counter()
                     if self.exclusive_racket_source:
                         from racket_source_policy import associated_pose_candidates
@@ -1010,7 +1070,10 @@ class MultiprocessPipeline:
                         'racket_diagnostics': racket_diagnostics,
                         'racket_pose': racket_pose_observation,
                         'legacy_rackets': legacy_rackets,
-                        'inference_stage_ms': {'legacy_detection_ms': legacy_detection_ms,
+                        'inference_schedule': self.inference_schedule,
+                        'inference_stage_ms': {'stage_a_ms':stage_a['stage_a_ms'] if stage_a else 0.,
+                            'stage_b_ms':(time.perf_counter()-stage_b_started)*1000,
+                            'legacy_detection_ms': legacy_detection_ms,
                             'human_pose_ms': human_pose_ms, 'racket_dispatch_ms': racket_dispatch_ms,
                             'racket_join_ms': racket_join_ms,
                             'association_ms': (time.perf_counter() - association_started) * 1000},
@@ -1023,14 +1086,20 @@ class MultiprocessPipeline:
                     })
                 else:
                     # 使用 ThreadPool 同时驱动检测和姿态模型。
-                    f1 = executor.submit(
-                        timed_call,
-                        detector.detect_unified,
-                        detection_frame,
-                        frame_context.roi_offset if frame_context is not None else (0, 0),
-                        (self.width, self.height),
-                        racket_source='external' if self.exclusive_racket_source else 'legacy',
-                    )
+                    if stage_a:
+                        from concurrent.futures import Future
+                        f1=Future()
+                        candidates=detector.adopt_external_packet(stage_a['packet'],task['idx'])
+                        f1.set_result(((candidates,[],0.),stage_a['legacy_detection_ms']))
+                    else:
+                        f1 = executor.submit(
+                            timed_call,
+                            detector.detect_unified,
+                            detection_frame,
+                            frame_context.roi_offset if frame_context is not None else (0, 0),
+                            (self.width, self.height),
+                            racket_source='external' if self.exclusive_racket_source else 'legacy',
+                        )
                     f2 = executor.submit(timed_call, pose_estimator.get_keypoints, pose_detection_frame)
 
                     (ball, racket, _), legacy_detection_ms = f1.result()
@@ -1045,7 +1114,7 @@ class MultiprocessPipeline:
                         )
                     legacy_rackets = list(racket or [])
                     join_started = time.perf_counter()
-                    if racket_pose_runtime is not None:
+                    if racket_pose_runtime is not None and not stage_a:
                         racket_pose_observation = racket_pose_runtime.resolve(task['idx'], pose_submitted)
                         if self.racket_pose_config['mode'] == 'active' and not self.exclusive_racket_source:
                             from racket_pose_detector import select_pose_candidate
@@ -1086,9 +1155,12 @@ class MultiprocessPipeline:
                         'racket_diagnostics': racket_diagnostics,
                         'racket_pose': racket_pose_observation,
                         'legacy_rackets': legacy_rackets,
-                        'inference_stage_ms': {'legacy_detection_ms': legacy_detection_ms,
+                        'inference_schedule': self.inference_schedule,
+                        'inference_stage_ms': {'stage_a_ms':stage_a['stage_a_ms'] if stage_a else 0.,
+                            'stage_b_ms':(time.perf_counter()-stage_b_started)*1000,
+                            'legacy_detection_ms': legacy_detection_ms,
                             'human_pose_ms': human_pose_ms, 'racket_dispatch_ms': racket_dispatch_ms,
-                            'racket_join_ms': (time.perf_counter() - join_started) * 1000},
+                            'racket_join_ms': stage_a['racket_join_ms'] if stage_a else (time.perf_counter() - join_started) * 1000},
                         'reader_schedule_lag_ms': task.get('reader_schedule_lag_ms'),
                         'captured_at': task.get('captured_at'),
                         'captured_at_unix_ns': task.get('captured_at_unix_ns'),
@@ -1102,6 +1174,12 @@ class MultiprocessPipeline:
             self.inf_ready.set()
             raise
         finally:
+            preparation_error = None
+            if interframe is not None:
+                try:
+                    interframe.close()
+                except Exception as exc:
+                    preparation_error = exc
             if racket_pose_runtime is not None:
                 racket_pose_runtime.close()
             if executor is not None:
@@ -1111,10 +1189,15 @@ class MultiprocessPipeline:
                     dual_pose_estimator.close()
                 except Exception:
                     pass
-            for s in shms:
-                s.close()
+            # Do not invalidate a borrowed ndarray in a stuck native preparation
+            # call. The failed process exits; its owner unlinks after supervision.
+            if interframe is None or not interframe.thread.is_alive():
+                for s in shms:
+                    s.close()
             self.inf_done.set()
             print("✅ [Inference] 退出")
+            if preparation_error is not None:
+                raise preparation_error
 
     def analyzer_process(self):
         """进程 3: 业务核心 + 全视觉渲染"""
@@ -1508,6 +1591,7 @@ class MultiprocessPipeline:
                 )
                 frame_record['reader_schedule_lag_ms'] = data.get('reader_schedule_lag_ms')
                 frame_record['inference_stage_ms'] = data.get('inference_stage_ms', {})
+                frame_record['inference_schedule'] = data.get('inference_schedule','barrier')
                 if data.get('racket_pose') is not None:
                     frame_record['racket_pose'] = data['racket_pose']
                     frame_record['racket_selection_policy'] = self.racket_pose_config.get('selection_policy','mixed')
@@ -2007,6 +2091,8 @@ class MultiprocessPipeline:
         }
         capture = {
             'processing_mode': self.processing_mode,
+            'inference_schedule': self.inference_schedule,
+            'racket_ipc': self.racket_pose_config['ipc_transport'],
             'racket_pose_mode': self.racket_pose_config['mode'],
             'racket_selection_policy': self.racket_pose_config.get('selection_policy','mixed'),
             'racket_selection_policy_version': self.racket_pose_config.get('selection_policy_version'),
@@ -2043,7 +2129,7 @@ class MultiprocessPipeline:
                     shared_memory.SharedMemory(
                         name=name,
                         create=True,
-                        size=self.frame_size,
+                        size=self.frame_size + 8,
                     )
                 )
         except Exception:
@@ -2138,6 +2224,10 @@ def build_argument_parser():
                         help='配置文件路径')
     parser.add_argument('--input', '-i', default=None, help='输入视频路径，覆盖配置文件')
     parser.add_argument('--output', '-o', default=None, help='输出视频路径，覆盖配置文件')
+    parser.add_argument('--inference-schedule', choices=('barrier','interframe'), default=None,
+                        help='启动推理调度；interframe 为新版独占连续模式的两阶段实验')
+    parser.add_argument('--racket-ipc', choices=('queue','shared_memory'), default=None,
+                        help='球拍图像传输；共享源帧槽仅用于连续模式')
     parser.add_argument('--racket-pose-mode', choices=('legacy','exclusive','shadow','active'), default=None,
                         help='启动方案：legacy旧版／exclusive新版七点独占；shadow/active保留兼容诊断')
     parser.add_argument('--processing-mode', choices=('realtime','buffered','offline'), default=None,
@@ -2382,6 +2472,8 @@ def main_cli(argv=None):
         stream_id=args.stream_id,
         racket_pose_mode=args.racket_pose_mode,
         processing_mode=args.processing_mode,
+        inference_schedule=args.inference_schedule,
+        racket_ipc=args.racket_ipc,
     ).run()
 
 

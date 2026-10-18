@@ -255,6 +255,14 @@
                 <select id="processing_mode"><option value="buffered">连续处理（不丢帧，允许启动缓冲）</option><option value="auto">沿用配置</option><option value="realtime">旧版低延迟预览（会丢旧帧）</option><option value="offline">完整分析（本地视频）</option></select>
               </div>
               <div class="field">
+                <label for="inference_schedule">启动推理调度</label>
+                <select id="inference_schedule"><option value="barrier">当前：同帧并行</option><option value="interframe">实验：两阶段跨帧（新版独占）</option></select>
+              </div>
+              <div class="field">
+                <label for="racket_ipc">球拍图像传输</label>
+                <select id="racket_ipc"><option value="queue">当前：独立图像队列</option><option value="shared_memory">实验：共享源帧（连续模式）</option></select>
+              </div>
+              <div class="field">
                 <label for="inference_workers">推理线程池</label>
                 <input id="inference_workers" type="number" min="1" max="32">
               </div>

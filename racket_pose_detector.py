@@ -32,7 +32,7 @@ def pose_config(config=None):
     c = {'mode':'legacy', 'model_path':DEFAULT_MODEL, 'backend':'coreml', 'compute_units':'ANE',
          'imgsz':960, 'confidence_threshold':.25, 'keypoint_threshold':.5, 'iou_threshold':.45,
          'inference_stride':1, 'join_ms':8.0, 'timeout_seconds':10.0, 'startup_timeout_seconds':60.0,
-         'max_wrist_distance_ratio':.05, 'render_skeleton':True}
+         'max_wrist_distance_ratio':.05, 'render_skeleton':True, 'ipc_transport':'queue'}
     c.update(config or {})
     if c['mode']=='exclusive':
         c['mode']='active'
@@ -46,6 +46,8 @@ def pose_config(config=None):
     if c['mode'] not in ('legacy','shadow','active'):
         raise ValueError('racket_pose.mode must be legacy, exclusive, shadow or active')
     if c['mode']=='legacy':return c  # Bypass remains usable even with a broken optional model configuration.
+    if c['ipc_transport'] not in ('queue','shared_memory'):
+        raise ValueError('Unsupported racket IPC transport')
     if c['selection_policy'] not in ('mixed','exclusive'):
         raise ValueError('Unsupported racket selection policy')
     if c['backend'] not in ('coreml','pytorch') or c['compute_units'] not in ('ANE','ALL','CPU'):

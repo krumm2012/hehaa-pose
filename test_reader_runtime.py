@@ -92,9 +92,12 @@ class ReaderStarvationRegressionTests(unittest.TestCase):
         pipeline.q_free=Mock();pipeline.q_free.get.side_effect=[queue.Empty,0,0,0,0]
         capture=Mock();capture.read.side_effect=[(True,np.zeros((2,2,3),np.uint8))]*3+[(False,None)]
         capture.get.return_value=0;pipeline._open_capture=Mock(return_value=capture)
-        shm=SimpleNamespace(buf=bytearray(12),close=Mock())
+        pipeline.frame_size=12
+        shm=SimpleNamespace(buf=bytearray(20),close=Mock())
         with patch('main_pipe.shared_memory.SharedMemory',return_value=shm):pipeline.reader_process()
         self.assertEqual([pipeline.q_inference.get_nowait()['idx'] for _ in range(3)],[0,1,2])
+        import struct
+        self.assertEqual(struct.unpack_from('<q',shm.buf,12)[0],2)
         capture.grab.assert_not_called();pipeline.analyzer_ready.wait.assert_called_once()
 
     def test_discarded_local_frames_are_paced_too(self):

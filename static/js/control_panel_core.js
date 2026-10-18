@@ -5,7 +5,7 @@
       "realtime_swing_events", "realtime_coach", "coach_tts", "coach_tts_playback", "deepseek_coach",
       "realtime_frame_output", "evidence_bundle", "inference_workers", "display_origin_x",
       "display_origin_y", "live_mode", "save_video", "hdmi_output", "algo2_dual_view",
-      "output_dir", "session_name", "racket_pose_mode", "processing_mode"
+      "output_dir", "session_name", "racket_pose_mode", "processing_mode", "inference_schedule", "racket_ipc"
     ];
     const checkboxIds = new Set([
       "roi_enabled", "show_roi_boundary", "show_roi_fill", "show_roi_points",
@@ -100,10 +100,21 @@
     function updateStreamMeta() {
       const exclusive = $("racket_pose_mode")?.value === "exclusive";
       const processing = $("processing_mode");
+      const schedule = $("inference_schedule");
+      const ipc = $("racket_ipc");
+      if (schedule) {
+        schedule.disabled = !exclusive;
+        if (!exclusive) schedule.value = "barrier";
+      }
       if (processing) {
         const freshness = processing.querySelector('option[value="realtime"]');
         if (freshness) freshness.disabled = exclusive;
         if (exclusive && processing.value === "realtime") processing.value = "buffered";
+      }
+      if (ipc) {
+        const legacy = $("racket_pose_mode")?.value === "legacy";
+        ipc.disabled = legacy || processing?.value === "realtime";
+        if (ipc.disabled) ipc.value = "queue";
       }
       const video = $("stream_id").value === "local_video";
       $("local-video-field").hidden = !video;

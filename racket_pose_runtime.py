@@ -36,6 +36,8 @@ def accepted_runtime_config(config,processing_mode):
 def _worker(config, incoming, outgoing, journal_path):
     import signal
     signal.signal(signal.SIGINT,signal.SIG_IGN)
+    from frame_transport import FrameTransportReader
+    frames=FrameTransportReader()
     journal=None
     try:
         loading_started=time.perf_counter()
@@ -56,7 +58,11 @@ def _worker(config, incoming, outgoing, journal_path):
             task=incoming.get()
             if task is None:break
             started_unix_ns=time.time_ns()
-            result=detector.detect(task['frame'],task['frame_id'],task['source_time'],task.get('prepared'))
+            with frames.read(task) as frame:
+                result=detector.detect(frame,task['frame_id'],task['source_time'],task.get('prepared'))
+            result['input_transport']={'kind':'shared_memory' if task.get('shared_frame') else 'queue',
+                                       'frame_id':task['frame_id'],
+                                       'generation':(task.get('shared_frame') or {}).get('generation')}
             submitted=task.get('submitted_at_unix_ns')
             delay=(started_unix_ns-submitted)/1e6 if submitted is not None else None
             result['timing']['queue_wait_ms']=delay if delay is not None and delay>=0 else None
@@ -74,6 +80,7 @@ def _worker(config, incoming, outgoing, journal_path):
         except Exception:pass
     finally:
         if journal:journal.close()
+        frames.close()
 
 
 class RacketPoseRuntime:
@@ -85,8 +92,11 @@ class RacketPoseRuntime:
             raise ValueError('Exclusive racket source requires continuous buffered/offline processing')
         self.startup_timing_ms={}
         self.full_analysis = processing_mode in ('offline', 'buffered') and self.config['mode'] in ('active', 'shadow')
+        if self.config['ipc_transport']=='shared_memory' and not self.full_analysis:
+            raise ValueError('Shared source IPC requires continuous processing and retained source slots')
         self.disabled_reason=None;self.results={};self.last_progress=time.monotonic();self.submitted=False
         self.outstanding = {}
+        self.shared_leases = {}
         self.metrics={'submitted':0,'replaced_pending':0,'skipped':0,'matched':0,'late':0,'fallback':0}
         self.journal_path=journal_path;self.model_sha256=None
         ctx=mp.get_context('spawn');self.incoming=ctx.Queue(maxsize=1);self.outgoing=ctx.Queue(maxsize=8)
@@ -109,6 +119,7 @@ class RacketPoseRuntime:
         self.disabled_reason=reason
         self.results.clear();self.outstanding.clear()
         if self.process.is_alive():self.process.terminate();self.process.join(timeout=1)
+        getattr(self,'shared_leases',{}).clear()
         if self.full_analysis:raise RuntimeError(reason)
 
     def _pump(self):
@@ -121,22 +132,32 @@ class RacketPoseRuntime:
             if message.get('kind')=='result':
                 result=message['result'];self.results[result['frame_id']]=result
                 self.outstanding.pop(result['frame_id'], None)
+                self.shared_leases={name:fid for name,fid in getattr(self,'shared_leases',{}).items() if fid!=result['frame_id']}
                 while len(self.results)>16:self.results.pop(min(self.results));self.metrics['late']+=1
         if not self.process.is_alive():self._disable('Racket worker exited: '+str(self.process.exitcode))
         elif self.outstanding and time.monotonic()-self.last_progress>self.config['timeout_seconds']:
             self._disable('Racket worker inference timed out')
 
-    def submit(self,frame,frame_id,source_time):
+    def submit(self,frame,frame_id,source_time,shared_frame=None):
         self._pump()
         if self.disabled_reason:return False
         if self.processing_mode=='realtime' and frame_id%self.config['inference_stride']:
             self.metrics['skipped']+=1;return False
-        from racket_pose_detector import letterbox
-        started=time.perf_counter()
-        image, transform = letterbox(frame, self.config['imgsz'])
-        task={'frame':image,'prepared':{'transform':transform,'preprocess_ms':(time.perf_counter()-started)*1000},
-              'frame_id':frame_id,'source_time':source_time,'submitted_ns':time.monotonic_ns(),
+        task={'frame_id':frame_id,'source_time':source_time,'submitted_ns':time.monotonic_ns(),
               'submitted_at_unix_ns':time.time_ns()}
+        if self.config['ipc_transport']=='shared_memory':
+            if not shared_frame or shared_frame['generation']!=frame_id:
+                raise ValueError('Shared source IPC requires a matching leased descriptor')
+            if shared_frame['name'] in self.shared_leases:
+                raise ValueError('Shared source slot is already leased')
+            task['shared_frame']=dict(shared_frame)
+            self.shared_leases[shared_frame['name']]=frame_id
+        else:
+            from racket_pose_detector import letterbox
+            started=time.perf_counter()
+            image, transform = letterbox(frame, self.config['imgsz'])
+            task.update(frame=image,prepared={'transform':transform,'preprocess_ms':(time.perf_counter()-started)*1000})
+        task['submitted_at_unix_ns']=time.time_ns()
         was_idle = not self.outstanding
         if self.full_analysis:
             try:self.incoming.put(task,timeout=self.config['timeout_seconds'])

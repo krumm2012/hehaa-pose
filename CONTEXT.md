@@ -35,3 +35,9 @@ retaining the shared detector for ball inference. See ADR 0005.
 **人工触球确认 (Human Contact Confirmation)**: An explicit reviewer decision recorded separately from candidate frame alignment. Missing legacy decisions remain unreviewed.
 
 **人工教练意见 (Human Coach Review)**: A named reviewer’s observation, evidence and judgment on the system advice, separate from recomputed system rules and optional five-dimension practice ratings. See `docs/HUMAN_COACH_REVIEW_V3.md`.
+
+**跨帧准备 (Interframe Preparation)**: An opt-in two-frame pipeline for exclusive
+continuous processing. Stateless ball candidates and racket observations are
+prepared ahead; body crops, association and temporal state remain ordered.
+Shared source slots are leased through sidecar completion, with generation checks.
+The default remains barrier scheduling plus queue transport. See ADR 0006.

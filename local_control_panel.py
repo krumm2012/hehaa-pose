@@ -228,6 +228,8 @@ class ControlSettings:
     mapped_stream_id: str = ""
     racket_pose_mode: str = "legacy"
     processing_mode: str = "buffered"
+    inference_schedule: str = "barrier"
+    racket_ipc: str = "queue"
 
     @classmethod
     def from_payload(cls, payload: Dict[str, Any]) -> "ControlSettings":
@@ -269,6 +271,14 @@ class ControlSettings:
             raise ValueError('无效的处理模式')
         if racket_pose_mode == 'exclusive' and processing_mode == 'realtime':
             raise ValueError('新版七点球拍方案要求连续处理或完整分析，不支持丢帧预览')
+        inference_schedule=str(payload.get('inference_schedule') or 'barrier')
+        racket_ipc=str(payload.get('racket_ipc') or 'queue')
+        if inference_schedule not in ('barrier','interframe') or racket_ipc not in ('queue','shared_memory'):
+            raise ValueError('无效的推理调度或图像传输方式')
+        if inference_schedule=='interframe' and (racket_pose_mode!='exclusive' or processing_mode=='realtime'):
+            raise ValueError('跨帧流水线仅支持新版独占连续处理')
+        if racket_ipc=='shared_memory' and racket_pose_mode!='legacy' and processing_mode=='realtime':
+            raise ValueError('共享源帧仅支持连续处理或完整分析')
         if processing_mode == 'offline' and stream_id != LOCAL_VIDEO_ID:
             raise ValueError('完整分析模式仅支持本地视频')
 
@@ -277,6 +287,8 @@ class ControlSettings:
             mapped_stream_id=mapped_stream_id,
             racket_pose_mode=racket_pose_mode,
             processing_mode=processing_mode,
+            inference_schedule=inference_schedule,
+            racket_ipc=racket_ipc,
             output_dir=output_dir,
             session_name=session_name,
             output_fps=_number(payload, "output_fps", 25, 1, 60),
@@ -534,6 +546,8 @@ class LocalPipelineController:
                 "live_mode": True,
                 "racket_pose_mode": "legacy",
                 "processing_mode": "buffered",
+                "inference_schedule": "barrier",
+                "racket_ipc": "queue",
                 "save_video": False,
                 "realtime_swing_events": True,
                 "realtime_frame_output": bool(
@@ -1332,7 +1346,8 @@ class LocalPipelineController:
             "--inference-workers",
             str(settings.inference_workers),
         ]
-        command.extend(['--racket-pose-mode', settings.racket_pose_mode])
+        command.extend(['--racket-pose-mode', settings.racket_pose_mode,
+                        '--inference-schedule', settings.inference_schedule,'--racket-ipc',settings.racket_ipc])
         if settings.processing_mode != 'auto':
             command.extend(['--processing-mode', settings.processing_mode])
         target_stream_id = (

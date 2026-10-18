@@ -15,6 +15,7 @@ racket_yolo_model_path: "models/yolov8n.pt"
 
 # ==================== 🎯 YOLO26n 统一检测配置 ====================
 racket_pose:
+  ipc_transport: queue  # queue / shared_memory；共享源帧仅连续模式，实验验收后启用
   mode: legacy  # 启动方案 legacy / exclusive（七点独占）；shadow / active 保留兼容诊断
   # 原始交付模型有非有限 BN 统计及 FP16 解码溢出；保留原包，使用独立验收候选。
   model_path: models/racket_pose/candidates/bn-recalibrated-v1/racket_pose_validated_fp16.mlpackage
@@ -382,6 +383,7 @@ performance_monitoring:
 
 # ==================== 🚄 Pipeline性能开关 ====================
 pipeline_perf:
+  inference_schedule: barrier            # barrier / interframe；跨帧仅新版独占，最多两帧在途
   processing_mode: buffered              # 默认连续处理；启动预热后逐帧，不丢旧帧/不采样新球拍
   async_display_enabled: true             # 独立显示进程；有界背压，逐帧提交，正常结束排空
   inference_workers: 8                    # 推理线程池大小；当前每帧最多并行检测和姿态两个任务

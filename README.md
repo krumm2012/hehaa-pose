@@ -675,3 +675,25 @@ python3 -m unittest -v \
 视频使用现有球/球拍检测、挥拍事件和 Coach 链路；强制关闭直播丢帧与摄像头 ROI，按视频完整处理。
 上传文件仅存储在本机 `data/control_uploads/`，已排除 Git；不会自动清理，可在分析结束后手动删除。
 刷新页面后需重新选择文件；摄像头及自定义码流入口保留不变。
+
+## 两阶段跨帧与共享源帧实验（2026-10-18）
+
+默认仍为旧版球拍、`barrier` 调度和 `queue` 图像传输。控制台新增两个启动选项，
+不支持会话内热切换。新版独占连续处理可显式试验：
+
+```bash
+venv_yolo26/bin/python main_pipe.py --input /path/to/video.mp4 \
+  --racket-pose-mode exclusive --processing-mode buffered \
+  --racket-ipc shared_memory --inference-schedule interframe
+```
+
+共享传输直接借用 Reader 源图槽，检查代际并保持至球拍结果完成；预处理仍有必要的
+resize/RGB/model-input 转换。跨帧准备仅提前原始候选和球拍，不提前动态人体裁剪，
+所有时序状态按源帧顺序更新。两帧在途、有界背压、正常结束排空，不采样、不替换帧。
+
+用 `scripts/benchmark_interframe_pipeline.py --output <新目录>` 可轮换顺序比较
+queue/barrier、shared/barrier、shared/interframe，默认三段原视频并保留编码和显示。
+这只是核心链路工程对照，外部网络/语音关闭；不能替代完整工作流和三轮实时验收。
+实测通过前不承诺 25 FPS。详见 ADR 0006。
+
+本轮三段对照吞吐中位数：queue/barrier **20.54 FPS**、shared/barrier **20.26 FPS**、shared/interframe **20.83 FPS**。逐帧结果一致，25 FPS 尚未通过；详见集成指南 v2.5 和实验报告。

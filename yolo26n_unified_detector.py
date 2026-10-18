@@ -119,6 +119,36 @@ class YOLO26nUnifiedDetector:
     def set_roi_manager(self, roi_manager):
         """动态配置或更新 ROI 管理器（包含边界与镜面排除多边形）。"""
         self.roi_manager = roi_manager
+
+    def candidate_inference_view(self):
+        """Share model weights, never stateful selectors or per-frame diagnostics."""
+        import copy
+        view = copy.copy(self)
+        view.detection_times = deque(maxlen=100)
+        view.last_parse_diagnostics = {}
+        view.last_ball_diagnostics = {}
+        view.last_racket_diagnostics = {}
+        view.static_ball_filter = None
+        view.ball_track_selector = None
+        return view
+
+    def external_candidate_packet(self, frame, frame_id, full_frame_size, coordinate_offset=(0,0)):
+        import copy
+        balls, _, _ = self.detect_unified(frame, coordinate_offset=coordinate_offset, full_frame_size=full_frame_size, racket_source='external')
+        return copy.deepcopy({'frame_id':frame_id, 'balls':balls,
+            'parse_diagnostics':self.last_parse_diagnostics,
+            'racket_diagnostics':self.last_racket_diagnostics,
+            'dimensions':(self.original_height,self.original_width,self.tracking_frame_width,self.tracking_frame_height)})
+
+    def adopt_external_packet(self, packet, frame_id):
+        """Called only by ordered aggregation; does not invoke the model."""
+        import copy
+        if packet['frame_id'] != frame_id:
+            raise ValueError('Candidate packet source identity mismatch')
+        self.last_parse_diagnostics = copy.deepcopy(packet['parse_diagnostics'])
+        self.last_racket_diagnostics = copy.deepcopy(packet['racket_diagnostics'])
+        (self.original_height,self.original_width,self.tracking_frame_width,self.tracking_frame_height) = packet['dimensions']
+        return packet['balls']
     
     def detect_unified(
         self,
