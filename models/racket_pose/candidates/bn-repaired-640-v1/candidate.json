@@ -1,0 +1,14 @@
+{
+  "schema": "tennis.racket-resolution-candidate.v1",
+  "imgsz": 640,
+  "candidate_path": "models/racket_pose/candidates/bn-repaired-640-v1/racket_pose_bounded_fp16_640.mlpackage",
+  "candidate_sha256": "0dec1259f50b2cfb286f3ed5408a2f5f589749a0ddaf7a9b8a4139f29c1a025e",
+  "checkpoint": "models/racket_pose/candidates/bn-recalibrated-v1/bn_repaired_fp32.pt",
+  "checkpoint_sha256": "9d9c4e95df161c1bb0dc04f3b179a5d85e4c17eca1ba52a902219046c1e2eb0f",
+  "original_640_sha256": "107a991c58037753f16411045cf8da877116ff69410b62bf2b61ac1c2e7a82b9",
+  "method": "Re-export the same previously repaired checkpoint used by the 960 baseline at 640, FP16 with bounded grid decode. Supplied 640 package is untouched. Numerical equivalence to the supplied broken 640 package is not claimed.",
+  "export_command": "venv_yolo26/bin/python scripts/export_racket_pose_mixed.py --checkpoint models/racket_pose/candidates/bn-recalibrated-v1/bn_repaired_fp32.pt --output models/racket_pose/candidates/bn-repaired-640-v1/racket_pose_bounded_fp16_640.mlpackage --bounded --imgsz 640",
+  "quality_gate_passed": false,
+  "accuracy_validated": false,
+  "status": "performance experiment only; not an active acceptance receipt"
+}

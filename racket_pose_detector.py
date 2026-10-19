@@ -58,7 +58,7 @@ def pose_config(config=None):
     c['inference_stride'] = int(c['inference_stride'])
     if c['inference_stride'] not in (1,2,3): raise ValueError('racket pose stride must be 1, 2 or 3')
     c['imgsz'] = int(c['imgsz'])
-    if c['imgsz'] != 960: raise ValueError('Only the validated 960 racket pose contract is supported')
+    if c['imgsz'] not in (640, 960): raise ValueError('Racket pose supports only explicit 640 or 960 input contracts')
     for key in ('join_ms','timeout_seconds','startup_timeout_seconds','max_wrist_distance_ratio'):
         c[key] = float(c[key])
         if not math.isfinite(c[key]) or c[key] < 0: raise ValueError('Invalid '+key)
@@ -73,7 +73,8 @@ def verify_acceptance(config, digest):
     if (report.get('model_sha256') != digest or report.get('numerical_valid') is not True
             or report.get('quality_gate_passed') is not True
             or report.get('backend') != config['backend']
-            or report.get('compute_units') != config['compute_units']):
+            or report.get('compute_units') != config['compute_units']
+            or report.get('imgsz', 960) != config['imgsz']):
         raise ValueError('Racket model numerical/quality acceptance missing or model/backend identity differs')
     return report
 
@@ -111,7 +112,9 @@ def letterbox(frame, size=960):
 
 def decode_candidates(raw, transform, config):
     a = np.asarray(raw)
-    if a.shape != (1,26,18900): raise ValueError('Unexpected racket output shape: '+str(a.shape))
+    size = config.get('imgsz', 960)
+    candidates = sum((size // stride) ** 2 for stride in (8, 16, 32))
+    if a.shape != (1,26,candidates): raise ValueError('Unexpected racket output shape: '+str(a.shape))
     rows = a[0].T.astype(np.float32)
     finite = np.isfinite(rows).all(axis=1)
     diagnostics = {'candidates':len(rows),'nonfinite_candidates':int((~finite).sum()),
@@ -158,9 +161,13 @@ class RacketPoseDetector:
             self.model=ct.models.MLModel(self.config['model_path'],compute_units=units[self.config['compute_units']])
             spec=self.model.get_spec();self.output_name=spec.description.output[0].name
             image=spec.description.input[0]
-            if (image.name!='image' or image.type.imageType.width!=960 or image.type.imageType.height!=960
+            size = self.config['imgsz']
+            if (image.name!='image' or image.type.imageType.width!=size or image.type.imageType.height!=size
                     or image.type.imageType.colorSpace!=ct.proto.FeatureTypes_pb2.ImageFeatureType.RGB):
-                raise ValueError('Racket model requires RGB image 960x960')
+                raise ValueError(f'Racket model must match configured RGB image {size}x{size}')
+            expected = (1, 26, sum((size // stride) ** 2 for stride in (8, 16, 32)))
+            if tuple(spec.description.output[0].type.multiArrayType.shape) != expected:
+                raise ValueError('Racket package output does not match configured resolution/topology')
         else:
             from ultralytics import YOLO
             self.model=YOLO(self.config['model_path'])

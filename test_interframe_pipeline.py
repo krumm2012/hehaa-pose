@@ -106,16 +106,35 @@ class SharedFrameTests(unittest.TestCase):
         finally:worker.close()
 
     def test_shared_worker_crash_and_hang_fail_without_reclaiming_parent_memory(self):
-        for options in ({'test_crash':True},{'test_delay':2}):
-            worker=RacketPoseRuntime({'mode':'active','ipc_transport':'shared_memory',
-                'startup_timeout_seconds':5,'timeout_seconds':.1,**options},'buffered',worker_target=transport_worker)
-            try:
-                worker.submit(self.image,7,None,self.descriptor)
-                with self.assertRaises(RuntimeError):worker.resolve(7)
-                self.assertFalse(worker.process.is_alive())
+        for mode in ('active', 'shadow'):
+            for options in ({'test_crash':True},{'test_delay':2}):
+                with self.subTest(mode=mode, fault=options):
+                    worker=RacketPoseRuntime({'mode':mode,'ipc_transport':'shared_memory',
+                        'startup_timeout_seconds':5,'timeout_seconds':.1,**options},'buffered',worker_target=transport_worker)
+                    try:
+                        worker.submit(self.image,7,None,self.descriptor)
+                        with self.assertRaises(RuntimeError):worker.resolve(7)
+                        self.assertFalse(worker.process.is_alive())
+                        self.assertFalse(worker.shared_leases)
+                    finally:worker.close()
+                    self.assertEqual(int(self.image[0,0,0]),42)
+
+    def test_continuous_shadow_uses_every_frame_and_releases_shared_slots(self):
+        worker=RacketPoseRuntime({'mode':'shadow','imgsz':640,'ipc_transport':'shared_memory',
+            'inference_stride':3,'startup_timeout_seconds':5,'timeout_seconds':1},
+            'buffered',worker_target=transport_worker)
+        try:
+            for fid in range(7,14):
+                self.write_generation(fid)
+                worker.submit(self.image,fid,{'source_frame_id':fid},dict(self.descriptor,generation=fid))
+                result=worker.resolve(fid)
+                self.assertEqual(result['frame_id'],fid)
+                self.assertEqual(result['source_time']['source_frame_id'],fid)
                 self.assertFalse(worker.shared_leases)
-            finally:worker.close()
-            self.assertEqual(int(self.image[0,0,0]),42)
+            self.assertEqual(worker.metrics['matched'],7)
+            self.assertEqual(sum(worker.metrics[k] for k in ('skipped','replaced_pending','fallback','late')),0)
+        finally:worker.close()
+        self.assertFalse(worker.process.is_alive())
 
     def test_unleased_realtime_shared_input_is_rejected_before_spawn(self):
         with self.assertRaisesRegex(ValueError,'retained source slots'):

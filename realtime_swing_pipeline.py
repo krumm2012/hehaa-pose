@@ -53,7 +53,10 @@ class RealtimeFrameJournal:
         self.snapshot_path = Path(snapshot_path)
         self.snapshot_size = max(1, int(snapshot_size))
         self.flush_interval = max(1, int(flush_interval))
-        self._recent: Deque[Dict] = deque(maxlen=self.snapshot_size)
+        # Each owned frame is encoded once for JSONL and reused verbatim in
+        # snapshots. Re-encoding 200 nested records every five frames holds the
+        # GIL long enough to stall rendering in another thread of this process.
+        self._recent: Deque[Tuple[int, str]] = deque(maxlen=self.snapshot_size)
         self._queue: queue.Queue = queue.Queue(maxsize=max(1, int(queue_size)))
         self._sentinel = object()
         self._closed = False
@@ -109,9 +112,10 @@ class RealtimeFrameJournal:
                         return
                     if self._worker_error is not None or stream is None:
                         continue
-                    stream.write(json.dumps(item, ensure_ascii=False, separators=(",", ":")))
+                    encoded = json.dumps(item, ensure_ascii=False, separators=(",", ":"))
+                    stream.write(encoded)
                     stream.write("\n")
-                    self._recent.append(item)
+                    self._recent.append((int(item.get('frame_id', -1)), encoded))
                     self._frame_count += 1
                     if self._frame_count % self.flush_interval == 0:
                         stream.flush()
@@ -132,7 +136,7 @@ class RealtimeFrameJournal:
 
     def _write_snapshot(self) -> None:
         latest_frame = (
-            int(self._recent[-1].get("frame_id", -1))
+            self._recent[-1][0]
             if self._recent
             else -1
         )
@@ -145,11 +149,14 @@ class RealtimeFrameJournal:
                 "dropped_records": self._dropped_records,
                 "realtime": True,
             },
-            "frames": list(self._recent),
         }
+        # The fragments come from json.dumps, never from raw user text. Keep
+        # cadence, fields, frame order and atomic publication identical.
+        header = json.dumps(document, ensure_ascii=False, separators=(',', ':'))
+        encoded = header[:-1] + ',"frames":[' + ','.join(row for _, row in self._recent) + ']}'
         temporary = self.snapshot_path.with_name(f".{self.snapshot_path.name}.tmp")
         temporary.write_text(
-            json.dumps(document, ensure_ascii=False, separators=(',',':')),
+            encoded,
             encoding="utf-8",
         )
         os.replace(temporary, self.snapshot_path)

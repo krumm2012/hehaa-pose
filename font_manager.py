@@ -9,8 +9,28 @@ import numpy as np
 from pathlib import Path
 import platform
 import logging
+import math
+import threading
+from functools import lru_cache
+_font_raster_lock = threading.Lock()
+
+
+@lru_cache(maxsize=16)
+def _cached_truetype(path, size):
+    """Bound font faces across repeated frames and clip renderers in one process."""
+    from PIL import ImageFont
+    return ImageFont.truetype(path, size)
 
 class FontManager:
+    def warmup_fonts(self):
+        """Move common HUD font-file loads before the source-frame timeline."""
+        if self.default_font and os.path.exists(self.default_font):
+            for size in (10, 11, 12, 13, 16):
+                try:
+                    _cached_truetype(self.default_font, size)
+                except OSError:
+                    break
+
     def __init__(self, config=None):
         self.config = config or {}
         self.font_dir = Path(self.config.get('font_dir', 'fonts'))
@@ -269,7 +289,14 @@ class FontManager:
         """获取字体路径"""
         return self.default_font
     
-    def put_text_with_font(self, img, text, org, font_scale=0.7, color=(255, 255, 255), thickness=2, font_face=cv2.FONT_HERSHEY_SIMPLEX):
+    def put_texts_with_font(self, img, items):
+        """Draw ordered labels on one owned image, preserving mixed OpenCV/PIL pixels."""
+        canvas = img.copy()
+        for item in items:
+            canvas = self.put_text_with_font(canvas, **item, _owned=True)
+        return canvas
+
+    def put_text_with_font(self, img, text, org, font_scale=0.7, color=(255, 255, 255), thickness=2, font_face=cv2.FONT_HERSHEY_SIMPLEX, *, _owned=False):
         """使用适当的字体绘制文本"""
         # 先检查是否包含中文字符
         has_chinese = any('\u4e00' <= char <= '\u9fff' for char in text)
@@ -278,10 +305,6 @@ class FontManager:
         if has_chinese:
             try:
                 from PIL import Image, ImageDraw, ImageFont
-                
-                # 把OpenCV图像转换为PIL图像
-                pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-                draw = ImageDraw.Draw(pil_img)
                 
                 # 获取合适的字体大小（基于font_scale转换）
                 font_size = int(12 * font_scale * 2)  # 调整倍数可能需要根据实际情况修改
@@ -292,7 +315,7 @@ class FontManager:
                     # 1. 首先尝试使用配置中的默认字体
                     if self.default_font and os.path.exists(self.default_font):
                         try:
-                            font = ImageFont.truetype(self.default_font, font_size)
+                            font = _cached_truetype(self.default_font, font_size)
                             self.logger.debug(f"使用默认字体: {self.default_font}")
                         except Exception as e:
                             self.logger.warning(f"加载默认字体失败: {e}")
@@ -305,7 +328,7 @@ class FontManager:
                         ]
                         for font_name in system_font_names:
                             try:
-                                font = ImageFont.truetype(font_name, font_size)
+                                font = _cached_truetype(font_name, font_size)
                                 self.logger.debug(f"使用系统字体: {font_name}")
                                 break
                             except Exception:
@@ -316,7 +339,7 @@ class FontManager:
                         fallback_fonts = self.find_fallback_chinese_fonts()
                         for fb_font in fallback_fonts:
                             try:
-                                font = ImageFont.truetype(fb_font, font_size)
+                                font = _cached_truetype(fb_font, font_size)
                                 self.logger.debug(f"使用备用字体: {fb_font}")
                                 break
                             except Exception:
@@ -333,19 +356,28 @@ class FontManager:
                 # 绘制文本
                 text_color = (color[2], color[1], color[0])  # BGR转RGB
                 
-                # 对每行文本分别绘制（支持多行文本）
-                lines = text.split('\n')
-                y_offset = 0
-                line_spacing = font_size * 0.3  # 行间距为字体大小的30%
-                
-                for line in lines:
-                    draw.text((org[0], org[1] + y_offset), line, fill=text_color, font=font)
-                    # 计算下一行的垂直偏移量
-                    y_offset += font_size + line_spacing
-                
-                # 把PIL图像转换回OpenCV图像
-                result_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
-                
+                # Preserve full-canvas coordinates, but convert only the ink region.
+                # Integer crop translation keeps Pillow's fractional baseline intact.
+                positions = [(line, (org[0], org[1] + i * (font_size + font_size * .3)))
+                             for i, line in enumerate(text.split('\n'))]
+                result_img = img if _owned else img.copy()
+                with _font_raster_lock:
+                    measure = ImageDraw.Draw(Image.new('RGB', (1, 1)))
+                    boxes = [measure.textbbox(pos, line, font=font) for line, pos in positions if line]
+                    if not boxes:
+                        return result_img
+                    height, width = img.shape[:2]
+                    x1 = max(0, math.floor(min(b[0] for b in boxes)))
+                    y1 = max(0, math.floor(min(b[1] for b in boxes)))
+                    x2 = min(width, math.ceil(max(b[2] for b in boxes)))
+                    y2 = min(height, math.ceil(max(b[3] for b in boxes)))
+                    if x2 <= x1 or y2 <= y1:
+                        return result_img
+                    pil_img = Image.fromarray(cv2.cvtColor(img[y1:y2, x1:x2], cv2.COLOR_BGR2RGB))
+                    draw = ImageDraw.Draw(pil_img)
+                    for line, pos in positions:
+                        draw.text((pos[0] - x1, pos[1] - y1), line, fill=text_color, font=font)
+                    result_img[y1:y2, x1:x2] = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
                 return result_img
             
             except ImportError:
@@ -360,7 +392,7 @@ class FontManager:
             # 不包含中文，使用OpenCV默认渲染
             # 对多行文本分别渲染
             lines = text.split('\n')
-            result_img = img.copy()
+            result_img = img if _owned else img.copy()
             line_height = int(30 * font_scale)  # 估计的行高
             
             for i, line in enumerate(lines):
@@ -372,10 +404,12 @@ class FontManager:
 
 # 单例模式
 _font_manager_instance = None
+_font_manager_lock = threading.Lock()
 
 def get_font_manager(config=None):
     """获取字体管理器单例"""
     global _font_manager_instance
-    if _font_manager_instance is None:
-        _font_manager_instance = FontManager(config)
-    return _font_manager_instance 
+    with _font_manager_lock:
+        if _font_manager_instance is None:
+            _font_manager_instance = FontManager(config)
+    return _font_manager_instance

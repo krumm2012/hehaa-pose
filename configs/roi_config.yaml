@@ -10,40 +10,41 @@ streams:
   - 2560
   - 1440
   roi_points:
-  - - 491
-    - 615
-  - - 1346
-    - 581
-  - - 1649
-    - 1181
-  - - 326
-    - 1303
-  roi_description: '4-point ROI: [[491, 615], [1346, 581], [1649, 1181], [326, 1303]]'
-  last_updated: '2026-10-08 08:49:18'
+  - - 534
+    - 691
+  - - 1393
+    - 669
+  - - 1684
+    - 1267
+  - - 345
+    - 1314
+  roi_description: '4-point ROI: [[534, 691], [1393, 669], [1684, 1267], [345, 1314]]'
+  last_updated: '2026-10-19 09:41:00'
   created_by: Tennis Analyzer ROI Calibration
   version: '2.0'
   mirror_view:
     enabled: true
     reflection_roi:
-    - 0.4239
-    - 0.0
-    - 0.8168
-    - 0.3244
+    - 0.2125
+    - 0.0493
+    - 0.5707
+    - 0.4431
     polygon:
-    - - 0.4239
-      - 0.0
-    - - 0.8168
-      - 0.0
-    - - 0.8036
-      - 0.3244
-    - - 0.4239
-      - 0.3
+    - - 0.2172
+      - 0.0493
+    - - 0.5707
+      - 0.0535
+    - - 0.5527
+      - 0.4194
+    - - 0.2125
+      - 0.4431
     padding: 0.0
     horizontal_flip: true
     target_size:
     - 540
     - 720
     mask_polygon: []
+    exclusion_enabled: true
   front_view:
     enabled: true
     default_roi:
@@ -63,40 +64,41 @@ streams:
   - 2560
   - 1440
   roi_points:
-  - - 1134
-    - 371
-  - - 1918
-    - 389
+  - - 1154
+    - 461
+  - - 1969
+    - 501
   - - 2263
     - 1202
   - - 948
     - 1216
-  roi_description: '4-point ROI: [[1134, 371], [1918, 389], [2263, 1202], [948, 1216]]'
-  last_updated: '2026-10-08 08:50:50'
+  roi_description: '4-point ROI: [[1154, 461], [1969, 501], [2263, 1202], [948, 1216]]'
+  last_updated: '2026-10-19 09:51:47'
   created_by: Tennis Analyzer ROI Calibration
   version: '2.0'
   mirror_view:
     enabled: true
     reflection_roi:
-    - 0.4266
+    - 0.4449
     - 0.0
-    - 0.8145
+    - 0.8094
     - 0.3229
     polygon:
-    - - 0.4266
+    - - 0.4449
       - 0.0
-    - - 0.8145
-      - 0.0021
+    - - 0.8094
+      - 0.0
     - - 0.8
       - 0.3229
-    - - 0.4301
-      - 0.2896
+    - - 0.4461
+      - 0.2924
     padding: 0.0
     horizontal_flip: true
     target_size:
     - 540
     - 720
     mask_polygon: []
+    exclusion_enabled: true
   front_view:
     enabled: true
     default_roi:

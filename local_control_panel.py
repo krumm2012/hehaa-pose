@@ -230,6 +230,7 @@ class ControlSettings:
     processing_mode: str = "buffered"
     inference_schedule: str = "barrier"
     racket_ipc: str = "queue"
+    racket_model_profile: str = "configured"
 
     @classmethod
     def from_payload(cls, payload: Dict[str, Any]) -> "ControlSettings":
@@ -264,7 +265,14 @@ class ControlSettings:
         if stream_id == LOCAL_VIDEO_ID and not mapped_stream_id:
             roi_enabled = False
         racket_pose_mode = str(payload.get('racket_pose_mode') or 'legacy')
+        racket_model_profile = str(payload.get('racket_model_profile') or 'configured')
+        if racket_model_profile not in ('configured', '640_shadow'):
+            raise ValueError('无效的球拍模型选择')
+        if racket_model_profile == '640_shadow' and racket_pose_mode != 'shadow':
+            raise ValueError('640候选尚未通过检测质量验收，请选择影子性能预览')
         processing_mode = str(payload.get('processing_mode') or 'buffered')
+        if racket_model_profile == '640_shadow' and processing_mode not in ('buffered', 'offline'):
+            raise ValueError('640性能预览需逐帧连续处理或完整分析')
         if racket_pose_mode not in ('legacy', 'exclusive', 'shadow', 'active'):
             raise ValueError('无效的球拍模式')
         if processing_mode not in ('auto', 'realtime', 'buffered', 'offline'):
@@ -286,6 +294,7 @@ class ControlSettings:
             stream_id=stream_id,
             mapped_stream_id=mapped_stream_id,
             racket_pose_mode=racket_pose_mode,
+            racket_model_profile=racket_model_profile,
             processing_mode=processing_mode,
             inference_schedule=inference_schedule,
             racket_ipc=racket_ipc,
@@ -479,6 +488,7 @@ class LocalPipelineController:
         self._change_condition = threading.Condition()
         self._server_stop_event = threading.Event()
         self._process: Optional[subprocess.Popen] = None
+        self._active_racket_model = None
         self._reader_thread: Optional[threading.Thread] = None
         self._runtime_directory: Optional[Path] = None
         self._state = "stopped"
@@ -521,6 +531,10 @@ class LocalPipelineController:
                 for stream in self.streams
             },
             "streams": self.streams,
+            "racket_model_profiles": {
+                "configured": {"available": True, "imgsz": (config.get('racket_pose') or {}).get('imgsz', 960)},
+                "640_shadow": {"available": (self.workspace / 'models/racket_pose/candidates/bn-repaired-640-v1/racket_pose_bounded_fp16_640.mlpackage').is_dir(), "imgsz": 640},
+            },
             "credentials_configured": bool(
                 os.environ.get(self.username_env)
                 and os.environ.get(self.password_env)
@@ -548,6 +562,7 @@ class LocalPipelineController:
                 "processing_mode": "buffered",
                 "inference_schedule": "barrier",
                 "racket_ipc": "queue",
+                "racket_model_profile": "configured",
                 "save_video": False,
                 "realtime_swing_events": True,
                 "realtime_frame_output": bool(
@@ -600,6 +615,7 @@ class LocalPipelineController:
                 "command": list(self._public_command),
                 "logs": list(self._logs),
                 "artifacts": dict(self._artifacts),
+                "racket_model": self._active_racket_model,
                 "service_build": {
                     "schema": "tennis.control-service-build.v1",
                     "pid": os.getpid(),
@@ -740,6 +756,8 @@ class LocalPipelineController:
                 self.config_path.read_text(encoding="utf-8")
             ) or {}
             config["video_input_path"] = source
+            from racket_model_profiles import apply_model_profile
+            apply_model_profile(config, settings.racket_model_profile, settings.racket_pose_mode, self.workspace)
             config["video_output_path"] = str(
                 output_dir / f"{settings.session_name}_live.mp4"
             )
@@ -796,6 +814,15 @@ class LocalPipelineController:
                 f"[control] 启动 {stream['label']} · "
                 f"{stream.get('public_source') or stream['source']}"
             )
+            model_config = config.get('racket_pose') or {}
+            self._active_racket_model = {
+                'profile': settings.racket_model_profile, 'mode': settings.racket_pose_mode,
+                'path': model_config.get('model_path'), 'imgsz': model_config.get('imgsz', 960),
+                'compute_units': model_config.get('compute_units', 'ANE'),
+            }
+            self._logs.append('[control] 球拍模型: {} | {}x{} | {} | {}'.format(
+                model_config.get('model_path', '未配置'), model_config.get('imgsz', 960),
+                model_config.get('imgsz', 960), model_config.get('compute_units', 'ANE'), settings.racket_pose_mode))
             self._process = subprocess.Popen(
                 command,
                 cwd=str(self.workspace),

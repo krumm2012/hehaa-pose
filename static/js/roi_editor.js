@@ -3,6 +3,7 @@
     // ==========================================
     const roiEditorState = {
       active: false,
+      loading: false,
       target: "court", // "court" (球场ROI) | "mirror" (镜面排除区)
       mode: "drag", // "drag" (拖拽已有顶点) | "click" (重新顺序点击4点)
       courtPoints: [], // [[sourceX, sourceY], ...] 原视频像素坐标
@@ -398,6 +399,7 @@
     }
 
     async function toggleRoiEditor(forceActive = null) {
+      if (roiEditorState.loading) return;
       const nextActive = forceActive !== null ? Boolean(forceActive) : !roiEditorState.active;
       const btnHeader = $("btn-header-roi-edit");
       const btnSide = $("btn-toggle-roi-editor");
@@ -407,7 +409,14 @@
       if (nextActive) {
         showToast("正在获取纯净无标注画面以进行高精度描点…");
         // Always request clean preview frame without baked annotations!
-        await refreshPreview(false, true);
+        roiEditorState.loading = true;
+        let ready;
+        try {
+          ready = await refreshPreview(false, true);
+        } finally {
+          roiEditorState.loading = false;
+        }
+        if (!ready) return;
 
         roiEditorState.active = true;
         const stream = selectedStream();

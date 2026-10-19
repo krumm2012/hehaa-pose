@@ -6,6 +6,32 @@ from yolo26n_unified_detector import YOLO26nUnifiedDetector
 
 
 class UnifiedDetectorROITests(unittest.TestCase):
+    def test_constructor_retains_roi_and_filters_before_ball_selection(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock, patch
+        from roi_manager import ROIManager
+
+        manager=ROIManager({})
+        manager.set_roi_points([(200,200),(800,200),(800,800),(200,800)])
+        image_type=SimpleNamespace(imageType=SimpleNamespace(height=960,width=960))
+        spec=SimpleNamespace(description=SimpleNamespace(
+            input=[SimpleNamespace(name='image',type=image_type)],output=[]))
+        model=Mock();model.get_spec.return_value=spec
+        fake_ct=SimpleNamespace(ComputeUnit=SimpleNamespace(CPU_ONLY=1,CPU_AND_GPU=2,CPU_AND_NE=3,ALL=4),
+            models=SimpleNamespace(MLModel=Mock(return_value=model)))
+        with patch('yolo26n_unified_detector.ct',fake_ct):
+            detector=YOLO26nUnifiedDetector('fixture.mlpackage',{},roi_manager=manager)
+        self.assertIs(detector.roi_manager,manager)
+        detector._preprocess=lambda frame:None
+        inside={'position':[500,500]};outside={'position':[50,500]}
+        detector._parse_predictions=lambda predictions:([inside,outside],[])
+        selector=Mock(side_effect=lambda balls,rackets:balls)
+        detector._filter_static_balls=selector
+        detector._select_primary_racket=lambda rackets,balls:rackets
+        balls,_,_=detector.detect_unified(np.zeros((1000,1000,3),np.uint8))
+        self.assertEqual(balls,[inside])
+        self.assertEqual(selector.call_args.args[0],[inside])
+
     def test_airborne_ball_survives_before_primary_selection_with_exclusions(self):
         from roi_manager import ROIManager
 

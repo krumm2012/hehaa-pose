@@ -2,19 +2,19 @@ camera_profile: camera04_mirror_booth
 mirror_view:
   enabled: true
   reflection_roi:
-  - 0.4266
+  - 0.4449
   - 0.0
-  - 0.8145
+  - 0.8094
   - 0.3229
   polygon:
-  - - 0.4266
+  - - 0.4449
     - 0.0
-  - - 0.8145
-    - 0.0021
+  - - 0.8094
+    - 0.0
   - - 0.8
     - 0.3229
-  - - 0.4301
-    - 0.2896
+  - - 0.4461
+    - 0.2924
   padding: 0.0
   horizontal_flip: true
   target_size:

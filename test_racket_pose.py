@@ -108,7 +108,7 @@ class RacketContractTests(unittest.TestCase):
         self.assertEqual(c['mode'],'legacy')
 
     def test_gpu_and_invalid_config_rejected(self):
-        for c in ({'compute_units':'GPU'},{'inference_stride':0},{'imgsz':640},{'join_ms':float('nan')}):
+        for c in ({'compute_units':'GPU'},{'inference_stride':0},{'imgsz':641},{'join_ms':float('nan')}):
             with self.assertRaises(ValueError):pose_config({**c,'mode':'shadow'})
 
     def test_seven_point_order_and_out_of_frame_measurements(self):

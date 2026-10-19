@@ -104,7 +104,6 @@ class YOLO26nUnifiedDetector:
         self.last_ball_diagnostics = {}
         self.last_racket_diagnostics = {}
         self.last_parse_diagnostics = {}
-        self.roi_manager = None
         
         print("✅ YOLO26n 统一检测器初始化完成")
 
@@ -298,9 +297,6 @@ class YOLO26nUnifiedDetector:
     
     def _preprocess(self, frame):
         """预处理图像"""
-        # 转换为 RGB
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
         if self.preprocess_mode == 'letterbox':
             gain = min(
                 self.input_width / self.original_width,
@@ -308,7 +304,7 @@ class YOLO26nUnifiedDetector:
             )
             resized_width = max(1, round(self.original_width * gain))
             resized_height = max(1, round(self.original_height * gain))
-            resized_content = cv2.resize(rgb_frame, (resized_width, resized_height))
+            resized_content = cv2.resize(frame, (resized_width, resized_height))
             pad_x = (self.input_width - resized_width) // 2
             pad_y = (self.input_height - resized_height) // 2
             resized = np.full(
@@ -323,12 +319,14 @@ class YOLO26nUnifiedDetector:
             self._preprocess_gain = gain
             self._preprocess_pad = (pad_x, pad_y)
         else:
-            resized = cv2.resize(rgb_frame, (self.input_width, self.input_height))
+            resized = cv2.resize(frame, (self.input_width, self.input_height))
             self._preprocess_gain = None
             self._preprocess_pad = (0, 0)
         
         # 转换为 PIL Image
-        pil_image = Image.fromarray(resized)
+        # Channel permutation commutes with resize; avoid converting every
+        # 2560x1440 source pixel when the model consumes only 960x960.
+        pil_image = Image.fromarray(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB))
         
         return pil_image
     

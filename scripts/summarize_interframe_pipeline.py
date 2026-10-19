@@ -76,10 +76,15 @@ def summarize(root):
             'target_25fps_passed':all(r['output_fps']>=25 and r['sustained_realtime_gate'] for r in selected)})
     smoke_path = root/'smokes.json'
     smokes = json.loads(smoke_path.read_text()) if smoke_path.exists() else []
+    roi_policies=sorted({r.get('roi_policy','disabled') for r in reports})
+    roi_stream_ids=sorted({r.get('roi_stream_id') for r in reports if r.get('roi_stream_id')})
     result = {'schema':'tennis.interframe-assessment.v1', 'target_fps':25,
-        'method':'One sequential run per profile per source; rotated order; buffered stride 1; startup excluded from output FPS.',
+        'roi_policies':roi_policies,'roi_stream_ids':roi_stream_ids,
+        'method':'Sequential runs per profile/source with rotated order; buffered stride 1; startup excluded from output FPS.',
+        'source_count':len({r['source_sha256'] for r in reports}),
+        'rounds':len({r['repeat'] for r in reports}),
         'scope':'Dual body views, local Coach/events/reports, video encoding and HighGUI completion retained. External network and voice disabled for the main core-chain comparison.',
-        'limits':'Three clips, one round; not nine-video three-round acceptance or ten-minute soak. Hardware contention attribution is an inference, not a device-level trace.',
+        'limits':'Source/round counts recorded explicitly; not full nine-video three-round acceptance or ten-minute soak. Hardware contention attribution is an inference, not a device-level trace.',
         'default_schedule':'barrier','default_transport':'queue',
         'summary':summary,'audits':audits,'smokes':smokes,
         'parity_passed':bool(audits) and all(a['passed'] for a in audits),
@@ -104,17 +109,21 @@ def render(root, result, reports):
     bars = ''.join(f'<div class="metric"><b>{r["label"]}</b><div class="track"><i style="width:{r["fps_median"]/30*100:.2f}%"></i><span class="target"></span></div><strong>{r["fps_median"]:.2f} FPS</strong></div>' for r in result['summary'])
     stage_rows = ''.join(f'<tr><td>{r["label"]}</td><td>{r["dispatch_p50_ms"]:.3f}</td><td>{r["sidecar_queue_p50_ms"]:.3f}</td><td>{r["stage_a_p50_ms"]:.2f}</td><td>{r["stage_b_p50_ms"]:.2f}</td></tr>' for r in result['summary'])
     smokes = ''.join(f'<li>{html.escape(r["profile"])}：{r.get("frames",0)} 帧，连续完整性 {r.get("continuous_gate",False)}，退出码 {r["returncode"]}</li>' for r in result['smokes'])
+    roi_note=('球场 ROI 已关闭；双人体仍使用测试用前景／镜面裁剪，不代表项目机位配置的性能。'
+              if result['roi_policies']==['disabled'] else
+              '读取项目 ROI，显式绑定机位：'+', '.join(result['roi_stream_ids'])+'；启用 ROI 不等于球与球拍模型已裁剪输入。')
+    smoke_note=('故障冒烟只验证旁路失败隔离，不代表真实语音并发性能通过。' if result['smokes'] else '本目录未运行网络／语音故障冒烟。')
     page = '''<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>共享源帧与跨帧流水线实测</title>
 <style>body{font:16px/1.7 system-ui,sans-serif;color:#172638;background:#f3f5f8;margin:0}main{max-width:1080px;margin:auto;padding:32px 24px}h1{font-size:30px}section{background:white;border:1px solid #dde3ea;border-radius:12px;padding:24px;margin:20px 0}.note{border-left:5px solid #d79422}table{border-collapse:collapse;width:100%;font-size:14px}th,td{text-align:left;padding:12px 9px;border-bottom:1px solid #e4e8ef}th{background:#f7f9fb}a{color:#145fba}.scroll{overflow:auto}.metric{display:grid;grid-template-columns:190px 1fr 100px;gap:16px;align-items:center;margin:20px 0}.track{height:18px;background:#edf0f4;position:relative;border-radius:4px}.track i{display:block;height:100%;background:#6289b5;border-radius:4px}.target{position:absolute;left:83.333%;top:-5px;height:28px;border-left:2px dashed #ba7021}small{color:#536174}code{background:#eef2f7;padding:2px 5px}pre{white-space:pre-wrap;background:#eef2f7;padding:16px}@media(max-width:650px){.metric{grid-template-columns:1fr 80px}.metric b{grid-column:1 / -1}main{padding:16px}section{padding:16px}}</style><main>
 <p>2026-10-18 · 连续逐帧 · 新版七点独占 · 默认配置保留</p><h1>两项方案已接通，25 FPS 尚未通过</h1>
-<section class="note"><b>结论</b><p>共享源帧消除了大图序列化并降低派发成本；两阶段跨帧实现了有界重叠，但这轮输出速度仍约 20–21 FPS。没有稳定收益，未提升生产默认。源帧、人体、球、球拍和事件语义的逐帧对照：PARITY。</p></section>
-<section><h2>输出吞吐率</h2><p>三段各一次，图中为三段 FPS 中位数；虚线为 25 FPS 目标。启动时间不计入输出 FPS。</p>BARS</section>
+<section class="note"><b>结论</b><p>共享源帧消除了大图序列化并降低派发成本；两阶段跨帧实现了有界重叠，当前各配置实测 FPS 见下表，未提升生产默认。源帧、人体、球、球拍和事件语义的逐帧对照：PARITY。</p><p>ROI_NOTE</p></section>
+<section><h2>输出吞吐率</h2><p>本组视频各配置依次运行，图中为输出 FPS 中位数；虚线为 25 FPS 目标。启动时间不计入输出 FPS。</p>BARS</section>
 <section><h2>同源视频对照</h2><div class="scroll"><table>HEADERROWS</table></div><small>¹ 预热后本地名义输入节奏至输出提交的延迟，包含积压；不是相机曝光至屏幕的实测延迟。</small></section>
-<section><h2>阶段耗时（ms）</h2><div class="scroll"><table><tr><th>配置</th><th>派发 P50</th><th>球拍队列 P50²</th><th>准备阶段 P50</th><th>聚合阶段 P50</th></tr>STAGES</table></div><small>除队列取全部记录中位数，其余为三个运行各自 P50 的中位数。² 包含传输与调度，不能解释为纯拷贝成本。原调度准备阶段记 0，聚合阶段包含同帧推理；跨帧两阶段会重叠，不能相加推算吞吐。</small><p>跨帧稳态仍重叠球检测、七点球拍及双人体调用；更换源帧编号没有减少模型工作量。共享加速资源竞争仍是主要解释，但本轮没有设备级执行轨迹证明具体单元的占用比例。</p></section>
-<section><h2>完整性与状态</h2><p>三组各 750 帧，共 2250 帧；检查源帧顺序、PTS、球拍传输代际、人体观测、球选择、球拍输出、运动学结果和事件语义。原始记录、模型身份和输入哈希保留于 <a href="matrix.json">matrix.json</a> 和 <a href="assessment.json">assessment.json</a>。</p><ul>SMOKES</ul><p>两帧在途，一项准备结果待取；源槽在 sidecar 完成前不得回收，且检查代际。人体裁剪与所有时序状态保持顺序更新。正常 EOF 排空，错误使会话失败。</p></section>
+<section><h2>阶段耗时（ms）</h2><div class="scroll"><table><tr><th>配置</th><th>派发 P50</th><th>球拍队列 P50²</th><th>准备阶段 P50</th><th>聚合阶段 P50</th></tr>STAGES</table></div><small>除队列取全部记录中位数，其余为各运行 P50 的中位数。² 包含传输与调度，不能解释为纯拷贝成本。原调度准备阶段记 0，聚合阶段包含同帧推理；跨帧两阶段会重叠，不能相加推算吞吐。</small><p>跨帧稳态仍重叠球检测、七点球拍及双人体调用；更换源帧编号没有减少模型工作量。共享加速资源竞争仍是主要解释，但本轮没有设备级执行轨迹证明具体单元的占用比例。</p></section>
+<section><h2>完整性与状态</h2><p>三组共 TOTAL_FRAMES 帧；检查源帧顺序、PTS、球拍传输代际、人体观测、球选择、球拍输出、运动学结果和事件语义。原始记录、模型身份和输入哈希保留于 <a href="matrix.json">matrix.json</a> 和 <a href="assessment.json">assessment.json</a>。</p><ul>SMOKES</ul><p>两帧在途，一项准备结果待取；源槽在 sidecar 完成前不得回收，且检查代际。人体裁剪与所有时序状态保持顺序更新。正常 EOF 排空，错误使会话失败。</p></section>
 <section><h2>使用与边界</h2><p>原控制台新增“启动推理调度”和“球拍图像传输”。选择新版七点独占、连续处理后可启用实验配置；旧版仍独立启动。</p><pre>--racket-pose-mode exclusive --processing-mode buffered
---racket-ipc shared_memory --inference-schedule interframe</pre><p>主对照保留本地 Coach、报告、事件片段、编码和显示；关闭了外部网络／语音以测核心链路。故障冒烟只验证旁路失败隔离，不代表真实语音并发性能通过。本轮为三段一次工程回归，未完成九段三轮与十分钟资源验收；没有自动推送或更新 tmp 标签。</p></section></main></html>'''
-    replacements = {'PARITY':'通过' if result['parity_passed'] else '未通过', 'BARS':bars,
+--racket-ipc shared_memory --inference-schedule interframe</pre><p>主对照保留本地 Coach、报告、事件片段、编码和显示；关闭了外部网络／语音以测核心链路。SMOKE_NOTE本轮素材 SOURCE_COUNT 段、ROUNDS 轮，未完成九段三轮与十分钟资源验收；没有自动推送或更新 tmp 标签。</p></section></main></html>'''
+    replacements = {'SMOKE_NOTE':smoke_note, 'SOURCE_COUNT':str(result['source_count']), 'ROUNDS':str(result['rounds']), 'ROI_NOTE':html.escape(roi_note), 'TOTAL_FRAMES':str(sum(r['frames'] for r in reports)), 'PARITY':'通过' if result['parity_passed'] else '未通过', 'BARS':bars,
                     'HEADERROWS':header+''.join(cells), 'STAGES':stage_rows, 'SMOKES':smokes}
     for key,value in replacements.items():
         page = page.replace(key,value)

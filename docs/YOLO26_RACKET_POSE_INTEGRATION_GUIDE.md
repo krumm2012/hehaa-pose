@@ -220,7 +220,7 @@ venv_yolo26/bin/python main_pipe.py --input /path/to/video.mp4 \
 resize/RGB/model-input 转换。跨帧准备仅提前原始候选和球拍，不提前动态人体裁剪，
 所有时序状态按源帧顺序更新。两帧在途、有界背压、正常结束排空，不采样、不替换帧。
 
-用 `scripts/benchmark_interframe_pipeline.py --output <新目录>` 可轮换顺序比较
+用 `scripts/benchmark_interframe_pipeline.py --output <新目录> --roi-stream-id <已核对机位>` 可轮换顺序比较
 queue/barrier、shared/barrier、shared/interframe，默认三段原视频并保留编码和显示。
 这只是核心链路工程对照，外部网络/语音关闭；不能替代完整工作流和三轮实时验收。
 实测通过前不承诺 25 FPS。详见 ADR 0006。
@@ -242,3 +242,175 @@ queue/barrier、shared/barrier、shared/interframe，默认三段原视频并保
 单轮顺序对照仍受系统负载影响；网络／语音冒烟验证失败隔离，不能代替真实旁路并发性能测试。
 报告：`data/analysis_results/racket_pose_acceptance_20261018/interframe-20261018/index.html`。
 可用 `scripts/summarize_interframe_pipeline.py <实验目录>` 重新审计和生成报告。
+
+### 2026-10-19 ROI 验收范围修正
+
+上面的 2026-10-18 三段性能对照使用了显式关闭球场 ROI 的测试配置，
+双人体仍使用测试用前景／镜面裁剪；其 FPS 不能代表已配置机位 ROI 的实际表现。
+检测器初始化曾错误清空传入的 ROIManager，现已修复，并通过真实构造路径的回归测试。
+
+回归脚本 CLI 默认采用项目 ROI；本地视频必须通过 `--roi-stream-id` 显式绑定已核对的机位，
+不直接套用默认 Court 01。`48.43.mp4` 画面标记 Pose 02，本轮单段验证显式绑定 Court 02。
+原关闭配置可用 `--roi-policy disabled` 复现；ROI 策略不同不能复用旧测量目录。
+
+```bash
+venv_yolo26/bin/python scripts/benchmark_interframe_pipeline.py \
+  --output data/analysis_results/racket_pose_acceptance_20261018/roi-bound-NEW \
+  --roi-stream-id court02-main --clips 48.43.mp4
+```
+
+球场多边形约束有效观测／主球选择，人体前景与镜面窗口用于实际裁剪。
+当前双视角球模型和七点球拍模型仍接收全景源图，再变换到固定模型输入尺寸；
+不将多边形过滤误称为模型裁剪提速。改变输入裁剪需要独立校验空中球覆盖、球拍挥动范围、
+镜面归属、坐标还原和有效像素尺度，不能直接沿用前一轮数值／性能验收结论。
+
+本次补测：`48.43.mp4` 显式绑定 `court02-main`，三种调度／传输组合共 750 帧，
+证据均记录 `ROI enabled=true`。处理、编码、显示、重放完整，三组同源观测与事件语义一致。
+输出分别约 20.13／20.15／19.88 FPS；仅为单段工程验证，不能宣称 ROI 场景已通过实时验收。
+相关及整链路回归共 219 项测试通过。补测报告：
+`data/analysis_results/racket_pose_acceptance_20261018/roi-bound-20261019/index.html`。
+
+### 七点球拍输入区域实验（2026-10-19）
+
+生产球拍旁路仍使用全图。`racket_pose_regions.py` 提供独立实验几何：根据已绑定机位的
+`front_view.default_roi` 和 `mirror_view.reflection_roi` 向外增加原图像素边距，
+比较全图、两区并集一次推理、两区分别推理。保持原图方向，各自 letterbox 到 960；
+同时还原框和七点的裁剪偏移，分区输出在原图坐标执行 NMS 后再关联。
+不使用当前帧人体结果生成输入框，避免引入新的同帧等待。
+
+```bash
+venv_yolo26/bin/python scripts/compare_racket_regions.py \
+  --stream-id court02-main --margin 256 \
+  --output data/analysis_results/racket_pose_acceptance_20261018/racket-regions-NEW
+venv_yolo26/bin/python scripts/report_racket_regions.py \
+  data/analysis_results/racket_pose_acceptance_20261018/racket-regions-NEW
+```
+
+该入口只做逐帧独立实验，不向控制面板或主流水线自动发布裁剪策略。
+区域配置、源视频、模型和人体观测参考均保留身份／哈希。三种策略按源帧轮换执行顺序，
+参考手腕来自同源的历史原始人体观测；缺少参考的源帧仍全部推理，只排除关联比较。
+“全图观测保留”和“新增选择”均是模型一致性指标，不能替代人工标注准确率。
+固定模型输入下，减少原图面积不等于同比减少推理计算量；两路分区会增加模型调用。
+独立球拍耗时不代表与球、双人体、渲染、编码并行时的整链路 FPS。
+
+本轮报告及差异源帧图：
+`data/analysis_results/racket_pose_acceptance_20261018/racket-regions-20261019/index.html`。
+
+九段原视频共 2250 源帧、9000 次正式球拍调用，所有策略逐帧处理，无非有限候选。
+单独球拍每帧总耗时 P50：全图 29.66 ms、并集 29.85 ms、分区两次 59.36 ms。
+并集／分区分别保留 1977／1983 个前景全图参考（基线 2034），镜面为 709／712（基线 733）。
+并集覆盖了全部 19352 个基线合格关键点，但仍改变部分模型输出，说明几何覆盖不等于检测一致。
+新增选择未经人工验证；本轮没有支持默认切换或实时提速的证据，生产保持全图。
+退出时仍有 ANE 编译告警，进程返回 0；实际算子设备分配未经独立追踪。
+
+### 640 输入性能候选（2026-10-19）
+
+输入／解码接口现在支持显式 `imgsz: 640`（8400候选）与 `960`（18900候选）；
+包输入输出必须匹配配置，工作进程按配置尺寸预热。数值／质量验收同时绑定输入尺寸，
+640不能借用旧960收据。默认模型和输入尺寸未切换。
+
+用户提供的 `racket_pose_yolo26m_fp16_640.mlpackage` 在ALL后端抽查6帧，
+每帧1600个候选出现非有限值，原包保留，不允许据此启用增强。
+用960基线同一份已修复checkpoint另存640有界FP16候选：
+`models/racket_pose/candidates/bn-repaired-640-v1/racket_pose_bounded_fp16_640.mlpackage`。
+这是受控分辨率实验，不声称与原始坏640包数值等价。
+
+九段各250帧的单模型对照中，640 ALL总耗时P50约10.56ms，960 ANE约28.82ms。
+相同640像素与PyTorch抽查18组，全部有限，各组关键点P95误差最大约0.184输入像素。
+640尤其改变了小尺寸镜面球拍的观测，性能提升不能替代独立检测质量验证。
+三段整链路以影子模式执行，不使用未经质量放行的640观测改变事件；保留编码、渲染、
+双人体、球、报告和本地Coach，逐帧等待，不采样。
+
+```bash
+venv_yolo26/bin/python scripts/benchmark_racket_resolutions.py \
+  --candidate models/racket_pose/candidates/bn-repaired-640-v1/racket_pose_bounded_fp16_640.mlpackage \
+  --output data/analysis_results/racket_pose_acceptance_20261018/resolution-640-NEW
+```
+
+本项目用 `mode: shadow`／`exclusive` 等启动方案控制启用；单独写 `enabled: true`
+不会把默认legacy变成新版。当前640候选仅供shadow性能实验，未发放active/exclusive质量收据。
+原包异常、候选来源、同像素对照和整链路性能明细：
+`data/analysis_results/racket_pose_acceptance_20261018/resolution-640-20261019/index.html`。
+
+三段编码影子链路输出FPS中位数：960 ANE为18.98，640 ALL为24.87，640 ANE为24.75。
+九组共2250帧全部处理、显示、编码并通过证据重放；54项相关回归通过。
+640 ALL在50.03.mp4约24.50FPS、名义输入至输出P95约301ms，稳定25FPS与延迟门槛未全部通过。
+640与960原始观测的一致性：前景1896/2034、镜面544/733；这不是人工准确率。
+模型质量、九段三轮和持续压力验收尚未完成，继续保留960默认。
+
+
+### 640控制台预览与连续链路优化（2026-10-19）
+
+控制台新增独立的“启动球拍模型”选择，640 ALL仅开放影子预览；界面限制为
+逐帧buffered/offline和shadow，不借用960验收收据。启动记录包含尺寸、后端、路径。
+“七点独占”只选择来源，不能证明已经切换分辨率。项目默认模型仍为960。
+
+本轮缓存并预热有界字体、复用字体管理器；中文叠字微基准P50为2.50→1.08ms。
+统一检测先缩放BGR再转RGB，预处理P50为1.40→0.96ms；两项前后像素哈希一致。
+显式OpenCV线程配置传入sidecar；本机GCD构建对正整数线程限制未生效，设置0可禁用
+内部并行，但整链路无稳定收益，未调整默认线程设置。
+
+48.43、49.43、50.03各三轮，全编码、异步显示、事件、报告、本地Coach和当前Court02 ROI，
+共2250源帧按序推理、显示、编码并通过重放，零跳帧。输出FPS中位24.90，范围23.46–25.33。
+严格25FPS且名义输入至输出P95≤250ms仅4/9轮通过；49.43-r0 P95为836ms、
+积压增539ms，该轮完整保留，原因尚未用系统追踪确认。不能据此宣称稳定25FPS。
+整帧推理P50约38–39ms，双人体约36–37ms，渲染仍有长尾，下一轮应先分解资源争用。
+
+控制台真实启动49.43已验证640×640/ALL及模型哈希，250帧全部完成并重放；
+此轮不保存整段视频，输出24.67FPS、名义输入至输出P95约291ms，独立于编码基准列出。
+640镜面观测质量仍待人工复核；本轮没有更新active/exclusive质量收据，
+未完成九视频三轮或10分钟压力验收。92项Python回归和3项ROI前端测试通过。
+
+详细结果：`data/analysis_results/racket_pose_acceptance_20261018/640-tuning-20261019/index.html`。
+复测入口：`scripts/benchmark_640_optimized.py`（新输出目录，完整保留慢轮）。
+
+
+### 渲染长尾迭代（2026-10-19）
+
+增加逐帧render_stage_ms/render_features，拆分球拍叠加、双视图裁剪、视图绘制、HUD和遥测卡片；
+视图/HUD/卡片记录墙钟与当前线程CPU。原render_ms不含其后的编码和显示提交。
+
+文字保持原顺序批量绘制，中文只转换墨迹区域；固定真实底图/同一卡片的P95为6.44→4.03ms，
+普通、教练文字和卡片三个输出像素哈希均与前版一致。三段完整链路仅文字改动后的渲染P95下降32%–36%。
+进一步定位每5帧一次的200帧快照：它重复序列化约2.9MiB记录。改为复用JSONL已编码片段，
+微基准序列化/组装P50约19.17→0.15ms（不含磁盘I/O），快照字段、刷新频率和原子替换保留。
+
+三阶段各三段、共2250帧，处理/显示/编码/重放完整，源哈希一致且事件语义未改变。
+48.43、49.43、50.03最终渲染P95分别为7.42、7.95、9.67ms，对应新鲜基线11.27、12.24、11.99ms；
+最大单帧33.72/33.32/34.10ms→19.23/14.75/23.19ms。
+快照这一轮没有进一步改善P95，50.03有卡片P95上升，不能据此宣称全部分位数稳定改善。
+本轮节流源输入下FPS前后均约25.13–25.17，主要收益是减轻渲染工作和尖峰，不能替代完整实时验收。
+88项相关Python回归通过。默认模型/质量收据未变；保留全部慢帧，后续仍按阶段追踪并发等待。
+
+报告：`data/analysis_results/racket_pose_acceptance_20261018/render-tail-20261019/index.html`。
+复测：`scripts/benchmark_render_tail.py --output <新目录>`；固定渲染与快照探针为
+`scripts/profile_render_tail.py`、`scripts/profile_frame_snapshot.py`。
+
+
+### 640 shadow内测发布核验（2026-10-19）
+
+当前结论仅为受控本地shadow-preview内测可用，不是正式稳定25FPS或active/exclusive质量放行。
+最终代码重新对照49.43旧版/640 shadow，各250帧处理、显示、编码及重放完整；
+球、球拍、人体与指标逐帧一致，事件及Coach内容一致，shadow旁路不进入业务选择。
+该轮shadow输出25.18FPS、名义输入至输出P95约50.7ms，不替代历史慢轮及完整验收。
+65项定向回归通过，含连续shadow共享源帧逐帧身份/租约、原生退出/超时终止与父内存所有权。
+
+连续shadow为保持逐帧完整性，会等待新模型同源结果；加载、崩溃或超时会使会话失败，
+并非无阻塞、故障后旧链路自动继续的线上影子旁路。默认仍旧版，显式选择640_shadow。
+正式发布尚需冻结提交与模型、九视频三轮、10分钟循环与完整故障/网络/语音验证。
+模型包被Git忽略，跨机器发布须单独分发并校验哈希，单独推代码不代表完整交付。
+本次未执行远端发布。核验结果与版本范围：
+`data/analysis_results/racket_pose_acceptance_20261018/shadow-readiness-20261019/index.html`。
+
+
+### 640 shadow预发布发行包
+
+版本标签为`640-shadow-preview-20261019`，作为GitHub Prerelease发布在`krumm2012/hehaa-pose`。
+代码沿用algo-2.0，默认旧版；640仍需显式选择shadow。
+模型包通过Release附件独立分发，附SHA256SUMS、release-manifest.json和validation-summary.json。
+安装后可运行`venv_yolo26/bin/python scripts/verify_shadow_release.py`核验模型目录身份；
+校验不执行模型，也不授予准确率、稳定25FPS或active/exclusive验收。
+本发行包适用于已安装球与人体模型的原有macOS环境，不包含全部基础模型或虚拟环境。
+完整启动、故障语义、回退和未完成验收见仓库`docs/releases/640-shadow-preview-20261019.md`。
+
+本次发行前152项Python相关回归、3项ROI前端测试及JS语法检查通过。

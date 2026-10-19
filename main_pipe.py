@@ -502,6 +502,7 @@ class MultiprocessPipeline:
                 'sha256': racket_model_digest,
                 'backend': self.racket_pose_config['backend'],
                 'compute_units': self.racket_pose_config['compute_units'],
+                'imgsz': self.racket_pose_config['imgsz'],
                 'mode': self.racket_pose_config['mode'],
                 'selection_policy': self.racket_pose_config.get('selection_policy','mixed'),
                 'selection_policy_version': self.racket_pose_config.get('selection_policy_version'),
@@ -820,7 +821,8 @@ class MultiprocessPipeline:
             if self.racket_pose_config['mode'] != 'legacy':
                 from racket_pose_runtime import RacketPoseRuntime
                 racket_pose_runtime = RacketPoseRuntime(
-                    {**self.racket_pose_config,'pipeline_profile':'dual' if self.algo2_dual_view else 'single',
+                    {**self.racket_pose_config,'opencv_threads':perf_cfg.get('opencv_threads'),
+                     'pipeline_profile':'dual' if self.algo2_dual_view else 'single',
                      'source_dimensions':[self.width,self.height],'source_fps':self.fps},
                     self.processing_mode, self.racket_pose_journal,
                 )
@@ -1515,6 +1517,8 @@ class MultiprocessPipeline:
                 queue_size=max(64, int(round(self.fps * 12))),
             )
 
+        if dual_view_renderer is not None:
+            dual_view_renderer.font_mgr.warmup_fonts()
         self.analyzer_ready.set()
         while not self.stop_event.is_set():
             try:
@@ -1624,9 +1628,13 @@ class MultiprocessPipeline:
                     analysis_completed_at_unix_ns=analysis_completed_at_unix_ns,
                 )
             # --- 2. 视觉渲染流程 ---
+            render_stages = {}
+            render_features = {}
+            overlay_started = time.perf_counter_ns()
             if data.get('racket_pose') and self.racket_pose_config.get('render_skeleton', True):
                 from racket_pose_detector import draw_racket_pose
                 draw_racket_pose(canvas, data['racket_pose'])
+            render_stages['racket_overlay_wall_ms'] = (time.perf_counter_ns() - overlay_started) / 1e6
             if self.algo2_dual_view and dual_view_mgr is not None and dual_view_renderer is not None and pose_res is not None:
                 if norm_ball_pos:
                     ball_trail.append(norm_ball_pos)
@@ -1637,13 +1645,16 @@ class MultiprocessPipeline:
                 ev_label = disp.get("event_label") or swing_label or "READY STANCE"
                 ev_coach = disp.get("coaching_text") or ""
                 telemetry_card = disp.get("telemetry_card")
+                render_features = {'coach': bool(ev_coach), 'telemetry_card': telemetry_card is not None}
 
+                split_started = time.perf_counter_ns()
                 dual_frame = dual_view_mgr.split_frame(
                     canvas,
                     player_bbox=data.get('player_bbox'),
                     frame_id=fid,
                     front_crop_bbox=data.get('front_crop_bbox'),
                 )
+                render_stages['split_wall_ms'] = (time.perf_counter_ns() - split_started) / 1e6
                 rendered_canvas = dual_view_renderer.render_dual_frame(
                     dual_frame,
                     pose_res,
@@ -1656,6 +1667,7 @@ class MultiprocessPipeline:
                     telemetry_card=telemetry_card,
                     ground_reference=frame_record.get('ground_reference') if frame_record else None,
                     ground_geometry=self.ground_reference.overlay_geometry if self.ground_reference else None,
+                    timing_ms=render_stages,
                 )
             else:
                 # 背景半透明面板
@@ -1739,6 +1751,8 @@ class MultiprocessPipeline:
 
             output_stages['display_submit_ms'] = (time.perf_counter() - display_started) * 1000
             if frame_record is not None:
+                frame_record['render_stage_ms'] = render_stages
+                frame_record['render_features'] = render_features
                 frame_record['output_stage_ms'] = output_stages
                 frame_record['display_submission_scope'] = 'bounded_queue_preserve_all' if queued_display else 'synchronous_highgui_return'
                 from analysis_data_contracts import stamp_render_output
@@ -1962,7 +1976,7 @@ class MultiprocessPipeline:
         ignore_child_interrupts()
         threads = self.config.get('pipeline_perf', {}).get('opencv_threads')
         if threads is not None:
-            cv2.setNumThreads(max(1, int(threads)))
+            cv2.setNumThreads(max(0, int(threads)))
         target = {
             "Reader": self.reader_process,
             "Inference": self.inference_process,

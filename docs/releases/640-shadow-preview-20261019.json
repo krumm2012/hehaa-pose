@@ -1,0 +1,37 @@
+{
+  "schema": "tennis.shadow-release-contract.v1",
+  "version": "640-shadow-preview-20261019",
+  "channel": "prerelease",
+  "model": {
+    "path": "models/racket_pose/candidates/bn-repaired-640-v1/racket_pose_bounded_fp16_640.mlpackage",
+    "sha256": "0dec1259f50b2cfb286f3ed5408a2f5f589749a0ddaf7a9b8a4139f29c1a025e",
+    "hash_algorithm": "racket_pose_detector.model_digest: sorted relative UTF-8 path + NUL + file bytes, excluding .DS_Store",
+    "backend": "coreml",
+    "compute_units": "ALL",
+    "imgsz": 640,
+    "output_shape": [1, 26, 8400],
+    "keypoints": ["butt_cap", "grip_center", "throat", "sweet_spot", "head_top", "frame_left", "frame_right"]
+  },
+  "startup": {
+    "racket_model_profile": "640_shadow",
+    "racket_pose_mode": "shadow",
+    "processing_mode": "buffered",
+    "inference_schedule": "barrier",
+    "racket_ipc": "shared_memory",
+    "inference_stride": 1
+  },
+  "default_mode": "legacy",
+  "failure_policy": "Continuous shadow waits for each same-source result. Worker load failure, crash or timeout fails this session; legacy may be started separately.",
+  "business_selection": "Legacy ball/racket selection, events and Coach; seven-point observations are shadow evidence and overlays only.",
+  "stable_25fps_accepted": false,
+  "quality_gate_passed": false,
+  "active_or_exclusive_allowed": false,
+  "not_an_active_acceptance_receipt": true,
+  "deployment_scope": "Opt-in local macOS preview in an existing Tennis Analyzer environment with ball and human model packages installed. This release distributes only the additional 640 racket package.",
+  "pending": [
+    "All nine videos, three rounds on the frozen build",
+    "Ten-minute continuous loop with bounded queues and memory checks",
+    "Complete network/TTS and workflow fault-isolation acceptance",
+    "Independent mirror-view quality review before active/exclusive promotion"
+  ]
+}

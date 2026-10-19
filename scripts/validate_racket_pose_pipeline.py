@@ -107,15 +107,38 @@ def compact_repeat(session, report):
 
 
 def run_case(args, video, mode, processing, stride, repeat):
+    # CLI experiments must select their geometry deliberately. Older programmatic
+    # callers retain the explicitly recorded disabled fixture for reproducibility.
+    roi_policy=getattr(args,'roi_policy','disabled')
+    roi_stream_id=getattr(args,'roi_stream_id',None)
+    if roi_policy not in ('project','disabled'):
+        raise ValueError('Unsupported regression ROI policy')
+    if roi_policy=='project' and not roi_stream_id:
+        raise ValueError('本地回归使用项目 ROI 需显式指定 --roi-stream-id，避免套用默认机位')
     session=Path(args.output).resolve()/f'{processing}-{mode}-s{stride}-{video.stem}-r{repeat}'
     if session.exists():
-        if (session/'measurement.json').is_file():return json.loads((session/'measurement.json').read_text())
+        if (session/'measurement.json').is_file():
+            cached=json.loads((session/'measurement.json').read_text())
+            if cached.get('roi_policy','disabled')!=roi_policy or cached.get('roi_stream_id')!=roi_stream_id:
+                raise ValueError('ROI policy differs from cached run; use a new output directory')
+            requested_size = getattr(args, 'imgsz', None)
+            cached_size = (cached.get('sidecar', {}).get('config') or {}).get('imgsz', 960)
+            if requested_size is not None and cached_size != requested_size:
+                raise ValueError('Racket resolution differs from cached run; use a new output directory')
+            return cached
         raise FileExistsError(session)
     session.mkdir(parents=True)
     config=yaml.safe_load((ROOT/'configs/yolo26_tennis_config.yaml').read_text())
     config['video_input_path']=str(video);config['save_video']=args.save_video
     config['video_processing']['max_frames']=0
-    config['roi_settings'].update(enabled=False,auto_load_config=False)
+    if roi_policy=='disabled':
+        config['roi_settings'].update(enabled=False,auto_load_config=False)
+    else:
+        from roi_stream_config import resolve_roi_stream_profile
+        config['roi_settings']['target_stream_id']=roi_stream_id
+        profile=resolve_roi_stream_profile(config,str(video),(2560,1440),target_stream_id=roi_stream_id)
+        if not profile.enabled or profile.stream_id!=roi_stream_id:
+            raise ValueError('Requested project ROI is unavailable: '+profile.reason)
     config['pipeline_perf'].update(dual_view_enabled=False,hdmi_output_enabled=False,collect_frame_results=False)
     config['realtime_swing']['deepseek']['enabled']=False
     config['realtime_swing'].setdefault('coach_tts',{})['enabled']=False
@@ -127,15 +150,16 @@ def run_case(args, video, mode, processing, stride, repeat):
     config['racket_pose']['ipc_transport']=getattr(args,'racket_ipc','queue')
     if getattr(args,'pose_compute_units',None):config['pose_compute_units']=args.pose_compute_units
     if getattr(args,'display_mode',None):config['pipeline_perf']['async_display_enabled']=args.display_mode=='async'
-    if getattr(args,'opencv_threads',None):config['pipeline_perf']['opencv_threads']=args.opencv_threads
+    if getattr(args,'opencv_threads',None) is not None:config['pipeline_perf']['opencv_threads']=args.opencv_threads
     if getattr(args,'detector_compute_units',None):config['unified_detection']['compute_units']=args.detector_compute_units
     if args.model:config['racket_pose']['model_path']=str(Path(args.model).resolve())
     if args.acceptance:config['racket_pose']['acceptance_path']=str(Path(args.acceptance).resolve())
     if args.backend:config['racket_pose']['backend']=args.backend
     if args.compute_units:config['racket_pose']['compute_units']=args.compute_units
+    if getattr(args, 'imgsz', None) is not None:config['racket_pose']['imgsz']=args.imgsz
     # Geometry fixture is for THESE source videos only; never edits camera settings.
     dv=yaml.safe_load((ROOT/'configs/dual_view_config.yaml').read_text())
-    dv['front_view']['default_roi']=[.50,.18,.82,.65]
+    if roi_policy=='disabled':dv['front_view']['default_roi']=[.50,.18,.82,.65]
     (session/'dual_fixture.yaml').write_text(yaml.safe_dump(dv))
     (session/'runtime.yaml').write_text(yaml.safe_dump(config))
     command=[str(ROOT/'venv_yolo26/bin/python'),str(ROOT/'main_pipe.py'),'--config',str(session/'runtime.yaml'),
@@ -171,9 +195,12 @@ def run_case(args, video, mode, processing, stride, repeat):
                 process.terminate();process.wait(timeout=10);raise TimeoutError(session)
             time.sleep(.5)
     report={'session':str(session),'mode':mode,'processing':processing,'stride':stride,'repeat':repeat,'source_sha256':digest(video),
+            'roi_policy':roi_policy,'roi_stream_id':roi_stream_id,
             'returncode':process.returncode,'wall_seconds':time.monotonic()-started,'resource_samples':samples,
             'resource_semantics':'Process-tree RSS sums may double count shared pages; ps CPU is averaged.'}
     if process.returncode==0:report.update(measure(session))
+    if process.returncode==0:
+        report['effective_roi']=json.loads((session/'evidence_manifest.json').read_text()).get('capture',{}).get('roi')
     if report.get('first_output_unix_ns'):
         report['startup_to_first_output_ms']=(report['first_output_unix_ns']-started_unix_ns)/1e6
     if args.fault_sidecars and process.returncode==0:
@@ -205,7 +232,7 @@ def run_case(args, video, mode, processing, stride, repeat):
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--output',required=True);parser.add_argument('--model');parser.add_argument('--acceptance');parser.add_argument('--backend');parser.add_argument('--compute-units',choices=('ANE','ALL','CPU'));parser.add_argument('--fault-sidecars',action='store_true');parser.add_argument('--production-check',action='store_true');parser.add_argument('--videos',default='/Users/krum5539/Desktop/Camera/2026-09-30');parser.add_argument('--mode',choices=('legacy','exclusive','shadow','active'),default='legacy');parser.add_argument('--processing',choices=('realtime','buffered','offline'),default='realtime');parser.add_argument('--stride',type=int,default=1);parser.add_argument('--repeats',type=int,default=1);parser.add_argument('--smoke',action='store_true');parser.add_argument('--dual',action='store_true');parser.add_argument('--save-video',action='store_true');parser.add_argument('--pose-compute-units',choices=('ALL','ANE','CPU'));parser.add_argument('--display-mode',choices=('sync','async'));parser.add_argument('--opencv-threads',type=int);parser.add_argument('--detector-compute-units',choices=('ALL','ANE','CPU','GPU'));parser.add_argument('--inference-schedule',choices=('barrier','interframe'),default='barrier');parser.add_argument('--racket-ipc',choices=('queue','shared_memory'),default='queue');args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--output',required=True);parser.add_argument('--model');parser.add_argument('--acceptance');parser.add_argument('--backend');parser.add_argument('--compute-units',choices=('ANE','ALL','CPU'));parser.add_argument('--fault-sidecars',action='store_true');parser.add_argument('--production-check',action='store_true');parser.add_argument('--videos',default='/Users/krum5539/Desktop/Camera/2026-09-30');parser.add_argument('--mode',choices=('legacy','exclusive','shadow','active'),default='legacy');parser.add_argument('--processing',choices=('realtime','buffered','offline'),default='realtime');parser.add_argument('--stride',type=int,default=1);parser.add_argument('--repeats',type=int,default=1);parser.add_argument('--smoke',action='store_true');parser.add_argument('--dual',action='store_true');parser.add_argument('--save-video',action='store_true');parser.add_argument('--pose-compute-units',choices=('ALL','ANE','CPU'));parser.add_argument('--display-mode',choices=('sync','async'));parser.add_argument('--opencv-threads',type=int);parser.add_argument('--detector-compute-units',choices=('ALL','ANE','CPU','GPU'));parser.add_argument('--inference-schedule',choices=('barrier','interframe'),default='barrier');parser.add_argument('--racket-ipc',choices=('queue','shared_memory'),default='queue');parser.add_argument('--roi-policy',choices=('project','disabled'),default='project');parser.add_argument('--roi-stream-id');parser.add_argument('--imgsz',type=int,choices=(640,960));args=parser.parse_args()
     os.chdir(ROOT);out=Path(args.output);out.mkdir(parents=True,exist_ok=True)
     videos=sorted(Path(args.videos).glob('*.mp4'))
     if args.smoke:videos=[p for p in videos if p.name in ('48.43.mp4','49.23.mp4','50.03.mp4')]

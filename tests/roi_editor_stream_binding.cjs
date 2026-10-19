@@ -15,7 +15,7 @@ if (fs.existsSync('static/js/roi_editor.js') && fs.existsSync('static/js/control
   code = html.slice(html.indexOf('    function selectedStream()'),html.indexOf('    function escapeHtml')) + html.slice(html.indexOf('    const roiEditorState = {'),html.indexOf('    function parsePointString'));
 }
 const elements = new Map();
-function $(id){if(!elements.has(id))elements.set(id,{value:'',hidden:false,style:{},checked:false});return elements.get(id);}
+function $(id){if(!elements.has(id))elements.set(id,{value:'',hidden:false,style:{},checked:false,querySelector:()=>null});return elements.get(id);}
 const streams = [
  {stream_id:'court01-main',label:'Court 01',source:'camera01',frame_size:[2560,1440],points:[[720,792],[1598,811],[1808,1430],[499,1421]],mirror_view:{polygon:[[.2,0],[.7,0],[.7,.3],[.2,.3]]}},
  {stream_id:'court02-main',label:'Court 02',source:'camera02',frame_size:[2560,1440],points:[[1170,336],[1952,358],[2186,1196],[962,1194]],mirror_view:{polygon:[[.4244,.2993],[.4267,0],[.8145,.0021],[.8029,.3199]]}}

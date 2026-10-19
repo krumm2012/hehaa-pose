@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from dataclasses import replace
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -92,8 +93,8 @@ class DualViewRenderer:
     @property
     def font_mgr(self):
         if self._font_mgr is None:
-            from font_manager import FontManager
-            self._font_mgr = FontManager()
+            from font_manager import get_font_manager
+            self._font_mgr = get_font_manager()
         return self._font_mgr
 
     def draw_skeleton(
@@ -368,14 +369,13 @@ class DualViewRenderer:
 
         # 标题栏文本
         title_text = "2D OBSERVATIONS"
-        canvas = self.font_mgr.put_text_with_font(
-            canvas,
-            title_text,
-            (x1 + 16, y1 + 8),
+        text_items = [dict(
+            text=title_text,
+            org=(x1 + 16, y1 + 8),
             font_scale=0.45,
             color=(0, 240, 255),
             thickness=2,
-        )
+        )]
 
         score = card_data.get("swing_score")
         grade = str(card_data.get("swing_grade", "N/A"))
@@ -388,14 +388,13 @@ class DualViewRenderer:
         badge_color = grade_colors.get(grade, (0, 240, 255))
         score_label = "COACH" if (card_data.get("practice_score") or {}).get("method") == "coach_manual" else "VISIBLE"
         score_badge = f"{score_label}: {score:.1f}" if score is not None else f"{score_label}: N/A"
-        canvas = self.font_mgr.put_text_with_font(
-            canvas,
-            score_badge,
-            (x2 - 190, y1 + 8),
+        text_items.append(dict(
+            text=score_badge,
+            org=(x2 - 190, y1 + 8),
             font_scale=0.55,
             color=badge_color,
             thickness=2,
-        )
+        ))
 
         # 4 行遥测核心指标
         speed_kmh = card_data.get("racket_speed_kmh")
@@ -445,25 +444,23 @@ class DualViewRenderer:
 
         row_y = y1 + 48
         for label, val_str, val_col in items:
-            canvas = self.font_mgr.put_text_with_font(
-                canvas,
-                label,
-                (x1 + 16, row_y),
+            text_items.append(dict(
+                text=label,
+                org=(x1 + 16, row_y),
                 font_scale=0.48,
                 color=(170, 180, 195),
                 thickness=1,
-            )
-            canvas = self.font_mgr.put_text_with_font(
-                canvas,
-                val_str,
-                (x1 + 160, row_y),
+            ))
+            text_items.append(dict(
+                text=val_str,
+                org=(x1 + 160, row_y),
                 font_scale=0.50,
                 color=val_col,
                 thickness=1,
-            )
+            ))
             row_y += 38
 
-        return canvas
+        return self.font_mgr.put_texts_with_font(canvas, text_items)
 
     def render_dual_frame(
         self,
@@ -479,6 +476,7 @@ class DualViewRenderer:
         telemetry_card: Optional[Dict[str, Any]] = None,
         ground_reference: Optional[Dict[str, Any]] = None,
         ground_geometry: Optional[Dict[str, Any]] = None,
+        timing_ms: Optional[Dict[str, float]] = None,
     ) -> np.ndarray:
         """
         全量渲染单帧双视角画面：
@@ -489,6 +487,16 @@ class DualViewRenderer:
         5. 生物力学 HUD 叠加
         6. 击球瞬间特写遥测卡片叠加 (可选)
         """
+        stage_wall, stage_cpu = time.perf_counter_ns(), time.thread_time_ns()
+
+        def finish_stage(name):
+            nonlocal stage_wall, stage_cpu
+            now_wall, now_cpu = time.perf_counter_ns(), time.thread_time_ns()
+            if timing_ms is not None:
+                timing_ms[name + '_wall_ms'] = (now_wall - stage_wall) / 1e6
+                timing_ms[name + '_cpu_ms'] = (now_cpu - stage_cpu) / 1e6
+            stage_wall, stage_cpu = now_wall, now_cpu
+
         f_img = dual_frame.front_frame.copy()
         b_img = dual_frame.back_frame.copy()
 
@@ -653,6 +661,7 @@ class DualViewRenderer:
 
         # 拼接左右画面
         sbs = np.hstack([f_img, b_img])
+        finish_stage('views')
 
         if self.show_hud:
             sbs = self.draw_hud(sbs, pose_result, event_label=event_label, coaching_text=coaching_text)
@@ -660,8 +669,10 @@ class DualViewRenderer:
                 from ground_reference import ground_reference_osd
                 cv2.putText(sbs, ground_reference_osd(ground_reference), (20, sbs.shape[0]-34),
                             cv2.FONT_HERSHEY_SIMPLEX, .40, (180, 225, 220), 1, cv2.LINE_AA)
+        finish_stage('hud')
 
         if telemetry_card is not None:
             sbs = self.draw_impact_telemetry_card(sbs, telemetry_card)
+        finish_stage('telemetry')
 
         return sbs

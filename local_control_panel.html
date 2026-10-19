@@ -248,11 +248,17 @@
               <div class="field">
                 <label for="racket_pose_mode">启动时选择球拍方案</label>
                 <select id="racket_pose_mode"><optgroup label="启动方案"><option value="legacy">旧版（默认）</option><option value="exclusive">新版：七点球拍独占</option></optgroup><optgroup label="兼容诊断"><option value="shadow">影子对照（不改旧选择）</option><option value="active">兼容增强（新旧混用）</option></optgroup></select>
-                <small>下次启动生效；新版不回退旧拍框，逐帧处理，跟不上时会积压。</small>
+                <small id="racket-mode-hint">下次启动生效；新版不回退旧拍框，逐帧处理，跟不上时会积压。</small>
               </div>
               <div class="field">
                 <label for="processing_mode">处理方式</label>
                 <select id="processing_mode"><option value="buffered">连续处理（不丢帧，允许启动缓冲）</option><option value="auto">沿用配置</option><option value="realtime">旧版低延迟预览（会丢旧帧）</option><option value="offline">完整分析（本地视频）</option></select>
+              </div>
+              <div class="field">
+                <label for="racket_model_profile">启动球拍模型</label>
+                <select id="racket_model_profile"><option value="configured">当前已配置模型（默认960）</option><option value="640_shadow">640 ALL：性能预览（影子）</option></select>
+                <div class="hint" id="racket-model-hint">模型在下次启动时加载。</div>
+                <small id="running-racket-model">最近启动模型：暂无</small>
               </div>
               <div class="field">
                 <label for="inference_schedule">启动推理调度</label>

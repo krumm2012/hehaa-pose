@@ -5,7 +5,7 @@
       "realtime_swing_events", "realtime_coach", "coach_tts", "coach_tts_playback", "deepseek_coach",
       "realtime_frame_output", "evidence_bundle", "inference_workers", "display_origin_x",
       "display_origin_y", "live_mode", "save_video", "hdmi_output", "algo2_dual_view",
-      "output_dir", "session_name", "racket_pose_mode", "processing_mode", "inference_schedule", "racket_ipc"
+      "output_dir", "session_name", "racket_pose_mode", "racket_model_profile", "processing_mode", "inference_schedule", "racket_ipc"
     ];
     const checkboxIds = new Set([
       "roi_enabled", "show_roi_boundary", "show_roi_fill", "show_roi_points",
@@ -98,6 +98,21 @@
     }
 
     function updateStreamMeta() {
+      const model640 = $("racket_model_profile")?.value === "640_shadow";
+      const racketSelect = $("racket_pose_mode");
+      if (model640 && racketSelect) racketSelect.value = "shadow";
+      if (racketSelect?.options) {
+        for (const option of racketSelect.options) option.disabled = model640 && option.value !== "shadow";
+      }
+      const modelHint = $("racket-model-hint");
+      if (modelHint) modelHint.textContent = model640
+        ? "640×640 / ALL 修复候选；逐帧推理和显示七点，事件仍使用旧链路。尚未通过质量与稳定25FPS验收。"
+        : "使用项目已配置的模型；启动日志会记录实际尺寸、后端和路径。";
+      const modeHint = $("racket-mode-hint");
+      if (modeHint) modeHint.textContent = racketSelect?.value === "shadow"
+        ? "下次启动生效；七点逐帧旁路运行，事件和 Coach 沿用旧链路。"
+        : racketSelect?.value === "exclusive" ? "下次启动生效；七点独占不回退旧拍框，逐帧处理，跟不上时会积压。"
+        : "下次启动生效；旧版不启动七点模型，兼容增强保留原有选择逻辑。";
       const exclusive = $("racket_pose_mode")?.value === "exclusive";
       const processing = $("processing_mode");
       const schedule = $("inference_schedule");
@@ -108,8 +123,8 @@
       }
       if (processing) {
         const freshness = processing.querySelector('option[value="realtime"]');
-        if (freshness) freshness.disabled = exclusive;
-        if (exclusive && processing.value === "realtime") processing.value = "buffered";
+        if (freshness) freshness.disabled = exclusive || model640;
+        if ((exclusive || model640) && ["auto", "realtime"].includes(processing.value)) processing.value = "buffered";
       }
       if (ipc) {
         const legacy = $("racket_pose_mode")?.value === "legacy";
@@ -235,7 +250,8 @@
     }
 
     async function refreshPreview(manual = true, clean = null) {
-      if (!$("settings-form").reportValidity()) return;
+      if (!$("settings-form").reportValidity()) return false;
+      const requestId = state.previewRequestId = (state.previewRequestId || 0) + 1;
       const payload = formPayload();
       const shouldClean = (clean !== null) ? Boolean(clean) : Boolean(typeof roiEditorState !== "undefined" && roiEditorState.active);
       if (shouldClean) {
@@ -249,25 +265,46 @@
           body: JSON.stringify(payload)
         });
         const blob = await response.blob();
+        if (requestId !== state.previewRequestId) return false;
         applyPreviewBlob(blob);
+        // Wait for the source image to replace the last analysis composite
+        // before allowing the editor's original-pixel canvas to become visible.
+        const image = $("preview-image");
+        if (image.decode) await image.decode();
+        if (requestId !== state.previewRequestId) return false;
         if (manual) showToast(shouldClean ? "画面已加载 (纯净无标注模式)" : "ROI 预览已更新");
+        return true;
       } catch (error) {
         showToast(`预览失败：${error.message}`, true);
+        return false;
       } finally {
-        $("preview-loading").classList.remove("visible");
-        $("preview-button").disabled = false;
+        if (requestId === state.previewRequestId) {
+          $("preview-loading").classList.remove("visible");
+          $("preview-button").disabled = false;
+        }
       }
     }
 
     async function refreshLivePreview() {
+      const editing = () => typeof roiEditorState !== "undefined"
+        && (roiEditorState.active || roiEditorState.loading);
+      if (editing()) return;
       if (refreshLivePreview.pending) return;
+      const requestId = state.previewRequestId || 0;
       refreshLivePreview.pending = true;
       try {
         const response = await fetch(
           `/api/live-preview?t=${Date.now()}`,
           { cache: "no-store" }
         );
-        if (response.ok) applyPreviewBlob(await response.blob());
+        if (response.ok) {
+          const blob = await response.blob();
+          // A response dispatched before editor entry can arrive after the
+          // source frame. Its dimensions describe the SBS output, not the ROI.
+          if (!editing() && requestId === (state.previewRequestId || 0)) {
+            applyPreviewBlob(blob);
+          }
+        }
       } finally {
         refreshLivePreview.pending = false;
       }
@@ -320,6 +357,12 @@
 
     function updateStatus(status) {
       state.status = status.state;
+      const modelStatus = $("running-racket-model");
+      if (modelStatus && status.racket_model) {
+        const model = status.racket_model;
+        modelStatus.textContent = model.mode === "legacy" ? "最近启动：旧版，不加载七点球拍模型"
+          : `最近启动：${model.imgsz}×${model.imgsz} / ${model.compute_units} / ${model.mode === "shadow" ? "影子预览" : model.mode}`;
+      }
       const pill = $("status-pill");
       pill.textContent = stateLabel(status.state);
       pill.className = `status-pill ${status.state}`;
@@ -471,6 +514,8 @@
           });
         }
         applyValues(config.defaults);
+        const model640Option = $("racket_model_profile")?.querySelector('option[value="640_shadow"]');
+        if (model640Option) model640Option.disabled = !config.racket_model_profiles?.["640_shadow"]?.available;
         try {
           const saved = JSON.parse(localStorage.getItem("tennis-control-preset-v1") || "null");
           if (saved) {
@@ -561,6 +606,8 @@
       if (processingMode) processingMode.addEventListener("change", updateStreamMeta);
       const racketMode = $("racket_pose_mode");
       if (racketMode) racketMode.addEventListener("change", updateStreamMeta);
+      const racketModel = $("racket_model_profile");
+      if (racketModel) racketModel.addEventListener("change", updateStreamMeta);
       const css = $("custom_stream_source");
       if (css) css.addEventListener("input", updateStreamMeta);
       const sf = $("settings-form");

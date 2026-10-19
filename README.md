@@ -8,7 +8,14 @@
 
 以上文档于 2026-09-16 按代码核对；旧架构图保留为历史资料。
 
-`tennis_analyzer` 是一个面向网球训练视频的本地分析项目，重点能力是从单机位视频中提取人体姿态、网球、球拍、挥拍事件和面向 AI 网球教练的数据。当前主线分支是 `new`，已同步到远端 `origin-paused/new`。
+`tennis_analyzer` 是一个面向网球训练视频的本地分析项目，重点能力是从单机位视频中提取人体姿态、网球、球拍、挥拍事件和面向 AI 网球教练的数据。640 shadow预发布基于 `algo-2.0` 分支，项目默认仍为旧版。
+
+## 640 shadow 内测版本
+
+[`640-shadow-preview-20261019`](docs/releases/640-shadow-preview-20261019.md) 提供显式选择的
+640×640 Core ML / ALL 七点球拍影子预览，保留球、双人体、事件和 Coach 工作流。
+新模型仅用于旁路观测和显示；逐帧等待，模型失败时本轮会话失败。此预发布未通过正式稳定25FPS或增强模式质量验收。
+模型以 GitHub Release 附件分发，下载、校验和启动步骤见版本说明。
 
 ## 系统架构
 
@@ -691,9 +698,11 @@ venv_yolo26/bin/python main_pipe.py --input /path/to/video.mp4 \
 resize/RGB/model-input 转换。跨帧准备仅提前原始候选和球拍，不提前动态人体裁剪，
 所有时序状态按源帧顺序更新。两帧在途、有界背压、正常结束排空，不采样、不替换帧。
 
-用 `scripts/benchmark_interframe_pipeline.py --output <新目录>` 可轮换顺序比较
+用 `scripts/benchmark_interframe_pipeline.py --output <新目录> --roi-stream-id <已核对机位>` 可轮换顺序比较
 queue/barrier、shared/barrier、shared/interframe，默认三段原视频并保留编码和显示。
 这只是核心链路工程对照，外部网络/语音关闭；不能替代完整工作流和三轮实时验收。
 实测通过前不承诺 25 FPS。详见 ADR 0006。
 
 本轮三段对照吞吐中位数：queue/barrier **20.54 FPS**、shared/barrier **20.26 FPS**、shared/interframe **20.83 FPS**。逐帧结果一致，25 FPS 尚未通过；详见集成指南 v2.5 和实验报告。
+
+2026-10-19 核查：上述旧性能对照关闭了球场 ROI，不能代表项目机位配置。新回归 CLI 默认读取项目 ROI，要求本地视频显式绑定 `--roi-stream-id`；`--roi-policy disabled` 仅复现旧测试配置。球场过滤与人体裁剪、球／球拍模型输入裁剪是不同环节。详见集成指南 ROI 修正说明。

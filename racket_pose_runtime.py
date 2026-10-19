@@ -43,10 +43,14 @@ def _worker(config, incoming, outgoing, journal_path):
         loading_started=time.perf_counter()
         from racket_pose_detector import RacketPoseDetector
         import numpy as np
+        if config.get('opencv_threads') is not None:
+            import cv2
+            cv2.setNumThreads(max(0, int(config['opencv_threads'])))
         detector=RacketPoseDetector(config)
         load_ms=(time.perf_counter()-loading_started)*1000
         warming_started=time.perf_counter()
-        warmup=detector.detect(np.zeros((960,960,3),dtype=np.uint8),-1,None)
+        size = config['imgsz']
+        warmup=detector.detect(np.zeros((size,size,3),dtype=np.uint8),-1,None)
         warmup_ms=(time.perf_counter()-warming_started)*1000
         if config['mode']=='active' and warmup['status']=='numerical_failure':
             raise ValueError('Racket model failed finite-output warmup')
