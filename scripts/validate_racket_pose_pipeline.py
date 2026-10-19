@@ -54,7 +54,7 @@ def measure(session):
     if report['output_sink']=='encoded_video' and shutil.which('ffprobe'):
         result=subprocess.run(['ffprobe','-v','error','-count_frames','-select_streams','v:0',
             '-show_entries','stream=nb_read_frames','-of','json',str(session/'output.mp4')],
-            capture_output=True,text=True,check=True,timeout=30)
+            capture_output=True,text=True,check=True,timeout=max(30,len(rows)/50))
         report['encoded_frames']=int(json.loads(result.stdout)['streams'][0]['nb_read_frames'])
     stage_names={k for row in rows for k in row.get('inference_stage_ms',{})}
     report['inference_stage_ms']={k:distribution([row['inference_stage_ms'][k] for row in rows if k in row.get('inference_stage_ms',{})]) for k in stage_names}

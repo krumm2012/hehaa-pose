@@ -451,3 +451,8 @@ venv_yolo26/bin/python scripts/benchmark_pose_resize.py --output data/analysis_r
 ```
 现有实测与逐帧差异见
 `data/analysis_results/racket_pose_acceptance_20261018/stable-shadow-release-20261019/single-resize-20261019/`。
+
+
+### 长会话报告发布候选（2026-10-19）
+
+连续长测发现：短片27轮通过仍可能掩盖历史事件增长后的报告开销。新增发布候选仅缓存未变化事件根对象的JSON；片段、语音及网络结果更新沿用原有替换事件根对象的方式，更新后重新编码，已移除对象不留在缓存中。完整历史、刷新、原子写入、逐帧日志和动作/Coach规则保留，不改变模型输入像素、ROI或镜面几何。183事件约33MiB实际文档的独立发布对照CPU中位约846→187ms，解析后的JSON语义哈希相同；该微测不能替代同一冻结构建的27轮、连续长测及业务/故障验收。正式状态以验收报告为准。

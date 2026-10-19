@@ -14,6 +14,23 @@ This is an acceptance candidate, not a formal release or active-model quality re
 - Default business mode remains legacy. Single-resize body policies remain opt-in
   engineering candidates; they are not part of this acceptance profile.
 
+The first frozen candidate (`eec8297`) passed all 27 short runs but developed
+latency tails during the uninterrupted session. Its failed videos and journals
+are retained. Do not reuse that candidate's 27 passes for the next build.
+
+The next candidate caches JSON for unchanged immutable event roots in the report
+writer. Clip and sidecar updates already replace those roots; replacement events
+are re-encoded and removed roots are released. Report refresh, full history,
+atomic publication, models, input pixels, and event/Coach rules remain intact.
+On the same captured 183-event, 32,950,044-byte document, repeated JSON+HTML
+publication used about 187ms CPU instead of 846ms; parsed output hashes matched.
+This isolated result is not an end-to-end acceptance receipt. Repeat the long
+session and the complete matrix/workflow on the newly frozen commit.
+
+Long-session video verification now gives FFprobe a frame-count-proportional
+deadline. The original 30-second verifier deadline was insufficient for decoding
+15,250 frames. This postprocessing repair does not change measured runtime clocks.
+
 After committing the source, `scripts/validate_stable_shadow.py --output NEW_DIR`
 freezes the commit, source/config/input hashes and all three model identities.
 All subsequent phases must receive that directory's `frozen-inputs.json`:

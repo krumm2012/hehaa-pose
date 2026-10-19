@@ -1121,12 +1121,45 @@ class RealtimeSwingOutputManager:
         ] = build_session_quality_dashboard(document.get("events") or [])
         self._atomic_write(
             self.output_json,
-            json.JSONEncoder(ensure_ascii=False,separators=(',',':')).iterencode(document),
+            self._live_json_fragments(document),
         )
         self._atomic_write(
             self.output_html,
             self._render_live_html(document),
         )
+
+    def _live_json_fragments(self, document: Dict):
+        """Reuse immutable event roots; refresh headers and the bounded frame trace.
+
+        Clip/sidecar updates replace an event root before queuing a snapshot.
+        Keep its reference beside the encoding so object-id reuse cannot return
+        stale JSON. Only roots present in this snapshot survive the next write.
+        """
+        previous = getattr(self, '_event_json_cache', {})
+        current = {}
+        encoder = json.JSONEncoder(ensure_ascii=False, separators=(',', ':'))
+        yield '{'
+        for index, (name, value) in enumerate(document.items()):
+            if index:
+                yield ','
+            yield encoder.encode(name)
+            yield ':'
+            if name != 'events':
+                yield from encoder.iterencode(value)
+                continue
+            yield '['
+            for event_index, event in enumerate(value):
+                if event_index:
+                    yield ','
+                identity = id(event)
+                cached = previous.get(identity)
+                if cached is None or cached[0] is not event:
+                    cached = (event, encoder.encode(event))
+                current[identity] = cached
+                yield cached[1]
+            yield ']'
+        yield '}'
+        self._event_json_cache = current
 
     def _queue_live_outputs(self, document: Dict) -> None:
         self.check_health()
