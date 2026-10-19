@@ -304,7 +304,8 @@ class YOLO26nUnifiedDetector:
             )
             resized_width = max(1, round(self.original_width * gain))
             resized_height = max(1, round(self.original_height * gain))
-            resized_content = cv2.resize(frame, (resized_width, resized_height))
+            content_size = (resized_width, resized_height)
+            resized_content = frame if frame.shape[1::-1] == content_size else cv2.resize(frame, content_size)
             pad_x = (self.input_width - resized_width) // 2
             pad_y = (self.input_height - resized_height) // 2
             resized = np.full(
@@ -319,7 +320,8 @@ class YOLO26nUnifiedDetector:
             self._preprocess_gain = gain
             self._preprocess_pad = (pad_x, pad_y)
         else:
-            resized = cv2.resize(frame, (self.input_width, self.input_height))
+            target_size = (self.input_width, self.input_height)
+            resized = frame if frame.shape[1::-1] == target_size else cv2.resize(frame, target_size)
             self._preprocess_gain = None
             self._preprocess_pad = (0, 0)
         

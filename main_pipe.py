@@ -148,6 +148,8 @@ class MultiprocessPipeline:
         configured_max_frames = self.config.get('video_processing', {}).get('max_frames', 0)
         self.max_frames = max(0, int(configured_max_frames if max_frames is None else max_frames))
         perf_cfg = self.config.setdefault('pipeline_perf', {})
+        if perf_cfg.get('pose_resize_policy', 'legacy') not in ('direct_source', 'direct_front', 'legacy'):
+            raise ValueError('pose_resize_policy must be direct_source, direct_front or legacy')
         self.live_mode = bool(live_mode or perf_cfg.get('live_mode', False))
         self.drop_stale_frames = bool(drop_stale_frames or perf_cfg.get('drop_stale_frames', False))
         requested_processing = processing_mode or perf_cfg.get('processing_mode', 'auto')
@@ -807,6 +809,8 @@ class MultiprocessPipeline:
             executor = ThreadPoolExecutor(max_workers=inference_workers)
             print(f"⚙️ [Inference] 线程池并发数: {inference_workers}")
             print(f"⚙️ [Inference] 启动调度: {self.inference_schedule} | 球拍 IPC: {self.racket_pose_config['ipc_transport']}")
+            if self.algo2_dual_view:
+                print("⚙️ [Inference] 人体ROI缩放: " + perf_cfg.get('pose_resize_policy', 'legacy'))
             if self.inference_schedule=='interframe':
                 print('⚙️ [Inference] 两帧在途：候选/球拍准备与同帧人体/时序聚合重叠')
             else:
@@ -913,7 +917,12 @@ class MultiprocessPipeline:
                     pose_detection_frame = frame_context.pose_detection_frame
 
                 if self.algo2_dual_view and dual_view_mgr is not None and dual_pose_estimator is not None:
-                    dual_frame = dual_view_mgr.split_frame(frame_ptr, frame_id=task['idx'])
+                    dual_frame = dual_view_mgr.split_frame(
+                        frame_ptr, frame_id=task['idx'],
+                        for_inference=(dual_pose_estimator.supports_source_pixels and
+                            perf_cfg.get('pose_resize_policy', 'legacy') != 'legacy'),
+                        source_views=(('front',) if perf_cfg.get('pose_resize_policy') == 'direct_front'
+                                      else ('front', 'back')))
                     if stage_a:
                         from concurrent.futures import Future
                         f1=Future()
@@ -1068,6 +1077,22 @@ class MultiprocessPipeline:
                         'dual_view_biomechanics': dual_view_biomech,
                         'player_bbox': current_player_bbox,
                         'front_crop_bbox': dual_frame.front_info.bbox_orig if dual_frame is not None else None,
+                        'pose_input_geometry': {
+                            name: {
+                                'source_crop': list(info.bbox_orig),
+                                'crop_size': list(info.crop_size),
+                                'pixels_size': list(image.shape[1::-1]),
+                                'coordinate_size': list(info.view_size),
+                                'model_input_size': list(model.input_size) if hasattr(model, 'input_size') else None,
+                                'source_pixels': raw,
+                            }
+                            for name, info, image, model, raw in (
+                                ('front', dual_frame.front_info, dual_frame.front_frame,
+                                 dual_pose_estimator.model_front, dual_frame.front_source_pixels),
+                                ('back', dual_frame.back_info, dual_frame.back_frame,
+                                 dual_pose_estimator.model_back, dual_frame.back_source_pixels),
+                            )
+                        },
                         'ball_diagnostics': ball_diagnostics,
                         'racket_diagnostics': racket_diagnostics,
                         'racket_pose': racket_pose_observation,
@@ -1585,6 +1610,7 @@ class MultiprocessPipeline:
                     from kinematic_sequence import serialize_kinematic_views
                     frame_record["kinematic_views"] = serialize_kinematic_views(pose_res)
                     frame_record["pose_observations"] = serialize_kinematic_views(pose_res, all_joints=True)
+                    frame_record["pose_input_geometry"] = data.get('pose_input_geometry')
                     frame_record['pose_observation_coordinate_space'] = 'original_source_pixels'
                 if self.ground_reference is not None:
                     frame_record['ground_reference'] = self.ground_reference.observe(frame_record)

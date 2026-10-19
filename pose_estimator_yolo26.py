@@ -152,7 +152,7 @@ class PoseEstimatorYOLO26:
         self.original_size = (frame.shape[1], frame.shape[0])
 
         # 调整大小到模型输入尺寸
-        resized = cv2.resize(frame, self.input_size)
+        resized = frame if self.original_size == self.input_size else cv2.resize(frame, self.input_size)
 
         # BGR 转 RGB
         rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
@@ -197,7 +197,8 @@ class PoseEstimatorYOLO26:
 
         return person_keypoints_list
 
-    def get_keypoints(self, frame: np.ndarray, include_confidence: bool = False) -> List[Dict]:
+    def get_keypoints(self, frame: np.ndarray, include_confidence: bool = False,
+                      coordinate_size: Optional[Tuple[int, int]] = None) -> List[Dict]:
         """
         检测关键点
 
@@ -209,6 +210,10 @@ class PoseEstimatorYOLO26:
         """
         # 预处理
         preprocessed = self._preprocess_frame(frame)
+        if coordinate_size is not None:
+            if len(coordinate_size) != 2 or any(type(v) is not int or v <= 0 for v in coordinate_size):
+                raise ValueError("Invalid pose output coordinate size")
+            self.original_size = tuple(coordinate_size)
 
         try:
             # Core ML 推理
@@ -314,6 +319,10 @@ class PoseEstimatorYOLO26:
             person_keypoints_list = self._apply_temporal_smoothing(person_keypoints_list)
 
         return person_keypoints_list
+
+    def get_keypoints_from_source(self, frame: np.ndarray, coordinate_size: Tuple[int, int]) -> List[Dict]:
+        """Resize source pixels once; decode and smooth in canonical view space."""
+        return self.get_keypoints(frame, include_confidence=True, coordinate_size=coordinate_size)
 
     def get_keypoints_with_confidence(self, frame: np.ndarray) -> List[Dict]:
         """Raw detector scores; no temporal replacement or extra inference."""

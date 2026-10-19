@@ -27,10 +27,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--validation-summary', required=True, type=Path)
+    parser.add_argument('--stable-contract', type=Path, help='Separate stable-shadow contract; requires complete acceptance')
     args = parser.parse_args()
     subprocess.run(['git', 'diff', '--exit-code', 'HEAD'], cwd=ROOT, check=True, capture_output=True)
-    checked = verify()
-    contract = json.loads(DEFAULT_CONTRACT.read_text())
+    contract_path = args.stable_contract or DEFAULT_CONTRACT
+    if args.stable_contract:
+        from scripts.verify_stable_shadow_release import verify as verify_stable
+        checked = verify_stable(ROOT, contract_path)
+    else:
+        checked = verify()
+    contract = json.loads(contract_path.read_text())
     version = contract['version']
     commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     args.output.mkdir(parents=True, exist_ok=False)
@@ -72,10 +78,13 @@ def main():
     validation = json.loads(args.validation_summary.read_text())
     if validation.get('version') != version or validation.get('source_commit') != commit:
         raise ValueError('Validation summary must bind the frozen release commit')
+    if args.stable_contract:
+        from scripts.verify_stable_shadow_release import verify_validation
+        verify_validation(validation, version, commit)
     (args.output / 'validation-summary.json').write_text(json.dumps(validation, ensure_ascii=False, indent=2) + '\n')
     manifest = {'schema': 'tennis.shadow-release-artifacts.v1', 'version': version,
-                'source_commit': commit, 'prerelease': True, 'contract': contract,
-                'contract_sha256': sha(DEFAULT_CONTRACT), 'archive': {'name': archive.name, 'sha256': sha(archive)},
+                'source_commit': commit, 'prerelease': not bool(args.stable_contract), 'contract': contract,
+                'contract_sha256': sha(contract_path), 'archive': {'name': archive.name, 'sha256': sha(archive)},
                 'model_files_sha256': expected, 'extracted_model_verified': True}
     (args.output / 'release-manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
     assets = sorted(p for p in args.output.iterdir() if p.is_file())

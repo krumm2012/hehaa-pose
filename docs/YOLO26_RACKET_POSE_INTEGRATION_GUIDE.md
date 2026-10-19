@@ -414,3 +414,40 @@ venv_yolo26/bin/python scripts/benchmark_racket_resolutions.py \
 完整启动、故障语义、回退和未完成验收见仓库`docs/releases/640-shadow-preview-20261019.md`。
 
 本次发行前152项Python相关回归、3项ROI前端测试及JS语法检查通过。
+
+### 减少重复图像缩放（2026-10-19，本地候选）
+
+球检测960与七点球拍640分别从源像素执行一次letterbox，不串联960→640。
+人体旧链路为原始ROI→540×720→640×640；显示进程另有独立的540×720视图。
+新增启动配置位于原有 `pipeline_perf.pose_resize_policy`：
+
+| 值 | 人体推理缩放次数／源帧 | 行为 |
+| --- | --- | --- |
+| `legacy`（默认） | 4 | 保留原有两路输入像素 |
+| `direct_front` | 3 | 仅正面ROI直接到模型输入 |
+| `direct_source` | 2 | 两路ROI分别直接到模型输入 |
+
+单次路径只适用于支持源像素协议的Core ML人体后端；其他后端仍用旧视图。
+源像素与标准坐标尺寸分开：`DualViewFrame.*_source_pixels`为真时，
+frame数组为原始裁剪像素，`*_info.view_size`仍是540×720标准坐标。
+后端解码和时序平滑先映射到标准坐标，再进行原有关联、镜面映射及生物力学计算。
+显示需要标准视图时单独缩放；配置了镜面隐私遮罩时，镜面保留旧的遮罩栅格化路径。
+源帧ID、PTS、逐帧调度、共享内存租约和球拍选择规则保持原协议。
+
+另已消除输入尺寸恰好等于目标尺寸的空缩放，覆盖球、七点和人体预处理，
+对应测试确认RGB输出像素一致。日志新增`pose_input_geometry`记录每路裁剪、
+真实像素尺寸、标准坐标尺寸和模型输入尺寸。
+
+三段视频两阶段对照共9次、2250源帧，处理、显示、主编码、片段和重放完整。
+固定49.43首帧的纯预处理微测P50分别为1.159／0.980／0.823ms；
+它不包含模型推理、IPC、分析和渲染，不能作为整链路提速或稳定25FPS证明。
+一次与两次插值产生不同像素，实测有关键点和事件窗口差异；49.43第三个触球候选
+从200帧变为198帧，48.43镜面双路候选存在较大关键点偏移。
+因此默认保留`legacy`，两种单次路径未取得业务等价或独立准确率放行。
+
+复测可运行：
+```bash
+venv_yolo26/bin/python scripts/benchmark_pose_resize.py --output data/analysis_results/racket_pose_acceptance_20261018/pose-resize-NEW
+```
+现有实测与逐帧差异见
+`data/analysis_results/racket_pose_acceptance_20261018/stable-shadow-release-20261019/single-resize-20261019/`。

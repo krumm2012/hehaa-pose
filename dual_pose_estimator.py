@@ -693,6 +693,12 @@ class DualPoseEstimator:
 
         return None
 
+    @property
+    def supports_source_pixels(self):
+        return self.backend == "coreml" and all(
+            callable(getattr(model, "get_keypoints_from_source", None))
+            for model in (self.model_front, self.model_back))
+
     def _predict_single_view(
         self,
         view_frame: np.ndarray,
@@ -700,6 +706,7 @@ class DualPoseEstimator:
         model: Optional[Any] = None,
         crop_info: Optional[DualViewCropInfo] = None,
         is_point_in_mirror_fn: Optional[Callable[[float, float], bool]] = None,
+        source_pixels: bool = False,
     ) -> Dict[str, Keypoint]:
         """对单路裁剪视角画面进行姿态估计。"""
         active_model = model or (self.model_back if is_back_view and self.model_back is not None else self.model_front) or self.model
@@ -707,6 +714,10 @@ class DualPoseEstimator:
             return {}
 
         h, w = view_frame.shape[:2]
+        if source_pixels:
+            if crop_info is None or self.backend != "coreml":
+                raise ValueError("Source pose pixels require Core ML and canonical crop geometry")
+            w, h = crop_info.view_size
 
         if self.backend == "ultralytics":
             results = active_model(view_frame, conf=self.conf_threshold, verbose=False)
@@ -780,7 +791,8 @@ class DualPoseEstimator:
         if self.backend == "coreml":
             try:
                 predict = getattr(active_model, "get_keypoints_with_confidence", active_model.get_keypoints)
-                kpts_list = predict(view_frame)
+                kpts_list = (active_model.get_keypoints_from_source(view_frame, crop_info.view_size)
+                             if source_pixels else predict(view_frame))
                 if not kpts_list:
                     if is_back_view and self._last_valid_back_pose and self._back_missing_count < 3:
                         self._back_missing_count += 1
@@ -889,6 +901,7 @@ class DualPoseEstimator:
                 self.model_front,
                 dual_frame.front_info,
                 is_mirror_fn,
+                dual_frame.front_source_pixels,
             )
             fut_back = self._pool.submit(
                 self._predict_single_view,
@@ -897,6 +910,7 @@ class DualPoseEstimator:
                 self.model_back,
                 dual_frame.back_info,
                 is_mirror_fn,
+                dual_frame.back_source_pixels,
             )
             front_pose_local = fut_front.result()
             back_pose_local = fut_back.result()
@@ -907,6 +921,7 @@ class DualPoseEstimator:
                 model=self.model_front,
                 crop_info=dual_frame.front_info,
                 is_point_in_mirror_fn=is_mirror_fn,
+                source_pixels=dual_frame.front_source_pixels,
             )
             back_pose_local = self._predict_single_view(
                 dual_frame.back_frame,
@@ -914,6 +929,7 @@ class DualPoseEstimator:
                 model=self.model_back,
                 crop_info=dual_frame.back_info,
                 is_point_in_mirror_fn=is_mirror_fn,
+                source_pixels=dual_frame.back_source_pixels,
             )
         back_eyes = list(self._last_back_eyes)
 

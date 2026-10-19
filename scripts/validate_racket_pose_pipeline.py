@@ -147,6 +147,8 @@ def run_case(args, video, mode, processing, stride, repeat):
         config['realtime_swing']['coach_tts'].update(enabled=True,playback=False,startup_timeout_seconds=.2,request_timeout_seconds=.2)
     config['racket_pose'].update(mode=mode,inference_stride=stride,acceptance_run=not args.production_check)
     config['pipeline_perf']['inference_schedule']=getattr(args,'inference_schedule','barrier')
+    if getattr(args,'pose_resize_policy',None):
+        config['pipeline_perf']['pose_resize_policy']=args.pose_resize_policy
     config['racket_pose']['ipc_transport']=getattr(args,'racket_ipc','queue')
     if getattr(args,'pose_compute_units',None):config['pose_compute_units']=args.pose_compute_units
     if getattr(args,'display_mode',None):config['pipeline_perf']['async_display_enabled']=args.display_mode=='async'
@@ -195,6 +197,7 @@ def run_case(args, video, mode, processing, stride, repeat):
                 process.terminate();process.wait(timeout=10);raise TimeoutError(session)
             time.sleep(.5)
     report={'session':str(session),'mode':mode,'processing':processing,'stride':stride,'repeat':repeat,'source_sha256':digest(video),
+            'pose_resize_policy':config['pipeline_perf'].get('pose_resize_policy','legacy'),
             'roi_policy':roi_policy,'roi_stream_id':roi_stream_id,
             'returncode':process.returncode,'wall_seconds':time.monotonic()-started,'resource_samples':samples,
             'resource_semantics':'Process-tree RSS sums may double count shared pages; ps CPU is averaged.'}
@@ -225,6 +228,9 @@ def run_case(args, video, mode, processing, stride, repeat):
     if mode=='active' and processing=='realtime' and report.get('new_selected',0)==0:
         report['realtime_gate']=False
         report['active_gate_reason']='No fresh new racket was selected; fallback alone cannot pass enhanced mode'
+    if getattr(args,'collect_clip_evidence',False) and process.returncode==0:
+        from scripts.validate_stable_shadow import clip_evidence
+        report['clip_evidence']=clip_evidence(session)
     (session/'measurement.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
     if repeat>0 and process.returncode==0:compact_repeat(session,report)
     print(json.dumps({k:v for k,v in report.items() if k not in ('resource_samples','event_semantics','timing_ms')},ensure_ascii=False),flush=True)

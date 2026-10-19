@@ -106,7 +106,7 @@ def letterbox(frame, size=960):
     nw,nh = round(w*scale),round(h*scale)
     left,top = round((size-nw)/2-.1),round((size-nh)/2-.1)
     canvas = np.full((size,size,3),114,np.uint8)
-    canvas[top:top+nh,left:left+nw] = cv2.resize(frame,(nw,nh))
+    canvas[top:top+nh,left:left+nw] = frame if (nw,nh) == (w,h) else cv2.resize(frame,(nw,nh))
     return cv2.cvtColor(canvas,cv2.COLOR_BGR2RGB), {'gain':scale,'left':left,'top':top,'width':w,'height':h}
 
 

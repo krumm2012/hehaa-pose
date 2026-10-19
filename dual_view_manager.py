@@ -95,6 +95,10 @@ class DualViewFrame:
     back_info: DualViewCropInfo
     timestamp_ms: Optional[float] = None
     is_point_in_mirror_fn: Optional[Any] = None
+    # When true, pixels remain at source-crop resolution; *_info.view_size is
+    # still the canonical coordinate space expected by analysis and rendering.
+    front_source_pixels: bool = False
+    back_source_pixels: bool = False
 
 
 
@@ -437,6 +441,8 @@ class DualViewManager:
         frame_id: int = 0,
         timestamp_ms: Optional[float] = None,
         front_crop_bbox: Optional[Tuple[int, int, int, int]] = None,
+        for_inference: bool = False,
+        source_views: Tuple[str, ...] = ("front", "back"),
     ) -> DualViewFrame:
         """
         核心分流方法：将单路原帧拆分为 Front 与 Back 两路视角。
@@ -447,12 +453,16 @@ class DualViewManager:
             frame_id: 当前帧序号
             timestamp_ms: 毫秒级时间戳
             front_crop_bbox: 显式指定正面视口 (x1, y1, x2, y2) 像素坐标，避免跨进程重复计算漂移
+            for_inference: 返回原始裁剪像素，保留标准视图坐标元数据；需配合支持该协议的姿态后端
 
         Returns:
             DualViewFrame 包含正面帧、背面帧及双向映射元数据
         """
         fh, fw = frame.shape[:2]
         self._last_frame_shape = (fh, fw)
+        if set(source_views) - {"front", "back"}:
+            raise ValueError("Unknown source-pixel pose view")
+        front_source_pixels = for_inference and "front" in source_views
 
         # 1. 提取正面机位区域 (Front ROI，优先使用显式指定的精确视口，其次自适应选手跟踪)
         if front_crop_bbox is not None and len(front_crop_bbox) == 4:
@@ -462,12 +472,12 @@ class DualViewManager:
         f_crop = frame[fy1:fy2, fx1:fx2].copy()
         f_orig_size = (f_crop.shape[1], f_crop.shape[0])
 
-        if self.front_target_size is not None:
+        if self.front_target_size is not None and not front_source_pixels:
             f_view = cv2.resize(f_crop, self.front_target_size)
             f_view_size = self.front_target_size
         else:
             f_view = f_crop
-            f_view_size = f_orig_size
+            f_view_size = self.front_target_size or f_orig_size
 
         front_info = DualViewCropInfo(
             bbox_orig=(fx1, fy1, fx2, fy2),
@@ -487,12 +497,15 @@ class DualViewManager:
         else:
             b_processed = b_crop
 
-        if self.mirror_target_size is not None:
+        # A configured privacy mask retains its established display-space
+        # rasterization. It must not silently move when changing interpolation.
+        back_source_pixels = for_inference and "back" in source_views and self.mirror_mask_polygon_norm is None
+        if self.mirror_target_size is not None and not back_source_pixels:
             b_view = cv2.resize(b_processed, self.mirror_target_size)
             b_view_size = self.mirror_target_size
         else:
             b_view = b_processed
-            b_view_size = b_orig_size
+            b_view_size = self.mirror_target_size or b_orig_size
 
         back_info = DualViewCropInfo(
             bbox_orig=(bx1, by1, bx2, by2),
@@ -514,6 +527,8 @@ class DualViewManager:
             back_info=back_info,
             timestamp_ms=timestamp_ms,
             is_point_in_mirror_fn=lambda x, y: self.is_point_in_mirror(x, y, fw, fh),
+            front_source_pixels=front_source_pixels,
+            back_source_pixels=back_source_pixels,
         )
 
     def apply_mask_to_view(
@@ -547,17 +562,18 @@ class DualViewManager:
         target_height: Optional[int] = None,
     ) -> np.ndarray:
         """生成 Side-by-Side 双画面同屏展示图像。"""
-        f_img = dual_frame.front_frame.copy()
-        b_img = dual_frame.back_frame.copy()
+        f_size = (dual_frame.front_info.view_size if dual_frame.front_source_pixels
+                  else dual_frame.front_frame.shape[1::-1])
+        b_size = (dual_frame.back_info.view_size if dual_frame.back_source_pixels
+                  else dual_frame.back_frame.shape[1::-1])
+        th = target_height or max(f_size[1], b_size[1])
 
-        # 对齐高度
-        th = target_height or max(f_img.shape[0], b_img.shape[0])
-        if f_img.shape[0] != th:
-            fw = int(f_img.shape[1] * th / f_img.shape[0])
-            f_img = cv2.resize(f_img, (fw, th))
-        if b_img.shape[0] != th:
-            bw = int(b_img.shape[1] * th / b_img.shape[0])
-            b_img = cv2.resize(b_img, (bw, th))
+        def display_pixels(image, size):
+            target = (int(size[0] * th / size[1]), th)
+            return image.copy() if image.shape[1::-1] == target else cv2.resize(image, target)
+
+        f_img = display_pixels(dual_frame.front_frame, f_size)
+        b_img = display_pixels(dual_frame.back_frame, b_size)
 
         if draw_labels:
             # 标注文字
