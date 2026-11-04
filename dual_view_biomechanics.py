@@ -292,6 +292,101 @@ class DualViewBiomechanicsEngine:
 
         return healed_pose, healed_list
 
+    def heal_bidirectional_poses(
+        self,
+        front_pose: Dict[str, Keypoint],
+        back_pose: Dict[str, Keypoint],
+    ) -> Dict[str, Any]:
+        """
+        双向双视图姿态互补合并 (Bidirectional Dual-View Pose Merging)：
+        1. Front <- Back：当正面手腕/手肘因引拍侧身被躯干遮挡时，由镜面视角通过平面仿射映射补全；
+        2. Back <- Front：当镜面远景手腕/手肘因小目标或低对比度漏检时，由正面高置信度关键点逆仿射映射补全；
+        3. 双视图共同观测关节：计算重投影残差 (cross_view_error_px) 以量化双视图几何一致性。
+        """
+        from mirror_geometry import estimate_cross_view_torso_transform, map_mirror_point_planar
+
+        healed_front, front_healed_joints = self.heal_occluded_pose(front_pose, back_pose)
+        healed_back = dict(back_pose)
+        back_healed_joints: List[str] = []
+
+        t_b2f = estimate_cross_view_torso_transform(
+            back_pose, front_pose, direction="back_to_front", min_conf=self.min_keypoint_conf
+        )
+        t_f2b = estimate_cross_view_torso_transform(
+            front_pose, back_pose, direction="front_to_back", min_conf=self.min_keypoint_conf
+        )
+
+        # 用高精度平面仿射升级 Front <- Back 自愈坐标（若仿射可用且残差合格）
+        if t_b2f is not None and t_b2f.rmse <= 18.0:
+            for joint in front_healed_joints:
+                b_kp = back_pose.get(joint)
+                if b_kp is not None:
+                    proj = map_mirror_point_planar((b_kp.x, b_kp.y), affine_result=t_b2f)
+                    if proj is not None:
+                        healed_front[joint] = Keypoint(
+                            x=round(float(proj[0]), 2),
+                            y=round(float(proj[1]), 2),
+                            conf=round(float(b_kp.conf * 0.9), 3),
+                            recovered_from_mirror=True,
+                            observed=False,
+                            source_frame_id=b_kp.source_frame_id,
+                            confidence_source=b_kp.confidence_source,
+                        )
+
+        # Back <- Front 逆向补全（专门解决镜面视角 left_wrist / right_wrist 高漏检率）
+        target_joints = (
+            "right_wrist", "right_elbow", "left_wrist", "left_elbow",
+            "right_knee", "left_knee", "right_ankle", "left_ankle",
+        )
+        if t_f2b is not None and t_f2b.rmse <= 18.0:
+            for joint in target_joints:
+                b_kp = back_pose.get(joint)
+                f_kp = front_pose.get(joint)
+                b_valid = b_kp is not None and b_kp.conf >= self.min_keypoint_conf and b_kp.observed
+                f_valid = (
+                    f_kp is not None
+                    and f_kp.conf >= max(0.5, self.min_keypoint_conf)
+                    and f_kp.observed
+                    and not f_kp.recovered_from_mirror
+                )
+                if not b_valid and f_valid:
+                    proj_b = map_mirror_point_planar((f_kp.x, f_kp.y), affine_result=t_f2b)
+                    if proj_b is not None:
+                        healed_back[joint] = Keypoint(
+                            x=round(float(proj_b[0]), 2),
+                            y=round(float(proj_b[1]), 2),
+                            conf=round(float(f_kp.conf * 0.9), 3),
+                            recovered_from_mirror=True,
+                            observed=False,
+                            source_frame_id=f_kp.source_frame_id,
+                            confidence_source=f_kp.confidence_source,
+                        )
+                        back_healed_joints.append(joint)
+
+        # 统计共同可见关节的重投影残差
+        joint_errors: Dict[str, float] = {}
+        if t_b2f is not None:
+            for joint in target_joints:
+                f_kp = front_pose.get(joint)
+                b_kp = back_pose.get(joint)
+                if (
+                    f_kp is not None and f_kp.observed and f_kp.conf >= self.min_keypoint_conf
+                    and b_kp is not None and b_kp.observed and b_kp.conf >= self.min_keypoint_conf
+                ):
+                    proj_f = map_mirror_point_planar((b_kp.x, b_kp.y), affine_result=t_b2f)
+                    if proj_f is not None:
+                        joint_errors[joint] = round(math.hypot(proj_f[0] - f_kp.x, proj_f[1] - f_kp.y), 2)
+
+        return {
+            "front_pose": healed_front,
+            "back_pose": healed_back,
+            "front_healed_joints": front_healed_joints,
+            "back_healed_joints": back_healed_joints,
+            "torso_affine_rmse": t_b2f.rmse if t_b2f is not None else None,
+            "torso_transform_status": t_b2f.status if t_b2f is not None else "unavailable",
+            "joint_reprojection_errors_px": joint_errors,
+        }
+
     def classify_shot(
         self,
         pose: Dict[str, Keypoint],

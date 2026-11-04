@@ -132,6 +132,204 @@ def line_angle(a, b):
     return math.degrees(math.atan2(b[1]-a[1], b[0]-a[0]))
 
 
+def merge_dual_view_frame(row, bodies, rackets, assoc, candidates, image_size, max_affine_rmse=18.0):
+    """Bidirectional dual-view merging for body joints and 7-point racket topology.
+
+    Preserves strict single-view tracks untouched while producing a merged view:
+    1. Solves bidirectional torso planar-affine transforms (back->front & front->back).
+    2. Heals missing front/back body joints across views when torso alignment passes gate.
+    3. Rescues unassociated 7-point racket candidates using cross-view healed wrists.
+    4. Projects 7-point racket keypoints across views when one view is occluded/missing.
+    """
+    from mirror_geometry import estimate_cross_view_torso_transform, map_mirror_point_planar
+    fid = row['frame_id']
+    obs = row.get('racket_pose') or {}
+    valid_obs = (obs.get('frame_id') == fid and obs.get('status') == 'observed'
+                 and obs.get('coordinate_space') == 'original_source_pixels')
+    diag_len = math.hypot(*image_size)
+    rescue_limit = diag_len * 0.065
+
+    t_b2f = estimate_cross_view_torso_transform(
+        bodies['back'], bodies['front'], direction='back_to_front', min_conf=0.20, allow_fallback=True
+    )
+    t_f2b = estimate_cross_view_torso_transform(
+        bodies['front'], bodies['back'], direction='front_to_back', min_conf=0.20, allow_fallback=True
+    )
+    b2f_ok = t_b2f is not None and t_b2f.rmse <= max_affine_rmse
+    f2b_ok = t_f2b is not None and t_f2b.rmse <= max_affine_rmse
+
+    merged_body = {'front': {}, 'back': {}}
+    body_provenance = {'front': {}, 'back': {}}
+    joint_reproj_errors = {}
+
+    for name in BODY_POINTS:
+        f_pt = bodies['front'].get(name)
+        b_pt = bodies['back'].get(name)
+        # Front merged
+        if f_pt is not None:
+            merged_body['front'][name] = f_pt
+            body_provenance['front'][name] = 'observed_front'
+        elif b_pt is not None and b2f_ok:
+            proj = map_mirror_point_planar(b_pt, affine_result=t_b2f)
+            if proj is not None:
+                merged_body['front'][name] = [round(proj[0], 2), round(proj[1], 2)]
+                body_provenance['front'][name] = 'back_projected_to_front'
+            else:
+                merged_body['front'][name] = None
+                body_provenance['front'][name] = 'missing'
+        else:
+            merged_body['front'][name] = None
+            body_provenance['front'][name] = 'missing'
+
+        # Back merged
+        if b_pt is not None:
+            merged_body['back'][name] = b_pt
+            body_provenance['back'][name] = 'observed_back'
+        elif f_pt is not None and f2b_ok:
+            proj_b = map_mirror_point_planar(f_pt, affine_result=t_f2b)
+            if proj_b is not None:
+                merged_body['back'][name] = [round(proj_b[0], 2), round(proj_b[1], 2)]
+                body_provenance['back'][name] = 'front_projected_to_back'
+            else:
+                merged_body['back'][name] = None
+                body_provenance['back'][name] = 'missing'
+        else:
+            merged_body['back'][name] = None
+            body_provenance['back'][name] = 'missing'
+
+        if f_pt is not None and b_pt is not None and b2f_ok:
+            proj = map_mirror_point_planar(b_pt, affine_result=t_b2f)
+            if proj is not None:
+                joint_reproj_errors[name] = round(math.dist(proj, f_pt), 2)
+
+    # Step 3: Rescue unassociated native 7-point racket candidates using merged wrists
+    used_indices = {assoc[v]['candidate_index'] for v in ('front', 'back') if assoc[v]['candidate_index'] is not None}
+    merged_racket = {'front': dict(rackets['front']), 'back': dict(rackets['back'])}
+    racket_provenance = {
+        'front': 'observed_front' if assoc['front']['candidate_index'] is not None else 'missing',
+        'back': 'observed_back' if assoc['back']['candidate_index'] is not None else 'missing',
+    }
+    rescued_candidate_index = {'front': None, 'back': None}
+
+    if valid_obs and candidates:
+        for view in ('front', 'back'):
+            if assoc[view]['candidate_index'] is not None:
+                continue
+            wrists = [(s, merged_body[view].get(s + '_wrist')) for s in ('left', 'right')]
+            wrists = [(s, w) for s, w in wrists if w is not None]
+            if not wrists:
+                continue
+            best_cand = None
+            for idx, cand in enumerate(candidates):
+                if idx in used_indices:
+                    continue
+                if (cand.get('source') != 'racket_pose_model' or cand.get('observed') is not True
+                        or cand.get('source_frame_id') != fid
+                        or not finite(cand.get('confidence')) or not 0.25 <= cand['confidence'] <= 1):
+                    continue
+                kpts = cand.get('keypoints') or {}
+                grip, _ = qualified_point(kpts.get('grip_center'), fid, threshold=0.35)
+                if grip is None:
+                    grip, _ = qualified_point(kpts.get('butt_cap'), fid, threshold=0.35)
+                if grip is None:
+                    continue
+                for side, w in wrists:
+                    d = math.dist(w, grip)
+                    if d <= rescue_limit and (best_cand is None or d < best_cand[0]):
+                        best_cand = (d, idx, cand)
+            if best_cand is not None:
+                _, r_idx, r_cand = best_cand
+                kpts = r_cand.get('keypoints') or {}
+                extracted = {}
+                for name in RACKET_POINTS:
+                    xy, _ = qualified_point(kpts.get(name), fid, threshold=0.35)
+                    extracted[name] = xy
+                if any(v is not None for v in extracted.values()):
+                    merged_racket[view] = extracted
+                    used_indices.add(r_idx)
+                    rescued_candidate_index[view] = r_idx
+                    racket_provenance[view] = (
+                        'healed_wrist_candidate_rescue'
+                        if body_provenance[view].get('right_wrist') != f'observed_{view}'
+                        or body_provenance[view].get('left_wrist') != f'observed_{view}'
+                        else 'relaxed_threshold_candidate_rescue'
+                    )
+
+    # Step 4: Cross-view 7-point racket projection when one view's racket is still missing
+    if b2f_ok:
+        for name in RACKET_POINTS:
+            if merged_racket['front'].get(name) is None and merged_racket['back'].get(name) is not None:
+                proj = map_mirror_point_planar(merged_racket['back'][name], affine_result=t_b2f)
+                if proj is not None:
+                    merged_racket['front'][name] = [round(proj[0], 2), round(proj[1], 2)]
+                    if racket_provenance['front'] == 'missing':
+                        racket_provenance['front'] = 'back_projected_to_front'
+    if f2b_ok:
+        for name in RACKET_POINTS:
+            if merged_racket['back'].get(name) is None and merged_racket['front'].get(name) is not None:
+                proj_b = map_mirror_point_planar(merged_racket['front'][name], affine_result=t_f2b)
+                if proj_b is not None:
+                    merged_racket['back'][name] = [round(proj_b[0], 2), round(proj_b[1], 2)]
+                    if racket_provenance['back'] == 'missing':
+                        racket_provenance['back'] = 'front_projected_to_back'
+
+    racket_reproj_error = None
+    if (rackets['front'].get('sweet_spot') is not None
+            and rackets['back'].get('sweet_spot') is not None and b2f_ok):
+        proj_ss = map_mirror_point_planar(rackets['back']['sweet_spot'], affine_result=t_b2f)
+        if proj_ss is not None:
+            racket_reproj_error = round(math.dist(proj_ss, rackets['front']['sweet_spot']), 2)
+
+    return {
+        'torso_transform_status': t_b2f.status if t_b2f is not None else 'unavailable',
+        'torso_affine_rmse_px': t_b2f.rmse if t_b2f is not None else None,
+        'scale_x': round(t_b2f.scale_x, 4) if t_b2f is not None else None,
+        'scale_y': round(t_b2f.scale_y, 4) if t_b2f is not None else None,
+        'merged_body': merged_body,
+        'body_provenance': body_provenance,
+        'merged_racket': merged_racket,
+        'racket_provenance': racket_provenance,
+        'rescued_candidate_index': rescued_candidate_index,
+        'joint_reprojection_errors_px': joint_reproj_errors,
+        'sweet_spot_reprojection_error_px': racket_reproj_error,
+    }
+
+
+def summarize_dual_view_fusion(frames):
+    total = len(frames)
+    if not total:
+        return {}
+    stats = {}
+    for view in ('front', 'back'):
+        for joint in ('right_wrist', 'left_wrist', 'right_elbow', 'left_elbow'):
+            raw_n = sum(1 for f in frames if f['body'][view].get(joint) is not None)
+            merged_n = sum(1 for f in frames if (f.get('dual_view_fusion') or {}).get('merged_body', {}).get(view, {}).get(joint) is not None)
+            stats[f'{view}.body.{joint}'] = {
+                'raw_frames': raw_n,
+                'merged_frames': merged_n,
+                'gained_frames': merged_n - raw_n,
+                'raw_coverage': round(raw_n / total, 4),
+                'merged_coverage': round(merged_n / total, 4),
+            }
+        raw_rkt = sum(1 for f in frames if f['racket'][view].get('sweet_spot') is not None)
+        merged_rkt = sum(1 for f in frames if (f.get('dual_view_fusion') or {}).get('merged_racket', {}).get(view, {}).get('sweet_spot') is not None)
+        rescued_rkt = sum(1 for f in frames if (f.get('dual_view_fusion') or {}).get('rescued_candidate_index', {}).get(view) is not None)
+        projected_rkt = sum(
+            1 for f in frames
+            if (f.get('dual_view_fusion') or {}).get('racket_provenance', {}).get(view) in ('back_projected_to_front', 'front_projected_to_back')
+        )
+        stats[f'{view}.racket.sweet_spot'] = {
+            'raw_frames': raw_rkt,
+            'merged_frames': merged_rkt,
+            'gained_frames': merged_rkt - raw_rkt,
+            'rescued_native_candidate_frames': rescued_rkt,
+            'cross_view_projected_frames': projected_rkt,
+            'raw_coverage': round(raw_rkt / total, 4),
+            'merged_coverage': round(merged_rkt / total, 4),
+        }
+    return stats
+
+
 def analyze_frames(rows, image_size):
     from ball_observation_contract import measurement_ball
     ordered = sorted(rows, key=lambda r:r['frame_id'])
@@ -187,8 +385,9 @@ def analyze_frames(rows, image_size):
         reasons['racket_detector_any']=None if tracks['racket_detector_any'] else 'no_raw_racket_candidate'
         for view in ('front','back'):
             metrics[view]['ball_sweetspot_distance_px']=math.dist(ball,rackets[view]['sweet_spot']) if view=='front' and ball is not None and rackets[view]['sweet_spot'] is not None else None
+        fusion = merge_dual_view_frame(row, bodies, rackets, assoc, candidates, image_size)
         frame={'frame_id':fid,'source_seconds':timestamp,'body':bodies,'racket':rackets,'associations':assoc,
-               'ball':ball,'metrics':metrics,'tracks':tracks,'missing_reasons':reasons}
+               'ball':ball,'metrics':metrics,'tracks':tracks,'missing_reasons':reasons,'dual_view_fusion':fusion}
         previous=frames[-1] if frames else None
         for view in ('front','back'):
             m=metrics[view];m.update(sweet_spot_speed_px_s=None,wrist_speed_px_s=None)
@@ -254,5 +453,6 @@ def summarize(frames, events, expected_source_frame_count=None):
                 journal_gaps[-1]['end_frame']=fid;journal_gaps[-1]['count']+=1
             else:journal_gaps.append({'start_frame':fid,'end_frame':fid,'count':1})
     return {'tracks':summary,'observation_gaps_ge_3':runs,'journal_gaps':journal_gaps,'expected_source_frame_count':expected_source_frame_count,
+            'dual_view_fusion':summarize_dual_view_fusion(frames),
             'semantics':'Point unavailable includes missing, low score, unverified assignment; not visibility truth or detector recall. PTS span is last-first, not exposure duration.',
             'accuracy_validated':False,'coach_eligible':False}

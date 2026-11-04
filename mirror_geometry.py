@@ -480,3 +480,140 @@ def estimate_torso_3d_kinematics(
         status=status,
     )
 
+
+# 理论各向异性缩放比常量 (k_x / k_y = 1.6496 / 1.2700 ≈ 1.2989)
+ANISOTROPIC_XY_RATIO = 1.6496 / 1.2700
+
+
+def estimate_cross_view_torso_transform(
+    src_pose: Dict[str, Any],
+    dst_pose: Dict[str, Any],
+    direction: str = "back_to_front",
+    min_conf: float = 0.20,
+    allow_fallback: bool = True,
+) -> Optional[PlanarAffineResult]:
+    """
+    双向跨视角躯干几何变换估算器 (支持 back_to_front 与 front_to_back)：
+    1. 优先求解 4 对应点最优平面仿射变换 (Planar Affine)；
+    2. 当侧身引拍导致横向肩/髋跨度投影塌陷时，若 allow_fallback=True，
+       自动回退至基于垂直脊柱轴高度与光学各向异性比 (sx/sy) 的对角仿射矩阵。
+    """
+    if not src_pose or not dst_pose:
+        return None
+
+    # 1. 尝试直接求解平面仿射 (estimate_torso_planar_affine 内部为 back -> front，即第2参数 -> 第1参数)
+    direct = estimate_torso_planar_affine(dst_pose, src_pose, min_conf=min_conf)
+    if direct is not None:
+        return direct
+
+    if not allow_fallback:
+        return None
+
+    # 2. 侧身退化安全回退：利用垂直脊柱中轴高度 + 物理各向异性比构建 2x3 仿射矩阵
+    def _mid(a: Optional[Tuple[float, float]], b: Optional[Tuple[float, float]]) -> Optional[Tuple[float, float]]:
+        if a is not None and b is not None:
+            return (a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0
+        return a or b
+
+    s_ls = extract_keypoint_xy(src_pose.get("left_shoulder"), min_conf=min_conf)
+    s_rs = extract_keypoint_xy(src_pose.get("right_shoulder"), min_conf=min_conf)
+    s_lh = extract_keypoint_xy(src_pose.get("left_hip"), min_conf=min_conf)
+    s_rh = extract_keypoint_xy(src_pose.get("right_hip"), min_conf=min_conf)
+
+    d_ls = extract_keypoint_xy(dst_pose.get("left_shoulder"), min_conf=min_conf)
+    d_rs = extract_keypoint_xy(dst_pose.get("right_shoulder"), min_conf=min_conf)
+    d_lh = extract_keypoint_xy(dst_pose.get("left_hip"), min_conf=min_conf)
+    d_rh = extract_keypoint_xy(dst_pose.get("right_hip"), min_conf=min_conf)
+
+    s_sh = _mid(s_ls, s_rs)
+    s_hp = _mid(s_lh, s_rh)
+    d_sh = _mid(d_ls, d_rs)
+    d_hp = _mid(d_lh, d_rh)
+
+    if s_sh is None or s_hp is None or d_sh is None or d_hp is None:
+        return None
+
+    s_h = math.hypot(s_sh[0] - s_hp[0], s_sh[1] - s_hp[1])
+    d_h = math.hypot(d_sh[0] - d_hp[0], d_sh[1] - d_hp[1])
+    if s_h < 15.0 or d_h < 15.0:
+        return None
+
+    scale_y = d_h / s_h
+    if not (0.35 <= scale_y <= 3.2):
+        return None
+
+    if direction == "back_to_front":
+        scale_x = min(3.2, max(0.35, scale_y * ANISOTROPIC_XY_RATIO))
+    elif direction == "front_to_back":
+        scale_x = min(3.2, max(0.35, scale_y / ANISOTROPIC_XY_RATIO))
+    else:
+        scale_x = scale_y
+
+    s_cx = (s_sh[0] + s_hp[0]) / 2.0
+    s_cy = (s_sh[1] + s_hp[1]) / 2.0
+    d_cx = (d_sh[0] + d_hp[0]) / 2.0
+    d_cy = (d_sh[1] + d_hp[1]) / 2.0
+
+    tx = d_cx - scale_x * s_cx
+    ty = d_cy - scale_y * s_cy
+    M = np.array([[scale_x, 0.0, tx], [0.0, scale_y, ty]], dtype=np.float64)
+
+    # 计算可用锚点的残差
+    errs = []
+    for name in ("left_shoulder", "right_shoulder", "left_hip", "right_hip"):
+        sp = extract_keypoint_xy(src_pose.get(name), min_conf=min_conf)
+        dp = extract_keypoint_xy(dst_pose.get(name), min_conf=min_conf)
+        if sp is not None and dp is not None:
+            px = scale_x * sp[0] + tx
+            py = scale_y * sp[1] + ty
+            errs.append(math.hypot(px - dp[0], py - dp[1]))
+    rmse = round(float(np.sqrt(np.mean(np.square(errs)))), 2) if errs else 0.0
+
+    return PlanarAffineResult(
+        matrix=M,
+        scale_x=round(float(scale_x), 4),
+        scale_y=round(float(scale_y), 4),
+        rotation_deg=0.0,
+        determinant=round(float(scale_x * scale_y), 4),
+        rmse=rmse,
+        num_points=len(errs),
+        status="fallback",
+    )
+
+
+def map_racket_keypoints_cross_view(
+    racket_keypoints: Dict[str, Any],
+    src_pose: Dict[str, Any],
+    dst_pose: Dict[str, Any],
+    direction: str = "back_to_front",
+    min_conf: float = 0.20,
+) -> Tuple[Dict[str, Tuple[float, float]], Optional[PlanarAffineResult]]:
+    """
+    将 7 点球拍拓扑关键点在正反双视图之间进行仿射重投影映射：
+    支持 `back_to_front` (引拍背身遮挡时由镜面反补正面) 与 `front_to_back` (正面高清投影补全镜面远景小目标)。
+    """
+    if not racket_keypoints:
+        return {}, None
+
+    transform = estimate_cross_view_torso_transform(
+        src_pose=src_pose,
+        dst_pose=dst_pose,
+        direction=direction,
+        min_conf=min_conf,
+        allow_fallback=True,
+    )
+    if transform is None:
+        return {}, None
+
+    mapped: Dict[str, Tuple[float, float]] = {}
+    for kpt_name, raw_pt in racket_keypoints.items():
+        xy = extract_keypoint_xy(raw_pt, min_conf=min_conf)
+        if xy is None:
+            continue
+        proj = map_mirror_point_planar(xy, affine_result=transform)
+        if proj is not None:
+            mapped[kpt_name] = (round(float(proj[0]), 2), round(float(proj[1]), 2))
+
+    return mapped, transform
+
+
