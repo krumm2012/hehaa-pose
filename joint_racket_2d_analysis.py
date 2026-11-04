@@ -54,11 +54,11 @@ def associate_rackets(row, bodies, size, distance_ratio=.05, ambiguity_ratio=.00
     candidates = obs.get('candidates') or []
     result = {}
     for view in ('front', 'back'):
-        wrists = [bodies[view].get(side+'_wrist') for side in ('left', 'right')]
-        wrists = [w for w in wrists if w is not None]
+        wrist_entries = [(side, bodies[view].get(side+'_wrist')) for side in ('left', 'right')]
+        wrist_entries = [(s, w) for s, w in wrist_entries if w is not None]
         eligible = []
-        reason = 'no_qualified_wrist' if not wrists else 'no_qualified_racket_grip'
-        if (wrists and obs.get('frame_id') == fid and obs.get('status') == 'observed'
+        reason = 'no_qualified_wrist' if not wrist_entries else 'no_qualified_racket_grip'
+        if (wrist_entries and obs.get('frame_id') == fid and obs.get('status') == 'observed'
                 and obs.get('coordinate_space') == 'original_source_pixels'):
             for index, candidate in enumerate(candidates):
                 if (candidate.get('source') != 'racket_pose_model' or candidate.get('observed') is not True
@@ -66,15 +66,44 @@ def associate_rackets(row, bodies, size, distance_ratio=.05, ambiguity_ratio=.00
                         or not finite(candidate.get('confidence')) or not .25 <= candidate['confidence'] <= 1):
                     continue
                 grip, _ = qualified_point((candidate.get('keypoints') or {}).get('grip_center'), fid)
-                if grip is not None:
-                    distance = min(math.dist(w, grip) for w in wrists)
-                    if distance <= limit:
-                        eligible.append((distance, index))
+                if grip is None:
+                    continue
+                best_dist = float('inf')
+                best_alignment = 0.0
+                tip, _ = qualified_point((candidate.get('keypoints') or {}).get('throat'), fid)
+                if tip is None:
+                    tip, _ = qualified_point((candidate.get('keypoints') or {}).get('sweet_spot'), fid)
+                for side, w in wrist_entries:
+                    d = math.dist(w, grip)
+                    if d < best_dist:
+                        best_dist = d
+                        elbow = bodies[view].get(side+'_elbow')
+                        if elbow and tip:
+                            arm_v = (w[0]-elbow[0], w[1]-elbow[1])
+                            rkt_v = (tip[0]-grip[0], tip[1]-grip[1])
+                            norm = math.hypot(*arm_v) * math.hypot(*rkt_v)
+                            best_alignment = (arm_v[0]*rkt_v[0] + arm_v[1]*rkt_v[1]) / norm if norm > 1e-6 else 0.0
+                        else:
+                            best_alignment = 0.0
+                if best_dist <= limit:
+                    eligible.append((best_dist, -best_alignment, index))
         eligible.sort()
-        if eligible and (len(eligible) == 1 or eligible[1][0]-eligible[0][0] >= margin):
-            distance, index = eligible[0]
-            result[view] = {'status':'proximity_candidate', 'candidate_index':index,
-                            'grip_wrist_distance_px':distance, 'reason':None,
+        selected_index = None
+        selected_distance = None
+        if eligible:
+            if len(eligible) == 1:
+                selected_distance, _, selected_index = eligible[0]
+            elif eligible[1][0] - eligible[0][0] >= margin:
+                selected_distance, _, selected_index = eligible[0]
+            else:
+                # Ambiguity tie-breaker using forearm alignment: if top candidate has distinctly
+                # better anatomical collinearity with the arm, resolve the tie.
+                align_diff = (-eligible[0][1]) - (-eligible[1][1])
+                if align_diff >= 0.25 and (-eligible[0][1]) > 0:
+                    selected_distance, _, selected_index = eligible[0]
+        if selected_index is not None:
+            result[view] = {'status':'proximity_candidate', 'candidate_index':selected_index,
+                            'grip_wrist_distance_px':selected_distance, 'reason':None,
                             'person_assignment_verified':False}
         else:
             result[view] = {'status':'unavailable','candidate_index':None,

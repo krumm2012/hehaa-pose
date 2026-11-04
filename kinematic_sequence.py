@@ -246,47 +246,79 @@ def _signal_agreement(front: Dict, back: Dict) -> Optional[float]:
     return max(-1.0, min(1.0, numerator / denominator)) if denominator > 1e-9 else None
 
 
+def _extract_racket_point(row: Dict, fid: int) -> Tuple[Optional[Tuple[float, float]], Optional[str]]:
+    """Extract sweet_spot from 7-point racket_pose if qualified, else box centre."""
+    obs = row.get("racket_pose") or {}
+    candidates = obs.get("candidates") or []
+    if (obs.get("frame_id") == fid and obs.get("status") == "observed"
+            and isinstance(candidates, (list, tuple)) and candidates):
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            if candidate.get("source") == "racket_pose_model" or candidate.get("observed") is True:
+                kpts = candidate.get("keypoints") or {}
+                sp = kpts.get("sweet_spot")
+                if isinstance(sp, dict):
+                    x = finite_number(sp.get("x"))
+                    y = finite_number(sp.get("y"))
+                    conf = finite_number(sp.get("confidence"))
+                    if (x is not None and y is not None and conf is not None
+                            and 0.25 <= conf <= 1.0 and _source_frame_matches(sp, fid)
+                            and sp.get("observed") is not False):
+                        return (x, y), "sweet_spot"
+
+    detections = row.get("rackets") or []
+    selected = detections[0] if isinstance(detections, (list, tuple)) and detections and isinstance(detections[0], dict) else {}
+    box = selected.get("box") or row.get("racket")
+    confidence = finite_number(selected.get("confidence"))
+    values = [finite_number(value) for value in box] if isinstance(box, (list, tuple)) else []
+    min_conf = 0.25 if selected.get("temporal_recovery") else MIN_CONFIDENCE
+    if (not _source_frame_matches(selected, fid)
+            or selected.get("observed") is False or len(values) != 4
+            or None in values or confidence is None or not min_conf <= confidence <= 1
+            or values[2] <= values[0] or values[3] <= values[1]):
+        return None, None
+    centre = (values[0]/2 + values[2]/2, values[1]/2 + values[3]/2)
+    return centre, "box_center"
+
+
 def _racket_evidence(rows: List[Dict], times: List[float], cadence: float, minimum_dt=0.) -> Dict:
-    """Measure detection-box centres; changing box size alone has no velocity."""
+    """Measure racket velocity via 7-point sweet_spot or fallback box centres."""
     previous = None
     samples = []
+    point_sources = []
     segment_id = 0
     for row, timestamp in zip(rows, times):
-        detections = row.get("rackets") or []
-        selected = detections[0] if isinstance(detections, (list, tuple)) and detections and isinstance(detections[0], dict) else {}
-        box = selected.get("box") or row.get("racket")
-        confidence = finite_number(selected.get("confidence"))
-        values = [finite_number(value) for value in box] if isinstance(box, (list, tuple)) else []
-        min_conf = 0.25 if selected.get("temporal_recovery") else MIN_CONFIDENCE
-        if (not _source_frame_matches(selected, int(row["frame_id"]))
-                or selected.get("observed") is False or len(values) != 4
-                or None in values or confidence is None or not min_conf <= confidence <= 1
-                or values[2] <= values[0] or values[3] <= values[1]):
+        fid = int(row["frame_id"])
+        point, point_type = _extract_racket_point(row, fid)
+        if point is None:
             previous = None
             continue
         if previous is None:
             segment_id += 1
-        centre = (values[0]/2+values[2]/2, values[1]/2+values[3]/2)
         if previous is not None:
-            old_centre, old_time = previous
+            old_point, old_time = previous
             dt = timestamp - old_time
             if minimum_dt < dt <= 3 * cadence:
-                speed = math.dist(centre, old_centre) / dt
+                speed = math.dist(point, old_point) / dt
                 if not math.isfinite(speed):
                     previous = None
                     continue
-                samples.append({"frame_id": int(row["frame_id"]), "time": timestamp,
+                samples.append({"frame_id": fid, "time": timestamp,
                                 "speed": speed, "segment_id": segment_id})
+                point_sources.append(point_type)
             elif dt <= minimum_dt:
                 continue
             else:
                 segment_id += 1
-        previous = centre, timestamp
+        previous = point, timestamp
     result = _peak(samples, minimum_speed=50)
     coverage = len(samples) / max(1, len(rows)-1)
     if coverage < MIN_COVERAGE and len(samples) < MIN_SAMPLES:
         result.update(status="low_coverage", peak=None)
     result["coverage"] = round(coverage, 4)
+    sweet_count = sum(1 for s in point_sources if s == "sweet_spot")
+    result["point_source"] = "sweet_spot" if sweet_count > len(point_sources) / 2 and sweet_count > 0 else "box_center"
     return result
 
 
