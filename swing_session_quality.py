@@ -7,11 +7,12 @@ from collections import Counter
 from statistics import mean, median, stdev
 from typing import Dict, Iterable, List, Optional, Sequence
 
+from session_speed_trend import build_speed_trend, speed_contract
 from practice_scoring import number
 from practice_score_adapter import resolve_practice_score
 
 
-SCHEMA_VERSION = "swing_session_quality_v2"
+SCHEMA_VERSION = "swing_session_quality_v3_unit_safe"
 MIN_DRIFT_EVENTS = 6
 MAX_WINDOW_EVENTS = 5
 
@@ -103,6 +104,7 @@ def _event_point(event: Dict, index: int) -> Dict:
             else None
         ),
         "stroke_type": event.get("stroke_type"),
+        "speed_contract": speed_contract(event),
         "comparison_key": json.dumps({"policy": practice["policy_version"], "method": practice["method"], "stroke": event.get("stroke_type"), "context": event.get("practice_context") or {}}, sort_keys=True),
         "practice_score_100": practice["score"],
         "scoring_method": practice["method"],
@@ -467,59 +469,9 @@ def build_session_quality_dashboard(events: Iterable[Dict]) -> Dict:
         else:
             drift_status = "stable"
 
-    # 疲劳衰减与动作一致性分析 (Fatigue and Consistency Analytics)
-    speeds = [
-        _number(p.get("racket_speed_kmh")) or _number(p.get("racket_speed_px_s"))
-        for p in series
-        if (_number(p.get("racket_speed_kmh")) or _number(p.get("racket_speed_px_s"))) is not None
-    ]
-    latencies = [
-        _number(p.get("latency_hip_to_shoulder_ms"))
-        for p in series
-        if _number(p.get("latency_hip_to_shoulder_ms")) is not None
-    ]
-    shoulder_turns = [
-        _number(p.get("shoulder_turn_deg"))
-        for p in series
-        if _number(p.get("shoulder_turn_deg")) is not None
-    ]
-
-    speed_decay_percent = None
-    if len(speeds) >= 4 and baseline and recent:
-        base_speeds = [
-            _number(p.get("racket_speed_kmh")) or _number(p.get("racket_speed_px_s"))
-            for p in baseline
-            if (_number(p.get("racket_speed_kmh")) or _number(p.get("racket_speed_px_s"))) is not None
-        ]
-        rec_speeds = [
-            _number(p.get("racket_speed_kmh")) or _number(p.get("racket_speed_px_s"))
-            for p in recent
-            if (_number(p.get("racket_speed_kmh")) or _number(p.get("racket_speed_px_s"))) is not None
-        ]
-        if base_speeds and rec_speeds and _mean(base_speeds) and _mean(base_speeds) > 0:
-            speed_decay_percent = round(((_mean(rec_speeds) - _mean(base_speeds)) / _mean(base_speeds)) * 100.0, 2)
-
-    speed_std = _stdev(speeds)
-    latency_jitter_std = _stdev(latencies)
-    shoulder_turn_std = _stdev(shoulder_turns)
-
-    if event_count < 4:
-        fatigue_status = "WARMING_UP"
-    elif speed_decay_percent is not None and speed_decay_percent <= -8.0:
-        fatigue_status = "FATIGUE_OBSERVED"
-    elif speed_decay_percent is not None and speed_decay_percent >= 5.0:
-        fatigue_status = "WARMED_UP"
-    else:
-        fatigue_status = "CONSISTENT"
-
-    fatigue_and_consistency = {
-        "speed_decay_percent": speed_decay_percent,
-        "speed_std": speed_std,
-        "latency_jitter_std_ms": latency_jitter_std,
-        "shoulder_turn_std_deg": shoulder_turn_std,
-        "fatigue_status": fatigue_status,
-        "samples_evaluated": len(speeds),
-    }
+    fatigue_and_consistency = build_speed_trend(
+        series, baseline, recent, overlapping=bool(overlapping_pairs),
+        compatible=compatible_series, camera_shifted=camera_shifted)
 
     ready_deepseek = int(deepseek_status_counts.get("ready", 0))
     attempted_deepseek = sum(deepseek_status_counts.values())

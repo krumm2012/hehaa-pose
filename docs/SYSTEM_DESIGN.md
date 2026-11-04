@@ -1,12 +1,12 @@
 # 系统设计与算法流程
 
-更新：2026-09-16。代码基线：`new` / `0f43470`。本文描述当前实现；优化方案见需求基线，不能视为已交付功能。
+更新：2026-10-20。当前正式版为[640 Shadow stable](releases/640-shadow-stable-20261019.md)，验收源码冻结于`0b5f4e5`；本文同步当前入口与边界，历史日期条目保留。性能放行不等于active/exclusive模型质量验收。
 
 ## 1. 系统边界
 
 面向 Apple Silicon 本机、单机位网球训练分析。推荐分析入口为 `main_pipe.py`，控制入口为 `local_control_panel.py`。一个控制器管理一个分析会话；Court 01–03 是可切换的配置，并非同时运行三路分析。旧 `main.py`、TrackNet、HSV 和人脸处理模块仍留在仓库，不能据其存在推断生产默认链路使用它们。
 
-前端采用静态 HTML、原生 JavaScript 和生成式报告；后端是 Python HTTP 服务及多进程分析，无独立数据库、React 服务或 WebSocket 服务依赖。
+前端采用静态HTML、原生JavaScript和生成式报告；后端是Python HTTP服务及多进程分析，状态/日志/事件使用SSE，失败时回退HTTP轮询；不依赖独立数据库、React或WebSocket服务。本文控制台显式使用8766，程序省略端口时仍默认8765。
 
 ## 2. 运行架构
 
@@ -16,8 +16,11 @@ flowchart TD
   HTTP --> P[main_pipe.py / 进程监督]
   V[视频或 RTSP] --> R[Reader / 解码与节流]
   P --> R
-  R --> I[Inference / 检测与姿态并行]
+  R --> I[Inference / 球检测与双人体姿态]
+  I -. 源槽租约 .-> K[七点球拍独立进程 / 可终止]
+  K -. 连续Shadow逐帧同源结果 .-> I
   I --> A[Analyzer / FrameProcessor 与画面渲染]
+  A --> W[独立HighGUI显示进程 / 有界背压]
   A --> RT[RealtimeSwingRuntime / 后台线程]
   RT --> E[事件分段与本地 Coach]
   E --> O[OutputManager / JSON、HTML、片段]
@@ -34,10 +37,12 @@ flowchart TD
 
 | 模块 | 职责与约束 |
 | --- | --- |
-| `main_pipe.py` | 共享内存、Reader/Inference/Analyzer 启停与异常监督；直播模式优先新帧 |
+| `main_pipe.py` | 共享内存、三阶段进程监督；默认buffered逐帧及背压，只有显式realtime优先新帧 |
 | `reader_runtime.py` | 帧节流与读取辅助；主流程包含断流重连配置 |
 | `yolo26n_unified_detector.py` | 模型推理、候选筛选、主球与球拍选择 |
 | `pose_estimator_yolo26.py` | 人体姿态、时序平滑、跳变限制及短时保持 |
+| `racket_pose_runtime.py` / `racket_pose_detector.py` | 独立七点进程、同源帧合同、候选解码与旁路日志；640正式版仅Shadow |
+| `racket_model_profiles.py` | 原控制台显式640选择，生成独立运行配置，不改变基础默认YAML |
 | `frame_processor.py` | 汇总逐帧运动分析结果 |
 | `realtime_swing_runtime.py` | 异步事件处理、日志与旁路提交；队列满时可反压 |
 | `realtime_swing_pipeline.py` | 滚动事件、片段缓存、事件快照、HTML 与异步更新 |
@@ -49,12 +54,13 @@ flowchart TD
 
 ### 3.1 检测层
 
-1. Reader 解码源帧；直播可丢弃过期帧，离线可按原视频 FPS 节流。
-2. 按 ROI 配置裁剪球/拍检测区域；Pose 使用全帧。检测坐标恢复到原图坐标后供后续分析使用。
-3. 默认检测模型为 `tennis-yolo26n-exp004-960-fp16`，letterbox 输入，类别 `ball=0`、`racket=1`，置信阈值分别为 `0.692`、`0.524`。它不承担人体类别检测。
-4. 独立 `yolo26m-pose` 输出人体关键点。`ANE` 配置表达 Core ML 计算单元选择，不保证所有算子都在 ANE 执行。
-5. 主球选择结合轨迹支持、速度预测、球拍距离及镜像区域惩罚；静止锚点用于抑制背景球。重捕获窗口配置为 8 帧。
-6. 球拍候选结合球位置、历史连续性和镜像惩罚重排。覆盖层恢复可从已标注视频中恢复球圈和球拍框，来源保留为 `overlay_*`；这种视频不能直接用作纯检测准确率验收。
+1. 默认`buffered`在模型及窗口预热后开始读取，保留所有已解码源帧；三个源槽满时背压，不重置落后的名义输入节奏。`offline`逐帧且不节流，只有显式`realtime`允许丢旧帧。上游摄像头/网络丢失不在本地解码完整性证明范围内。
+2. 根据实际机位解析球场ROI、正面与镜面配置；双人体分别使用相应视图裁剪。球场过滤、模型输入裁剪与显示ROI是不同环节，不能认为所有模型共用一个四边形裁剪。每路结果恢复原图坐标，并记录裁剪及输入几何。本地视频绑定机位才继承摄像头ROI。
+3. 默认`tennis-yolo26n-exp004-960-fp16`以960 letterbox输入、`ANE`运行，类别`ball=0`、`racket=1`，阈值分别0.692/0.524；它不承担人体姿态。Shadow保留该旧球/球拍业务选择。
+4. 两路`yolo26m-pose`以640模型输入和Core ML `ALL`输出人体关键点；正式配置保留ROI→540×720标准视图→模型输入的`legacy`像素路径。`direct_front/direct_source`是未采用的实验选项。
+5. 显式`640_shadow`额外加载640/ALL七点模型，只记录/显示旁路观测，不能一次输出人体与球拍。正式七点仍取全源帧独立letterbox，ROI/镜面分区裁剪是未采用实验。正式组合为`barrier + shared_memory`，逐帧等待七点同源结果；进程失败/超时使本轮失败。基础默认仍为`legacy/barrier/queue`，不是自动切换到640。
+6. 主球选择结合轨迹支持、速度预测、球拍距离及镜像区域惩罚；静止锚点用于抑制背景球。重捕获窗口配置为 8 帧。
+7. 球拍候选结合球位置、历史连续性和镜像惩罚重排。覆盖层恢复可从已标注视频中恢复球圈和球拍框，来源保留为 `overlay_*`；这种视频不能直接用作纯检测准确率验收。
 
 ### 3.2 挥拍与触球
 
@@ -76,7 +82,9 @@ FrameRecord → extract_motion_features → segment_swing_events
 
 `analysis_interval_frames=5` 表示每 5 个已处理帧执行一次滚动分析。CLI 未指定结束等待时，主配置 `settle_frames=null` 按源 FPS 计算约 0.6 秒；控制面板默认提供 15 帧。它们与 `output_fps`、实际推理吞吐是不同概念。
 
-15 FPS 是历史产品验收目标，不能通过设置输出视频 FPS 保证。直播丢帧时应结合源帧号、时间戳及 capture/inference/analysis/publication 时间字段分析延迟。
+15FPS是历史目标；正式640 Shadow本地验收要求输出≥25FPS、名义输入到输出P95≤250ms、源帧完整且无持续积压。设置`output_fps=25`不保证吞吐；启动、稳态、源PTS、HighGUI返回、网络和首声时延分开记录。
+
+冻结M5/32GiB构建完成27/27短片、15,250帧长测（稳定25.069FPS、P95 88.6ms、RSS增长3.28%）、9/9业务对照、固定7轮故障复验及133项定向回归。CPU资源共享仍可降速，原慢轮保留；名义调度延迟不是曝光到屏幕时延，完整范围见[正式版本说明](releases/640-shadow-stable-20261019.md)。
 
 ### 3.4 Coach 与语音
 
@@ -98,7 +106,8 @@ DeepSeek 接收结构化事件和逐帧证据，异步回写 `pending/ready/fail
 | --- | --- |
 | GET `/` | 控制面板 HTML |
 | GET `/api/config` | 场地、默认参数、当前控制令牌 |
-| GET `/api/status` | 会话状态、PID、日志、产物入口 |
+| GET `/api/status` | 会话状态、PID、加载时service_build、日志、产物入口 |
+| GET `/api/events`、`/api/sse` | SSE状态、日志和挥拍事件；前端连接失败回退轮询 |
 | GET `/api/live-preview` | 当前会话预览图 |
 | GET `/artifacts/...` | 会话文件及报告 |
 | GET `/api/manual-review/state` | 指定报告的校准状态 |
@@ -106,7 +115,7 @@ DeepSeek 接收结构化事件和逐帧证据，异步回写 `pending/ready/fail
 | POST `/api/start`、`/api/stop` | 启动或停止分析 |
 | POST `/api/manual-review/evaluate` | 校验标注、生成评估及满足条件时重算 Coach |
 
-POST 需要 `X-Control-Token`；校准可用 `X-Manual-Review-Report` 定位报告。服务绑定本机回环地址。前端通过 fetch 访问后端，控制状态每秒轮询；本地预设不保存摄像头密码。停止页面刷新只停止浏览器读取，不停止后端分析。
+POST 需要 `X-Control-Token`；校准可用 `X-Manual-Review-Report` 定位报告。服务绑定本机回环地址。前端通过HTTP和SSE访问后端，SSE不可用时轮询；本地预设不保存摄像头密码。停止页面刷新只停止浏览器读取，不停止后端分析。
 
 ## 5. 数据与校准闭环
 
@@ -118,4 +127,6 @@ POST 需要 `X-Control-Token`；校准可用 `X-Manual-Review-Report` 定位报�
 
 2026-09-20 更新：报告待写快照由 `LatestSnapshotQueue` 合并，事件 JSONL 不合并；写错误在运行时健康检查中传播，触发既有异常监督。DeepSeek 最多保留 workers + max_pending 个任务，完成 Future 自动移除，关闭取消尚未开始的请求；视频片段也不再保留已完成 Future 列表。
 
-仍保留完整事件历史和全量快照复制，开启旧逐帧收集时 diagnostics 列表也会增长。DeepSeek 的 HTTP socket 超时并非完整调用的墙钟硬期限，排队/请求/总延迟分别记录。大型 HTML 渲染与算法文件进一步拆分可独立进行，本轮仅抽离队列、语音进程与播放职责。
+2026-10-19冻结构建为未变化的不可变事件根对象缓存JSON；片段及旁路更新替换根对象后重新编码，已移除事件不留在缓存。完整历史、刷新与原子输出保留；183事件文档重复发布CPU中位约846→187ms，语义哈希相同，这是独立微测，不代替整链路验收。
+
+事件历史仍完整保留，开启旧逐帧收集时diagnostics列表也会增长，长时资源与磁盘策略仍需监测。DeepSeek 的 HTTP socket 超时并非完整调用的墙钟硬期限，排队/请求/总延迟分别记录。大型 HTML 渲染与算法文件进一步拆分可独立进行，本轮仅抽离队列、语音进程与播放职责。

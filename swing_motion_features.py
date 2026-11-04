@@ -10,11 +10,16 @@ temporal features from pose, ball, and racket detections.
 from __future__ import annotations
 
 import math
+import hashlib
+import json
 import re
 from typing import Dict, Iterable, List, Optional, Tuple
 from observation_policy import (measurement_pose_with_evidence, finite_number,
                                 finite_point, image_joint_angle)
-from image_motion_measurements import racket_image_velocity, racket_physical_velocity, source_timestamp
+from image_motion_measurements import (
+    racket_image_velocity, racket_physical_velocity, source_timestamp,
+    DEFAULT_SPEED_CAMERA_HEIGHT_M, DEFAULT_SPEED_RACKET_HEIGHT_M,
+)
 from motion_time_contract import REFERENCE_HZ, RACKET_GAP_SECONDS, POLICY_VERSION
 
 
@@ -163,11 +168,16 @@ def extract_motion_features(
     frames: List[Dict],
     dominant_hand: str = "right",
     homography: Optional[Any] = None,
+    camera_height_m: float = DEFAULT_SPEED_CAMERA_HEIGHT_M,
+    assumed_racket_height_m: Optional[float] = DEFAULT_SPEED_RACKET_HEIGHT_M,
 ) -> List[Dict]:
     """Return one feature dictionary per frame.
 
     The output deliberately keeps both raw detections and derived metrics so
     later stages can be audited frame by frame.
+    Metric speed defaults to the selected H=3.10 m, h=1.20 m assumptions.
+    Frame height takes priority; pass assumed_racket_height_m=None to use the
+    prior pose-height heuristic. Displacement and time always come from frames.
     """
     if homography is None:
         for f in frames:
@@ -183,7 +193,6 @@ def extract_motion_features(
                 src_id = app.get('source_calibration_id') or g_ref.get('calibration_id')
                 if src_id:
                     from pathlib import Path
-                    import json
                     for candidate_dir in [Path('data/control_ground_calibrations'), Path('data/control_camera_profiles')]:
                         cand_file = candidate_dir / f"{src_id}.json"
                         if cand_file.exists():
@@ -198,6 +207,10 @@ def extract_motion_features(
                     if homography is not None:
                         break
 
+    calibration_digest = (hashlib.sha256(json.dumps(
+        homography.tolist() if hasattr(homography, 'tolist') else homography,
+        sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        if homography is not None else None)
     features: List[Dict] = []
     prev = {}
 
@@ -329,15 +342,21 @@ def extract_motion_features(
             frames[idx-1] if idx else None, frame,
             raw_rackets[idx-1] if idx else None, raw_rackets[idx])
         racket_height = frame.get('racket_height_m')
+        height_source = 'frame' if racket_height is not None else 'unavailable'
+        if racket_height is None and homography is not None and assumed_racket_height_m is not None:
+            racket_height = assumed_racket_height_m
+            height_source = 'assumed_same_height'
         if racket_height is None and homography is not None:
             racket_height = estimate_racket_height_from_pose(
                 raw_rackets[idx], wrist, left_ankle, right_ankle, left_shoulder, right_shoulder
             )
+            if racket_height is not None:
+                height_source = 'pose_estimate'
         racket_mps, racket_kmh, speed_status = racket_physical_velocity(
             frames[idx-1] if idx else None, frame,
             raw_rackets[idx-1] if idx else None, raw_rackets[idx],
             homography=homography,
-            height_m=racket_height)
+            height_m=racket_height, camera_height_m=camera_height_m)
 
         ball_racket_distance = _distance(ball, raw_rackets[idx])
         ball_wrist_distance = _distance(ball, wrist)
@@ -450,6 +469,18 @@ def extract_motion_features(
             "racket_speed_calibration_status": speed_status,
             "racket_measurement_point": raw_rackets[idx],
             "racket_height_m": racket_height,
+            "racket_height_source": height_source,
+            "racket_speed_camera_height_m": camera_height_m,
+            "racket_speed_is_geometric_estimate": racket_kmh is not None,
+            "racket_speed_ground_calibration_sha256": calibration_digest,
+            "racket_speed_geometry_assumptions": {
+                "model": "same_height_horizontal_chord_v1",
+                "camera_height_m": camera_height_m,
+                "racket_height_m": racket_height,
+                "height_source": height_source,
+                "minimum_scale": 0.20,
+                "speed_cap_kmh": round(3.6 * math.sqrt(1050 * 1.20), 3),
+            },
             "stance_angle": round(stance_angle, 1) if stance_angle is not None else None,
             "stance_type": stance_type,
             "hip_vertical_pos": round(hip_vertical_pos, 2) if hip_vertical_pos is not None else None,

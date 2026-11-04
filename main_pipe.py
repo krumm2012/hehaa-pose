@@ -1241,6 +1241,8 @@ class MultiprocessPipeline:
         sbs_width = self.width
         sbs_height = self.height
         ball_trail = []
+        from joint_racket_2d_live import LiveJointRacket2D
+        joint_2d_live = LiveJointRacket2D()
 
         if self.algo2_dual_view:
             from dual_view_manager import DualViewManager
@@ -1660,6 +1662,12 @@ class MultiprocessPipeline:
             if data.get('racket_pose') and self.racket_pose_config.get('render_skeleton', True):
                 from racket_pose_detector import draw_racket_pose
                 draw_racket_pose(canvas, data['racket_pose'])
+            joint_diagnostic = None
+            if (frame_record is not None and data.get('racket_pose') is not None
+                    and self.racket_pose_config.get('render_joint_2d', True)):
+                joint_diagnostic = joint_2d_live.update(frame_record, canvas.shape[1::-1])
+                frame_record['joint_racket_2d_live'] = joint_diagnostic
+                joint_2d_live.draw_source(canvas)
             render_stages['racket_overlay_wall_ms'] = (time.perf_counter_ns() - overlay_started) / 1e6
             if self.algo2_dual_view and dual_view_mgr is not None and dual_view_renderer is not None and pose_res is not None:
                 if norm_ball_pos:
@@ -1727,6 +1735,9 @@ class MultiprocessPipeline:
                     cv2.rectangle(canvas, (x1, y1), (x2, y2), (255, 128, 0), 2)
                 rendered_canvas = canvas
 
+            if joint_diagnostic is not None:
+                joint_2d_live.draw_status(rendered_canvas, joint_diagnostic)
+                render_features['joint_racket_2d_live'] = True
             # --- 3. 提交并释放 ---
             render_completed_at_unix_ns = time.time_ns()
             output_stages = {'encoder_write_ms': 0.0, 'display_submit_ms': 0.0, 'display_wait_ms': 0.0}
@@ -2000,7 +2011,7 @@ class MultiprocessPipeline:
 
     def _process_entry(self, role):
         ignore_child_interrupts()
-        threads = self.config.get('pipeline_perf', {}).get('opencv_threads')
+        threads = getattr(self, 'config', {}).get('pipeline_perf', {}).get('opencv_threads')
         if threads is not None:
             cv2.setNumThreads(max(0, int(threads)))
         target = {

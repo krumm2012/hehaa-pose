@@ -1,6 +1,8 @@
 # Frozen continuous 640 shadow candidate
 
-This is an acceptance candidate, not a formal release or active-model quality receipt.
+> Historical candidate/freezing record. The same final candidate `0b5f4e5` was subsequently published as [640 Shadow stable](640-shadow-stable-20261019.md) after complete acceptance and the explicitly requested fixed seven-run fault revalidation. The older failed build and measurements remain retained; active/exclusive quality approval remains false.
+
+At the time of this record this was an acceptance candidate, not a release receipt. Current formal scope is in the linked stable release; this historical document never authorizes active-model quality.
 
 - Startup: `640_shadow`, `shadow`, buffered continuous processing, stride 1,
   barrier scheduling, shared source-frame transport, Court 02 project ROI.

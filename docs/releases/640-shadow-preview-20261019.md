@@ -1,5 +1,7 @@
 # 640 shadow preview · 2026-10-19
 
+> 历史预发布记录。当前正式版本为[640 Shadow stable](640-shadow-stable-20261019.md)，冻结于`0b5f4e5`；下文未放行结论仅描述preview当时状态。旧preview身份JSON保持原样，不能改写成正式/质量授权。
+
 此预发布让已有Tennis Analyzer环境可在控制台选择640七点球拍shadow模型，查看逐帧观测，
 同时保留旧版球拍选择、球选择、挥拍事件及Coach。默认仍为旧版。
 这是受控本地内测版本，尚未通过正式稳定25FPS和active/exclusive检测质量验收。

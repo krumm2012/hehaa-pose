@@ -785,15 +785,32 @@ def _session_dashboard_html(dashboard: Dict) -> str:
     fc_html = ""
     if fc.get("fatigue_status") and fc.get("fatigue_status") != "WARMING_UP":
         status_map = {
+            "BLOCKED": ("比较已暂停", "#94a3b8", "rgba(148,163,184,0.12)"),
+            "SPEED_STABLE": ("同类挥速变化较小", "#10b981", "rgba(16,185,129,0.12)"),
+            "SPEED_DECREASED": ("同类挥速下降", "#f59e0b", "rgba(245,158,11,0.12)"),
+            "SPEED_INCREASED": ("同类挥速上升", "#3b82f6", "rgba(59,130,246,0.12)"),
             "CONSISTENT": ("动作节奏稳定", "#10b981", "rgba(16,185,129,0.12)"),
-            "FATIGUE_OBSERVED": ("体能疲劳显现", "#ef4444", "rgba(239,68,68,0.12)"),
+            "FATIGUE_OBSERVED": ("历史挥速下降（待复核）", "#ef4444", "rgba(239,68,68,0.12)"),
             "WARMED_UP": ("状态逐步提升", "#3b82f6", "rgba(59,130,246,0.12)"),
         }
         title, color, bg = status_map.get(fc.get("fatigue_status"), ("监测中", "#94a3b8", "rgba(148,163,184,0.12)"))
         decay = fc.get("speed_decay_percent")
         decay_text = f"{decay:+.1f}%" if decay is not None else "-"
         speed_std = fc.get("speed_std")
-        speed_std_text = f"±{speed_std:.1f}" if speed_std is not None else "-"
+        speed_std_text = f"{speed_std:.1f} {fc.get('speed_unit') or ''}" if speed_std is not None else "-"
+        reason_labels = {
+            "overlapping_event_ranges": "事件区间重叠",
+            "duplicate_event_identity": "事件身份重复",
+            "incomparable_practice_series": "动作、机位或训练条件不一致",
+            "unknown_stroke_type": "动作类型待确认",
+            "camera_scale_shift": "人物画面尺度变化",
+            "incomplete_or_mixed_measurement_series": "测量缺失或单位、方法不一致",
+            "unverified_measurement_identity_or_time": "测量来源或源时间未核实",
+            "missing_metric_geometry_identity": "缺少速度几何假设或标定身份",
+            "missing_camera_scale_evidence": "缺少人物画面尺度证据",
+            "zero_baseline_speed": "基线速度为零，无法计算变化率",
+        }
+        comparison_note = "；".join(reason_labels.get(r, r) for r in fc.get("blocked_reasons") or []) or "同单位、同方法观察；不代表生理疲劳"
         jitter = fc.get("latency_jitter_std_ms")
         jitter_text = f"±{jitter:.1f}ms" if jitter is not None else "-"
 
@@ -802,8 +819,8 @@ def _session_dashboard_html(dashboard: Dict) -> str:
         <div style="display:flex;align-items:center;gap:8px;">
           <span style="font-size:18px;">⚡</span>
           <div>
-            <strong style="color:{color};font-size:13px;display:block;">体能疲劳与一致性：{html.escape(title)}</strong>
-            <small style="color:#94a3b8;font-size:11px;">挥速衰减趋势与动力链时序抖动</small>
+            <strong style="color:{color};font-size:13px;display:block;">挥速趋势：{html.escape(title)}</strong>
+            <small style="color:#94a3b8;font-size:11px;">{html.escape(comparison_note)}</small>
           </div>
         </div>
         <div style="display:flex;gap:14px;font-size:12px;">

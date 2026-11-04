@@ -49,7 +49,11 @@ data/**
 !data/analysis_results/**
 !data/.gitkeep
 data/analysis_results/.DS_Store
+data/analysis_results/benchmarks/.DS_Store
 data/analysis_results/09.43-out*
+data/analysis_results/data_chain_audit_*/
+data/analysis_results/joint_racket_2d_review_*/
+data/analysis_results/project_advancement_*/
 
 # Videos and frames (large)
 *.mp4

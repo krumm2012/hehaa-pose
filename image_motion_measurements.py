@@ -2,6 +2,8 @@
 import math
 
 POLICY_VERSION = 'image_motion_v2_source_identity'
+DEFAULT_SPEED_CAMERA_HEIGHT_M = 3.10
+DEFAULT_SPEED_RACKET_HEIGHT_M = 1.20
 
 
 def source_timestamp(frame):
@@ -52,7 +54,7 @@ def racket_physical_velocity(
     current_point,
     homography=None,
     height_m=None,
-    camera_height_m=2.4,
+    camera_height_m=DEFAULT_SPEED_CAMERA_HEIGHT_M,
 ):
     """Compute physical ground-plane or height-compensated speed (m/s and km/h) via calibrated Homography.
 

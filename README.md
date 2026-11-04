@@ -5,37 +5,48 @@
 - [系统设计与算法流程](docs/SYSTEM_DESIGN.md)：进程架构、模型、事件与 Coach 算法、前后端接口及数据闭环。
 - [需求与验收基线](docs/REQUIREMENTS_BASELINE.md)：现有功能、验收边界和待优化事项。
 - [本地运行与运维手册](docs/OPERATIONS.md)：启动、停止、校准、故障排查、证据重放和回退。
+- [七点球拍集成指南](docs/YOLO26_RACKET_POSE_INTEGRATION_GUIDE.md)：正式640入口、接口与历史实验边界。
+- [人工Coach审核V3](docs/HUMAN_COACH_REVIEW_V3.md)：人工意见、触球确认与系统建议分开保存。
 
-以上文档于 2026-09-16 按代码核对；旧架构图保留为历史资料。
+当前入口文档同步于 **2026-10-20**；后文带日期的旧实验数据保留为历史记录。
 
-`tennis_analyzer` 是一个面向网球训练视频的本地分析项目，重点能力是从单机位视频中提取人体姿态、网球、球拍、挥拍事件和面向 AI 网球教练的数据。640 shadow预发布基于 `algo-2.0` 分支，项目默认仍为旧版。
+`tennis_analyzer` 是面向 Apple Silicon Mac 的本地网球训练分析系统，从单机位及镜面视频提取人体姿态、网球、球拍、挥拍事件和 Coach 证据，并支持人工复核及重放。当前开发分支为 `algo-2.0`，默认业务仍为旧版。
 
-## 640 shadow 内测版本
+## 当前正式版本：640 Shadow
 
-[`640-shadow-preview-20261019`](docs/releases/640-shadow-preview-20261019.md) 提供显式选择的
-640×640 Core ML / ALL 七点球拍影子预览，保留球、双人体、事件和 Coach 工作流。
-新模型仅用于旁路观测和显示；逐帧等待，模型失败时本轮会话失败。此预发布未通过正式稳定25FPS或增强模式质量验收。
-模型以 GitHub Release 附件分发，下载、校验和启动步骤见版本说明。
+[`640-shadow-stable-20261019`](docs/releases/640-shadow-stable-20261019.md) 已正式发布，源码冻结于 `0b5f4e5`。
+显式选择640×640 Core ML / ALL七点球拍Shadow，保留球、正面/镜面人体、事件、Coach和原工作台。
+新七点只记录/显示，业务仍用旧链路；默认`legacy`不加载七点。**Shadow性能放行不等于active/exclusive检测质量放行。**
+
+- 验收配置：`640_shadow` / `shadow`、`buffered`逐帧、`barrier`、`shared_memory`、人体`pose_resize_policy: legacy`；需显式选择，基础默认仍为`legacy`/`barrier`/`queue`。
+- 本机M5/32GiB、CPU资源可用条件下：九视频三轮27/27通过；连续15,250帧稳定25.069 FPS、名义输入到输出P95 88.6ms、RSS增长3.28%；9/9业务对照、7/7固定故障复验及133项定向回归通过。
+- 共享负载下的历史慢轮保留，CPU争用未被证实为唯一根因；不保证所有硬件、RTSP或资源争用工况均达25FPS，也不证明模型泛化准确率或曝光到屏幕延迟。
+- 连续Shadow等待每帧同源结果，七点进程失败/超时使会话失败；停止后可另行启动旧版，不是无阻塞自动回退。
+
+[安装、模型附件与校验、启动/回退、完整验收范围](docs/releases/640-shadow-stable-20261019.md) · [正式身份合同](docs/releases/640-shadow-stable-20261019.json) · [GitHub Release](https://github.com/krumm2012/hehaa-pose/releases/tag/640-shadow-stable-20261019)。
+历史preview与候选说明仍保留，不作为当前正式状态。
 
 ## 系统架构
 
 系统以 `main_pipe.py` 为唯一的分析入口：Reader、Inference 和 Analyzer 是受监督的
-独立进程；挥拍事件、逐帧日志和本地 Coach 在 `RealtimeSwingRuntime` 中异步落盘；视频
-渲染、DeepSeek 与人工校准均不阻塞检测/姿态推理关键路径。
+独立进程；挥拍事件、逐帧日志和本地 Coach 在 `RealtimeSwingRuntime` 中后台处理。
+报告、片段编码及网络/语音旁路与推理解耦，队列满时仍会反压；画面渲染属于分析开销，连续Shadow也会等待同源七点结果，不能把“异步”理解为绝对不阻塞。
 
 ```mermaid
 flowchart LR
     subgraph Input[输入与控制]
         V["本地视频 / HTTP / RTSP"]
-        P["local_control_panel.py\n本地控制面板 :8765"]
+        P["local_control_panel.py\n本地控制面板 :8766（本文显式端口）"]
         C["配置\nROI、模型、实时参数"]
     end
 
     subgraph Online[实时关键路径：main_pipe.py]
-        R["Reader\n最新帧 / 丢弃过期帧"]
-        I["Inference\nYOLO 检测 + Pose"]
+        R["Reader\n预热后逐帧 / 满槽背压"]
+        I["Inference\n球/旧拍检测 + 双人体 Pose"]
         A["Analyzer\nROI 恢复、轨迹、静止球过滤\nFrameRecord"]
         R --> I --> A
+        I -. "连续模式共享源帧租约" .-> RP["七点球拍进程 / 可终止"]
+        RP -. "Shadow逐帧同源结果" .-> I
     end
 
     subgraph Runtime[事件与 Coach：RealtimeSwingRuntime]
@@ -45,7 +56,7 @@ flowchart LR
         A --> E --> L --> O
     end
 
-    subgraph Sidecars[异步旁路：不阻塞关键路径]
+    subgraph Sidecars[后台任务：有界队列与故障状态]
         D["DeepSeek / Qwen3-TTS Sidecar\n结构化证据 → 建议 / 语音"]
         M["人工校准 API\n评估、重算 Coach"]
         J["Journal / Evidence Bundle\nJSONL、SHA-256、重放"]
@@ -69,7 +80,7 @@ flowchart LR
 | 输入与控制 | 选择码流或视频、ROI、运行参数、启动/停止会话 | 控制面板仅监听 `127.0.0.1`；RTSP 凭据和 API Key 不写入报告或证据包。 |
 | 实时关键路径 | 读取、检测、姿态、候选筛选、坐标恢复与 FrameRecord | 发生子进程异常即监督退出，避免静默卡死。 |
 | 事件与本地 Coach | 挥拍分段、重叠去重、触球估计、确定性建议 | 本地 Coach 先于网络建议发布；仅使用通过证据门控的指标。 |
-| 异步旁路 | DeepSeek、报告重绘、视频片段编码、日志、哈希、人工校准 | 延迟或失败不会阻塞下一帧推理，也不会覆盖原始事件快照。 |
+| 异步旁路 | DeepSeek、报告重绘、视频片段编码、日志、哈希、人工校准 | 旁路不直接串入每帧推理；队列反压、磁盘和共享硬件仍可能影响时延，原始事件快照保留。 |
 | 可复核闭环 | 人工修正边界与漏检、计算 Precision/Recall/F1、重算 Coach | `final_events.json` 不变；确认完整视频前，评估状态保持 provisional。 |
 
 每个会话拥有独立 `session_id` 和目录。事件 JSON / HTML 是兼容性快照，事件 JSONL 是
@@ -105,7 +116,7 @@ flowchart LR
 启动时可选择 `--racket-pose-mode legacy`（默认旧版）或 `--racket-pose-mode exclusive`
 （新版七点球拍独占）。新版保持人体、球检测和报告工作流，球拍选择及主球辅助不使用旧拍框；
 缺失不回退旧模型，派生恢复保留明确标记。新版要求 `buffered` 或 `offline` 逐帧处理。
-控制面板提供同样的启动选项；`shadow/active` 留作兼容诊断，不会在运行中切换来源。
+控制面板提供同样的启动选项，不在会话中切换来源。正式640使用显式`640_shadow`/`shadow`；`exclusive/active`路径的存在不表示640已取得检测质量授权。
 
 DeepSeek 旁路需要先在当前终端配置密钥，不要把密钥写进 YAML 或命令行：
 
@@ -297,10 +308,10 @@ Pipeline 命令行中。
 export TENNIS_RTSP_USERNAME='admin'
 export TENNIS_RTSP_PASSWORD='你的摄像头密码'
 
-venv_yolo26/bin/python local_control_panel.py --open
+venv_yolo26/bin/python local_control_panel.py --port 8766 --open
 ```
 
-然后访问 `http://127.0.0.1:8765/`。也可以不设置环境变量，直接在页面的用户名和
+然后访问 `http://127.0.0.1:8766/`（未指定`--port`时程序默认仍为8765）。也可以不设置环境变量，直接在页面的用户名和
 密码框中临时输入；页面不会把凭据写入浏览器本地预设。
 
 页面提供：
@@ -314,7 +325,7 @@ venv_yolo26/bin/python local_control_panel.py --open
 - 默认开启的“可重放证据包”；开启时会自动保留逐帧日志和事件快照。
 
 控制面板打开的报告地址形如
-`http://127.0.0.1:8765/artifacts/<会话目录>/final_report.html`。该地址会自动携带本地
+`http://127.0.0.1:8766/artifacts/<会话目录>/final_report.html`。该地址会自动携带本地
 控制令牌和报告路径，因此即使控制面板重启后，也能在对应历史会话中继续进行人工校准；
 令牌不会显示或保存到人工标注 JSON 中。
 
@@ -359,9 +370,9 @@ venv_yolo26/bin/python replay_evidence_bundle.py \
 
 ### RTSP 与 ROI 绑定
 
-主配置通过 `roi_settings` 开启 ROI。球和球拍模型只处理 ROI 外接矩形（含
-`crop_margin`），姿态模型仍处理全帧；检测结果在候选筛选前恢复为原图坐标，因此
-静态球屏蔽区、轨迹连续性、逐帧 JSON 和 Swing 事件继续使用 2560×1440 坐标系。
+主配置通过`roi_settings`启用球场ROI，球/旧拍检测使用其外接矩形及`crop_margin`。双人体分别按正面和镜面视图裁剪；正式640七点仍从全源帧独立letterbox到640，分区球拍裁剪未作为本版默认。显示ROI、球场过滤和模型输入裁剪不能混为一谈。
+
+各路检测及姿态恢复到原图坐标，静态球屏蔽区、轨迹、逐帧JSON和事件沿用原图尺寸（当前工程素材为2560×1440）；绑定实际机位后先检查原图预览。
 
 ```yaml
 roi_settings:
@@ -553,16 +564,16 @@ Coach 不会提前覆盖；全部确认后才生成 `final_manual_events.json`�
 （原始）”与“人工校准 Coach”。原始 `final_events.json` 保持不变。
 
 如需在没有控制面板的环境中单独服务一个已完成会话，仍可使用兼容的 standalone workflow
-（端口避免与控制面板的 8765 冲突）：
+（此处使用8767，避免与本文控制面板的8766冲突）：
 
 ```bash
 python3 manual_review_workflow.py \
   --session-dir /tmp/tennis_rtsp_calibration \
-  --port 8766 \
+  --port 8767 \
   --open
 ```
 
-使用命令输出的 `http://127.0.0.1:8766/final_report.html` 完成持久化评估。
+使用命令输出的 `http://127.0.0.1:8767/final_report.html` 完成持久化评估。
 
 ## 已验证样例
 
@@ -621,7 +632,7 @@ configs/yolo26_tennis_config.yaml
   但数据集尚未冻结、球拍召回与完整流水线性能仍未达标；仅可通过
   `configs/yolo26_tennis_exp005_candidate.yaml` 显式试用，不能替换默认配置。
 - pose 模型：`yolo26m-pose`。
-- 计算单元：优先 `ANE`。
+- 计算单元：球检测`ANE`；两路人体`ALL`；显式640 Shadow为`ALL`，不能用单一“优先ANE”概括。
 - pose 阈值：`pose_confidence_threshold: 0.4`。
 - 本地语音：默认关闭；启用后使用 `Qwen3-TTS-12Hz-0.6B-Base-bf16`（MLX），音频只保存在
   会话目录的 `*_coach_audio/`，无需网络 API Key。
@@ -665,7 +676,15 @@ python3 -m unittest -v \
 - 镜像机位的左右手规则仍带有当前场景假设，跨场地泛化需要 camera profile。
 - 高速挥拍、遮挡、强反光、球拍/球漏检仍会影响 contact frame 和动作质量判断。
 
-## 下一步建议
+## 下一步重点（2026-10-20）
+
+1. 完成七点球拍独立质量、镜面与遮挡评估，再决定是否允许active/exclusive接管业务。
+2. 验证真实RTSP长会话、上游损失、CPU争用及真实语音合成/播放并发。
+3. 建立产物保留策略，保留人工标注、失败证据与日志，清理成功衍生视频。
+
+以下是2026-08-05保留的历史建议，不代表这些项目当前均未实现：
+
+### 历史建议
 
 1. 给 `18.12.mp4` 也补人工标注，生成 `18.12_closed_loop_swing_evaluation.json`。
 2. 基于多条人工标注结果优化 `swing_event_classifier.py`。
@@ -673,17 +692,20 @@ python3 -m unittest -v \
 4. 把报告页升级为教练工作台，支持导入 Gemini 反馈和训练建议归档。
 5. 用冻结的盲测集完成 exp005 的 1500 帧产品回归，再决定是否提升为默认小球/球拍模型。
 
-最后更新：2026-08-05
-# 控制面板：本地视频分析
+历史建议记录日期：2026-08-05；当前发布与入口文档同步：2026-10-20。
 
-启动或重启 `venv_yolo26/bin/python local_control_panel.py`，打开 http://127.0.0.1:8765。
+## 控制面板：本地视频分析
+
+启动或复用 `venv_yolo26/bin/python local_control_panel.py --port 8766 --open`，打开 http://127.0.0.1:8766/。
 在“球场码流”选择“本地视频文件”，选择视频，等待上传就绪后点击刷新预览或启动分析。
 支持 MP4/MOV/MKV/AVI/WebM/M4V（实际需本机解码器支持），单文件最大 2 GB。
-视频使用现有球/球拍检测、挥拍事件和 Coach 链路；强制关闭直播丢帧与摄像头 ROI，按视频完整处理。
+视频使用现有球/球拍、挥拍事件和Coach链路，推荐`buffered`逐帧处理。绑定实际球场机位时应用该机位ROI和镜面配置；未绑定机位时关闭摄像头ROI，不能仅凭文件名套用机位。启动前在原图预览核对四点坐标及镜面区域。
 上传文件仅存储在本机 `data/control_uploads/`，已排除 Git；不会自动清理，可在分析结束后手动删除。
 刷新页面后需重新选择文件；摄像头及自定义码流入口保留不变。
 
-## 两阶段跨帧与共享源帧实验（2026-10-18）
+## 两阶段跨帧与共享源帧实验（2026-10-18，历史配置）
+
+本节保留早期模型/配置实验；正式640 Shadow后来以`barrier + shared_memory`通过验收，见页首正式版本。不能将本节旧吞吐或`interframe`实验当作正式配置。
 
 默认仍为旧版球拍、`barrier` 调度和 `queue` 图像传输。控制台新增两个启动选项，
 不支持会话内热切换。新版独占连续处理可显式试验：
@@ -703,6 +725,6 @@ queue/barrier、shared/barrier、shared/interframe，默认三段原视频并保
 这只是核心链路工程对照，外部网络/语音关闭；不能替代完整工作流和三轮实时验收。
 实测通过前不承诺 25 FPS。详见 ADR 0006。
 
-本轮三段对照吞吐中位数：queue/barrier **20.54 FPS**、shared/barrier **20.26 FPS**、shared/interframe **20.83 FPS**。逐帧结果一致，25 FPS 尚未通过；详见集成指南 v2.5 和实验报告。
+该历史轮三段对照吞吐中位数：queue/barrier **20.54 FPS**、shared/barrier **20.26 FPS**、shared/interframe **20.83 FPS**。该历史轮逐帧结果一致但未通过25FPS；数据保留，不覆盖正式640 Shadow的新验收。详见集成指南中的历史实验记录。
 
 2026-10-19 核查：上述旧性能对照关闭了球场 ROI，不能代表项目机位配置。新回归 CLI 默认读取项目 ROI，要求本地视频显式绑定 `--roi-stream-id`；`--roi-policy disabled` 仅复现旧测试配置。球场过滤与人体裁剪、球／球拍模型输入裁剪是不同环节。详见集成指南 ROI 修正说明。

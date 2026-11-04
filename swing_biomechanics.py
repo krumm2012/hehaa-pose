@@ -532,6 +532,9 @@ def _calculate_extended_tier_biomechanics(
             "sample_count": len(speed_samples),
             "source_frames": [f["frame_id"] for f in speed_samples],
             "measurement_policy": IMAGE_MOTION_POLICY,
+            "geometry_assumptions": contact_f.get("racket_speed_geometry_assumptions"),
+            "ground_calibration_sha256": contact_f.get("racket_speed_ground_calibration_sha256"),
+            "measurement_point": "raw_racket_box_center",
             "status": ("homography_height_debiased" if any(f.get("racket_speed_calibration_status") == "homography_height_debiased" for f in features_in_event)
                        else "ground_homography_calibrated" if speed_calibrated else "uncalibrated"),
             "contact_time_basis": contact_f.get("racket_speed_time_basis"),

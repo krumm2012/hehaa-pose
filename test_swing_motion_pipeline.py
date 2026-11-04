@@ -843,7 +843,7 @@ class SwingReportBuilderTests(unittest.TestCase):
         self.assertIn("importAnnotations", html)
         self.assertIn("Evaluation Summary", html)
         self.assertIn("类型匹配比例 待复核", html)
-        self.assertIn("触球帧容差匹配比例 待复核", html)
+        self.assertIn("候选帧对照（非触球确认） 待复核", html)
         self.assertIn("独立准确性未验证", html)
         self.assertIn('id="event-timeline"', html)
         self.assertIn('id="frame-scrubber"', html)

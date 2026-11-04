@@ -106,7 +106,7 @@
       }
       const modelHint = $("racket-model-hint");
       if (modelHint) modelHint.textContent = model640
-        ? "640×640 / ALL 修复候选；逐帧推理和显示七点，事件仍使用旧链路。尚未通过质量与稳定25FPS验收。"
+        ? "640×640 / ALL 七点旁路；正式Shadow验收使用连续逐帧、同帧并行和共享源帧。事件沿用旧链路，active/exclusive检测质量尚未放行。"
         : "使用项目已配置的模型；启动日志会记录实际尺寸、后端和路径。";
       const modeHint = $("racket-mode-hint");
       if (modeHint) modeHint.textContent = racketSelect?.value === "shadow"

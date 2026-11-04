@@ -1,8 +1,48 @@
 # 七关键点球拍 Pose 渐进集成指南
 
-版本：v2.5，2026-10-18。适用工程：`tennis_analyzer`；模型开发工程：`yolo26pose-racket`。
+版本：v2.6，2026-10-20。适用工程：`tennis_analyzer`；模型开发工程：`yolo26pose-racket`。
 
 本版本以实际代码与数值检查为依据。目标是改善二维球拍观测及归属，保留已有实时工作流。二维接近、骨架连线和模型一致性不能独立确认真实触球、物理握拍贴合或三维拍面方向。
+
+## 0. 当前正式状态：640 Shadow
+
+正式版本为[`640-shadow-stable-20261019`](https://github.com/krumm2012/hehaa-pose/releases/tag/640-shadow-stable-20261019)，冻结源码`0b5f4e5`。
+[安装、CLI配置、完整验收和回退](releases/640-shadow-stable-20261019.md)与[正式身份合同](releases/640-shadow-stable-20261019.json)是当前640入口；下文有日期的960、采样、跨帧、preview与候选结果均为历史，不能替代该收据。
+
+- 默认仍`legacy`，不启动七点；基础YAML默认`buffered/barrier/queue`。
+- 正式640：`640_shadow`/`shadow`、Core ML 640/ALL、逐帧stride1、`buffered/barrier/shared_memory`；人体保留`pose_resize_policy: legacy`及ALL，球960/ANE。控制面板不会自动把queue改为shared_memory，需显式选择。
+- 七点模型只输出球拍，不输出人体；正式七点仍为全源帧letterbox，ROI/镜面分区裁剪尚未采用。Shadow观测和显示不改变旧选拍、主球、事件或Coach。
+- 连续Shadow每帧等待同源结果；七点进程失败/超时使本轮失败，停止后可单独启动旧版，不是无阻塞自动回退。
+- M5/32GiB且CPU资源可用条件下，27/27短片、15,250帧连续长测、9/9业务对照、固定7轮网络/语音故障复验、133项定向回归通过。长测稳定25.069FPS、名义P95 88.6ms、RSS增长3.28%。
+- 原故障慢轮及失败视频保留，CPU争用不是已证实的唯一原因；不保证共享高负载或其他设备均25FPS。
+- **640检测质量仍未取得active/exclusive授权**。二维距离不等于真实触球/握拍贴合或三维朝向；Shadow性能验收不证明独立泛化准确率。
+
+模型：`models/racket_pose/candidates/bn-repaired-640-v1/racket_pose_bounded_fp16_640.mlpackage`；
+目录哈希：`0dec1259f50b2cfb286f3ed5408a2f5f589749a0ddaf7a9b8a4139f29c1a025e`；
+RGB640×640，`[1,26,8400]`，七点顺序沿用本指南。复制完整基础配置后，在独立运行YAML中覆盖这些字段；不要以片段替换整份主配置：
+
+```yaml
+racket_pose:
+  mode: shadow
+  model_path: models/racket_pose/candidates/bn-repaired-640-v1/racket_pose_bounded_fp16_640.mlpackage
+  backend: coreml
+  compute_units: ALL
+  imgsz: 640
+  ipc_transport: shared_memory
+  inference_stride: 1
+  confidence_threshold: 0.25
+  keypoint_threshold: 0.5
+  acceptance_run: false
+  acceptance_path: null
+  runtime_acceptance_path: null
+  use_accepted_schedule: false
+pipeline_perf:
+  processing_mode: buffered
+  inference_schedule: barrier
+  pose_resize_policy: legacy
+```
+
+控制面板调用`apply_model_profile()`生成独立640配置，基础960默认不被改写；CLI需显式生成同样的YAML，详见正式说明。旧收据和预发布JSON继续保存身份历史，不能改写成正式质量通过。
 
 ## 1. 当前架构与兼容边界
 
@@ -23,9 +63,9 @@ flowchart LR
 | 球拍模式 | 行为 |
 |---|---|
 | `legacy`（默认启动方案） | 不启动球拍 Pose 进程，沿用旧选拍与分析 |
-| `exclusive`（新版启动方案） | 只使用七点模型的同源帧候选，不混入或回退旧拍框；主球筛选辅助也改用新候选；仅支持逐帧连续/离线处理 |
-| `shadow`（兼容诊断） | 新模型只记录/展示，不改变旧选拍、事件或 Coach；旧实时模式不等待，连续/离线模式逐帧等待以保留对照 |
-| `active`（兼容混合诊断） | 只采用通过门控的同源帧新观测；低质量候选仍可采用旧检测。连续/离线模式遇工作进程失败或超时明确停止 |
+| `exclusive`（独立实验；640未放行） | 只使用七点模型的同源帧候选，不混入或回退旧拍框；主球筛选辅助也改用新候选；仅支持逐帧连续/离线处理 |
+| `shadow`（640正式方案；亦保留历史诊断） | 新模型只记录/展示，不改变旧选拍、事件或 Coach；旧实时模式不等待，连续/离线模式逐帧等待以保留对照 |
+| `active`（兼容混合诊断；640未放行） | 只采用通过门控的同源帧新观测；低质量候选仍可采用旧检测。连续/离线模式遇工作进程失败或超时明确停止 |
 
 | 处理模式 | 行为 |
 |---|---|
@@ -35,7 +75,7 @@ flowchart LR
 
 旧 `realtime` 旁路最多一项执行、一项待处理；新待处理帧可替换旧帧。`buffered/offline` 逐帧等待结果，不替换待处理任务，实际 stride 固定为 1。默认 queue 传输在父进程生成独立 RGB letterbox 副本；显式 shared_memory 仅在连续模式租用源槽，sidecar 检查代际并完成推理后才允许交给 Analyzer 回收，预处理移到 sidecar。迟到结果进入原帧旁路日志，不套到当前帧、不改写已发布事件。
 
-## 2. 原模型异常与独立修复候选
+## 2. 原模型异常与独立修复候选（历史来源）
 
 原始 `models/racket_pose/racket_pose_yolo26m_fp16.mlpackage` 和 exp-007 `best.pt` 均保留，未覆盖。
 
@@ -46,7 +86,7 @@ flowchart LR
 
 独立候选保留全部学习参数和原来有限的统计项，只以 444 张 **train** 图像重新估计丢失的统计项。导出时在 `*2`、`*stride` 之前将原始 XY 网格偏移限制在 `[-512,512]`。960 输入内的有效点不需要这样的极端偏移；饱和后的画外点仍然不可用于测量，绝不吸附到画面边缘。原生卷积保持 FP16。
 
-当前配置引用：
+基础YAML保留的960候选引用如下，非640正式模型；640使用§0的独立配置：
 
 - 模型：`models/racket_pose/candidates/bn-recalibrated-v1/racket_pose_validated_fp16.mlpackage`
 - 验收：`models/racket_pose/candidates/bn-recalibrated-v1/acceptance-release.json`
@@ -56,6 +96,8 @@ flowchart LR
 资产名称沿用上游命名；实际检查点使用 Ultralytics 的 legacy `Pose` 头，加载摘要为 YOLO11m-pose。实现按已检查的输入、七点拓扑及输出契约解析，不根据“YOLO26”文件名推断结构。
 
 ## 3. 输入、拓扑与观测契约
+
+本节保留原始960与修复候选的接口来源；正式640输入/候选数以§0为准（640、8400候选），不能套用960的18900候选数。
 
 此包仅有一个 `tennis_racket` 类别与一个七点 Pose 输出头，不能同时输出人体 17 点。原始包及修复候选各对本地 250 帧、每帧一次 `predict` 的实测都只有下述单一输出。人体模型仍单独推理；两个身体实例分别处理正面和镜面，并非新旧版本各跑一套。验证记录：`data/analysis_results/racket_pose_acceptance_20261018/joint-output-check-20261018/index.html`。
 
@@ -79,7 +121,7 @@ Core ML 输入：`image`，RGB 960×960，模型内完成 1/255 缩放。外部�
 
 默认检测阈值 0.25、关键点阈值 0.5；这些分数不是准确率概率。手腕关联按画面对角线归一化距离。双视角分支要求当前 `observed` 正面手腕及其置信度；单视角保留旧人体姿态 XY 输出（包含原有平滑），因此只能作为未验证的归属启发式，不能据此确认物理握持。原始观测、预测与镜像恢复不可混同。`contact_verified`、`person_assignment_verified` 保持 false；甜区距离只是二维候选证据。
 
-## 4. 配置与使用
+## 4. 基础默认、历史候选配置与使用
 
 ```yaml
 racket_pose:
@@ -113,13 +155,15 @@ venv_yolo26/bin/python main_pipe.py \
   --evidence-manifest data/analysis_results/pose_trial_001/evidence_manifest.json
 ```
 
-对照后可将 `shadow` 改为 `active`；完整分析改为 `--processing-mode offline`。回退使用 `--racket-pose-mode legacy`，不会启动新模型。
+640正式版不能仅把shadow改为active/exclusive；其他候选的增强使用也需独立匹配质量及运行收据。完整分析可改为`--processing-mode offline`，不等于buffered实时性能验收。回退使用`--racket-pose-mode legacy`，不会启动七点。
 
 完整分析也可以显式选用已验证的 PyTorch 参考后端：在独立运行配置中将 `backend` 设为 `pytorch`、`compute_units` 设为 `CPU`，`model_path` 指向候选目录的 `bn_repaired_fp32.pt`，`acceptance_path` 指向 `acceptance-pytorch.json`；配合 `--processing-mode offline --racket-pose-mode active`。不会自动切换后端或更换精度。
 
-实时新进程加载失败、卡住、原生退出或输出不合格时，记录原因并停用本轮旁路，旧链路继续。完整分析增强失败会停止，不把降级结果冒充完整成功。`*_racket_pose.jsonl` 和 `*_racket_pose.summary.json` 记录结果、迟到/回退计数和原因，并纳入证据清单。
+只有旧realtime新鲜度策略可停用故障旁路后继续旧链路；当前buffered/offline逐帧策略（包括640 Shadow）在七点进程加载失败、卡住、原生退出或超时时明确停止本轮，不把降级结果冒充完整成功。旧版可另行启动。`*_racket_pose.jsonl` 和 `*_racket_pose.summary.json` 记录结果、迟到/回退计数和原因，并纳入证据清单。
 
-## 5. 验收与复现
+## 5. 早期960候选验收与复现（历史协议）
+
+本节保留早期协议与收据。正式640的无丢帧≥25FPS门槛、冻结身份和全量结果见§0及正式版本说明，不采用下述≥24FPS/允许丢帧的历史条件。
 
 验证素材为 `/Users/krum5539/Desktop/Camera/2026-09-30` 的 9 段 2560×1440 视频，每段 250 帧，约 25 FPS。首次三个片段为 `48.43`、`49.23`、`50.03`。冻结各次输入哈希与配置，虚拟双视角使用独立验收 fixture，不修改共享摄像头配置。
 
@@ -184,7 +228,9 @@ HighGUI 移入独立可终止进程：一项执行、一项待处理，输入图
 报告：`data/analysis_results/racket_pose_acceptance_20261018/timing-analysis-20261018/pipeline-bottlenecks.html`。实现决策见 `docs/adr/0004-continuous-buffered-processing.md`。历史收据和旧结果保留，不能用历史采样验收放行连续实时性能。
 
 
-## 8. 启动时固定旧版／新版（七点独占）
+## 8. 启动时固定旧版／新版（七点独占，历史实验）
+
+以下说明代码机制，不授予正式640的active/exclusive质量资格；正式640仍仅Shadow。
 
 原控制台的“启动时选择球拍方案”提供旧版／新版两个主选项；历史影子与混合增强保留在“兼容诊断”组。修改选项只在下次启动生效，不热切换当前会话。默认仍旧版。
 
@@ -328,7 +374,7 @@ venv_yolo26/bin/python scripts/benchmark_racket_resolutions.py \
 ```
 
 本项目用 `mode: shadow`／`exclusive` 等启动方案控制启用；单独写 `enabled: true`
-不会把默认legacy变成新版。当前640候选仅供shadow性能实验，未发放active/exclusive质量收据。
+不会把默认legacy变成新版。该实验阶段640仅供shadow性能测试；随后正式Shadow性能已按§0放行，active/exclusive质量收据仍未发放。
 原包异常、候选来源、同像素对照和整链路性能明细：
 `data/analysis_results/racket_pose_acceptance_20261018/resolution-640-20261019/index.html`。
 
@@ -336,7 +382,7 @@ venv_yolo26/bin/python scripts/benchmark_racket_resolutions.py \
 九组共2250帧全部处理、显示、编码并通过证据重放；54项相关回归通过。
 640 ALL在50.03.mp4约24.50FPS、名义输入至输出P95约301ms，稳定25FPS与延迟门槛未全部通过。
 640与960原始观测的一致性：前景1896/2034、镜面544/733；这不是人工准确率。
-模型质量、九段三轮和持续压力验收尚未完成，继续保留960默认。
+该阶段模型质量、九段三轮和持续压力验收尚未完成，保留基础960默认。后续正式640 Shadow的全量性能验收见§0，检测质量资格仍未获批。
 
 
 ### 640控制台预览与连续链路优化（2026-10-19）
@@ -387,9 +433,9 @@ venv_yolo26/bin/python scripts/benchmark_racket_resolutions.py \
 `scripts/profile_render_tail.py`、`scripts/profile_frame_snapshot.py`。
 
 
-### 640 shadow内测发布核验（2026-10-19）
+### 640 shadow内测发布核验（2026-10-19，正式发布前历史）
 
-当前结论仅为受控本地shadow-preview内测可用，不是正式稳定25FPS或active/exclusive质量放行。
+该阶段结论仅为受控本地shadow-preview内测可用；随后640正式Shadow性能已按§0放行，active/exclusive质量仍未放行。
 最终代码重新对照49.43旧版/640 shadow，各250帧处理、显示、编码及重放完整；
 球、球拍、人体与指标逐帧一致，事件及Coach内容一致，shadow旁路不进入业务选择。
 该轮shadow输出25.18FPS、名义输入至输出P95约50.7ms，不替代历史慢轮及完整验收。
@@ -397,13 +443,13 @@ venv_yolo26/bin/python scripts/benchmark_racket_resolutions.py \
 
 连续shadow为保持逐帧完整性，会等待新模型同源结果；加载、崩溃或超时会使会话失败，
 并非无阻塞、故障后旧链路自动继续的线上影子旁路。默认仍旧版，显式选择640_shadow。
-正式发布尚需冻结提交与模型、九视频三轮、10分钟循环与完整故障/网络/语音验证。
+当时正式发布尚需冻结提交与模型、九视频三轮、10分钟循环与业务/故障验证；随后同一最终构建已完成，见§0。
 模型包被Git忽略，跨机器发布须单独分发并校验哈希，单独推代码不代表完整交付。
-本次未执行远端发布。核验结果与版本范围：
+该次内测未执行远端发布，后续正式发布另有收据。此阶段核验结果与版本范围：
 `data/analysis_results/racket_pose_acceptance_20261018/shadow-readiness-20261019/index.html`。
 
 
-### 640 shadow预发布发行包
+### 640 shadow预发布发行包（历史版本）
 
 版本标签为`640-shadow-preview-20261019`，作为GitHub Prerelease发布在`krumm2012/hehaa-pose`。
 代码沿用algo-2.0，默认旧版；640仍需显式选择shadow。
@@ -453,6 +499,6 @@ venv_yolo26/bin/python scripts/benchmark_pose_resize.py --output data/analysis_r
 `data/analysis_results/racket_pose_acceptance_20261018/stable-shadow-release-20261019/single-resize-20261019/`。
 
 
-### 长会话报告发布候选（2026-10-19）
+### 长会话报告历史优化（2026-10-19，已纳入正式构建）
 
 连续长测发现：短片27轮通过仍可能掩盖历史事件增长后的报告开销。新增发布候选仅缓存未变化事件根对象的JSON；片段、语音及网络结果更新沿用原有替换事件根对象的方式，更新后重新编码，已移除对象不留在缓存中。完整历史、刷新、原子写入、逐帧日志和动作/Coach规则保留，不改变模型输入像素、ROI或镜面几何。183事件约33MiB实际文档的独立发布对照CPU中位约846→187ms，解析后的JSON语义哈希相同；该微测不能替代同一冻结构建的27轮、连续长测及业务/故障验收。正式状态以验收报告为准。

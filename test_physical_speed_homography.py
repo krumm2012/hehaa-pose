@@ -40,6 +40,24 @@ def source_frame(i, x, y, t, racket_height_m=None):
 
 
 class PhysicalSpeedHomographyTests(unittest.TestCase):
+    def test_selected_geometry_uses_actual_displacement_and_source_time(self):
+        frames = [source_frame(0, 10, 20, 0), source_frame(1, 125, 20, .039)]
+        feature = extract_motion_features(frames, homography=self.H)[1]
+        expected = 3.6 * (1 - 1.2 / 3.1) * 1.15 / .039
+        self.assertAlmostEqual(feature['racket_head_speed_kmh'], expected, places=2)
+        self.assertEqual(feature['racket_height_source'], 'assumed_same_height')
+        self.assertEqual(feature['racket_speed_camera_height_m'], 3.1)
+        self.assertTrue(feature['racket_speed_is_geometric_estimate'])
+        frames[1]['source_time']['timestamp_seconds'] = .078
+        feature = extract_motion_features(frames, homography=self.H)[1]
+        self.assertAlmostEqual(feature['racket_head_speed_kmh'], expected / 2, places=2)
+
+    def test_frame_height_overrides_selected_assumption(self):
+        frames = [source_frame(0, 10, 20, 0, .8), source_frame(1, 50, 20, .04, .8)]
+        feature = extract_motion_features(frames, homography=self.H)[1]
+        self.assertEqual(feature['racket_height_source'], 'frame')
+        self.assertAlmostEqual(feature['racket_head_speed_kmh'], 36 * (1 - .8 / 3.1), places=2)
+
     def setUp(self):
         # Calibrated 4 points: 100px = 1.0m (0.01m per pixel scale)
         self.img_pts = [[0.0, 0.0], [100.0, 0.0], [100.0, 100.0], [0.0, 100.0]]
@@ -142,7 +160,7 @@ class PhysicalSpeedHomographyTests(unittest.TestCase):
     def test_extract_motion_features_with_passed_homography(self):
         f0 = source_frame(0, 10, 20, 0.0)
         f1 = source_frame(1, 50, 20, 0.04)
-        features = extract_motion_features([f0, f1], homography=self.H)
+        features = extract_motion_features([f0, f1], homography=self.H, assumed_racket_height_m=0.0)
         self.assertAlmostEqual(features[1]["racket_speed_mps"], 10.0, places=2)
         self.assertAlmostEqual(features[1]["racket_head_speed_kmh"], 36.0, places=2)
         self.assertEqual(features[1]["racket_speed_calibration_status"], "homography_ground_calibrated")
@@ -160,14 +178,14 @@ class PhysicalSpeedHomographyTests(unittest.TestCase):
         f1 = source_frame(1, 50, 20, 0.04)
         f1["ground_calibration"] = cal
 
-        features = extract_motion_features([f0, f1])
+        features = extract_motion_features([f0, f1], assumed_racket_height_m=0.0)
         self.assertAlmostEqual(features[1]["racket_speed_mps"], 10.0, places=2)
         self.assertAlmostEqual(features[1]["racket_head_speed_kmh"], 36.0, places=2)
 
     def test_biomechanics_incorporates_calibrated_speed(self):
         f0 = source_frame(0, 10, 20, 0.0)
         f1 = source_frame(1, 50, 20, 0.04)
-        features = extract_motion_features([f0, f1], homography=self.H)
+        features = extract_motion_features([f0, f1], homography=self.H, assumed_racket_height_m=0.0)
 
         bio = _calculate_extended_tier_biomechanics(
             features, start_frame=0, contact_frame=1, end_frame=1, body_width=40.0
@@ -182,7 +200,7 @@ class PhysicalSpeedHomographyTests(unittest.TestCase):
     def test_biomechanics_reflects_height_debiased_status(self):
         f0 = source_frame(0, 10, 20, 0.0, racket_height_m=0.96)
         f1 = source_frame(1, 50, 20, 0.04, racket_height_m=0.96)
-        features = extract_motion_features([f0, f1], homography=self.H)
+        features = extract_motion_features([f0, f1], homography=self.H, camera_height_m=2.4)
 
         bio = _calculate_extended_tier_biomechanics(
             features, start_frame=0, contact_frame=1, end_frame=1, body_width=40.0
@@ -238,7 +256,7 @@ class PhysicalSpeedHomographyTests(unittest.TestCase):
             "left_shoulder": [100, 400], "right_shoulder": [120, 400],
             "right_wrist": [110, 550],
         }
-        features = extract_motion_features([f0, f1], homography=self.H)
+        features = extract_motion_features([f0, f1], homography=self.H, assumed_racket_height_m=None)
         self.assertEqual(features[1]["racket_speed_calibration_status"], "homography_height_debiased")
         self.assertIsNotNone(features[1]["racket_height_m"])
         self.assertAlmostEqual(features[1]["racket_height_m"], 0.875, places=2)

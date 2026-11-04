@@ -40,4 +40,7 @@ retaining the shared detector for ball inference. See ADR 0005.
 continuous processing. Stateless ball candidates and racket observations are
 prepared ahead; body crops, association and temporal state remain ordered.
 Shared source slots are leased through sidecar completion, with generation checks.
-The default remains barrier scheduling plus queue transport. See ADR 0006.
+The base default remains barrier scheduling plus queue transport. The opt-in
+`640_shadow` stable release validates barrier plus shared-memory transport with
+legacy body pixels; that performance receipt does not approve active/exclusive
+model quality. See ADR 0006 and `docs/releases/640-shadow-stable-20261019.md`.
