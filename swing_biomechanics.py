@@ -221,7 +221,7 @@ def _shoulder_turn_change_metric(
     change = _angle_delta(value, baseline)
     coverage = len(samples) / max(1, len(window.frame_ids))
     confidence = min(0.82, pose_ratio * 0.65 + coverage * 0.35)
-    return attach_window(_metric(
+    out = attach_window(_metric(
         change,
         "deg_2d",
         confidence,
@@ -229,6 +229,27 @@ def _shoulder_turn_change_metric(
         len(samples),
         observability="image_plane_change",
     ), window)
+    # Attach dimensionless shoulder-to-spine projection contraction ratio (rho = W_shoulder / L_spine)
+    rho_samples = [
+        (fid, float(features_by_frame[fid]["shoulder_spine_ratio"]))
+        for fid in window.frame_ids if fid in features_by_frame
+        and features_by_frame[fid].get("shoulder_spine_ratio") is not None
+        and math.isfinite(float(features_by_frame[fid]["shoulder_spine_ratio"]))
+    ]
+    if len(rho_samples) >= 2:
+        min_fid, rho_min = min(rho_samples, key=lambda x: x[1])
+        max_fid, rho_max = max(rho_samples, key=lambda x: x[1])
+        rho_delta = round(float(rho_max - rho_min), 4)
+        equiv_deg = round(math.degrees(math.acos(max(0.0, min(1.0, rho_min / max(0.55, rho_max))))), 1)
+        out["shoulder_spine_contraction"] = {
+            "rho_min": round(rho_min, 4),
+            "rho_max": round(rho_max, 4),
+            "rho_delta": rho_delta,
+            "equivalent_turn_deg": equiv_deg,
+            "coiled_frame": int(min_fid),
+            "uncoiled_frame": int(max_fid),
+        }
+    return out
 
 
 def _event_peak_or_median_feature(
@@ -399,7 +420,15 @@ def _contact_position_metric(
             )
         )
     if not candidates or body_width is None or body_width <= 0:
-        return attach_window(_metric(None, "body_width", 0.0, [], 0), window)
+        out_empty = attach_window(_metric(None, "body_width", 0.0, [], 0), window)
+        # Check if 7-point sweet_spot is available at contact_frame as an auxiliary 2D geometry observation
+        cf_frame = frames_by_id.get(contact_frame) or {}
+        cf_feat = features_by_frame.get(contact_frame) or {}
+        cf_center = _body_center(cf_frame.get("pose") or {})
+        cf_ss = _point(cf_feat.get("racket_sweet_spot"))
+        if cf_center is not None and cf_ss is not None and body_width and body_width > 0:
+            out_empty["sweet_spot_lateral_body_width"] = round(abs(cf_ss[0] - cf_center[0]) / body_width, 4)
+        return out_empty
     offset, _, source_frame, lateral_distance, contact_score = min(candidates)
     proximity = 1.0 - min(1.0, offset / (.12 if windows.timed else 3.0))
     evidence_confidence = max(
@@ -416,7 +445,7 @@ def _contact_position_metric(
         exclusion_reason = "contact_geometry_outside_plausible_single_view_range"
     else:
         exclusion_reason = None
-    return attach_window(_metric(
+    out_metric = attach_window(_metric(
         normalized_distance,
         "body_width",
         confidence,
@@ -426,6 +455,12 @@ def _contact_position_metric(
         coach_eligible=coach_eligible,
         exclusion_reason=exclusion_reason,
     ), window)
+    sf_feat = features_by_frame.get(source_frame) or {}
+    sf_center = _body_center((frames_by_id.get(source_frame) or {}).get("pose") or {})
+    sf_ss = _point(sf_feat.get("racket_sweet_spot"))
+    if sf_center is not None and sf_ss is not None:
+        out_metric["sweet_spot_lateral_body_width"] = round(abs(sf_ss[0] - sf_center[0]) / body_width, 4)
+    return out_metric
 
 
 def _early_recovery_frame(
@@ -534,7 +569,11 @@ def _calculate_extended_tier_biomechanics(
             "measurement_policy": IMAGE_MOTION_POLICY,
             "geometry_assumptions": contact_f.get("racket_speed_geometry_assumptions"),
             "ground_calibration_sha256": contact_f.get("racket_speed_ground_calibration_sha256"),
-            "measurement_point": "raw_racket_box_center",
+            "measurement_point": (
+                "sweet_spot_7pt"
+                if contact_f.get("racket_measurement_point_type") == "sweet_spot_7pt"
+                else "raw_racket_box_center"
+            ),
             "status": ("homography_height_debiased" if any(f.get("racket_speed_calibration_status") == "homography_height_debiased" for f in features_in_event)
                        else "ground_homography_calibrated" if speed_calibrated else "uncalibrated"),
             "contact_time_basis": contact_f.get("racket_speed_time_basis"),
@@ -547,6 +586,11 @@ def _calculate_extended_tier_biomechanics(
             "low_to_high_angle_deg": low_to_high_angle if brush_observed else None,
             "drop_depth_px": racket_drop_px if brush_observed else None,
             "drop_depth_ratio": racket_drop_ratio if brush_observed and body_width else None,
+            "measurement_point": (
+                "sweet_spot_7pt"
+                if any(f.get("racket_measurement_point_type") == "sweet_spot_7pt" for f in pre_contact_feats)
+                else "raw_racket_box_center"
+            ),
             "confidence": 0.0,
             "coach_eligible": False,
         },

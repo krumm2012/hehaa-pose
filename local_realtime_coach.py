@@ -40,6 +40,7 @@ class LocalRealtimeCoach:
         max_suggestions: int = HARD_MAX_SUGGESTIONS,
         min_confidence: float = 0.45,
         thresholds: Optional[Dict] = None,
+        enable_2d_observable_rules: bool = False,
     ):
         self.max_chars = min(self.HARD_MAX_CHARS, max(1, int(max_chars)))
         self.max_suggestions = min(
@@ -51,6 +52,7 @@ class LocalRealtimeCoach:
             **self.DEFAULT_THRESHOLDS,
             **(thresholds or {}),
         }
+        self.enable_2d_observable_rules = bool(enable_2d_observable_rules)
 
     def configuration(self) -> Dict:
         """Return the effective rules required to reproduce coaching decisions."""
@@ -60,7 +62,7 @@ class LocalRealtimeCoach:
             "min_confidence": self.min_confidence,
             "thresholds": dict(self.thresholds),
             "phase_rule_exclusion_reason": PHASE_RULE_EXCLUSION,
-            "automatic_coach_policy": automatic_coach_policy(),
+            "automatic_coach_policy": automatic_coach_policy(self.enable_2d_observable_rules),
         }
 
     @classmethod
@@ -239,7 +241,7 @@ class LocalRealtimeCoach:
             metric_confidence = self._float(metric.get("confidence"))
             threshold = float(self.thresholds[threshold_name])
             if (
-                not technique_rule_approved(code)
+                not technique_rule_approved(code, self.enable_2d_observable_rules)
                 or value is None
                 or metric_confidence is None
                 or metric_confidence < self.min_confidence
@@ -274,7 +276,7 @@ class LocalRealtimeCoach:
             metric_confidence = self._float(metric.get("confidence"))
             threshold = float(self.thresholds[threshold_name])
             if (
-                not technique_rule_approved(code)
+                not technique_rule_approved(code, self.enable_2d_observable_rules)
                 or value is None
                 or metric_confidence is None
                 or metric_confidence < self.min_confidence
@@ -309,7 +311,7 @@ class LocalRealtimeCoach:
         kseq_val = str(kseq.get("value") or "").upper()
         kseq_conf = self._float(kseq.get("confidence"))
         if (
-            technique_rule_approved('disconnected_kinetic_chain')
+            technique_rule_approved('disconnected_kinetic_chain', self.enable_2d_observable_rules)
             and kseq_val in ("DISCONNECTED", "SUBOPTIMAL")
             and kseq_conf is not None
             and kseq_conf >= self.min_confidence
@@ -385,7 +387,7 @@ class LocalRealtimeCoach:
         min_brush = float(self.thresholds.get("min_brush_angle_deg", 15.0))
         min_drop = float(self.thresholds.get("min_drop_depth_ratio", 0.25))
         if (
-            technique_rule_approved('limited_brush_drop')
+            technique_rule_approved('limited_brush_drop', self.enable_2d_observable_rules)
             and brush_conf is not None
             and brush_conf >= self.min_confidence
             and brush.get("coach_eligible") is True

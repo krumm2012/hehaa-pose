@@ -75,6 +75,64 @@ def _racket_center(rackets: Iterable[Dict]) -> Optional[Point]:
     return best
 
 
+def _extract_7pt_racket_keypoints(frame: Dict, dominant_hand: str = "right") -> Tuple[Optional[Point], Optional[Point]]:
+    """Extract 7-point racket sweet_spot and head_top associated with the front player."""
+    fid = frame.get("frame_id")
+    rpose = frame.get("racket_pose")
+    if not isinstance(rpose, dict) or rpose.get("status") != "observed":
+        return None, None
+    if rpose.get("frame_id") is not None and rpose.get("frame_id") != fid:
+        return None, None
+    cands = rpose.get("candidates")
+    if not isinstance(cands, (list, tuple)) or not cands:
+        return None, None
+
+    pose, _ = measurement_pose_with_evidence(frame)
+    w_main = _point(pose.get("right_wrist" if dominant_hand == "right" else "left_wrist"))
+    w_off = _point(pose.get("left_wrist" if dominant_hand == "right" else "right_wrist"))
+    wrists = [w for w in (w_main, w_off) if w is not None]
+
+    def _valid_kpt(kdict, name):
+        pt = (kdict or {}).get(name)
+        if not isinstance(pt, dict) or pt.get("observed") is not True:
+            return None
+        if pt.get("source_frame_id") is not None and pt.get("source_frame_id") != fid:
+            return None
+        sc = finite_number(pt.get("confidence"))
+        if sc is None or not (0.5 <= sc <= 1.0):
+            return None
+        x = finite_number(pt.get("x"))
+        y = finite_number(pt.get("y"))
+        if x is None or y is None:
+            return None
+        return (float(x), float(y))
+
+    valid_cands = []
+    for c in cands:
+        if not isinstance(c, dict) or c.get("observed") is not True:
+            continue
+        if c.get("source_frame_id") is not None and c.get("source_frame_id") != fid:
+            continue
+        csc = finite_number(c.get("confidence"))
+        if csc is None or not (0.25 <= csc <= 1.0):
+            continue
+        kpts = c.get("keypoints") or {}
+        ss = _valid_kpt(kpts, "sweet_spot")
+        ht = _valid_kpt(kpts, "head_top")
+        gc = _valid_kpt(kpts, "grip_center")
+        if ss is None and ht is None:
+            continue
+        dist_w = min((_distance(gc, w) for w in wrists if gc is not None), default=None)
+        valid_cands.append((dist_w, -csc, ss, ht))
+
+    if not valid_cands:
+        return None, None
+    with_wrist = [vc for vc in valid_cands if vc[0] is not None and vc[0] <= 220.0]
+    chosen = min(with_wrist, key=lambda x: (x[0], x[1])) if with_wrist else min(valid_cands, key=lambda x: x[1])
+    return chosen[2], chosen[3]
+
+
+
 def estimate_racket_height_from_pose(
     racket_point: Optional[Point],
     wrist_point: Optional[Point],
@@ -220,6 +278,7 @@ def extract_motion_features(
     elbow_key = "right_elbow" if dominant_hand == "right" else "left_elbow"
 
     raw_rackets: List[Optional[Point]] = []
+    racket_7pt_meta: List[Tuple[Optional[Point], Optional[Point], str]] = []
     for frame in frames:
         provided_detections = frame.get("rackets")
         invalid_container = provided_detections is not None and not isinstance(provided_detections, (list, tuple))
@@ -229,12 +288,19 @@ def extract_motion_features(
             primary.get('observed') is False or
             ('confidence' in primary and (finite_number(primary['confidence']) is None or not 0 <= primary['confidence'] <= 1)) or
             (primary.get('source_frame_id') is not None and (type(primary['source_frame_id']) is not int or primary['source_frame_id'] != frame.get('frame_id')))))
-        box = None if invalid_primary else frame.get("racket")
-        rkt = _racket_center([{"box": box}]) if isinstance(box, (list, tuple)) and len(box) == 4 else _point(box)
-        if rkt is None:
-            rkt = _racket_center([d for d in detections if isinstance(d, dict) and
-                (d.get('source_frame_id') is None or (type(d['source_frame_id']) is int and d['source_frame_id'] == frame.get('frame_id')))])
+        ss_7pt, ht_7pt = (None, None) if invalid_primary else _extract_7pt_racket_keypoints(frame, dominant_hand)
+        if ss_7pt is not None or ht_7pt is not None:
+            rkt = ss_7pt if ss_7pt is not None else ht_7pt
+            pt_type = "sweet_spot_7pt" if ss_7pt is not None else "head_top_7pt"
+        else:
+            box = None if invalid_primary else frame.get("racket")
+            rkt = _racket_center([{"box": box}]) if isinstance(box, (list, tuple)) and len(box) == 4 else _point(box)
+            if rkt is None:
+                rkt = _racket_center([d for d in detections if isinstance(d, dict) and
+                    (d.get('source_frame_id') is None or (type(d['source_frame_id']) is int and d['source_frame_id'] == frame.get('frame_id')))])
+            pt_type = "box_center" if rkt is not None else "unavailable"
         raw_rackets.append(rkt)
+        racket_7pt_meta.append((ss_7pt, ht_7pt, pt_type))
 
     time_samples = [source_timestamp(row) for row in frames]
     declared_source = any('source_time' in row for row in frames)
@@ -300,6 +366,18 @@ def extract_motion_features(
         shoulder_width = _distance(left_shoulder, right_shoulder)
         if left_shoulder is not None and right_shoulder is not None:
             body_center_x = (left_shoulder[0] + right_shoulder[0]) / 2.0
+
+        sh_mid = ((left_shoulder[0] + right_shoulder[0]) / 2.0, (left_shoulder[1] + right_shoulder[1]) / 2.0) if (left_shoulder and right_shoulder) else (left_shoulder or right_shoulder)
+        hip_mid = ((left_hip[0] + right_hip[0]) / 2.0, (left_hip[1] + right_hip[1]) / 2.0) if (left_hip and right_hip) else (left_hip or right_hip)
+        torso_length = _distance(sh_mid, hip_mid) if (sh_mid and hip_mid) else None
+        if torso_length is not None and torso_length < 15.0:
+            torso_length = None
+        shoulder_spine_ratio = (
+            round(float(shoulder_width / torso_length), 4)
+            if shoulder_width is not None and torso_length is not None and torso_length > 0
+            else None
+        )
+        ss_7pt, ht_7pt, pt_type = racket_7pt_meta[idx]
 
         shoulder_line_angle = _vector_angle(left_shoulder, right_shoulder)
         hip_line_angle = _vector_angle(left_hip, right_hip)
@@ -437,6 +515,8 @@ def extract_motion_features(
                 else None
             ),
             "shoulder_width_px": round(shoulder_width, 4) if shoulder_width else None,
+            "torso_length_px": round(torso_length, 4) if torso_length else None,
+            "shoulder_spine_ratio": shoulder_spine_ratio,
             "shoulder_line_angle_deg": shoulder_line_angle,
             "arm_extension_deg": (
                 round(arm_extension, 4)
@@ -468,6 +548,9 @@ def extract_motion_features(
             "racket_speed_time_basis": speed_time_basis,
             "racket_speed_calibration_status": speed_status,
             "racket_measurement_point": raw_rackets[idx],
+            "racket_measurement_point_type": pt_type,
+            "racket_sweet_spot": ss_7pt,
+            "racket_head_top": ht_7pt,
             "racket_height_m": racket_height,
             "racket_height_source": height_source,
             "racket_speed_camera_height_m": camera_height_m,

@@ -79,10 +79,19 @@ def qualify_extended_observations(ext, event, frames, features, scale):
     ids=window(.48,0)
     valid=[]
     for i in ids:
+        feat_i = feats.get(i, {})
+        pt = feat_i.get('racket_measurement_point')
+        if pt is None:
+            continue
+        if feat_i.get('racket_measurement_point_type') in ('sweet_spot_7pt', 'head_top_7pt'):
+            rpose = rows[i].get('racket_pose') or {}
+            if isinstance(rpose, dict) and rpose.get('status') == 'observed' and rpose.get('frame_id') in (None, i):
+                valid.append(i)
+                continue
         detections=rows[i].get('rackets') or []
         d=detections[0] if isinstance(detections, (list, tuple)) and detections and isinstance(detections[0], dict) else {}
         score = finite_number(d.get('confidence'))
-        if feats.get(i,{}).get('racket_measurement_point') is not None and d.get('observed') is True and score is not None and .5<=score<=1 and (d.get('source_frame_id') is None or (type(d['source_frame_id']) is int and d['source_frame_id'] == i)):
+        if d.get('observed') is True and score is not None and .5<=score<=1 and (d.get('source_frame_id') is None or (type(d['source_frame_id']) is int and d['source_frame_id'] == i)):
             valid.append(i)
     reasons=list(anchor_reasons)
     if len(valid)<5: reasons.append('too_few_racket_observations')

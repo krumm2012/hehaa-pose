@@ -256,6 +256,68 @@ class DualViewMergingAndMiningTests(unittest.TestCase):
             "short_gap_bridged",
         )
 
+    def test_7pt_brush_angle_shoulder_spine_ratio_and_2d_coach_rules(self):
+        from joint_racket_2d_analysis import summarize_event_2d_diagnostics
+        from swing_motion_features import extract_motion_features
+        from swing_biomechanics import aggregate_event_biomechanics
+        from local_realtime_coach import LocalRealtimeCoach
+
+        rows = []
+        for i in range(8):
+            r = _make_dual_row(i, i * 0.04)
+            # Simulate unit turn coiling at i=1..2 (narrower front shoulder span) and uncoiling at contact i=6
+            sh_half = 26.0 if i in (1, 2) else (48.0 if i >= 5 else 36.0)
+            r["pose_observations"]["front"]["right_shoulder"]["x"] = 1445.0 - sh_half
+            r["pose_observations"]["front"]["left_shoulder"]["x"] = 1445.0 + sh_half
+            # Simulate racket drop at i=3 (lowest Y = 540) rising to contact at i=6 (Y = 430) with forward X travel
+            drop_y = 540.0 if i == 3 else (510.0 if i in (2, 4) else (430.0 if i >= 6 else 475.0))
+            adv_x = 1325.0 + i * 35.0
+            for kname, dy_off in (("sweet_spot", 0.0), ("head_top", -25.0), ("grip_center", 40.0), ("butt_cap", 48.0), ("throat", 22.0), ("frame_left", 10.0), ("frame_right", -10.0)):
+                r["racket_pose"]["candidates"][0]["keypoints"][kname]["x"] = adv_x
+                r["racket_pose"]["candidates"][0]["keypoints"][kname]["y"] = drop_y + dy_off
+            r["pose_observations"]["front"]["right_wrist"]["x"] = adv_x - 10.0
+            r["pose_observations"]["front"]["right_wrist"]["y"] = drop_y + 42.0
+            rows.append(r)
+
+        # 1. Verify extract_motion_features prioritizes 7-point sweet_spot and computes shoulder_spine_ratio
+        feats = extract_motion_features(rows)
+        self.assertEqual(feats[6]["racket_measurement_point_type"], "sweet_spot_7pt")
+        self.assertIsNotNone(feats[6]["shoulder_spine_ratio"])
+        self.assertLess(feats[1]["shoulder_spine_ratio"], feats[6]["shoulder_spine_ratio"])
+
+        # 2. Verify aggregate_event_biomechanics computes brush_angle from 7-point sweet_spot and shoulder_spine_contraction
+        event_doc = {"event_id": 1, "start_frame": 0, "end_frame": 7, "contact_frame": 6, "contact_status": "candidate", "stroke_type": "Forehand"}
+        bio = aggregate_event_biomechanics(event_doc, rows, feats)
+        self.assertEqual(bio["extended_biomechanics"]["brush_angle"]["measurement_point"], "sweet_spot_7pt")
+        self.assertGreater(bio["extended_biomechanics"]["brush_angle"]["low_to_high_angle_deg"], 15.0)
+        sc = bio["metrics"]["shoulder_turn_change"].get("shoulder_spine_contraction")
+        self.assertIsNotNone(sc)
+        self.assertGreater(sc["rho_delta"], 0.20)
+
+        # 3. Verify summarize_event_2d_diagnostics & 2D coach rules
+        frames, _ = analyze_frames(rows, (2560, 1440))
+        diag = summarize_event_2d_diagnostics(frames, event_doc)
+        self.assertGreater(diag["brush_angle_deg"], 15.0)
+        self.assertGreater(diag["shoulder_spine_contraction_delta"], 0.20)
+        self.assertIsNotNone(diag["coach_evaluation"])
+        self.assertEqual(len(diag["coach_evaluation"]["evaluated_rules"]), 5)
+
+        # 4. Verify LocalRealtimeCoach with enable_2d_observable_rules=True emits technique cues
+        coach_2d = LocalRealtimeCoach(enable_2d_observable_rules=True)
+        low_arm_event = {
+            "stroke_type": "Forehand",
+            "contact_status": "confirmed",
+            "confidence": 0.92,
+            "quality_flags": {"warnings": []},
+            "biomechanics": {
+                "metrics": {
+                    "arm_extension": {"value": 110.0, "confidence": 0.90, "coach_eligible": True, "unit": "deg_2d"},
+                }
+            },
+        }
+        cues = coach_2d.advise_all(low_arm_event)
+        self.assertTrue(any(c["code"] == "limited_arm_extension" and c["category"] == "technique" for c in cues))
+
 
 if __name__ == "__main__":
     unittest.main()

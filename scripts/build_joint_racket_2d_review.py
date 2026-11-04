@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from joint_racket_2d_analysis import analyze_frames, summarize, POLICY
+from joint_racket_2d_analysis import analyze_frames, summarize, summarize_event_2d_diagnostics, POLICY
 
 
 def build(audit_path,output):
@@ -29,7 +29,8 @@ def build(audit_path,output):
         session={'id':old['session'],'source':str(paths['source_video'].resolve()),'hashes':hashes,
                  'manifest':str(mp.resolve()),'image_size':size,'cadence_seconds':cadence,
                  'fps':manifest['capture']['fps'],'frames':frames,'statistics':stats,
-                 'events':[{k:e.get(k) for k in ('event_id','start_frame','end_frame','contact_frame','stroke_type','contact_status')} for e in events]}
+                 'events':[{**{k:e.get(k) for k in ('event_id','start_frame','end_frame','contact_frame','stroke_type','contact_status')},
+                            'diagnostics_2d':summarize_event_2d_diagnostics(frames,e)} for e in events]}
         sessions.append(session)
         for gap in stats['observation_gaps_ge_3']:gap_rows.append({'session':session['id'],**gap})
     result={'schema':'tennis.joint-racket-2d-review.v1','policy_version':POLICY,'sessions':sessions,
