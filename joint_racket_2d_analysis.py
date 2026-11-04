@@ -255,23 +255,36 @@ def merge_dual_view_frame(row, bodies, rackets, assoc, candidates, image_size, m
                         else 'relaxed_threshold_candidate_rescue'
                     )
 
-    # Step 4: Cross-view 7-point racket projection when one view's racket is still missing
+    # Step 4: Cross-view 7-point racket projection when one view's racket is still missing.
+    # Anchor relative racket vector (p - grip_center) to the destination wrist when available
+    # so 3D torso-to-hand depth parallax under a 35-deg tilted camera is cancelled out.
+    def _project_racket_cross_view(src_view, dst_view, tf, prov_tag):
+        if tf is None:
+            return
+        src_rkt = merged_racket[src_view]
+        dst_rkt = merged_racket[dst_view]
+        src_grip = src_rkt.get('grip_center') or src_rkt.get('butt_cap')
+        dst_wrist = merged_body[dst_view].get('right_wrist') or merged_body[dst_view].get('left_wrist')
+        use_wrist_anchor = src_grip is not None and dst_wrist is not None
+        sx, sy = tf.scale_x, tf.scale_y
+        for name in RACKET_POINTS:
+            if dst_rkt.get(name) is None and src_rkt.get(name) is not None:
+                sp = src_rkt[name]
+                if use_wrist_anchor:
+                    px = dst_wrist[0] + sx * (sp[0] - src_grip[0])
+                    py = dst_wrist[1] + sy * (sp[1] - src_grip[1])
+                    dst_rkt[name] = [round(px, 2), round(py, 2)]
+                else:
+                    proj = map_mirror_point_planar(sp, affine_result=tf)
+                    if proj is not None:
+                        dst_rkt[name] = [round(proj[0], 2), round(proj[1], 2)]
+                if dst_rkt.get(name) is not None and racket_provenance[dst_view] == 'missing':
+                    racket_provenance[dst_view] = prov_tag
+
     if b2f_ok:
-        for name in RACKET_POINTS:
-            if merged_racket['front'].get(name) is None and merged_racket['back'].get(name) is not None:
-                proj = map_mirror_point_planar(merged_racket['back'][name], affine_result=t_b2f)
-                if proj is not None:
-                    merged_racket['front'][name] = [round(proj[0], 2), round(proj[1], 2)]
-                    if racket_provenance['front'] == 'missing':
-                        racket_provenance['front'] = 'back_projected_to_front'
+        _project_racket_cross_view('back', 'front', t_b2f, 'back_projected_to_front')
     if f2b_ok:
-        for name in RACKET_POINTS:
-            if merged_racket['back'].get(name) is None and merged_racket['front'].get(name) is not None:
-                proj_b = map_mirror_point_planar(merged_racket['front'][name], affine_result=t_f2b)
-                if proj_b is not None:
-                    merged_racket['back'][name] = [round(proj_b[0], 2), round(proj_b[1], 2)]
-                    if racket_provenance['back'] == 'missing':
-                        racket_provenance['back'] = 'front_projected_to_back'
+        _project_racket_cross_view('front', 'back', t_f2b, 'front_projected_to_back')
 
     racket_reproj_error = None
     if (rackets['front'].get('sweet_spot') is not None
@@ -399,7 +412,161 @@ def analyze_frames(rows, image_size):
                 a=previous['tracks'][point] if previous else None;b=tracks[point]
                 if valid_dt and a is not None and b is not None:m[metric]=math.dist(a,b)/dt
         frames.append(frame)
+    _compute_merged_kinematics(frames, cadence)
     return frames,cadence
+
+
+def _compute_merged_kinematics(frames, cadence):
+    """Compute spike-filtered, short-gap-bridged, central-difference speed curves on merged tracks."""
+    n = len(frames)
+    if not n or cadence is None:
+        for f in frames:
+            if 'dual_view_fusion' in f:
+                f['dual_view_fusion']['kinematics'] = {
+                    v: {'wrist_speed_px_s': None, 'sweet_spot_speed_px_s': None} for v in ('front', 'back')
+                }
+        return
+
+    def _valid_step(i_prev, i_curr):
+        f0, f1 = frames[i_prev], frames[i_curr]
+        if f1['frame_id'] - f0['frame_id'] != i_curr - i_prev:
+            return False, None
+        t0, t1 = f0['source_seconds'], f1['source_seconds']
+        if t0 is None or t1 is None or t1 <= t0:
+            return False, None
+        dt = t1 - t0
+        span = i_curr - i_prev
+        if not (0.25 * cadence * span < dt <= 3.0 * cadence * span):
+            return False, None
+        return True, dt
+
+    for view in ('front', 'back'):
+        scale_factor = 1.0 if view == 'front' else 0.68
+
+        for kind, pt_name, out_key in (
+            ('merged_body', 'right_wrist', 'wrist_speed_px_s'),
+            ('merged_racket', 'sweet_spot', 'sweet_spot_speed_px_s'),
+        ):
+            is_racket = pt_name == 'sweet_spot'
+            max_jump_px = (240.0 if is_racket else 125.0) * scale_factor
+            spike_trigger_px = (75.0 if is_racket else 42.0) * scale_factor
+            max_bridge_gap = 3 if is_racket else 2
+
+            pts = []
+            for f in frames:
+                dv = f.get('dual_view_fusion') or {}
+                p = (dv.get(kind) or {}).get(view, {}).get(pt_name)
+                pts.append(list(p) if p is not None else None)
+
+            # 1. Suppress 1-frame A->B->A teleportation spikes (including pre/post short-gap spikes)
+            for i in range(1, n - 1):
+                if pts[i] is None:
+                    continue
+                i_prev = next((p for p in range(i - 1, max(-1, i - 2 - max_bridge_gap), -1) if pts[p] is not None), None)
+                i_next = next((q for q in range(i + 1, min(n, i + 2 + max_bridge_gap)) if pts[q] is not None), None)
+                if i_prev is None or i_next is None or (i_next - i_prev) > (2 + max_bridge_gap):
+                    continue
+                ok1, dt1 = _valid_step(i_prev, i)
+                ok2, dt2 = _valid_step(i, i_next)
+                if not (ok1 and ok2):
+                    continue
+                d_in = math.dist(pts[i_prev], pts[i])
+                d_out = math.dist(pts[i], pts[i_next])
+                d_span = math.dist(pts[i_prev], pts[i_next])
+                if max(d_in, d_out) > spike_trigger_px and (d_in + d_out) > 2.1 * max(10.0, d_span):
+                    alpha = dt1 / (dt1 + dt2)
+                    pts[i] = [
+                        round(pts[i_prev][0] + alpha * (pts[i_next][0] - pts[i_prev][0]), 2),
+                        round(pts[i_prev][1] + alpha * (pts[i_next][1] - pts[i_prev][1]), 2),
+                    ]
+                    dv_i = frames[i].get('dual_view_fusion') or {}
+                    if pt_name == 'right_wrist':
+                        dv_i['merged_body'][view][pt_name] = pts[i]
+                        dv_i['body_provenance'][view][pt_name] = 'spike_suppressed_interp'
+                    else:
+                        dv_i['merged_racket'][view][pt_name] = pts[i]
+                        dv_i['racket_provenance'][view] = 'spike_suppressed_interp'
+
+            # 2. Bridge short motion-blur gaps (1-3 frames for racket sweet_spot, 1-2 for wrist)
+            idx = 0
+            while idx < n:
+                if pts[idx] is not None:
+                    idx += 1
+                    continue
+                g_start = idx
+                while idx < n and pts[idx] is None:
+                    idx += 1
+                g_end = idx
+                g_len = g_end - g_start
+                if 1 <= g_len <= max_bridge_gap and g_start > 0 and g_end < n:
+                    ok_span, dt_span = _valid_step(g_start - 1, g_end)
+                    if ok_span and dt_span is not None:
+                        p_a, p_b = pts[g_start - 1], pts[g_end]
+                        dist_ab = math.dist(p_a, p_b)
+                        if dist_ab <= max_jump_px * (g_len + 1):
+                            t_a = frames[g_start - 1]['source_seconds']
+                            for k in range(g_start, g_end):
+                                tk = frames[k]['source_seconds']
+                                alpha = (tk - t_a) / dt_span if tk is not None else (k - g_start + 1) / (g_len + 1)
+                                pts[k] = [
+                                    round(p_a[0] + alpha * (p_b[0] - p_a[0]), 2),
+                                    round(p_a[1] + alpha * (p_b[1] - p_a[1]), 2),
+                                ]
+                                dv_k = frames[k].get('dual_view_fusion') or {}
+                                if pt_name == 'right_wrist':
+                                    dv_k['merged_body'][view][pt_name] = pts[k]
+                                    dv_k['body_provenance'][view][pt_name] = 'short_gap_bridged'
+                                else:
+                                    dv_k['merged_racket'][view][pt_name] = pts[k]
+                                    if dv_k['racket_provenance'].get(view) == 'missing':
+                                        dv_k['racket_provenance'][view] = 'short_gap_bridged'
+
+            # 3. Compute PTS-weighted central difference speed (eliminates 30ms/48ms PTS jitter sawtooth)
+            raw_speeds = [None] * n
+            for i in range(n):
+                if pts[i] is None:
+                    continue
+                has_prev = i > 0 and pts[i - 1] is not None and _valid_step(i - 1, i)[0]
+                has_next = i + 1 < n and pts[i + 1] is not None and _valid_step(i, i + 1)[0]
+                if has_prev and has_next:
+                    _, dt1 = _valid_step(i - 1, i)
+                    _, dt2 = _valid_step(i, i + 1)
+                    d1 = math.dist(pts[i - 1], pts[i])
+                    d2 = math.dist(pts[i], pts[i + 1])
+                    if d1 <= max_jump_px * 1.3 and d2 <= max_jump_px * 1.3:
+                        raw_speeds[i] = (d1 + d2) / (dt1 + dt2)
+                elif has_prev:
+                    _, dt1 = _valid_step(i - 1, i)
+                    d1 = math.dist(pts[i - 1], pts[i])
+                    if d1 <= max_jump_px * 1.2:
+                        raw_speeds[i] = d1 / dt1
+                elif has_next:
+                    _, dt2 = _valid_step(i, i + 1)
+                    d2 = math.dist(pts[i], pts[i + 1])
+                    if d2 <= max_jump_px * 1.2:
+                        raw_speeds[i] = d2 / dt2
+
+            # 4. 3-point [0.25, 0.50, 0.25] zero-phase smoothing over consecutive valid frames
+            smoothed_speeds = [None] * n
+            for i in range(n):
+                if raw_speeds[i] is None:
+                    continue
+                s_prev = raw_speeds[i - 1] if (i > 0 and raw_speeds[i - 1] is not None and _valid_step(i - 1, i)[0]) else None
+                s_next = raw_speeds[i + 1] if (i + 1 < n and raw_speeds[i + 1] is not None and _valid_step(i, i + 1)[0]) else None
+                if s_prev is not None and s_next is not None:
+                    smoothed_speeds[i] = round(0.25 * s_prev + 0.50 * raw_speeds[i] + 0.25 * s_next, 1)
+                elif s_prev is not None:
+                    smoothed_speeds[i] = round(0.35 * s_prev + 0.65 * raw_speeds[i], 1)
+                elif s_next is not None:
+                    smoothed_speeds[i] = round(0.65 * raw_speeds[i] + 0.35 * s_next, 1)
+                else:
+                    smoothed_speeds[i] = round(raw_speeds[i], 1)
+
+            for i, f in enumerate(frames):
+                dv = f.setdefault('dual_view_fusion', {})
+                kin = dv.setdefault('kinematics', {'front': {}, 'back': {}})
+                kin[view][out_key] = smoothed_speeds[i]
+                kin[view]['raw_' + out_key] = round(raw_speeds[i], 1) if raw_speeds[i] is not None else None
 
 
 def missing_runs(frames, key, minimum_length=3):

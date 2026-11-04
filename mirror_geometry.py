@@ -501,15 +501,7 @@ def estimate_cross_view_torso_transform(
     if not src_pose or not dst_pose:
         return None
 
-    # 1. 尝试直接求解平面仿射 (estimate_torso_planar_affine 内部为 back -> front，即第2参数 -> 第1参数)
-    direct = estimate_torso_planar_affine(dst_pose, src_pose, min_conf=min_conf)
-    if direct is not None:
-        return direct
-
-    if not allow_fallback:
-        return None
-
-    # 2. 侧身退化安全回退：利用垂直脊柱中轴高度 + 物理各向异性比构建 2x3 仿射矩阵
+    # 1. 先计算垂直脊柱中轴高度比 (作为抗侧身剪切畸变的物理不变量基准)
     def _mid(a: Optional[Tuple[float, float]], b: Optional[Tuple[float, float]]) -> Optional[Tuple[float, float]]:
         if a is not None and b is not None:
             return (a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0
@@ -530,15 +522,34 @@ def estimate_cross_view_torso_transform(
     d_sh = _mid(d_ls, d_rs)
     d_hp = _mid(d_lh, d_rh)
 
-    if s_sh is None or s_hp is None or d_sh is None or d_hp is None:
+    spine_sy = None
+    if s_sh is not None and s_hp is not None and d_sh is not None and d_hp is not None:
+        s_h = math.hypot(s_sh[0] - s_hp[0], s_sh[1] - s_hp[1])
+        d_h = math.hypot(d_sh[0] - d_hp[0], d_sh[1] - d_hp[1])
+        if s_h >= 15.0 and d_h >= 15.0:
+            spine_sy = d_h / s_h
+
+    # 2. 尝试直接求解平面仿射，并校验是否因侧身共线产生非物理剪切 (Shear)
+    direct = estimate_torso_planar_affine(dst_pose, src_pose, min_conf=min_conf)
+    if direct is not None:
+        M_d = direct.matrix
+        shear_ok = (
+            abs(direct.rotation_deg) <= 18.0
+            and abs(M_d[0, 1]) <= 0.28 * direct.scale_x
+            and abs(M_d[1, 0]) <= 0.28 * direct.scale_y
+        )
+        spine_ok = (
+            spine_sy is None
+            or (0.72 * spine_sy <= direct.scale_y <= 1.35 * spine_sy)
+        )
+        if shear_ok and spine_ok:
+            return direct
+
+    if not allow_fallback or spine_sy is None:
         return None
 
-    s_h = math.hypot(s_sh[0] - s_hp[0], s_sh[1] - s_hp[1])
-    d_h = math.hypot(d_sh[0] - d_hp[0], d_sh[1] - d_hp[1])
-    if s_h < 15.0 or d_h < 15.0:
-        return None
-
-    scale_y = d_h / s_h
+    # 3. 侧身退化/抗剪切安全回退：利用垂直脊柱中轴高度 + 物理各向异性比构建无剪切正交仿射矩阵
+    scale_y = spine_sy
     if not (0.35 <= scale_y <= 3.2):
         return None
 

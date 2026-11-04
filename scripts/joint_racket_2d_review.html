@@ -151,7 +151,7 @@ function paint(){
       ctx.fillText(title,offsetX+20,31);
       ctx.fillStyle='#e8f0eb';
       ctx.font='13px system-ui';
-      const rktLabel=rProv==='observed_'+v?'原生7点球拍 (v=2)':rProv.includes('rescue')?'⚡ 双视图找回原生7点球拍 (Rescued v=2)':rProv.includes('projected')?'⚡ 跨视角仿射投影球拍 (Projected v=1)':'未检出球拍';
+      const rktLabel=rProv==='observed_'+v?'原生7点球拍 (v=2)':rProv.includes('rescue')?'⚡ 双视图找回原生7点球拍 (Rescued v=2)':rProv.includes('projected')?'⚡ 跨视角手腕锚定投影球拍 (Projected v=1)':rProv.includes('bridged')?'⚡ 高速模糊短缺口桥接 (Bridged)':'未检出球拍';
       const jointLabel=healedJoints.length?` | 跨视角补全关节: ${healedJoints.join(', ')}`:' | 肢体原生观测';
       ctx.fillText(`球拍: ${rktLabel}${jointLabel}`,offsetX+20,53);
     }
@@ -166,7 +166,89 @@ function paint(){
   ctx.restore();drawPlot();
 }
 
-function drawPlot(){const c=$('plot'),ctx=c.getContext('2d'),v=$('view').value==='back'?'back':'front',e=event(),rows=session().frames.filter(f=>f.frame_id>=e.start_frame&&f.frame_id<=e.end_frame&&f.source_seconds!==null);ctx.clearRect(0,0,c.width,c.height);if(rows.length<2)return;let values=rows.flatMap(f=>['wrist_speed_px_s','sweet_spot_speed_px_s'].map(k=>f.metrics[v][k]).filter(n=>n!==null));let max=Math.max(1,...values),lo=rows[0].source_seconds,span=rows.at(-1).source_seconds-lo;if(span<=0)return;ctx.fillStyle='#c4d7c8';ctx.font='14px system-ui';ctx.fillText(`${v} · 0–${max.toFixed(0)} px/s · 原始PTS`,12,18);for(const [key,color]of [['wrist_speed_px_s','#6cf2a8'],['sweet_spot_speed_px_s','#ffe175']]){ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();let prior=null;for(const f of rows){let val=f.metrics[v][key];if(val===null){prior=null;continue}let x=35+(f.source_seconds-lo)/span*(c.width-50),y=c.height-20-val/max*(c.height-55);if(prior&&f.frame_id===prior.frame_id+1)ctx.lineTo(x,y);else ctx.moveTo(x,y);prior=f}ctx.stroke()}if(frame().source_seconds!==null){let x=35+(frame().source_seconds-lo)/span*(c.width-50);ctx.strokeStyle='#fff';ctx.beginPath();ctx.moveTo(x,25);ctx.lineTo(x,c.height);ctx.stroke()}}
+function drawPlot(){
+  const c=$('plot'),ctx=c.getContext('2d'),v=$('view').value==='back'?'back':'front',useMerged=$('merged').checked,e=event();
+  const rows=session().frames.filter(f=>f.frame_id>=e.start_frame&&f.frame_id<=e.end_frame&&f.source_seconds!==null);
+  ctx.clearRect(0,0,c.width,c.height);
+  if(rows.length<2)return;
+  const getSpeed=(f,k)=>useMerged?(f.dual_view_fusion?.kinematics?.[v]?.[k]??f.metrics[v][k]):f.metrics[v][k];
+  const values=rows.flatMap(f=>['wrist_speed_px_s','sweet_spot_speed_px_s'].map(k=>getSpeed(f,k)).filter(n=>n!==null&&Number.isFinite(n)));
+  const max=Math.max(500,...values)*1.08,lo=rows[0].source_seconds,span=rows.at(-1).source_seconds-lo;
+  if(span<=0)return;
+  const xOf=t=>38+(t-lo)/span*(c.width-54);
+  const yOf=val=>Math.max(24,c.height-20-Math.min(val,max*1.04)/max*(c.height-48));
+  // Horizontal reference grid
+  ctx.save();
+  ctx.strokeStyle='rgba(196,215,200,0.12)';ctx.lineWidth=1;ctx.setLineDash([2,4]);
+  for(const frac of [0.25,0.5,0.75,1.0]){
+    const gy=c.height-20-frac*(c.height-48);
+    ctx.beginPath();ctx.moveTo(38,gy);ctx.lineTo(c.width-16,gy);ctx.stroke();
+  }
+  ctx.restore();
+  // Contact candidate marker
+  const cfRow=rows.find(f=>f.frame_id===e.contact_frame);
+  if(cfRow&&cfRow.source_seconds!==null){
+    const cx=xOf(cfRow.source_seconds);
+    ctx.save();
+    ctx.strokeStyle='rgba(255,120,188,0.65)';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(cx,24);ctx.lineTo(cx,c.height-20);ctx.stroke();
+    ctx.fillStyle='#ff78bc';ctx.font='11px system-ui';
+    ctx.fillText(`触球f${e.contact_frame}`,Math.min(c.width-64,cx+4),34);
+    ctx.restore();
+  }
+  // If merged mode is active, draw raw single-view curves as faint dashed background for comparison
+  if(useMerged){
+    ctx.save();
+    ctx.globalAlpha=0.32;ctx.setLineDash([3,3]);ctx.lineWidth=1.3;
+    for(const [key,color]of [['wrist_speed_px_s','#6cf2a8'],['sweet_spot_speed_px_s','#ffe175']]){
+      ctx.strokeStyle=color;ctx.beginPath();let prior=null;
+      for(const f of rows){
+        const val=f.metrics[v][key];
+        if(val===null){prior=null;continue}
+        const x=xOf(f.source_seconds),y=yOf(val);
+        if(prior&&f.frame_id===prior.frame_id+1)ctx.lineTo(x,y);else ctx.moveTo(x,y);
+        prior=f;
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // Draw active speed curves (solid)
+  for(const [key,color]of [['wrist_speed_px_s','#6cf2a8'],['sweet_spot_speed_px_s','#ffe175']]){
+    ctx.save();
+    ctx.strokeStyle=color;ctx.lineWidth=2.4;ctx.setLineDash([]);
+    ctx.beginPath();let prior=null;
+    for(const f of rows){
+      const val=getSpeed(f,key);
+      if(val===null){prior=null;continue}
+      const x=xOf(f.source_seconds),y=yOf(val);
+      if(prior&&f.frame_id===prior.frame_id+1)ctx.lineTo(x,y);else ctx.moveTo(x,y);
+      prior=f;
+    }
+    ctx.stroke();
+    // Highlight rescued/bridged/projected points on the curve
+    if(useMerged){
+      for(const f of rows){
+        const val=getSpeed(f,key);
+        if(val===null)continue;
+        const dv=f.dual_view_fusion||{};
+        const prov=key==='wrist_speed_px_s'?(dv.body_provenance?.[v]?.right_wrist||'observed'):(dv.racket_provenance?.[v]||'observed');
+        if(!prov.startsWith('observed')){
+          const x=xOf(f.source_seconds),y=yOf(val);
+          ctx.fillStyle=prov.includes('spike')?'#ff78bc':'#00f5d4';
+          ctx.beginPath();ctx.arc(x,y,2.8,0,Math.PI*2);ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+  }
+  ctx.fillStyle='#c4d7c8';ctx.font='13px system-ui';
+  ctx.fillText(`${v} · 0–${max.toFixed(0)} px/s · ${useMerged?'双视图合并+中心差分去噪 (青点=补全/桥接, 粉点=抑峰, 细虚线=原始单视角)':'原始单视角后向差分 (含缺帧断线与跳变尖峰)'}`,12,17);
+  if(frame().source_seconds!==null){
+    const x=xOf(frame().source_seconds);
+    ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x,24);ctx.lineTo(x,c.height-16);ctx.stroke();
+  }
+}
 
 function renderFusionSummary(){
   const fs=session().statistics.dual_view_fusion||{};
@@ -213,7 +295,14 @@ async function draw(){
     const hj=Object.keys(bp).filter(k=>bp[k].includes('projected'));
     if(hj.length)addTag(`${v==='front'?'真人':'镜像'}自愈关节: ${hj.join(', ')}`,'badge-pink');
   }
-  $('metrics').replaceChildren();for(const [key,title]of [['left_elbow_deg','左肘夹角°'],['right_elbow_deg','右肘夹角°'],['left_knee_deg','左膝夹角°'],['right_knee_deg','右膝夹角°'],['hip_shoulder_projection_deg','髋肩像面夹角°'],['shaft_image_angle_deg','拍杆像面方向°'],['grip_wrist_gap_body_widths','腕握间隙/肩宽'],['wrist_speed_px_s','右腕速度px/s'],['sweet_spot_speed_px_s','甜区速度px/s'],['ball_sweetspot_distance_px','主球—甜区距离px']]){const tr=document.createElement('tr');for(const t of [title,fmt(f.metrics.front[key],2),fmt(f.metrics.back[key],2)]){let td=document.createElement('td');td.textContent=t;tr.append(td)}$('metrics').append(tr)}$('association').textContent=['front','back'].map(v=>`${v}：${f.associations[v].status==='proximity_candidate'?'腕握距离候选 '+fmt(f.associations[v].grip_wrist_distance_px)+'px':f.associations[v].reason}`).join('；');refreshReview();
+  const fmtMetric=(v,key)=>{
+    const raw=f.metrics[v][key];
+    if(!$('merged').checked||(key!=='wrist_speed_px_s'&&key!=='sweet_spot_speed_px_s'))return fmt(raw,2);
+    const mrg=dv.kinematics?.[v]?.[key];
+    if(mrg===undefined||mrg===null)return fmt(raw,2);
+    return raw===null?`${fmt(mrg,1)} ⚡补全`:`${fmt(mrg,1)} (原 ${fmt(raw,0)})`;
+  };
+  $('metrics').replaceChildren();for(const [key,title]of [['left_elbow_deg','左肘夹角°'],['right_elbow_deg','右肘夹角°'],['left_knee_deg','左膝夹角°'],['right_knee_deg','右膝夹角°'],['hip_shoulder_projection_deg','髋肩像面夹角°'],['shaft_image_angle_deg','拍杆像面方向°'],['grip_wrist_gap_body_widths','腕握间隙/肩宽'],['wrist_speed_px_s','右腕速度px/s'],['sweet_spot_speed_px_s','甜区速度px/s'],['ball_sweetspot_distance_px','主球—甜区距离px']]){const tr=document.createElement('tr');for(const t of [title,fmtMetric('front',key),fmtMetric('back',key)]){let td=document.createElement('td');td.textContent=t;tr.append(td)}$('metrics').append(tr)}$('association').textContent=['front','back'].map(v=>`${v}：${f.associations[v].status==='proximity_candidate'?'腕握距离候选 '+fmt(f.associations[v].grip_wrist_distance_px)+'px':f.associations[v].reason}`).join('；');refreshReview();
   if($('raw').checked){try{const loaded=new Image();loaded.src=`/api/frame?session=${encodeURIComponent(session().id)}&frame=${f.frame_id}`;await loaded.decode();if(token!==generation)return;img=loaded}catch(e){if(token!==generation)return;img=null;$('msg').textContent='源图加载失败：'+e.message}}else img=null;if(token!==generation)return;paint()
 }
 

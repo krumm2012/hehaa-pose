@@ -223,6 +223,39 @@ class DualViewMergingAndMiningTests(unittest.TestCase):
         self.assertEqual(tokens[7], "1")
         self.assertEqual(RACKET_FLIP_IDX, [0, 1, 2, 3, 4, 6, 5])
 
+    def test_merged_kinematics_spike_suppression_and_impact_gap_bridging(self):
+        rows = [_make_dual_row(i, i * 0.04) for i in range(6)]
+        # Simulate a 1-frame wrist teleportation spike at frame 2 (jumps +160px and returns at frame 3)
+        rows[2]["pose_observations"]["front"]["right_wrist"]["x"] += 160.0
+        # Simulate a 1-frame motion-blur dropout of the racket at impact frame 4 while sweet_spot advances 120px/frame
+        for i, r in enumerate(rows):
+            for name in r["racket_pose"]["candidates"][0]["keypoints"]:
+                r["racket_pose"]["candidates"][0]["keypoints"][name]["x"] += i * 60.0
+            r["pose_observations"]["front"]["right_wrist"]["x"] += i * 20.0
+        rows[4]["racket_pose"]["candidates"] = []
+
+        frames, _ = analyze_frames(rows, (2560, 1440))
+        # Raw wrist speed at frame 2 has a massive false spike (> 3500 px/s)
+        self.assertGreater(frames[2]["metrics"]["front"]["wrist_speed_px_s"], 3500.0)
+        # Merged kinematics suppresses the frame 2 spike down to ~500 px/s
+        mrg_w2 = frames[2]["dual_view_fusion"]["kinematics"]["front"]["wrist_speed_px_s"]
+        self.assertLess(mrg_w2, 700.0)
+        self.assertEqual(
+            frames[2]["dual_view_fusion"]["body_provenance"]["front"]["right_wrist"],
+            "spike_suppressed_interp",
+        )
+        # Raw sweet_spot speed at frames 4 and 5 is None due to the 1-frame dropout at frame 4
+        self.assertIsNone(frames[4]["metrics"]["front"]["sweet_spot_speed_px_s"])
+        self.assertIsNone(frames[5]["metrics"]["front"]["sweet_spot_speed_px_s"])
+        # Merged kinematics bridges frame 4 and preserves the ~1500 px/s forward swing speed
+        mrg_s4 = frames[4]["dual_view_fusion"]["kinematics"]["front"]["sweet_spot_speed_px_s"]
+        self.assertIsNotNone(mrg_s4)
+        self.assertAlmostEqual(mrg_s4, 1500.0, delta=150.0)
+        self.assertEqual(
+            frames[4]["dual_view_fusion"]["racket_provenance"]["front"],
+            "short_gap_bridged",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
