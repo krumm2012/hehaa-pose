@@ -551,8 +551,12 @@
         }
         const refreshSwingsBtn = $("refresh-swings-btn");
         if (refreshSwingsBtn) {
-          refreshSwingsBtn.addEventListener("click", () => pollSwings(true));
+          refreshSwingsBtn.addEventListener("click", () => {
+            if (typeof loadSessionList === "function") loadSessionList();
+            pollSwings(true);
+          });
         }
+        if (typeof loadSessionList === "function") await loadSessionList();
         await pollStatus();
         await pollSwings();
         initSSE();

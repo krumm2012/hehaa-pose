@@ -670,6 +670,19 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
             self.assertTrue(event["clip_url"].startswith("/artifacts/"))
             self.assertTrue(event["impact_freeze_url"].startswith("/artifacts/"))
 
+            sessions = controller.list_sessions()
+            self.assertEqual(len(sessions), 1)
+            self.assertEqual(sessions[0]["session_id"], "test_session_123")
+            self.assertEqual(sessions[0]["event_count"], 1)
+
+            specific = controller.session_events(session_id="test_session_123")
+            self.assertEqual(specific["session_id"], "test_session_123")
+            self.assertEqual(len(specific["events"]), 1)
+
+            unknown = controller.session_events(session_id="non_existent")
+            self.assertEqual(unknown["session_id"], "non_existent")
+            self.assertEqual(len(unknown["events"]), 0)
+
     def test_restart_discovers_newest_capture_even_if_old_report_was_modified(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
@@ -710,6 +723,13 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
                     self.assertEqual(resp.status, 200)
                     sum_data = json.load(resp)
                     self.assertIn("summary", sum_data)
+
+                # Test /api/sessions
+                sess_req = urllib.request.Request(f"{base_url}/api/sessions")
+                with urllib.request.urlopen(sess_req) as resp:
+                    self.assertEqual(resp.status, 200)
+                    sess_data = json.load(resp)
+                    self.assertIsInstance(sess_data, list)
 
                 # Test HEAD request
                 head_req = urllib.request.Request(f"{base_url}/artifacts/sample.mp4", method="HEAD")

@@ -931,39 +931,60 @@ class LocalPipelineController:
     ) -> Dict[str, Any]:
         return load_review_state(self.manual_review_paths(report_path))
 
-    def session_events(self) -> Dict[str, Any]:
+    def session_events(self, session_id: Optional[str] = None) -> Dict[str, Any]:
         with self._lock:
+            active_session_id = self._artifacts.get("session_id")
             event_json_rel = self._artifacts.get("event_json")
             session_dir_rel = self._artifacts.get("session_dir")
-            session_id = self._artifacts.get("session_id")
 
         target_file = None
         session_dir = None
-        if event_json_rel:
-            candidate = self.workspace / event_json_rel
-            if candidate.exists():
-                target_file = candidate
-                session_dir = (self.workspace / session_dir_rel) if session_dir_rel else candidate.parent
+        target_session_id = session_id
 
-        if target_file is None:
-            base_dir = self.workspace / "data" / "analysis_results" / "control_panel"
-            if base_dir.exists():
-                sessions = sorted(
-                    [d for d in base_dir.iterdir() if d.is_dir() and not d.name.startswith(".")],
-                    key=_session_capture_time,
-                    reverse=True,
-                )
-                for s in sessions:
-                    json_candidates = list(s.glob("*_swing_events.json"))
+        if session_id:
+            clean_id = re.sub(r"[^A-Za-z0-9_-]", "", session_id)
+            if active_session_id and clean_id == active_session_id and event_json_rel:
+                candidate = self.workspace / event_json_rel
+                if candidate.exists():
+                    target_file = candidate
+                    session_dir = (self.workspace / session_dir_rel) if session_dir_rel else candidate.parent
+                    target_session_id = active_session_id
+            if target_file is None:
+                base_dir = self.workspace / "data" / "analysis_results" / "control_panel"
+                candidate_dir = base_dir / clean_id
+                if candidate_dir.is_dir() and candidate_dir.resolve().parent == base_dir.resolve():
+                    json_candidates = list(candidate_dir.glob("*_swing_events.json"))
                     if json_candidates:
                         target_file = json_candidates[0]
-                        session_dir = s
-                        session_id = s.name
-                        break
+                        session_dir = candidate_dir
+                        target_session_id = clean_id
+        else:
+            if event_json_rel:
+                candidate = self.workspace / event_json_rel
+                if candidate.exists():
+                    target_file = candidate
+                    session_dir = (self.workspace / session_dir_rel) if session_dir_rel else candidate.parent
+                    target_session_id = active_session_id
+
+            if target_file is None:
+                base_dir = self.workspace / "data" / "analysis_results" / "control_panel"
+                if base_dir.exists():
+                    sessions = sorted(
+                        [d for d in base_dir.iterdir() if d.is_dir() and not d.name.startswith(".")],
+                        key=_session_capture_time,
+                        reverse=True,
+                    )
+                    for s in sessions:
+                        json_candidates = list(s.glob("*_swing_events.json"))
+                        if json_candidates:
+                            target_file = json_candidates[0]
+                            session_dir = s
+                            target_session_id = s.name
+                            break
 
         if target_file is None or not target_file.exists():
             return {
-                "session_id": session_id,
+                "session_id": target_session_id,
                 "events": [],
                 "total_events": 0,
                 "summary": build_session_coaching_summary([]),
@@ -974,7 +995,7 @@ class LocalPipelineController:
                 data = json.load(f)
         except Exception:
             return {
-                "session_id": session_id,
+                "session_id": target_session_id,
                 "events": [],
                 "total_events": 0,
                 "summary": build_session_coaching_summary([]),
@@ -1008,18 +1029,77 @@ class LocalPipelineController:
 
         summary = build_session_coaching_summary(processed_events)
         return {
-            "session_id": session_id or (session_dir.name if session_dir else None),
+            "session_id": target_session_id or (session_dir.name if session_dir else None),
             "events": processed_events,
             "total_events": len(processed_events),
             "summary": summary,
         }
 
-    def session_summary(self) -> Dict[str, Any]:
-        events_res = self.session_events()
+    def session_summary(self, session_id: Optional[str] = None) -> Dict[str, Any]:
+        events_res = self.session_events(session_id=session_id)
         return {
             "session_id": events_res.get("session_id"),
             "summary": events_res.get("summary") or {},
         }
+
+    def list_sessions(self) -> List[Dict[str, Any]]:
+        base_dir = self.workspace / "data" / "analysis_results" / "control_panel"
+        if not base_dir.exists():
+            return []
+        with self._lock:
+            active_session_id = self._artifacts.get("session_id")
+
+        sessions = []
+        for d in base_dir.iterdir():
+            if not d.is_dir() or d.name.startswith("."):
+                continue
+            events_files = list(d.glob("*_swing_events.json"))
+            event_count = 0
+            if events_files:
+                try:
+                    with open(events_files[0], "r", encoding="utf-8") as f:
+                        ev_data = json.load(f)
+                        ev_list = ev_data.get("events", []) if isinstance(ev_data, dict) else (ev_data if isinstance(ev_data, list) else [])
+                        event_count = len(ev_list)
+                except Exception:
+                    pass
+
+            source_name = None
+            manifest_files = list(d.glob("*_evidence_manifest.json"))
+            if manifest_files:
+                try:
+                    with open(manifest_files[0], "r", encoding="utf-8") as f:
+                        m_data = json.load(f)
+                        src = m_data.get("capture", {}).get("source") or m_data.get("session", {}).get("source")
+                        if src:
+                            source_name = Path(src).name
+                except Exception:
+                    pass
+
+            m = re.search(r"_(\d{8}T\d{6}Z)_", d.name)
+            display_time = ""
+            ts = d.stat().st_mtime
+            if m:
+                try:
+                    dt = datetime.strptime(m.group(1), "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+                    display_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+                    ts = dt.timestamp()
+                except ValueError:
+                    pass
+            if not display_time:
+                display_time = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+
+            sessions.append({
+                "session_id": d.name,
+                "display_time": display_time,
+                "timestamp": ts,
+                "event_count": event_count,
+                "source_name": source_name,
+                "is_active": (d.name == active_session_id),
+            })
+
+        sessions.sort(key=lambda s: s["timestamp"], reverse=True)
+        return sessions
 
 
     def evaluate_manual_review(
@@ -1800,10 +1880,18 @@ def create_handler(controller: LocalPipelineController):
                     self._send_json(controller.roi_info(stream_id=s_id), head_only=head_only)
                 elif path == "/api/status":
                     self._send_json(controller.status(), head_only=head_only)
+                elif path == "/api/sessions":
+                    self._send_json(controller.list_sessions(), head_only=head_only)
                 elif path == "/api/session/events":
-                    self._send_json(controller.session_events(), head_only=head_only)
+                    from urllib.parse import parse_qs, urlsplit
+                    query = parse_qs(urlsplit(self.path).query)
+                    s_id = query.get("session_id", [None])[0]
+                    self._send_json(controller.session_events(session_id=s_id), head_only=head_only)
                 elif path == "/api/session/summary":
-                    self._send_json(controller.session_summary(), head_only=head_only)
+                    from urllib.parse import parse_qs, urlsplit
+                    query = parse_qs(urlsplit(self.path).query)
+                    s_id = query.get("session_id", [None])[0]
+                    self._send_json(controller.session_summary(session_id=s_id), head_only=head_only)
                 elif path == "/api/manual-review/state":
                     self._send_json(
                         controller.manual_review_state(

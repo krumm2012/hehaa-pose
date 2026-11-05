@@ -2,6 +2,7 @@
     var lastEventsJson = typeof lastEventsJson !== "undefined" ? lastEventsJson : "";
     var filterOnlyValidSwings = typeof filterOnlyValidSwings !== "undefined" ? filterOnlyValidSwings : true;
     var latestRawEvents = typeof latestRawEvents !== "undefined" ? latestRawEvents : [];
+    var selectedSessionId = typeof selectedSessionId !== "undefined" ? selectedSessionId : "";
 
     function isShadowEvent(ev) {
       if (!ev) return false;
@@ -110,10 +111,30 @@
         </div>`;
     }
 
-    function renderSessionSummary(summary, events) {
+    function renderSessionSummary(summary, events, sessionId) {
       const box = $("session-summary-box");
       if (!box) return;
+      const currentSid = selectedSessionId || sessionId || "";
       if (!summary || !summary.total_swings || summary.total_swings === 0) {
+        if (selectedSessionId) {
+          box.hidden = false;
+          box.innerHTML = `
+            <div class="historical-session-banner">
+              <span>🏛️ <strong>历史会话存档</strong>: <code>${escapeHtml(selectedSessionId)}</code> (暂无击球事件)</span>
+              <button id="btn-return-live" class="button" style="font-size: 11px; padding: 3px 8px; cursor: pointer;" type="button">切回最新会话 ⚡</button>
+            </div>
+          `;
+          const returnBtn = document.getElementById("btn-return-live");
+          if (returnBtn) {
+            returnBtn.onclick = () => {
+              const sel = document.getElementById("history-session-select");
+              if (sel) sel.value = "";
+              selectedSessionId = "";
+              pollSwings(true);
+            };
+          }
+          return;
+        }
         box.hidden = true;
         box.innerHTML = "";
         return;
@@ -194,6 +215,12 @@
       }).join("") : `<span style="font-size:12px; color: var(--muted);">当前证据未产生技术纠错建议，仍需复核</span>`;
 
       box.innerHTML = `
+        ${selectedSessionId ? `
+          <div class="historical-session-banner">
+            <span>🏛️ <strong>历史会话存档</strong>: <code>${escapeHtml(selectedSessionId)}</code> (${events.length} 次击球事件)</span>
+            <button id="btn-return-live" class="button" style="font-size: 11px; padding: 3px 8px; cursor: pointer;" type="button">切回最新会话 ⚡</button>
+          </div>
+        ` : ""}
         <div class="summary-top-row">
           <div class="summary-title-group">
             <h3>📊 训练会话全景宏观诊断 <span>(Session Coaching Summary)</span></h3>
@@ -243,6 +270,16 @@
         </div>
         ${renderMeasurementSummary(summary.analysis_metrics || [])}
       `;
+
+      const returnBtn = document.getElementById("btn-return-live");
+      if (returnBtn) {
+        returnBtn.onclick = () => {
+          const sel = document.getElementById("history-session-select");
+          if (sel) sel.value = "";
+          selectedSessionId = "";
+          pollSwings(true);
+        };
+      }
     }
 
     function handleSwingsData(data, force = false) {
@@ -250,18 +287,62 @@
       const events = data.events || [];
       const summary = data.summary || {};
       latestRawEvents = events;
-      const currentHash = JSON.stringify([data.session_id, events, summary, filterOnlyValidSwings]);
+      const currentSid = typeof selectedSessionId !== "undefined" ? selectedSessionId : "";
+      const currentHash = JSON.stringify([data.session_id, events, summary, filterOnlyValidSwings, currentSid]);
       if (!force && currentHash === lastEventsJson) return;
       lastEventsJson = currentHash;
-      renderSessionSummary(summary, events);
+      renderSessionSummary(summary, events, data.session_id);
       renderSwingsFeed(events);
     }
 
     async function pollSwings(force = false) {
       try {
-        const response = await api("/api/session/events");
+        const url = selectedSessionId 
+          ? `/api/session/events?session_id=${encodeURIComponent(selectedSessionId)}` 
+          : "/api/session/events";
+        const response = await api(url);
         if (!response.ok) return;
         const data = await response.json();
+        handleSwingsData(data, force);
+      } catch (err) {}
+    }
+
+    async function loadSessionList() {
+      const select = document.getElementById("history-session-select");
+      if (!select) return;
+      try {
+        const response = await api("/api/sessions");
+        if (!response.ok) return;
+        const sessions = await response.json();
+        const prevVal = selectedSessionId || select.value;
+        select.innerHTML = '<option value="">⚡ 实时 / 最新会话</option>';
+        sessions.forEach(s => {
+          const opt = document.createElement("option");
+          opt.value = s.session_id;
+          const activeTag = s.is_active ? " [进行中]" : "";
+          const sourceTag = s.source_name ? ` · ${s.source_name}` : "";
+          opt.textContent = `${s.display_time}${activeTag} (${s.event_count}拍)${sourceTag}`;
+          opt.title = `${s.session_id}`;
+          select.appendChild(opt);
+        });
+        if (prevVal && Array.from(select.options).some(o => o.value === prevVal)) {
+          select.value = prevVal;
+        }
+      } catch (err) {
+        console.error("加载历史会话列表异常:", err);
+      }
+    }
+
+    function initSessionHistorySelector() {
+      const select = document.getElementById("history-session-select");
+      if (select && !select.dataset.bound) {
+        select.dataset.bound = "true";
+        select.addEventListener("change", (e) => {
+          selectedSessionId = e.target.value;
+          pollSwings(true);
+        });
+      }
+    }
         handleSwingsData(data, force);
       } catch (err) {}
     }
@@ -606,4 +687,15 @@
 
     function handleLogsData() {
       // Compatibility anchor for test slicing if needed
+    }
+
+    if (typeof window !== "undefined") {
+      window.pollSwings = pollSwings;
+      window.loadSessionList = loadSessionList;
+      window.initSessionHistorySelector = initSessionHistorySelector;
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", initSessionHistorySelector);
+      } else {
+        initSessionHistorySelector();
+      }
     }

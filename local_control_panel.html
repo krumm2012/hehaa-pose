@@ -83,6 +83,12 @@
               <p id="swings-summary-text">AI 实时检测击球动作、高级生物力学遥测与慢动作切片复盘</p>
             </div>
             <div class="actions">
+              <div class="session-history-wrapper" style="display: inline-flex; align-items: center; gap: 5px;">
+                <label for="history-session-select" style="font-size: 11px; color: var(--muted); white-space: nowrap;">历史会话:</label>
+                <select id="history-session-select" class="session-select" style="font-size: 11px; height: 26px; padding: 2px 6px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 4px; color: var(--text); max-width: 230px;" title="自由切换历史已处理的会话">
+                  <option value="">⚡ 实时 / 最新会话</option>
+                </select>
+              </div>
               <div class="swing-filter-toggle" role="group" aria-label="击球过滤模式">
                 <button id="filter-valid-btn" class="filter-btn active" type="button" title="隐藏已确认空挥；候选仍需人工复核">🎯 查看挥拍候选</button>
                 <button id="filter-all-btn" class="filter-btn" type="button" title="完整记录：显示包含空挥试拍在内的所有检测事件">全部记录</button>
