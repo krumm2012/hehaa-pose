@@ -145,6 +145,14 @@ class DualViewBiomechanicsEngine:
                         add(name, v[0], v[1], v[2])
                     elif len(v) == 2:
                         add(name, v[0], v[1], 1.0, confidence_source='legacy_xy_unverified')
+                elif isinstance(v, dict) and "x" in v and "y" in v:
+                    conf = v.get("conf", v.get("confidence", 1.0))
+                    add(name, v["x"], v["y"], conf,
+                        z=v.get("z", None),
+                        observed=v.get("observed", True),
+                        recovered_from_mirror=v.get("recovered_from_mirror", False),
+                        source_frame_id=v.get("source_frame_id", None),
+                        confidence_source=v.get("confidence_source", "provided"))
                 elif hasattr(v, "x") and hasattr(v, "y"):
                     conf = getattr(v, "conf", 1.0)
                     add(name, v.x, v.y, conf, z=getattr(v, 'z', None),
@@ -162,9 +170,9 @@ class DualViewBiomechanicsEngine:
 
         return parsed
 
-    def _measurement_pose(self, pose):
+    def _measurement_pose(self, pose, allow_recovered: bool = False):
         return {name: point for name, point in pose.items()
-                if point.observed is True and not point.recovered_from_mirror
+                if point.observed is True and (allow_recovered or not point.recovered_from_mirror)
                 and point.confidence_source != 'unavailable'
                 and finite_point(point.pt) is not None
                 and finite_number(point.conf) is not None
@@ -389,14 +397,19 @@ class DualViewBiomechanicsEngine:
 
     def classify_shot(
         self,
-        pose: Dict[str, Keypoint],
+        pose: Union[Dict[str, Keypoint], Dict[str, Any]],
         ball_pos: Optional[Tuple[float, float]] = None,
+        allow_recovered: bool = True,
     ) -> ShotClassificationResult:
         """
         移植自 Tennis-Vision 的正反手与双手击球判定算法：
         基于躯干轴投影中线跨越法则，支持双手握拍识别与接触点距离门控。
         """
-        pose = self._measurement_pose(pose)
+        if not isinstance(pose, dict):
+            pose = self.parse_pose_dict(pose)
+        elif pose and not all(isinstance(v, Keypoint) for v in pose.values()):
+            pose = self.parse_pose_dict(pose)
+        pose = self._measurement_pose(pose, allow_recovered=allow_recovered)
         l_sh = pose.get("left_shoulder")
         r_sh = pose.get("right_shoulder")
 
@@ -546,7 +559,7 @@ class DualViewBiomechanicsEngine:
         fused_pose, healed_points = self.heal_occluded_pose(f_pose, b_pose)
 
         # 2. 击球分类与触球校验
-        shot_res = self.classify_shot(f_pose, ball_pos=ball_pos)
+        shot_res = self.classify_shot(fused_pose, ball_pos=ball_pos, allow_recovered=True)
 
         # 3. 消除侧身退化转肩角 (Anti Side-on Collapse)
         # 前视角肩线

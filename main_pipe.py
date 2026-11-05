@@ -993,9 +993,12 @@ class MultiprocessPipeline:
                     racket_diagnostics = detector.get_last_racket_diagnostics()
                     # Both futures already finished: associate existing observations without inference.
                     if ball and ball[0].get("position") is not None:
-                        observed_front = {k:v for k,v in pose_res.front_pose_local.items() if v.observed}
+                        target_pose = pose_res.fused_pose_local if (pose_res and pose_res.fused_pose_local) else (pose_res.front_pose_local if pose_res else {})
+                        observed_front = {k: v for k, v in target_pose.items() if getattr(v, "observed", True)}
                         position = dual_frame.front_info.map_from_original(*ball[0]["position"])
-                        pose_res.biomechanics.shot_classification = dual_pose_estimator.biomech_engine.classify_shot(observed_front, ball_pos=position)
+                        pose_res.biomechanics.shot_classification = dual_pose_estimator.biomech_engine.classify_shot(
+                            observed_front, ball_pos=position, allow_recovered=True
+                        )
                     current_player_bbox = None
                     if dual_view_mgr is not None and hasattr(dual_view_mgr, "update_player_from_keypoints"):
                         dual_view_mgr.update_player_from_keypoints(pose_res.front_pose_orig or pose_res.fused_pose_orig)

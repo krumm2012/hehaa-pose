@@ -250,21 +250,49 @@ def classify_swing_event(
         top_stroke, top_weight = dv_stroke_weights.most_common(1)[0]
         dv_ratio = top_weight / max(1.0, total_dv_weight)
 
-        if dv_ratio >= 0.55:
-            if top_stroke == "Two-Handed Backhand" or (
-                top_stroke == "Backhand"
-                and (
-                    dv_two_handed_count / max(1, dv_evidence_count) >= 0.35
-                    or two_hand_ratio >= 0.35
-                )
-            ):
+        bh_family_weight = dv_stroke_weights.get("Two-Handed Backhand", 0.0) + dv_stroke_weights.get("Backhand", 0.0)
+        bh_family_ratio = bh_family_weight / max(1.0, total_dv_weight)
+        fh_weight = dv_stroke_weights.get("Forehand", 0.0)
+        fh_ratio = fh_weight / max(1.0, total_dv_weight)
+
+        avg_dv_conf = (
+            sum(
+                float(f.get("dual_view_confidence") or 0)
+                for f in event_features
+                if f.get("dual_view_stroke_type") in SWING_TYPES
+                and float(f.get("dual_view_confidence") or 0) >= 0.55
+            )
+            / dv_evidence_count
+        )
+
+        has_two_hand_evidence = (
+            top_stroke == "Two-Handed Backhand"
+            or (dv_two_handed_count / max(1, dv_evidence_count) >= 0.35)
+            or (two_hand_ratio >= 0.35)
+            or (label_two_hand_ratio >= 0.35)
+        )
+
+        if bh_family_ratio >= 0.55 and bh_family_weight >= fh_weight:
+            if has_two_hand_evidence:
                 stroke_type = "Two-Handed Backhand"
-                confidence = dv_ratio * sum(float(f.get("dual_view_confidence") or 0) for f in event_features if f.get("dual_view_stroke_type") in SWING_TYPES and float(f.get("dual_view_confidence") or 0) >= .55) / dv_evidence_count
+                confidence = min(
+                    1.0,
+                    avg_dv_conf * (0.5 + 0.5 * bh_family_ratio)
+                    + 0.2 * max(two_hand_ratio, label_two_hand_ratio),
+                )
                 decision_rule = "dual_view_two_handed_backhand"
             else:
-                stroke_type = top_stroke
-                confidence = dv_ratio * sum(float(f.get("dual_view_confidence") or 0) for f in event_features if f.get("dual_view_stroke_type") in SWING_TYPES and float(f.get("dual_view_confidence") or 0) >= .55) / dv_evidence_count
+                stroke_type = "Backhand"
+                confidence = min(1.0, avg_dv_conf * (0.5 + 0.5 * bh_family_ratio))
                 decision_rule = "dual_view_transverse_projection"
+        elif fh_ratio >= 0.55 and fh_weight >= bh_family_weight:
+            stroke_type = "Forehand"
+            confidence = min(1.0, avg_dv_conf * (0.5 + 0.5 * fh_ratio))
+            decision_rule = "dual_view_transverse_projection"
+        elif dv_ratio >= 0.55:
+            stroke_type = top_stroke
+            confidence = min(1.0, avg_dv_conf * (0.5 + 0.5 * dv_ratio))
+            decision_rule = "dual_view_transverse_projection"
         elif side == "forehand":
             stroke_type = "Forehand"
             confidence = float(swing_side["confidence"]) * 0.60 + 0.30
@@ -273,51 +301,56 @@ def classify_swing_event(
             stroke_type = "Backhand"
             confidence = float(swing_side["confidence"]) * 0.60 + 0.30
             decision_rule = "dual_view_fallback_backhand"
-    elif side == "forehand":
-        stroke_type = "Forehand"
-        confidence = (
-            float(swing_side["confidence"]) * 0.60
-            + float(camera["confidence"]) * 0.20
-            + label_forehand_ratio * 0.20
-        )
-        decision_rule = "camera_normalized_forehand_side"
-    elif side == "backhand":
-        if (
-            two_hand_ratio >= max(0.38, two_hand_min_ratio)
-            and backhand_support_ratio >= 0.20
-        ) or label_two_hand_ratio >= max(0.45, two_hand_min_ratio):
+
+        if confidence < 0.55:
+            stroke_type = "Unknown"
+
+    if stroke_type == "Unknown":
+        if side == "forehand":
+            stroke_type = "Forehand"
+            confidence = (
+                float(swing_side["confidence"]) * 0.60
+                + float(camera["confidence"]) * 0.20
+                + label_forehand_ratio * 0.20
+            )
+            decision_rule = "camera_normalized_forehand_side"
+        elif side == "backhand":
+            if (
+                two_hand_ratio >= max(0.38, two_hand_min_ratio)
+                and backhand_support_ratio >= 0.20
+            ) or label_two_hand_ratio >= max(0.45, two_hand_min_ratio):
+                stroke_type = "Two-Handed Backhand"
+                confidence = max(two_hand_ratio, label_two_hand_ratio)
+                decision_rule = "camera_normalized_backhand_with_two_hand_support"
+            else:
+                stroke_type = "Backhand"
+                confidence = (
+                    float(swing_side["confidence"]) * 0.65
+                    + float(camera["confidence"]) * 0.20
+                    + label_backhand_ratio * 0.15
+                )
+                decision_rule = "camera_normalized_backhand_side"
+        elif (
+            label_two_hand_ratio >= max(0.50, two_hand_min_ratio)
+            or (
+                two_hand_ratio >= max(0.50, two_hand_min_ratio)
+                and swing_label_counts.get("Backhand", 0) > swing_label_counts.get("Forehand", 0)
+            )
+        ):
             stroke_type = "Two-Handed Backhand"
             confidence = max(two_hand_ratio, label_two_hand_ratio)
-            decision_rule = "camera_normalized_backhand_with_two_hand_support"
-        else:
+            decision_rule = "label_fallback_two_hand"
+        elif swing_label_counts.get("Forehand", 0) > 0 and swing_label_counts.get("Forehand", 0) >= (
+            swing_label_counts.get("Backhand", 0)
+            + swing_label_counts.get("Two-Handed Backhand", 0)
+        ):
+            stroke_type = "Forehand"
+            confidence = label_forehand_ratio
+            decision_rule = "label_fallback_forehand"
+        elif label_backhand_ratio > 0:
             stroke_type = "Backhand"
-            confidence = (
-                float(swing_side["confidence"]) * 0.65
-                + float(camera["confidence"]) * 0.20
-                + label_backhand_ratio * 0.15
-            )
-            decision_rule = "camera_normalized_backhand_side"
-    elif (
-        label_two_hand_ratio >= max(0.50, two_hand_min_ratio)
-        or (
-            two_hand_ratio >= max(0.50, two_hand_min_ratio)
-            and swing_label_counts.get("Backhand", 0) > swing_label_counts.get("Forehand", 0)
-        )
-    ):
-        stroke_type = "Two-Handed Backhand"
-        confidence = max(two_hand_ratio, label_two_hand_ratio)
-        decision_rule = "label_fallback_two_hand"
-    elif swing_label_counts.get("Forehand", 0) > 0 and swing_label_counts.get("Forehand", 0) >= (
-        swing_label_counts.get("Backhand", 0)
-        + swing_label_counts.get("Two-Handed Backhand", 0)
-    ):
-        stroke_type = "Forehand"
-        confidence = label_forehand_ratio
-        decision_rule = "label_fallback_forehand"
-    elif label_backhand_ratio > 0:
-        stroke_type = "Backhand"
-        confidence = label_backhand_ratio
-        decision_rule = "label_fallback_backhand"
+            confidence = label_backhand_ratio
+            decision_rule = "label_fallback_backhand"
 
     # Contact & Shadow swing analysis (物理触球与空挥判定)
     ball_pts = [f["ball"] for f in contact_features if f.get("ball") is not None]
