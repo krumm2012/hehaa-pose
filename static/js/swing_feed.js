@@ -343,9 +343,6 @@
         });
       }
     }
-        handleSwingsData(data, force);
-      } catch (err) {}
-    }
 
     function kinematicDisplay(seq, metric = {}) {
       const confidence = metric.confidence ?? seq.confidence ?? 0;
