@@ -2,86 +2,80 @@
 
 ## 设计、需求与运维文档
 
-- [系统设计与算法流程](docs/SYSTEM_DESIGN.md)：进程架构、模型、事件与 Coach 算法、前后端接口及数据闭环。
+- [系统设计与算法流程](docs/SYSTEM_DESIGN.md)：进程架构、模型、事件与 Coach 算法、虚实双视角融合、前后端接口及数据闭环。
+- [算法 2.0 设计与进度文档](docs/ALGO_2.0_DESIGN_AND_PROGRESS.md)：虚实双机位自适应追踪、双向仿射姿态自愈、双反动作识别与 2D 生物力学指标。
 - [需求与验收基线](docs/REQUIREMENTS_BASELINE.md)：现有功能、验收边界和待优化事项。
 - [本地运行与运维手册](docs/OPERATIONS.md)：启动、停止、校准、故障排查、证据重放和回退。
-- [七点球拍集成指南](docs/YOLO26_RACKET_POSE_INTEGRATION_GUIDE.md)：正式640入口、接口与历史实验边界。
-- [人工Coach审核V3](docs/HUMAN_COACH_REVIEW_V3.md)：人工意见、触球确认与系统建议分开保存。
+- [七点球拍集成指南](docs/YOLO26_RACKET_POSE_INTEGRATION_GUIDE.md)：正式 640 入口、接口与历史实验边界。
+- [2D 联合复核工具文档](docs/JOINT_RACKET_2D_REVIEW.md)：不可变数据集、双机位同屏拼接与人工触球收据。
 
-当前入口文档同步于 **2026-10-20**；后文带日期的旧实验数据保留为历史记录。
+当前入口文档同步于 **2026-11-15**；后文带日期的旧实验数据保留为历史记录。
 
-`tennis_analyzer` 是面向 Apple Silicon Mac 的本地网球训练分析系统，从单机位及镜面视频提取人体姿态、网球、球拍、挥拍事件和 Coach 证据，并支持人工复核及重放。当前开发分支为 `algo-2.0`，默认业务仍为旧版。
+`tennis_analyzer` 是面向 Apple Silicon Mac 的本地网球训练分析系统。系统依托室内单机位与后墙镜面反射，实时构建**虚实双机位（Side-by-Side Dual-View）**，从视频中并行提取正反两路人体姿态、网球轨迹、7 点球拍关键点、跨视角自愈肢体、挥拍事件和即时 Coach 证据，并支持历史会话自由回溯、行内/全屏慢动作逐帧复盘及离线不可变人工复核。当前开发主分支为 `algo-2.0`。
 
-## 当前正式版本：640 Shadow
+## 当前正式架构：Algo 2.0 虚实双视角融合 + 640 Shadow
 
-[`640-shadow-stable-20261019`](docs/releases/640-shadow-stable-20261019.md) 已正式发布，源码冻结于 `0b5f4e5`。
-显式选择640×640 Core ML / ALL七点球拍Shadow，保留球、正面/镜面人体、事件、Coach和原工作台。
-新七点只记录/显示，业务仍用旧链路；默认`legacy`不加载七点。**Shadow性能放行不等于active/exclusive检测质量放行。**
-
-- 验收配置：`640_shadow` / `shadow`、`buffered`逐帧、`barrier`、`shared_memory`、人体`pose_resize_policy: legacy`；需显式选择，基础默认仍为`legacy`/`barrier`/`queue`。
-- 本机M5/32GiB、CPU资源可用条件下：九视频三轮27/27通过；连续15,250帧稳定25.069 FPS、名义输入到输出P95 88.6ms、RSS增长3.28%；9/9业务对照、7/7固定故障复验及133项定向回归通过。
-- 共享负载下的历史慢轮保留，CPU争用未被证实为唯一根因；不保证所有硬件、RTSP或资源争用工况均达25FPS，也不证明模型泛化准确率或曝光到屏幕延迟。
-- 连续Shadow等待每帧同源结果，七点进程失败/超时使会话失败；停止后可另行启动旧版，不是无阻塞自动回退。
-
-[安装、模型附件与校验、启动/回退、完整验收范围](docs/releases/640-shadow-stable-20261019.md) · [正式身份合同](docs/releases/640-shadow-stable-20261019.json) · [GitHub Release](https://github.com/krumm2012/hehaa-pose/releases/tag/640-shadow-stable-20261019)。
-历史preview与候选说明仍保留，不作为当前正式状态。
+当前版本在保持 [`640-shadow-stable-20261019`](docs/releases/640-shadow-stable-20261019.md) 七点球拍 Shadow 安全隔离的基础上，全面落地的核心能力包括：
+1. **虚实双机位动态追踪与并发姿态估计**：单摄像头画面自动分割出正面真人（3:4 比例 EMA 动态追踪）与背面镜面（水平镜像翻转），通过双独立 CoreML 模型实例并行推理，消除单实例 ANE 锁争用，姿态推理耗时压缩 ~27.6%。
+2. **跨视角姿态自愈与双反分类增强**：基于躯干四边形仿射变换，自动从无遮挡背面投影补全正面被遮挡的手腕（`allow_recovered=True`）及 7 点球拍，结合反手家族特征比率（`bh_family_ratio >= 0.55`），彻底消除双手反拍误判为 Unknown 的缺陷。
+3. **2D 可观测网球生物力学指标**：实时推算肩脊收缩比 $\rho$、肘膝夹角、拍杆像面角、甜区刷球角（低到高方向角与下落深度比），即刻生成规则化即时教练诊断卡片。
+4. **控制面板多会话回放与复核防抖**：Port 8766 控制面板支持 50+ 历史会话自由切换，完整重放慢动作切片视频与全景宏观短板看板；Port 8770 离线复核工具锁定画布纵横比与事件级视窗，杜绝视频播放缩放抖动。
 
 ## 系统架构
 
-系统以 `main_pipe.py` 为唯一的分析入口：Reader、Inference 和 Analyzer 是受监督的
-独立进程；挥拍事件、逐帧日志和本地 Coach 在 `RealtimeSwingRuntime` 中后台处理。
-报告、片段编码及网络/语音旁路与推理解耦，队列满时仍会反压；画面渲染属于分析开销，连续Shadow也会等待同源七点结果，不能把“异步”理解为绝对不阻塞。
+系统以 `main_pipe.py` 为唯一的实时分析入口：Reader、Inference 和 Analyzer 是受监督的独立进程；挥拍事件、逐帧日志和本地 Coach 在 `RealtimeSwingRuntime` 中后台处理。
 
 ```mermaid
 flowchart LR
     subgraph Input[输入与控制]
-        V["本地视频 / HTTP / RTSP"]
-        P["local_control_panel.py\n本地控制面板 :8766（本文显式端口）"]
-        C["配置\nROI、模型、实时参数"]
+        V["本地视频 / RTSP 码流"]
+        P["local_control_panel.py\n控制面板 :8766\n(50+ 历史会话自由切换)"]
+        C["配置\nROI与镜面多边形"]
     end
 
     subgraph Online[实时关键路径：main_pipe.py]
-        R["Reader\n预热后逐帧 / 满槽背压"]
-        I["Inference\n球/旧拍检测 + 双人体 Pose"]
-        A["Analyzer\nROI 恢复、轨迹、静止球过滤\nFrameRecord"]
-        R --> I --> A
-        I -. "连续模式共享源帧租约" .-> RP["七点球拍进程 / 可终止"]
-        RP -. "Shadow逐帧同源结果" .-> I
+        R["Reader\n解码与源帧租约分配"]
+        DVM["DualViewManager\n动态人像追踪 + 镜面翻转"]
+        I["DualPoseEstimator\n双实例并发 ANE/CoreML"]
+        RP["7点球拍进程\nCoreML ALL (Shadow 旁路)"]
+        DVF["DualViewFusion\n躯干仿射 + 跨视角自愈"]
+        A["Analyzer\n2D 生物力学 + OSD 渲染"]
+        R --> DVM --> I --> DVF --> A
+        R -. 连续模式源帧租约 .-> RP
+        RP -. 逐帧同源七点结果 .-> DVF
     end
 
     subgraph Runtime[事件与 Coach：RealtimeSwingRuntime]
-        E["RealtimeSwingEventEngine\n分段、去重、触球/峰值"]
-        L["Local Coach\n确定性证据门控"]
-        O["Output Manager\n原子快照 + HTML"]
+        E["SwingEventClassifier\n挥拍分段 + 双反强化分类"]
+        L["CoachRuleContract\n2D 可观测即时教练规则"]
+        O["Output Manager\n原子快照 + HTML + 慢动作切片"]
         A --> E --> L --> O
     end
 
-    subgraph Sidecars[后台任务：有界队列与故障状态]
-        D["DeepSeek / Qwen3-TTS Sidecar\n结构化证据 → 建议 / 语音"]
-        M["人工校准 API\n评估、重算 Coach"]
-        J["Journal / Evidence Bundle\nJSONL、SHA-256、重放"]
+    subgraph Sidecars[后台任务与离线复核]
+        D["DeepSeek / Qwen3-TTS 旁路\n结构化证据 → 建议 / 语音"]
+        J["Journal / Evidence Bundle\nJSONL、SHA-256、重放清单"]
+        RV["serve_joint_racket_2d_review.py\n2D 联合复核工具 :8770\n(同屏拼接防抖 + 触球收据)"]
     end
 
     P --> C
     V --> R
-    C --> I
-    C --> A
+    C --> DVM
     E --> D
     A --> J
     O --> J
-    O --> H["Live Swing Events / 会话报告"]
-    D -. "pending → ready / failed" .-> O
-    H --> M
-    M --> F["final_manual_events.json\nEvaluation + Coach 对比"]
+    O --> H["Live Swing Feed / 全景诊断看板"]
+    D -. "pending → ready" .-> O
+    J --> RV
 ```
 
 | 层级 | 职责 | 关键产物 / 边界 |
 | --- | --- | --- |
-| 输入与控制 | 选择码流或视频、ROI、运行参数、启动/停止会话 | 控制面板仅监听 `127.0.0.1`；RTSP 凭据和 API Key 不写入报告或证据包。 |
-| 实时关键路径 | 读取、检测、姿态、候选筛选、坐标恢复与 FrameRecord | 发生子进程异常即监督退出，避免静默卡死。 |
-| 事件与本地 Coach | 挥拍分段、重叠去重、触球估计、确定性建议 | 本地 Coach 先于网络建议发布；仅使用通过证据门控的指标。 |
-| 异步旁路 | DeepSeek、报告重绘、视频片段编码、日志、哈希、人工校准 | 旁路不直接串入每帧推理；队列反压、磁盘和共享硬件仍可能影响时延，原始事件快照保留。 |
-| 可复核闭环 | 人工修正边界与漏检、计算 Precision/Recall/F1、重算 Coach | `final_events.json` 不变；确认完整视频前，评估状态保持 provisional。 |
+| 输入与控制 | 选择码流或视频、ROI与镜面映射、会话启停、历史会话切换 | 控制面板监听 `127.0.0.1:8766`，支持 50+ 场次击球卡片与慢动作回溯。 |
+| 虚实双机位与检测 | 动态人像裁剪、镜面反射提取、双路 CoreML 姿态并行、球与球拍检测 | ANE 并发调度，单帧总耗时大幅压缩，满足 25+ FPS 实时吞吐。 |
+| 姿态自愈与生物力学 | 躯干仿射矩阵求解、遮挡手腕自愈、七点球拍找回/投影、2D 指标换算 | 标明 `is_recovered` 与 `provenance`，避免盲区动力学断裂。 |
+| 事件分类与即时 Coach | 挥拍分段、双手反拍识别强化、触球帧确定、可观测规则卡片 | 本地 Coach 先于网络建议发布；仅使用通过证据门控的指标。 |
+| 异步旁路与复核闭环 | DeepSeek、Qwen3-TTS 语音播报、慢动作 MP4 编码、不可变 2D 联合复核 | 旁路不阻塞推理关键路径；Port 8770 验证源 SHA-256 并生成防篡改人工收据。 |
 
 每个会话拥有独立 `session_id` 和目录。事件 JSON / HTML 是兼容性快照，事件 JSONL 是
 追加式历史；启用证据包时，`FrameRecord` JSONL 与事件快照构成最小可重放集合。重放验证
@@ -89,10 +83,16 @@ flowchart LR
 
 ## 当前能力
 
-- `main_pipe.py`：多进程视频检测流水线，生成标注视频、逐帧 JSON 和诊断 JSON。
-- `yolo26n_unified_detector.py`：当前 exp004 配置检测球、球拍，包含静止球抑制、镜中球过滤、轨迹连续性和球拍候选重排序；人体姿态由独立 Pose 模型处理。
-- `overlay_marker_recovery.py`：二次分析视频中恢复本程序绘制的空心球圈和球拍框，保留 `overlay_*` 来源并继续经过原有轨迹筛选。
-- `pose_estimator_yolo26.py`：YOLO26 pose 检测，支持 Core ML / ANE，并加入 pose 时序平滑以减少骨骼节点跳动。
+- `main_pipe.py`：多进程视频检测流水线，支持 `buffered` 逐帧、`realtime` 优先新帧与 `offline` 全速处理，生成逐帧 JSON 与诊断 OSD 画面。
+- `dual_view_manager.py`：动态人像 EMA 3:4 比例自适应追踪（保持 $540 \times 720$ 无畸变视口），后墙平镜反射区域多边形提取与水平镜像翻转。
+- `dual_pose_estimator.py`：正反双视角独立实例的 CoreML 并发姿态推理，消除单模型锁争用，姿态推理延迟压缩 ~27.6%。
+- `dual_view_biomechanics.py`：虚实双机位躯干仿射变换、跨视角手腕自愈（`allow_recovered=True`）、7 点球拍原生找回与跨视角投影、肩脊收缩比 $\rho$ 与 2D 生物力学指标计算。
+- `swing_event_classifier.py`：集成反手家族比例（`bh_family_ratio >= 0.55`）与自愈姿态，支持正手、单反、双手反拍（双反）高鲁棒性分类。
+- `coach_rule_contract.py`：2D 可观测即时教练规则评测契约，覆盖转肩、引拍、击球臂舒展角等核心技术项。
+- `yolo26n_unified_detector.py`：当前 exp004 配置检测球、球拍，包含静止球抑制、镜中球过滤、轨迹连续性和球拍候选重排序。
+- `racket_pose_detector.py` / `yolo26pose-racket`：CoreML ALL 7 点球拍关键点估计器，提供 Shadow 旁路逐帧同源姿态。
+- `local_control_panel.py` (Port 8766)：本地 Web 控制台，集成 50+ 历史会话自由回溯、行内慢动作（1.0x/0.5x/0.25x 逐帧前进后退）、全屏弹窗复盘、五维模型雷达图与宏观短板全景看板。
+- `scripts/serve_joint_racket_2d_review.py` (Port 8770)：2D 肢体 × 七点球拍联合复核工具，双机位同屏拼接（1280×680 锁定比例与稳定裁剪防抖），生成不可变人工触球收据。
 - `swing_event_analyzer.py`：把逐帧检测结果聚合成事件级挥拍，输出 `start/contact/peak/end/stroke_type/confidence/quality_flags`。
 - `swing_coach_data_collector.py`：生成面向 AI 网球教练的 `*_coach_dataset.json`，包含动作阶段、关键角度、球/拍质量、问题标签和解释证据。
 - `swing_event_video_renderer.py`：生成统一 OSD 的 swing annotated 视频。
