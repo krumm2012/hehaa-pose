@@ -424,6 +424,7 @@
     }
 
     let latestCompareSessions = [];
+    let latestPersonalAttribution = null;
     let selectedCompareSessionA = "";
     let selectedCompareSessionB = "";
 
@@ -610,6 +611,8 @@
         const valB = mB?.median;
         const iqrA = mA?.iqr;
         const iqrB = mB?.iqr;
+        const conA = mA?.consistency_score;
+        const conB = mB?.consistency_score;
 
         let deltaHtml = "—";
         let proofHtml = "<span style='color:var(--muted);'>样本待积累</span>";
@@ -618,18 +621,34 @@
           const improved = cfg.higherBetter ? diff > 0 : diff < 0;
           const sign = diff > 0 ? "+" : "";
           const color = diff === 0 ? "var(--muted)" : (improved ? "#4ade80" : "#f87171");
-          deltaHtml = `<span style="color:${color}; font-weight:600;">${sign}${diff} ${cfg.unit}</span>`;
+
+          const pooledIqr = Math.max(((iqrA ?? 0) + (iqrB ?? 0)) / 2.0, Math.abs(valA) * 0.06, 0.01);
+          const effectRatio = Number((Math.abs(diff) / pooledIqr).toFixed(2));
+          let sigBadge = "";
+          if (effectRatio >= 0.75) {
+            sigBadge = improved
+              ? `<span style="color:#4ade80;margin-left:4px;">[🔥显著进步 ${effectRatio}x]</span>`
+              : `<span style="color:#f87171;margin-left:4px;">[⚠️显著退化 ${effectRatio}x]</span>`;
+          } else if (effectRatio >= 0.35) {
+            sigBadge = improved
+              ? `<span style="color:#38bdf8;margin-left:4px;">[📈有效改善 ${effectRatio}x]</span>`
+              : `<span style="color:#fbbf24;margin-left:4px;">[📉有所下滑 ${effectRatio}x]</span>`;
+          } else {
+            sigBadge = `<span style="color:var(--muted);margin-left:4px;">[〰️正常波动 ${effectRatio}x]</span>`;
+          }
+          deltaHtml = `<span style="color:${color}; font-weight:600;">${sign}${diff} ${cfg.unit}</span>${sigBadge}`;
 
           if (iqrA != null && iqrB != null && (mA.count >= 2 || mB.count >= 2)) {
             const iqrDiff = Number((iqrB - iqrA).toFixed(2));
+            const conTag = conB != null ? ` · 定型度 ${conB}%` : "";
             if (improved && iqrDiff <= 0) {
-              proofHtml = `<span style="color:#4ade80;">✅ 幅度提升 + 波动收窄 (${iqrA}→${iqrB})</span>`;
+              proofHtml = `<span style="color:#4ade80;">✅ 幅度提升 + 波动收窄 (±${iqrA}→±${iqrB}${conTag})</span>`;
             } else if (improved) {
-              proofHtml = `<span style="color:#38bdf8;">↗ 幅度提升 · 波动 ±${iqrB}</span>`;
+              proofHtml = `<span style="color:#38bdf8;">↗ 幅度提升 · 波动 ±${iqrB}${conTag}</span>`;
             } else if (iqrDiff < 0) {
-              proofHtml = `<span style="color:#fbbf24;">⚖️ 动作定型收窄 (${iqrA}→${iqrB})</span>`;
+              proofHtml = `<span style="color:#fbbf24;">⚖️ 动作定型收窄 (±${iqrA}→±${iqrB}${conTag})</span>`;
             } else {
-              proofHtml = `<span style="color:var(--muted);">波动 IQR: ±${iqrB}</span>`;
+              proofHtml = `<span style="color:var(--muted);">P25..P75: ${mB.p25 ?? "—"}~${mB.p75 ?? "—"}${conTag}</span>`;
             }
           }
         }
@@ -644,6 +663,59 @@
           </tr>
         `;
       }).join("");
+
+      // Method 3: Personal Attribution (Top 25% vs Bottom 25%)
+      const attr = latestPersonalAttribution;
+      const attributionHtml = attr && attr.available ? `
+        <div style="margin-bottom:12px; padding:10px 12px; background:rgba(56,189,248,0.06); border:1px solid rgba(56,189,248,0.22); border-radius:8px;">
+          <div style="font-size:12px; font-weight:600; color:#38bdf8; margin-bottom:4px;">🔑 个人标杆分位归因 (Top 25% 好球 vs Bottom 25% 弱球 · 共 ${attr.sample_count} 拍)</div>
+          <div style="font-size:12px; line-height:1.5; color:var(--text); margin-bottom:6px;">${escapeHtml(attr.insight || "")}</div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            ${(attr.factors || []).slice(0, 4).map(f => `
+              <span style="font-size:11px; padding:3px 8px; background:rgba(255,255,255,0.05); border-radius:4px;">
+                <strong>${escapeHtml(f.label)}</strong>: 好球 ${f.top_median}${f.unit} vs 弱球 ${f.bottom_median}${f.unit}
+                <span style="color:#4ade80; margin-left:4px;">(效应量 ${f.effect_ratio}x)</span>
+              </span>
+            `).join("")}
+          </div>
+        </div>
+      ` : "";
+
+      // Method 4 & 5: Intra-session Fatigue Split + Fault Recurrence Pareto
+      const fatA = sessA?.fatigue_split || {};
+      const fatB = sessB?.fatigue_split || {};
+      const warnMap = new Map();
+      (sessA?.coach_warnings || []).forEach(w => warnMap.set(w.message, { a: w.rate_pct, b: 0 }));
+      (sessB?.coach_warnings || []).forEach(w => {
+        const cur = warnMap.get(w.message) || { a: 0, b: 0 };
+        cur.b = w.rate_pct;
+        warnMap.set(w.message, cur);
+      });
+      const warnRowsHtml = Array.from(warnMap.entries()).slice(0, 5).map(([msg, ab]) => {
+        const diff = Number((ab.b - ab.a).toFixed(1));
+        const color = diff < 0 ? "#4ade80" : (diff > 0 ? "#f87171" : "var(--muted)");
+        const sign = diff > 0 ? "+" : "";
+        return `<div style="display:flex; justify-content:space-between; font-size:11px; padding:3px 0; border-bottom:1px dashed rgba(255,255,255,0.06);">
+          <span>${escapeHtml(msg)}</span>
+          <span><span style="color:#38bdf8;">${ab.a}%</span> → <span style="color:#4ade80;">${ab.b}%</span> <strong style="color:${color}; margin-left:4px;">(${sign}${diff}%)</strong></span>
+        </div>`;
+      }).join("") || `<div style="font-size:11px; color:var(--muted);">A/B 会话均未检出显著动作瑕疵告警 🎉</div>`;
+
+      const fatigueAndWarningsHtml = `
+        <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+          <div style="flex:1; min-width:260px; padding:10px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:8px;">
+            <strong style="font-size:12px; display:block; margin-bottom:6px;">🔋 单次训练前后半程保持度 (体能/专注衰减分析)</strong>
+            <div style="font-size:11px; line-height:1.6;">
+              <div><span style="color:#38bdf8;">基准 A (${sessA?.consistency_index != null ? `定型度 ${sessA.consistency_index}%` : "—"}):</span> ${escapeHtml(fatA.available ? fatA.summary : (fatA.reason || "样本不足"))}</div>
+              <div><span style="color:#4ade80;">当前 B (${sessB?.consistency_index != null ? `定型度 ${sessB.consistency_index}%` : "—"}):</span> ${escapeHtml(fatB.available ? fatB.summary : (fatB.reason || "样本不足"))}</div>
+            </div>
+          </div>
+          <div style="flex:1; min-width:260px; padding:10px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:8px;">
+            <strong style="font-size:12px; display:block; margin-bottom:6px;">⚠️ 动作瑕疵复发率对比 (基准 A → 当前 B)</strong>
+            ${warnRowsHtml}
+          </div>
+        </div>
+      `;
 
       body.innerHTML = `
         <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:rgba(255,255,255,0.03); border-radius:8px; margin-bottom:12px;">
@@ -687,6 +759,9 @@
             </table>
           </div>
         </div>
+
+        ${attributionHtml}
+        ${fatigueAndWarningsHtml}
 
         <details style="margin-top:6px;">
           <summary style="cursor:pointer; color:var(--muted); font-size:11px;">查看全部 ${sessions.length} 次训练会话序列明细</summary>
@@ -748,6 +823,7 @@
         }
         const data = await res.json();
         latestCompareSessions = data.sessions || [];
+        latestPersonalAttribution = data.personal_attribution || null;
         renderCompareDashboard();
       } catch (err) {
         body.textContent = "查询对比数据异常";

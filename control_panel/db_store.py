@@ -56,6 +56,149 @@ def _compute_iqr(values: List[float]) -> float:
     return round(float(q3 - q1), 2)
 
 
+def _compute_quantiles(values: List[float]) -> Tuple[float, float, float, float, Optional[float]]:
+    ordered = sorted(values)
+    n = len(ordered)
+    med = float(statistics.median(ordered))
+    if n < 2:
+        return round(med, 2), round(med, 2), round(med, 2), 0.0, None
+    mid = n // 2
+    lower = ordered[:mid]
+    upper = ordered[mid:] if n % 2 == 0 else ordered[mid + 1 :]
+    q1 = float(statistics.median(lower)) if lower else ordered[0]
+    q3 = float(statistics.median(upper)) if upper else ordered[-1]
+    iqr = max(0.0, q3 - q1)
+    rel_disp = iqr / max(abs(med), 1.0)
+    consistency = round(max(0.0, min(100.0, 100.0 * (1.0 - min(1.0, rel_disp / 0.65)))), 1)
+    return round(q1, 2), round(med, 2), round(q3, 2), round(iqr, 2), consistency
+
+
+def _compute_fatigue_split(swings: List[Dict[str, Any]]) -> Dict[str, Any]:
+    if len(swings) < 4:
+        return {"available": False, "reason": "单次有效挥拍不足4拍"}
+    mid = len(swings) // 2
+    first_half = swings[:mid]
+    second_half = swings[mid:]
+
+    def _med(items: List[Dict[str, Any]], key: str) -> Optional[float]:
+        vals = [float(x[key]) for x in items if x.get(key) is not None]
+        return round(float(statistics.median(vals)), 2) if vals else None
+
+    spd1, spd2 = _med(first_half, "racket_max_speed_px_s"), _med(second_half, "racket_max_speed_px_s")
+    turn1, turn2 = _med(first_half, "shoulder_turn_change"), _med(second_half, "shoulder_turn_change")
+    knee1, knee2 = _med(first_half, "preparation_knee_flexion"), _med(second_half, "preparation_knee_flexion")
+    ext1, ext2 = _med(first_half, "arm_extension"), _med(second_half, "arm_extension")
+
+    spd_delta_pct = round(((spd2 - spd1) / max(abs(spd1), 1.0)) * 100.0, 1) if (spd1 and spd2) else None
+    turn_delta = round(turn2 - turn1, 1) if (turn1 is not None and turn2 is not None) else None
+    knee_delta = round(knee2 - knee1, 1) if (knee1 is not None and knee2 is not None) else None
+    ext_delta = round(ext2 - ext1, 1) if (ext1 is not None and ext2 is not None) else None
+
+    tags = []
+    if knee_delta is not None and knee_delta > 6.0:
+        tags.append(f"后半程屈膝变直 (+{knee_delta}°，下肢疲劳)")
+    if turn_delta is not None and turn_delta < -6.0:
+        tags.append(f"后半程转肩缩水 ({turn_delta}°)")
+    if spd_delta_pct is not None and spd_delta_pct < -8.0:
+        tags.append(f"后半程拍速下滑 ({spd_delta_pct}%)")
+    if not tags:
+        if spd_delta_pct is not None and spd_delta_pct > 5.0:
+            tags.append(f"后半程渐入佳境 (拍速 +{spd_delta_pct}%)")
+        else:
+            tags.append("全程动作保持度良好")
+
+    return {
+        "available": True,
+        "first_half_count": len(first_half),
+        "second_half_count": len(second_half),
+        "speed_delta_pct": spd_delta_pct,
+        "turn_delta_deg": turn_delta,
+        "knee_delta_deg": knee_delta,
+        "extension_delta_deg": ext_delta,
+        "summary": "；".join(tags),
+    }
+
+
+def _compute_personal_attribution(all_swings: List[Dict[str, Any]]) -> Dict[str, Any]:
+    with_speed = [
+        sw for sw in all_swings
+        if (sw.get("racket_max_speed_px_s") or sw.get("racket_speed_px_s")) is not None
+    ]
+    if len(with_speed) < 4:
+        return {"available": False, "sample_count": len(with_speed)}
+
+    ranked = sorted(
+        with_speed,
+        key=lambda sw: float(sw.get("racket_max_speed_px_s") or sw.get("racket_speed_px_s") or 0.0),
+    )
+    k = max(1, len(ranked) // 4)
+    bottom_group = ranked[:k]
+    top_group = ranked[-k:]
+
+    top_spd = round(
+        float(statistics.median([float(s.get("racket_max_speed_px_s") or s.get("racket_speed_px_s")) for s in top_group])),
+        1,
+    )
+    bot_spd = round(
+        float(statistics.median([float(s.get("racket_max_speed_px_s") or s.get("racket_speed_px_s")) for s in bottom_group])),
+        1,
+    )
+
+    factor_specs = [
+        ("shoulder_turn_change", "转肩角度变化", "°", True),
+        ("hip_shoulder_separation", "肩髋分离角", "°", True),
+        ("arm_extension", "持拍侧肘伸展", "°", True),
+        ("preparation_knee_flexion", "准备期屈膝角", "°", False),
+        ("contact_lateral_distance", "触球离体距离", "bw", True),
+        ("weight_transfer", "躯干重心横移", "bw", True),
+    ]
+    factors = []
+    for key, label, unit, higher_better in factor_specs:
+        all_vals = [float(s[key]) for s in ranked if s.get(key) is not None]
+        top_vals = [float(s[key]) for s in top_group if s.get(key) is not None]
+        bot_vals = [float(s[key]) for s in bottom_group if s.get(key) is not None]
+        if not top_vals or not bot_vals or len(all_vals) < 4:
+            continue
+        t_med = float(statistics.median(top_vals))
+        b_med = float(statistics.median(bot_vals))
+        diff = round(t_med - b_med, 2)
+        overall_iqr = max(_compute_iqr(all_vals), abs(float(statistics.median(all_vals))) * 0.08, 1e-3)
+        effect = round(abs(diff) / overall_iqr, 2)
+        factors.append(
+            {
+                "key": key,
+                "label": label,
+                "unit": unit,
+                "top_median": round(t_med, 2),
+                "bottom_median": round(b_med, 2),
+                "diff": diff,
+                "effect_ratio": effect,
+                "higher_better": higher_better,
+            }
+        )
+
+    factors.sort(key=lambda f: f["effect_ratio"], reverse=True)
+    top_drivers = factors[:2]
+    if top_drivers:
+        parts = [
+            f"【{d['label']}】（好球 {d['top_median']}{d['unit']} vs 弱球 {d['bottom_median']}{d['unit']}，差异 {('+' if d['diff'] > 0 else '')}{d['diff']}{d['unit']}）"
+            for d in top_drivers
+        ]
+        insight = f"基于该球员 {len(ranked)} 拍个人样本归因：打出个人前25%高质球（中位 {top_spd} px/s）相比后25%弱球（{bot_spd} px/s），差异最显著的发力开关是 " + " 与 ".join(parts) + "。"
+    else:
+        insight = "样本指标维度尚不足以提取显著归因因子。"
+
+    return {
+        "available": True,
+        "sample_count": len(ranked),
+        "quartile_size": k,
+        "top_speed_median": top_spd,
+        "bottom_speed_median": bot_spd,
+        "factors": factors,
+        "insight": insight,
+    }
+
+
 class SessionDatabase:
     """Thread-safe SQLite store for session traceability and player comparisons."""
 
@@ -560,6 +703,21 @@ class SessionDatabase:
                         for m in (payload.get("analysis_metrics") or [])
                         if isinstance(m, dict) and m.get("key")
                     }
+                    # Derive objective biomechanical flaw flags when explicit coach advice is absent
+                    if not advice_msgs:
+                        turn_v = _safe_float(ev_metrics.get("shoulder_turn_change"))
+                        ext_v = _safe_float(ev_metrics.get("arm_extension"))
+                        knee_v = _safe_float(ev_metrics.get("preparation_knee_flexion"))
+                        drift_v = _safe_float(ev_metrics.get("balance_drift"))
+                        if turn_v is not None and turn_v < 35.0:
+                            warning_counter["转肩幅度不足 (<35°)"] = warning_counter.get("转肩幅度不足 (<35°)", 0) + 1
+                        if ext_v is not None and ext_v < 110.0:
+                            warning_counter["击球手臂未充分舒展 (<110°)"] = warning_counter.get("击球手臂未充分舒展 (<110°)", 0) + 1
+                        if knee_v is not None and knee_v > 164.0:
+                            warning_counter["准备期直膝蓄力不足 (>164°)"] = warning_counter.get("准备期直膝蓄力不足 (>164°)", 0) + 1
+                        if drift_v is not None and drift_v > 0.35:
+                            warning_counter["回位期重心漂移偏大 (>0.35bw)"] = warning_counter.get("回位期重心漂移偏大 (>0.35bw)", 0) + 1
+
                     swings_summary.append(
                         {
                             "event_id": r["event_id"],
@@ -602,7 +760,9 @@ class SessionDatabase:
                     for msg, cnt in sorted(warning_counter.items(), key=lambda kv: kv[1], reverse=True)[:5]
                 ]
 
-                # Additional metric medians + IQR from swing_metrics
+                fatigue_split = _compute_fatigue_split(swings_summary)
+
+                # Additional metric quantiles + IQR + consistency score from swing_metrics
                 m_rows = conn.execute(
                     f"""
                     SELECT metric_key, metric_label, unit, value_num
@@ -616,18 +776,30 @@ class SessionDatabase:
                     bucket_key = (mr["metric_key"], mr["metric_label"] or mr["metric_key"], mr["unit"] or "")
                     metric_buckets.setdefault(bucket_key, []).append(float(mr["value_num"]))
 
-                metric_medians = {
-                    k: {
+                metric_medians = {}
+                consistency_scores = []
+                for (k, lbl, unit), vals in metric_buckets.items():
+                    p25, med, p75, iqr, c_score = _compute_quantiles(vals)
+                    if c_score is not None:
+                        consistency_scores.append(c_score)
+                    metric_medians[k] = {
                         "label": lbl,
                         "unit": unit,
-                        "median": round(statistics.median(vals), 2),
-                        "iqr": _compute_iqr(vals),
+                        "p25": p25,
+                        "median": med,
+                        "p75": p75,
+                        "iqr": iqr,
+                        "consistency_score": c_score,
                         "min": round(min(vals), 2),
                         "max": round(max(vals), 2),
                         "count": len(vals),
                     }
-                    for (k, lbl, unit), vals in metric_buckets.items()
-                }
+
+                consistency_index = (
+                    round(float(statistics.mean(consistency_scores)), 1)
+                    if consistency_scores
+                    else None
+                )
 
                 series.append(
                     {
@@ -646,12 +818,17 @@ class SessionDatabase:
                         "median_brush_angle_deg": round(statistics.median(brushes), 1) if brushes else None,
                         "median_leg_drive_px": round(statistics.median(legs), 1) if legs else None,
                         "kinematic_ok_rate": round((seq_good / seq_total) * 100.0, 1) if seq_total > 0 else None,
+                        "consistency_index": consistency_index,
                         "metrics": metric_medians,
                         "representative_event": rep_swing,
                         "swings": swings_summary,
                         "coach_warnings": coach_warnings,
+                        "fatigue_split": fatigue_split,
                     }
                 )
+
+            all_player_swings = [sw for sess in series for sw in (sess.get("swings") or [])]
+            personal_attribution = _compute_personal_attribution(all_player_swings)
 
             # Compute deltas between latest and previous session
             deltas: Dict[str, Optional[float]] = {}
@@ -674,4 +851,5 @@ class SessionDatabase:
                 "session_count": len(series),
                 "sessions": series,
                 "latest_delta": deltas,
+                "personal_attribution": personal_attribution,
             }

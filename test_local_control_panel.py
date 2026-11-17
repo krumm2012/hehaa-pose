@@ -992,16 +992,23 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
                 json.dumps({
                     "events": [
                         {
-                            "event_id": 1,
+                            "event_id": i,
                             "stroke_type": "Forehand",
                             "is_shadow_swing": False,
+                            "biomechanics": {
+                                "metrics": {
+                                    "shoulder_turn_change": {"value": 30.0 + i, "unit": "deg_2d"},
+                                    "arm_extension": {"value": 105.0 + i, "unit": "deg_2d"},
+                                }
+                            },
                             "extended_biomechanics": {
-                                "racket_head_speed": {"contact_px_s": 1000.0},
+                                "racket_head_speed": {"contact_px_s": 1000.0, "max_px_s": 1100.0 + i * 10},
                                 "brush_angle": {"low_to_high_angle_deg": 18.0},
                                 "leg_drive": {"drive_px": 20.0},
                                 "kinematic_sequence": {"sequence_quality": "ACCEPTABLE"},
                             },
                         }
+                        for i in range(1, 5)
                     ]
                 }),
                 encoding="utf-8",
@@ -1010,16 +1017,23 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
                 json.dumps({
                     "events": [
                         {
-                            "event_id": 1,
+                            "event_id": i,
                             "stroke_type": "Forehand",
                             "is_shadow_swing": False,
+                            "biomechanics": {
+                                "metrics": {
+                                    "shoulder_turn_change": {"value": 65.0 + i, "unit": "deg_2d"},
+                                    "arm_extension": {"value": 145.0 + i, "unit": "deg_2d"},
+                                }
+                            },
                             "extended_biomechanics": {
-                                "racket_head_speed": {"contact_px_s": 1250.0},
+                                "racket_head_speed": {"contact_px_s": 1250.0, "max_px_s": 1500.0 + i * 10},
                                 "brush_angle": {"low_to_high_angle_deg": 25.0},
                                 "leg_drive": {"drive_px": 32.0},
                                 "kinematic_sequence": {"sequence_quality": "OPTIMAL"},
                             },
                         }
+                        for i in range(1, 5)
                     ]
                 }),
                 encoding="utf-8",
@@ -1042,6 +1056,11 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
             self.assertEqual(cmp_res["sessions"][1]["median_racket_speed_px_s"], 1250.0)
             self.assertIsNotNone(cmp_res["sessions"][0]["representative_event"])
             self.assertIn("iqr", cmp_res["sessions"][0]["metrics"]["racket_head_speed"])
+            self.assertIsNotNone(cmp_res["sessions"][0]["consistency_index"])
+            self.assertTrue(cmp_res["sessions"][0]["fatigue_split"]["available"])
+            self.assertTrue(len(cmp_res["sessions"][0]["coach_warnings"]) > 0)
+            self.assertTrue(cmp_res["personal_attribution"]["available"])
+            self.assertIn("转肩角度变化", cmp_res["personal_attribution"]["insight"])
             self.assertEqual(cmp_res["latest_delta"]["median_racket_speed_px_s"], 250.0)
             self.assertEqual(cmp_res["latest_delta"]["median_brush_angle_deg"], 7.0)
             self.assertEqual(cmp_res["latest_delta"]["median_leg_drive_px"], 12.0)
