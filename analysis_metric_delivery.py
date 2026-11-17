@@ -140,3 +140,44 @@ def session_analysis_metrics(events):
                        'categories': {v: sum(r['value'] == v for r in rows)
                                       for v in sorted({r['value'] for r in rows if isinstance(r['value'], str)})}})
     return result
+
+
+DELIVERY_SCHEMA_VERSION = "tennis.swing-delivery.v2"
+
+
+def normalize_swing_event_for_delivery(event):
+    """Normalize legacy and Algo 2.0 swing events into a single canonical delivery shape."""
+    item = dict(event or {})
+    bio = item.get("biomechanics") if isinstance(item.get("biomechanics"), dict) else {}
+    ext = item.get("extended_biomechanics")
+    if not isinstance(ext, dict):
+        ext = bio.get("extended_biomechanics") if isinstance(bio.get("extended_biomechanics"), dict) else {}
+
+    metrics = bio.get("metrics") if isinstance(bio.get("metrics"), dict) else {}
+    seq_metric = metrics.get("kinematic_sequence") if isinstance(metrics.get("kinematic_sequence"), dict) else {}
+    seq_details = seq_metric.get("details") if isinstance(seq_metric.get("details"), dict) else (
+        ext.get("kinematic_sequence") if isinstance(ext.get("kinematic_sequence"), dict) else {}
+    )
+
+    advices = item.get("coach_advices")
+    if not isinstance(advices, list):
+        single = item.get("coach_advice")
+        advices = [single] if isinstance(single, dict) else []
+
+    swing_score = item.get("swing_score")
+    if swing_score is None:
+        swing_score = bio.get("swing_score")
+
+    item["delivery_schema_version"] = DELIVERY_SCHEMA_VERSION
+    item["swing_score"] = swing_score
+    item["swing_grade"] = item.get("swing_grade") or bio.get("swing_grade") or "REVIEW_REQUIRED"
+    item["extended_biomechanics"] = ext
+    item["kinematic_sequence_metric"] = seq_metric
+    item["kinematic_sequence"] = seq_details
+    item["coach_advices"] = advices
+    item["is_shadow_swing"] = bool(
+        item.get("is_shadow_swing") or item.get("contact_status") == "shadow_swing"
+    )
+    item["analysis_metrics"] = event_analysis_metrics(item)
+    item["scoring_blockers"] = scoring_blockers(item)
+    return item

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote, unquote
 
-from analysis_metric_delivery import event_analysis_metrics, scoring_blockers
+from analysis_metric_delivery import normalize_swing_event_for_delivery
 from control_panel.settings import _session_capture_time
 from manual_review_workflow import (
     discover_session_paths,
@@ -164,9 +164,7 @@ class SessionStore:
         raw_events = data.get("events", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
         processed_events = []
         for ev in raw_events:
-            event_item = dict(ev)
-            event_item["analysis_metrics"] = event_analysis_metrics(ev)
-            event_item["scoring_blockers"] = scoring_blockers(ev)
+            event_item = normalize_swing_event_for_delivery(ev)
             clip_rel = ev.get("clip_path")
             if clip_rel and session_dir:
                 clip_path = (session_dir / clip_rel) if not Path(clip_rel).is_absolute() else Path(clip_rel)

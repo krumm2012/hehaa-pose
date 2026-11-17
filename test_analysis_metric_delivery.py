@@ -140,3 +140,38 @@ console.log(renderEventMeasurements(event));
             self.assertEqual(int(writer.write.call_args.args[0][400, 400, 0]), 180)
             freeze = cv2.imread(str(Path(directory) / result['impact_freeze_path']))
             self.assertEqual(int(freeze[400, 400, 0]), 180)
+
+    def test_normalize_swing_event_for_delivery_unifies_legacy_and_algo2_shapes(self):
+        from analysis_metric_delivery import DELIVERY_SCHEMA_VERSION, normalize_swing_event_for_delivery
+
+        legacy_ev = {
+            'event_id': 7,
+            'stroke_type': 'Forehand',
+            'contact_status': 'shadow_swing',
+            'coach_advice': {'code': 'turn', 'message': '多转肩'},
+            'biomechanics': {
+                'swing_score': 82,
+                'swing_grade': 'A',
+                'extended_biomechanics': {
+                    'brush_angle': {'low_to_high_angle_deg': 24},
+                },
+                'metrics': {
+                    'kinematic_sequence': {
+                        'confidence': 0.8,
+                        'coach_eligible': True,
+                        'details': {'sequence_quality': 'OPTIMAL'},
+                    }
+                },
+            },
+        }
+        normalized = normalize_swing_event_for_delivery(legacy_ev)
+        self.assertEqual(normalized['delivery_schema_version'], DELIVERY_SCHEMA_VERSION)
+        self.assertEqual(normalized['swing_score'], 82)
+        self.assertEqual(normalized['swing_grade'], 'A')
+        self.assertTrue(normalized['is_shadow_swing'])
+        self.assertEqual(normalized['coach_advices'], [{'code': 'turn', 'message': '多转肩'}])
+        self.assertEqual(normalized['extended_biomechanics']['brush_angle']['low_to_high_angle_deg'], 24)
+        self.assertEqual(normalized['kinematic_sequence_metric']['confidence'], 0.8)
+        self.assertEqual(normalized['kinematic_sequence']['sequence_quality'], 'OPTIMAL')
+        self.assertIsInstance(normalized['analysis_metrics'], list)
+        self.assertIsInstance(normalized['scoring_blockers'], list)

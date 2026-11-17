@@ -484,12 +484,12 @@
         const cardClass = isShadow ? "swing-item-card is-shadow-card" : "swing-item-card";
         const strokeType = ev.stroke_type || "Swing";
         const strokeText = strokeType === "Forehand" ? "正手 (Forehand)" : (strokeType === "Backhand" ? "反手 (Backhand)" : strokeType);
-        const score = ev.swing_score ?? (ev.biomechanics?.swing_score ?? "—");
-        const grade = ev.swing_grade || (ev.biomechanics?.swing_grade || "REVIEW_REQUIRED");
+        const score = ev.swing_score ?? "—";
+        const grade = ev.swing_grade || "REVIEW_REQUIRED";
         const badgeClass = isShadow ? "badge-shadow" : (score === "—" ? "badge-provisional" : `badge-${grade.toLowerCase()}`);
         const badgeText = isShadow ? "空挥试拍 · 无来球" : (score === "—" ? "诊断参考 · 待教练评分" : `${grade} · ${score}分`);
 
-        const ext = ev.extended_biomechanics || (ev.biomechanics?.extended_biomechanics || {});
+        const ext = ev.extended_biomechanics || {};
         const reasonNames = {
           automatic_rubric_not_independently_validated: "自动评分标准待教练独立标定",
           contact_not_confirmed: "触球为视觉候选推断（待人工确认）",
@@ -522,8 +522,8 @@
         }
         const brushText = `${brushDirection}<small> · 上升比 ${riseRatio != null ? escapeHtml(String(riseRatio)) + "x" : "未观测"}</small>`;
 
-        const seqMetric = ev.biomechanics?.metrics?.kinematic_sequence || {};
-        const seq = seqMetric.details || ext.kinematic_sequence || {};
+        const seqMetric = ev.kinematic_sequence_metric || {};
+        const seq = ev.kinematic_sequence || {};
         const seqDisplay = kinematicDisplay(seq, seqMetric);
 
         const leg = ext.leg_drive || {};
@@ -537,7 +537,7 @@
           legText = escapeHtml(observationReason(leg));
         }
 
-        const advices = ev.coach_advices || (ev.coach_advice ? [ev.coach_advice] : []);
+        const advices = ev.coach_advices || [];
         const coachHtml = advices.length > 0 ? `
           <div class="swing-coach-box">
             <span class="coach-label">AI 教练建议</span>
