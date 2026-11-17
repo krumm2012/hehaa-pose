@@ -464,6 +464,14 @@ class LocalPipelineController:
             ]
             self._artifacts.clear()
             self._artifacts.update(artifacts)
+            req_player_id = str(payload.get("player_id") or "").strip()
+            if req_player_id and artifacts.get("session_id"):
+                try:
+                    self._session_store.assign_session_player(
+                        {"session_id": artifacts["session_id"], "player_id": req_player_id}
+                    )
+                except Exception:
+                    pass
             self._reader_thread = threading.Thread(
                 target=self._read_output,
                 args=(self._process,),
@@ -531,6 +539,22 @@ class LocalPipelineController:
 
     def list_sessions(self) -> List[Dict[str, Any]]:
         return self._session_store.list_sessions()
+
+    def list_players(self) -> List[Dict[str, Any]]:
+        return self._session_store.list_players()
+
+    def create_or_update_player(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return self._session_store.create_or_update_player(payload)
+
+    def assign_session_player(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return self._session_store.assign_session_player(payload)
+
+    def compare_player_sessions(
+        self,
+        player_id: Optional[str] = None,
+        stroke_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self._session_store.compare_player_sessions(player_id, stroke_type)
 
     def evaluate_manual_review(
         self,

@@ -175,6 +175,17 @@ def create_handler(controller: LocalPipelineController):
                     self._send_json(controller.status(), head_only=head_only)
                 elif path == "/api/sessions":
                     self._send_json(controller.list_sessions(), head_only=head_only)
+                elif path == "/api/players":
+                    self._send_json({"players": controller.list_players()}, head_only=head_only)
+                elif path == "/api/players/compare":
+                    from urllib.parse import parse_qs, urlsplit
+                    query = parse_qs(urlsplit(self.path).query)
+                    p_id = query.get("player_id", [None])[0]
+                    s_type = query.get("stroke_type", [None])[0]
+                    self._send_json(
+                        controller.compare_player_sessions(player_id=p_id, stroke_type=s_type),
+                        head_only=head_only,
+                    )
                 elif path == "/api/session/events":
                     from urllib.parse import parse_qs, urlsplit
                     query = parse_qs(urlsplit(self.path).query)
@@ -257,6 +268,8 @@ def create_handler(controller: LocalPipelineController):
                 "/api/ground/info",
                 "/api/ground/save",
                 "/api/ground/profile/import",
+                "/api/players",
+                "/api/sessions/assign-player",
             }
             if path not in allowed_paths:
                 self.send_error(HTTPStatus.NOT_FOUND)
@@ -303,6 +316,10 @@ def create_handler(controller: LocalPipelineController):
                     self._send_json(controller.save_ground_calibration(payload))
                 elif path == '/api/ground/profile/import':
                     self._send_json(controller.import_ground_camera_profile(payload))
+                elif path == "/api/players":
+                    self._send_json(controller.create_or_update_player(payload))
+                elif path == "/api/sessions/assign-player":
+                    self._send_json(controller.assign_session_player(payload))
                 elif path == "/api/manual-review/evaluate":
                     self._send_json(
                         controller.evaluate_manual_review(

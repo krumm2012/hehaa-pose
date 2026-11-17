@@ -319,9 +319,14 @@
       savePreset();
       $("start-button").disabled = true;
       try {
+        const startPayload = formPayload();
+        const playerSel = document.getElementById("session-player-select");
+        if (playerSel && playerSel.value) {
+          startPayload.player_id = playerSel.value;
+        }
         const response = await api("/api/start", {
           method: "POST",
-          body: JSON.stringify(formPayload())
+          body: JSON.stringify(startPayload)
         });
         updateStatus(await response.json());
         showToast("分析进程已启动");

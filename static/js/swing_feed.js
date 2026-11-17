@@ -282,11 +282,18 @@
       }
     }
 
+    let activeDisplayedSessionId = "";
+    let cachedSessionsList = [];
+
     function handleSwingsData(data, force = false) {
       if (!data) return;
       const events = data.events || [];
       const summary = data.summary || {};
       latestRawEvents = events;
+      if (data.session_id) {
+        activeDisplayedSessionId = data.session_id;
+        syncSessionPlayerDropdown();
+      }
       const currentSid = typeof selectedSessionId !== "undefined" ? selectedSessionId : "";
       const currentHash = JSON.stringify([data.session_id, events, summary, filterOnlyValidSwings, currentSid]);
       if (!force && currentHash === lastEventsJson) return;
@@ -314,23 +321,187 @@
         const response = await api("/api/sessions");
         if (!response.ok) return;
         const sessions = await response.json();
+        cachedSessionsList = Array.isArray(sessions) ? sessions : [];
         const prevVal = selectedSessionId || select.value;
         select.innerHTML = '<option value="">⚡ 实时 / 最新会话</option>';
-        sessions.forEach(s => {
+        cachedSessionsList.forEach(s => {
           const opt = document.createElement("option");
           opt.value = s.session_id;
           const activeTag = s.is_active ? " [进行中]" : "";
+          const playerTag = (s.player_name && s.player_id && s.player_id !== "default") ? ` [${s.player_name}]` : "";
           const sourceTag = s.source_name ? ` · ${s.source_name}` : "";
-          opt.textContent = `${s.display_time}${activeTag} (${s.event_count}拍)${sourceTag}`;
+          opt.textContent = `${s.display_time}${activeTag}${playerTag} (${s.event_count}拍)${sourceTag}`;
           opt.title = `${s.session_id}`;
           select.appendChild(opt);
         });
         if (prevVal && Array.from(select.options).some(o => o.value === prevVal)) {
           select.value = prevVal;
         }
+        syncSessionPlayerDropdown();
       } catch (err) {
         console.error("加载历史会话列表异常:", err);
       }
+    }
+
+    function syncSessionPlayerDropdown() {
+      const playerSel = document.getElementById("session-player-select");
+      if (!playerSel || !activeDisplayedSessionId) return;
+      const matched = cachedSessionsList.find(s => s.session_id === activeDisplayedSessionId);
+      if (matched && matched.player_id && Array.from(playerSel.options).some(o => o.value === matched.player_id)) {
+        playerSel.value = matched.player_id;
+      }
+    }
+
+    async function loadPlayers() {
+      try {
+        const response = await api("/api/players");
+        if (!response.ok) return;
+        const data = await response.json();
+        const players = data.players || [];
+        ["session-player-select", "compare-player-select"].forEach(id => {
+          const sel = document.getElementById(id);
+          if (!sel) return;
+          const prev = sel.value;
+          sel.innerHTML = "";
+          players.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.player_id;
+            opt.textContent = `${p.display_name}${p.session_count ? ` (${p.session_count})` : ""}`;
+            sel.appendChild(opt);
+          });
+          if (prev && Array.from(sel.options).some(o => o.value === prev)) {
+            sel.value = prev;
+          }
+        });
+        syncSessionPlayerDropdown();
+      } catch (err) {
+        console.error("加载球员列表失败:", err);
+      }
+    }
+
+    async function createNewPlayer() {
+      const name = window.prompt("请输入新球员姓名（例如：张三）：");
+      if (!name || !name.trim()) return;
+      try {
+        const res = await api("/api/players", {
+          method: "POST",
+          body: JSON.stringify({ display_name: name.trim() }),
+        });
+        if (!res.ok) return;
+        const created = await res.json();
+        await loadPlayers();
+        const sel = document.getElementById("session-player-select");
+        if (sel && created.player_id) {
+          sel.value = created.player_id;
+          await assignCurrentSessionPlayer(created.player_id);
+        }
+        const cmpSel = document.getElementById("compare-player-select");
+        if (cmpSel && created.player_id) cmpSel.value = created.player_id;
+      } catch (err) {
+        console.error("创建球员失败:", err);
+      }
+    }
+
+    async function assignCurrentSessionPlayer(playerId) {
+      const targetSid = selectedSessionId || activeDisplayedSessionId;
+      if (!targetSid || !playerId) return;
+      try {
+        const res = await api("/api/sessions/assign-player", {
+          method: "POST",
+          body: JSON.stringify({ session_id: targetSid, player_id: playerId }),
+        });
+        if (res.ok) {
+          await loadSessionList();
+          await loadPlayers();
+          const panel = document.getElementById("player-compare-panel");
+          if (panel && !panel.hidden) {
+            await loadPlayerComparison();
+          }
+        }
+      } catch (err) {
+        console.error("绑定会话球员失败:", err);
+      }
+    }
+
+    async function loadPlayerComparison() {
+      const body = document.getElementById("player-compare-body");
+      const playerSel = document.getElementById("compare-player-select");
+      const strokeSel = document.getElementById("compare-stroke-select");
+      if (!body || !playerSel) return;
+      const pid = playerSel.value || "default";
+      const stroke = strokeSel ? strokeSel.value : "all";
+      body.textContent = "正在查询数据库对比数据...";
+      try {
+        const res = await api(`/api/players/compare?player_id=${encodeURIComponent(pid)}&stroke_type=${encodeURIComponent(stroke)}`);
+        if (!res.ok) {
+          body.textContent = "查询对比数据失败";
+          return;
+        }
+        const data = await res.json();
+        const sessions = data.sessions || [];
+        if (sessions.length === 0) {
+          body.innerHTML = `<span style="color:var(--muted);">该球员在当前筛选条件下暂无已入库击球会话。请先通过上方“球员”下拉框将历史或当前会话归属给该球员。</span>`;
+          return;
+        }
+        const delta = data.latest_delta || {};
+        const fmtDelta = (val, unit) => {
+          if (val == null) return "—";
+          const sign = val > 0 ? "+" : "";
+          const color = val > 0 ? "var(--green, #4ade80)" : (val < 0 ? "#f87171" : "var(--muted)");
+          return `<span style="color:${color}; font-weight:600;">${sign}${val}${unit}</span>`;
+        };
+        const deltaBanner = sessions.length >= 2 ? `
+          <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:10px; padding:8px 10px; background:rgba(255,255,255,0.03); border-radius:6px;">
+            <span>最近两次对比：</span>
+            <span>拍速 ${fmtDelta(delta.median_racket_speed_px_s, " px/s")}</span>
+            <span>刷球角 ${fmtDelta(delta.median_brush_angle_deg, "°")}</span>
+            <span>蹬地 ${fmtDelta(delta.median_leg_drive_px, " px")}</span>
+            <span>动力链达标率 ${fmtDelta(delta.kinematic_ok_rate, "%")}</span>
+          </div>
+        ` : "";
+
+        body.innerHTML = `
+          ${deltaBanner}
+          <div style="overflow:auto;">
+            <table style="width:100%; font-size:12px; border-collapse:collapse; text-align:left;">
+              <thead>
+                <tr style="border-bottom:1px solid var(--border); color:var(--muted);">
+                  <th style="padding:5px 6px;">日期时间</th>
+                  <th style="padding:5px 6px;">样本数</th>
+                  <th style="padding:5px 6px;">拍框速度中位</th>
+                  <th style="padding:5px 6px;">刷球角中位</th>
+                  <th style="padding:5px 6px;">蹬地位移中位</th>
+                  <th style="padding:5px 6px;">动力链达标</th>
+                  <th style="padding:5px 6px;">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${sessions.slice().reverse().map(s => `
+                  <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <td style="padding:5px 6px;">${escapeHtml(s.display_time)}${s.source_name ? `<small style="display:block;color:var(--muted);">${escapeHtml(s.source_name)}</small>` : ""}</td>
+                    <td style="padding:5px 6px;">${s.matched_swings} 拍</td>
+                    <td style="padding:5px 6px;">${s.median_racket_speed_px_s != null ? `${s.median_racket_speed_px_s} px/s` : "—"}</td>
+                    <td style="padding:5px 6px;">${s.median_brush_angle_deg != null ? `${s.median_brush_angle_deg}°` : "—"}</td>
+                    <td style="padding:5px 6px;">${s.median_leg_drive_px != null ? `${s.median_leg_drive_px} px` : "—"}</td>
+                    <td style="padding:5px 6px;">${s.kinematic_ok_rate != null ? `${s.kinematic_ok_rate}%` : "—"}</td>
+                    <td style="padding:5px 6px;"><button type="button" class="button" style="height:22px;padding:0 6px;font-size:11px;" onclick="jumpToSession('${escapeHtml(s.session_id)}')">查看</button></td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        `;
+      } catch (err) {
+        body.textContent = "查询对比数据异常";
+      }
+    }
+
+    function jumpToSession(sid) {
+      const sel = document.getElementById("history-session-select");
+      if (sel) sel.value = sid;
+      selectedSessionId = sid;
+      visibleSwingLimit = 20;
+      pollSwings(true);
     }
 
     function initSessionHistorySelector() {
@@ -343,6 +514,44 @@
           pollSwings(true);
         });
       }
+      const playerSel = document.getElementById("session-player-select");
+      if (playerSel && !playerSel.dataset.bound) {
+        playerSel.dataset.bound = "true";
+        playerSel.addEventListener("change", (e) => {
+          assignCurrentSessionPlayer(e.target.value);
+        });
+      }
+      const addBtn = document.getElementById("add-player-btn");
+      if (addBtn && !addBtn.dataset.bound) {
+        addBtn.dataset.bound = "true";
+        addBtn.addEventListener("click", createNewPlayer);
+      }
+      const toggleCmpBtn = document.getElementById("toggle-player-compare-btn");
+      if (toggleCmpBtn && !toggleCmpBtn.dataset.bound) {
+        toggleCmpBtn.dataset.bound = "true";
+        toggleCmpBtn.addEventListener("click", () => {
+          const panel = document.getElementById("player-compare-panel");
+          if (!panel) return;
+          panel.hidden = !panel.hidden;
+          if (!panel.hidden) loadPlayerComparison();
+        });
+      }
+      const cmpPlayerSel = document.getElementById("compare-player-select");
+      if (cmpPlayerSel && !cmpPlayerSel.dataset.bound) {
+        cmpPlayerSel.dataset.bound = "true";
+        cmpPlayerSel.addEventListener("change", loadPlayerComparison);
+      }
+      const cmpStrokeSel = document.getElementById("compare-stroke-select");
+      if (cmpStrokeSel && !cmpStrokeSel.dataset.bound) {
+        cmpStrokeSel.dataset.bound = "true";
+        cmpStrokeSel.addEventListener("change", loadPlayerComparison);
+      }
+      const refreshCmpBtn = document.getElementById("refresh-compare-btn");
+      if (refreshCmpBtn && !refreshCmpBtn.dataset.bound) {
+        refreshCmpBtn.dataset.bound = "true";
+        refreshCmpBtn.addEventListener("click", loadPlayerComparison);
+      }
+      loadPlayers();
     }
 
     function kinematicDisplay(seq, metric = {}) {
@@ -744,6 +953,7 @@
       window.pollSwings = pollSwings;
       window.loadSessionList = loadSessionList;
       window.initSessionHistorySelector = initSessionHistorySelector;
+      window.jumpToSession = jumpToSession;
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", initSessionHistorySelector);
       } else {

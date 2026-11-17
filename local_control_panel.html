@@ -89,6 +89,14 @@
                   <option value="">⚡ 实时 / 最新会话</option>
                 </select>
               </div>
+              <div class="session-player-wrapper" style="display: inline-flex; align-items: center; gap: 4px;">
+                <label for="session-player-select" style="font-size: 11px; color: var(--muted); white-space: nowrap;">球员:</label>
+                <select id="session-player-select" class="session-select" style="font-size: 11px; height: 26px; padding: 2px 6px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 4px; color: var(--text); max-width: 120px;" title="绑定当前会话归属球员（新启动会话也会自动绑定）">
+                  <option value="default">默认球员</option>
+                </select>
+                <button id="add-player-btn" class="button" type="button" style="height: 26px; padding: 0 7px; font-size: 12px;" title="新增球员档案">+</button>
+                <button id="toggle-player-compare-btn" class="button" type="button" style="height: 26px; padding: 0 8px; font-size: 11px;" title="查看同一球员跨会话指标趋势对比">📊 历史对比</button>
+              </div>
               <div class="swing-filter-toggle" role="group" aria-label="击球过滤模式">
                 <button id="filter-valid-btn" class="filter-btn active" type="button" title="隐藏已确认空挥；候选仍需人工复核">🎯 查看挥拍候选</button>
                 <button id="filter-all-btn" class="filter-btn" type="button" title="完整记录：显示包含空挥试拍在内的所有检测事件">全部记录</button>
@@ -99,6 +107,23 @@
           </div>
           <!-- Session Coaching Summary Dashboard -->
           <div id="session-summary-box" class="session-summary-box" hidden></div>
+
+          <!-- Cross-Session Player Comparison Panel -->
+          <div id="player-compare-panel" hidden style="margin-bottom: 14px; padding: 12px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 10px;">
+            <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;">
+              <strong style="font-size:13px;">📊 同人跨会话挥拍趋势对比</strong>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <select id="compare-player-select" class="session-select" style="font-size:11px; height:26px; padding:2px 6px; background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:4px; color:var(--text);"></select>
+                <select id="compare-stroke-select" class="session-select" style="font-size:11px; height:26px; padding:2px 6px; background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:4px; color:var(--text);">
+                  <option value="all">全部动作</option>
+                  <option value="Forehand">正手 (Forehand)</option>
+                  <option value="Backhand">反手 (Backhand)</option>
+                </select>
+                <button id="refresh-compare-btn" class="button" type="button" style="height:26px; padding:0 8px; font-size:11px;">刷新</button>
+              </div>
+            </div>
+            <div id="player-compare-body" style="font-size:12px; color:var(--muted);">请选择球员查看历次训练对比...</div>
+          </div>
 
           <div id="swings-empty" class="preview-empty" style="min-height: 110px;">
             <strong>暂无挥拍击球事件</strong>

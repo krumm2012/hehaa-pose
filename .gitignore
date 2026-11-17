@@ -115,3 +115,6 @@ clips/highlights/recordings/
 debug_frames/
 debug_frames/
 graphify-out/
+
+# Local runtime SQLite database
+data/tennis_sessions.db*

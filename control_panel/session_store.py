@@ -11,6 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote, unquote
 
 from analysis_metric_delivery import normalize_swing_event_for_delivery
+from control_panel.db_store import DEFAULT_PLAYER_ID, DEFAULT_PLAYER_NAME, SessionDatabase
 from control_panel.settings import _session_capture_time
 from manual_review_workflow import (
     discover_session_paths,
@@ -35,6 +36,7 @@ class SessionStore:
         self._cache_lock = threading.Lock()
         self._session_events_cache: Dict[str, Tuple[Tuple[int, int], Dict[str, Any]]] = {}
         self._session_meta_cache: Dict[str, Dict[str, Any]] = {}
+        self.db = SessionDatabase(self.workspace / "data" / "tennis_sessions.db")
 
     @property
     def _artifacts(self) -> Dict[str, str]:
@@ -197,6 +199,21 @@ class SessionStore:
                 if len(self._session_events_cache) >= 32:
                     self._session_events_cache.pop(next(iter(self._session_events_cache)))
                 self._session_events_cache[cache_key] = (file_sig, result)
+            if resolved_sid:
+                try:
+                    ts = _session_capture_time(session_dir) if session_dir else target_file.stat().st_mtime
+                    disp = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
+                    self.db.upsert_session(
+                        session_id=resolved_sid,
+                        display_time=disp,
+                        timestamp=ts,
+                        events=processed_events,
+                        json_mtime_ns=file_sig[0],
+                        json_size=file_sig[1],
+                        session_dir=str(session_dir) if session_dir else None,
+                    )
+                except Exception:
+                    pass
         return dict(result)
 
     def session_summary(self, session_id: Optional[str] = None) -> Dict[str, Any]:
@@ -213,6 +230,7 @@ class SessionStore:
         with self._state_lock:
             active_session_id = self._artifacts.get("session_id")
 
+        db_sigs = self.db.get_session_signatures()
         sessions = []
         seen_names = set()
         for d in base_dir.iterdir():
@@ -247,6 +265,7 @@ class SessionStore:
                 sessions.append(entry)
                 continue
 
+            ev_list: Optional[List[Dict[str, Any]]] = None
             event_count = 0
             if events_files:
                 try:
@@ -258,13 +277,19 @@ class SessionStore:
                     pass
 
             source_name = None
+            stream_id_val = None
+            processing_mode_val = None
             if manifest_files:
                 try:
                     with open(manifest_files[0], "r", encoding="utf-8") as f:
                         m_data = json.load(f)
-                        src = m_data.get("capture", {}).get("source") or m_data.get("session", {}).get("source")
+                        cap = m_data.get("capture") or {}
+                        sess_m = m_data.get("session") or {}
+                        src = cap.get("source") or sess_m.get("source")
                         if src:
                             source_name = Path(src).name
+                        stream_id_val = sess_m.get("stream_id")
+                        processing_mode_val = cap.get("processing_mode")
                 except Exception:
                     pass
 
@@ -281,6 +306,23 @@ class SessionStore:
             if not display_time:
                 display_time = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
 
+            if ev_list is not None and ev_sig is not None and db_sigs.get(d.name) != ev_sig:
+                try:
+                    self.db.upsert_session(
+                        session_id=d.name,
+                        display_time=display_time,
+                        timestamp=ts,
+                        events=ev_list,
+                        source_name=source_name,
+                        stream_id=stream_id_val,
+                        processing_mode=processing_mode_val,
+                        json_mtime_ns=ev_sig[0],
+                        json_size=ev_sig[1],
+                        session_dir=str(d),
+                    )
+                except Exception:
+                    pass
+
             meta_data = {
                 "session_id": d.name,
                 "display_time": display_time,
@@ -295,6 +337,12 @@ class SessionStore:
             entry["is_active"] = (d.name == active_session_id)
             sessions.append(entry)
 
+        player_map = self.db.get_session_player_map()
+        for entry in sessions:
+            p_info = player_map.get(entry["session_id"])
+            entry["player_id"] = p_info["player_id"] if p_info else DEFAULT_PLAYER_ID
+            entry["player_name"] = p_info["player_name"] if p_info else DEFAULT_PLAYER_NAME
+
         with self._cache_lock:
             stale_keys = [k for k in self._session_meta_cache if k not in seen_names]
             for k in stale_keys:
@@ -302,6 +350,33 @@ class SessionStore:
 
         sessions.sort(key=lambda s: s["timestamp"], reverse=True)
         return sessions
+
+    def list_players(self) -> List[Dict[str, Any]]:
+        return self.db.list_players()
+
+    def create_or_update_player(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return self.db.create_or_update_player(
+            display_name=payload.get("display_name") or "",
+            player_id=payload.get("player_id"),
+            dominant_hand=payload.get("dominant_hand") or "right",
+            notes=payload.get("notes") or "",
+        )
+
+    def assign_session_player(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return self.db.assign_session_player(
+            session_id=str(payload.get("session_id") or ""),
+            player_id=str(payload.get("player_id") or DEFAULT_PLAYER_ID),
+        )
+
+    def compare_player_sessions(
+        self,
+        player_id: Optional[str] = None,
+        stroke_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return self.db.compare_player_sessions(
+            player_id=player_id or DEFAULT_PLAYER_ID,
+            stroke_type=stroke_type,
+        )
 
 
     def evaluate_manual_review(

@@ -979,6 +979,71 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
             ev_2 = controller.session_events("session_20261117T100000Z_abc")
             self.assertEqual(ev_2["total_events"], 2)
 
+    def test_sqlite_player_binding_and_cross_session_comparison(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = root / "data" / "analysis_results" / "control_panel"
+            s1_dir = base / "session_20261115T100000Z_s1"
+            s2_dir = base / "session_20261117T100000Z_s2"
+            s1_dir.mkdir(parents=True)
+            s2_dir.mkdir(parents=True)
+
+            (s1_dir / "s1_swing_events.json").write_text(
+                json.dumps({
+                    "events": [
+                        {
+                            "event_id": 1,
+                            "stroke_type": "Forehand",
+                            "is_shadow_swing": False,
+                            "extended_biomechanics": {
+                                "racket_head_speed": {"contact_px_s": 1000.0},
+                                "brush_angle": {"low_to_high_angle_deg": 18.0},
+                                "leg_drive": {"drive_px": 20.0},
+                                "kinematic_sequence": {"sequence_quality": "ACCEPTABLE"},
+                            },
+                        }
+                    ]
+                }),
+                encoding="utf-8",
+            )
+            (s2_dir / "s2_swing_events.json").write_text(
+                json.dumps({
+                    "events": [
+                        {
+                            "event_id": 1,
+                            "stroke_type": "Forehand",
+                            "is_shadow_swing": False,
+                            "extended_biomechanics": {
+                                "racket_head_speed": {"contact_px_s": 1250.0},
+                                "brush_angle": {"low_to_high_angle_deg": 25.0},
+                                "leg_drive": {"drive_px": 32.0},
+                                "kinematic_sequence": {"sequence_quality": "OPTIMAL"},
+                            },
+                        }
+                    ]
+                }),
+                encoding="utf-8",
+            )
+
+            controller = self.make_controller(root)
+            sessions = controller.list_sessions()
+            self.assertEqual(len(sessions), 2)
+
+            created = controller.create_or_update_player({"display_name": "张三", "dominant_hand": "right"})
+            pid = created["player_id"]
+            self.assertEqual(created["display_name"], "张三")
+
+            controller.assign_session_player({"session_id": "session_20261115T100000Z_s1", "player_id": pid})
+            controller.assign_session_player({"session_id": "session_20261117T100000Z_s2", "player_id": pid})
+
+            cmp_res = controller.compare_player_sessions(player_id=pid, stroke_type="Forehand")
+            self.assertEqual(cmp_res["session_count"], 2)
+            self.assertEqual(cmp_res["sessions"][0]["median_racket_speed_px_s"], 1000.0)
+            self.assertEqual(cmp_res["sessions"][1]["median_racket_speed_px_s"], 1250.0)
+            self.assertEqual(cmp_res["latest_delta"]["median_racket_speed_px_s"], 250.0)
+            self.assertEqual(cmp_res["latest_delta"]["median_brush_angle_deg"], 7.0)
+            self.assertEqual(cmp_res["latest_delta"]["median_leg_drive_px"], 12.0)
+
 
 if __name__ == "__main__":
     unittest.main()
