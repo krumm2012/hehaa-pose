@@ -10,6 +10,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote
 
 from analysis_metric_delivery import normalize_swing_event_for_delivery
 
@@ -40,6 +41,19 @@ def _safe_int(value: Any) -> Optional[int]:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _compute_iqr(values: List[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    ordered = sorted(values)
+    n = len(ordered)
+    mid = n // 2
+    lower = ordered[:mid]
+    upper = ordered[mid:] if n % 2 == 0 else ordered[mid + 1 :]
+    q1 = statistics.median(lower) if lower else ordered[0]
+    q3 = statistics.median(upper) if upper else ordered[-1]
+    return round(float(q3 - q1), 2)
 
 
 class SessionDatabase:
@@ -460,7 +474,7 @@ class SessionDatabase:
             session_rows = conn.execute(
                 """
                 SELECT session_id, display_time, timestamp, source_name,
-                       event_count, forehand_count, backhand_count, shadow_count
+                       event_count, forehand_count, backhand_count, shadow_count, session_dir
                 FROM sessions
                 WHERE player_id = ? AND event_count > 0
                 ORDER BY timestamp ASC
@@ -471,9 +485,13 @@ class SessionDatabase:
             if len(session_rows) > limit:
                 session_rows = session_rows[-limit:]
 
+            workspace_root = self.db_path.resolve().parent.parent
             series = []
             for s in session_rows:
                 sid = s["session_id"]
+                s_dir = Path(s["session_dir"]) if s["session_dir"] else (
+                    workspace_root / "data" / "analysis_results" / "control_panel" / sid
+                )
                 params: List[Any] = [sid]
                 stroke_clause = ""
                 if stroke_filter:
@@ -482,15 +500,19 @@ class SessionDatabase:
 
                 ev_rows = conn.execute(
                     f"""
-                    SELECT stroke_type, is_shadow_swing, swing_score,
-                           racket_speed_px_s, brush_angle_deg, leg_drive_px, sequence_quality
+                    SELECT event_id, stroke_type, is_shadow_swing, swing_score,
+                           start_frame, end_frame, contact_frame,
+                           racket_speed_px_s, racket_max_speed_px_s,
+                           brush_angle_deg, leg_drive_px, sequence_quality, payload_json
                     FROM swing_events
                     WHERE session_id = ? AND is_shadow_swing = 0{stroke_clause}
+                    ORDER BY event_id ASC
                     """,
                     params,
                 ).fetchall()
 
                 speeds = [r["racket_speed_px_s"] for r in ev_rows if r["racket_speed_px_s"] is not None]
+                max_speeds = [r["racket_max_speed_px_s"] for r in ev_rows if r["racket_max_speed_px_s"] is not None]
                 brushes = [r["brush_angle_deg"] for r in ev_rows if r["brush_angle_deg"] is not None]
                 legs = [r["leg_drive_px"] for r in ev_rows if r["leg_drive_px"] is not None]
                 scores = [r["swing_score"] for r in ev_rows if r["swing_score"] is not None]
@@ -499,7 +521,88 @@ class SessionDatabase:
                     1 for r in ev_rows if r["sequence_quality"] in ("OPTIMAL", "ACCEPTABLE")
                 )
 
-                # Additional metric medians from swing_metrics
+                # Extract per-swing media URLs, key metrics, and coach warnings
+                swings_summary = []
+                warning_counter: Dict[str, int] = {}
+                for r in ev_rows:
+                    try:
+                        payload = json.loads(r["payload_json"]) if r["payload_json"] else {}
+                    except Exception:
+                        payload = {}
+                    clip_url = payload.get("clip_url") or ""
+                    if not clip_url and payload.get("clip_path") and s_dir:
+                        cp = (s_dir / payload["clip_path"]) if not Path(payload["clip_path"]).is_absolute() else Path(payload["clip_path"])
+                        if cp.exists():
+                            try:
+                                clip_url = f"/artifacts/{quote(str(cp.resolve().relative_to(workspace_root)))}"
+                            except ValueError:
+                                pass
+                    freeze_url = payload.get("impact_freeze_url") or ""
+                    if not freeze_url and payload.get("impact_freeze_path") and s_dir:
+                        fp = (s_dir / payload["impact_freeze_path"]) if not Path(payload["impact_freeze_path"]).is_absolute() else Path(payload["impact_freeze_path"])
+                        if fp.exists():
+                            try:
+                                freeze_url = f"/artifacts/{quote(str(fp.resolve().relative_to(workspace_root)))}"
+                            except ValueError:
+                                pass
+
+                    advices = payload.get("coach_advices") or []
+                    advice_msgs = []
+                    for adv in advices:
+                        if isinstance(adv, dict):
+                            msg = str(adv.get("message") or adv.get("code") or "").strip()
+                            if msg:
+                                advice_msgs.append(msg)
+                                warning_counter[msg] = warning_counter.get(msg, 0) + 1
+
+                    ev_metrics = {
+                        m["key"]: m.get("value")
+                        for m in (payload.get("analysis_metrics") or [])
+                        if isinstance(m, dict) and m.get("key")
+                    }
+                    swings_summary.append(
+                        {
+                            "event_id": r["event_id"],
+                            "stroke_type": r["stroke_type"],
+                            "start_frame": r["start_frame"],
+                            "end_frame": r["end_frame"],
+                            "contact_frame": r["contact_frame"],
+                            "clip_url": clip_url,
+                            "impact_freeze_url": freeze_url,
+                            "racket_speed_px_s": r["racket_speed_px_s"],
+                            "racket_max_speed_px_s": r["racket_max_speed_px_s"] or ev_metrics.get("racket_max_speed"),
+                            "shoulder_turn_change": ev_metrics.get("shoulder_turn_change"),
+                            "hip_shoulder_separation": ev_metrics.get("hip_shoulder_separation"),
+                            "arm_extension": ev_metrics.get("arm_extension"),
+                            "preparation_knee_flexion": ev_metrics.get("preparation_knee_flexion"),
+                            "weight_transfer": ev_metrics.get("weight_transfer"),
+                            "contact_lateral_distance": ev_metrics.get("contact_lateral_distance"),
+                            "coach_messages": advice_msgs,
+                        }
+                    )
+
+                # Choose representative swing (prefer media + closest to median peak speed)
+                rep_swing = None
+                if swings_summary:
+                    with_media = [sw for sw in swings_summary if sw["clip_url"] or sw["impact_freeze_url"]]
+                    candidates = with_media if with_media else swings_summary
+                    target_spd = statistics.median(max_speeds) if max_speeds else 0.0
+                    rep_swing = min(
+                        candidates,
+                        key=lambda sw: abs((sw.get("racket_max_speed_px_s") or target_spd) - target_spd),
+                    )
+
+                total_valid = max(1, len(ev_rows))
+                coach_warnings = [
+                    {
+                        "message": msg,
+                        "count": cnt,
+                        "rate_pct": round((cnt / total_valid) * 100.0, 1),
+                    }
+                    for msg, cnt in sorted(warning_counter.items(), key=lambda kv: kv[1], reverse=True)[:5]
+                ]
+
+                # Additional metric medians + IQR from swing_metrics
                 m_rows = conn.execute(
                     f"""
                     SELECT metric_key, metric_label, unit, value_num
@@ -518,6 +621,9 @@ class SessionDatabase:
                         "label": lbl,
                         "unit": unit,
                         "median": round(statistics.median(vals), 2),
+                        "iqr": _compute_iqr(vals),
+                        "min": round(min(vals), 2),
+                        "max": round(max(vals), 2),
                         "count": len(vals),
                     }
                     for (k, lbl, unit), vals in metric_buckets.items()
@@ -534,11 +640,16 @@ class SessionDatabase:
                         "backhand_count": s["backhand_count"],
                         "shadow_count": s["shadow_count"],
                         "median_score": round(statistics.median(scores), 1) if scores else None,
-                        "median_racket_speed_px_s": round(statistics.median(speeds), 1) if speeds else None,
+                        "median_racket_speed_px_s": round(statistics.median(speeds), 1) if speeds else (
+                            metric_medians.get("racket_max_speed", {}).get("median")
+                        ),
                         "median_brush_angle_deg": round(statistics.median(brushes), 1) if brushes else None,
                         "median_leg_drive_px": round(statistics.median(legs), 1) if legs else None,
                         "kinematic_ok_rate": round((seq_good / seq_total) * 100.0, 1) if seq_total > 0 else None,
                         "metrics": metric_medians,
+                        "representative_event": rep_swing,
+                        "swings": swings_summary,
+                        "coach_warnings": coach_warnings,
                     }
                 )
 

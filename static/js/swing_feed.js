@@ -423,6 +423,315 @@
       }
     }
 
+    let latestCompareSessions = [];
+    let selectedCompareSessionA = "";
+    let selectedCompareSessionB = "";
+
+    const CORE_COMPARE_METRICS = [
+      { key: "shoulder_turn_change", label: "转肩角度变化", unit: "°", refMax: 90, higherBetter: true },
+      { key: "hip_shoulder_separation", label: "肩髋分离角", unit: "°", refMax: 45, higherBetter: true },
+      { key: "preparation_knee_flexion", label: "准备期屈膝角", unit: "°", refMax: 175, higherBetter: false },
+      { key: "arm_extension", label: "持拍侧肘伸展", unit: "°", refMax: 170, higherBetter: true },
+      { key: "contact_lateral_distance", label: "触球离体距离", unit: "bw", refMax: 1.5, higherBetter: true },
+      { key: "weight_transfer", label: "躯干重心横移", unit: "bw", refMax: 0.8, higherBetter: true },
+      { key: "balance_drift", label: "回位期重心漂移", unit: "bw", refMax: 0.6, higherBetter: false },
+      { key: "racket_max_speed", label: "拍框峰值速度", unit: "px/s", refMax: 1800, higherBetter: true },
+    ];
+
+    function buildDualRadarSvg(sessA, sessB) {
+      const axes = [
+        CORE_COMPARE_METRICS[0],
+        CORE_COMPARE_METRICS[1],
+        CORE_COMPARE_METRICS[3],
+        CORE_COMPARE_METRICS[4],
+        CORE_COMPARE_METRICS[5],
+        CORE_COMPARE_METRICS[7],
+      ];
+      const cx = 115, cy = 115, rMax = 74;
+      const toPt = (idx, ratio) => {
+        const angle = -Math.PI / 2 + (idx * 2 * Math.PI) / axes.length;
+        const r = Math.max(0.08, Math.min(1.0, ratio)) * rMax;
+        return `${(cx + r * Math.cos(angle)).toFixed(1)},${(cy + r * Math.sin(angle)).toFixed(1)}`;
+      };
+      const gridRings = [0.33, 0.66, 1.0].map(level => {
+        const pts = axes.map((_, i) => toPt(i, level)).join(" ");
+        return `<polygon points="${pts}" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="1"/>`;
+      }).join("");
+      const axisLines = axes.map((ax, i) => {
+        const angle = -Math.PI / 2 + (i * 2 * Math.PI) / axes.length;
+        const x2 = cx + rMax * Math.cos(angle);
+        const y2 = cy + rMax * Math.sin(angle);
+        const lx = cx + (rMax + 24) * Math.cos(angle);
+        const ly = cy + (rMax + 16) * Math.sin(angle);
+        return `
+          <line x1="${cx}" y1="${cy}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+          <text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" fill="var(--muted)" font-size="10" text-anchor="middle" dominant-baseline="middle">${ax.label.slice(0, 4)}</text>
+        `;
+      }).join("");
+
+      const polyFor = (sess) => {
+        if (!sess) return "";
+        return axes.map((ax, i) => {
+          const val = sess.metrics?.[ax.key]?.median ?? 0;
+          return toPt(i, val / ax.refMax);
+        }).join(" ");
+      };
+      const ptsA = polyFor(sessA);
+      const ptsB = polyFor(sessB);
+
+      return `
+        <svg viewBox="0 0 230 230" width="220" height="220" style="display:block; margin:0 auto;">
+          ${gridRings}
+          ${axisLines}
+          ${ptsA ? `<polygon points="${ptsA}" fill="rgba(56,189,248,0.14)" stroke="#38bdf8" stroke-width="1.8" stroke-dasharray="4,3"/>` : ""}
+          ${ptsB ? `<polygon points="${ptsB}" fill="rgba(74,222,128,0.20)" stroke="#4ade80" stroke-width="2.2"/>` : ""}
+        </svg>
+        <div style="display:flex; justify-content:center; gap:14px; font-size:11px; color:var(--muted); margin-top:4px;">
+          <span><span style="display:inline-block;width:10px;height:2px;background:#38bdf8;vertical-align:middle;margin-right:4px;"></span>基准 A (虚线)</span>
+          <span><span style="display:inline-block;width:10px;height:2px;background:#4ade80;vertical-align:middle;margin-right:4px;"></span>当前 B (实线)</span>
+        </div>
+      `;
+    }
+
+    function renderSwingVisualSlot(sideLabel, sess, slotId) {
+      if (!sess) return `<div style="padding:10px;color:var(--muted);">未选择会话</div>`;
+      const swings = sess.swings || [];
+      const rep = sess.representative_event || swings[0] || null;
+      if (!rep) return `<div style="padding:10px;color:var(--muted);">该会话无有效实战挥拍</div>`;
+
+      const optionsHtml = swings.map(sw => {
+        const selected = sw.event_id === rep.event_id ? "selected" : "";
+        const spd = sw.racket_max_speed_px_s != null ? ` · ${Math.round(sw.racket_max_speed_px_s)}px/s` : "";
+        return `<option value="${sw.event_id}" ${selected}>Event #${sw.event_id} (${escapeHtml(sw.stroke_type || "Swing")}${spd})</option>`;
+      }).join("");
+
+      return `
+        <div style="flex:1; min-width:250px; background:rgba(0,0,0,0.22); border:1px solid rgba(255,255,255,0.07); border-radius:8px; padding:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
+            <strong style="font-size:11px; color:${slotId === 'A' ? '#38bdf8' : '#4ade80'};">${sideLabel} · ${escapeHtml(sess.display_time)}</strong>
+            <select id="cmp-swing-select-${slotId}" onchange="updateCompareSwingSlot('${slotId}')" style="font-size:11px; height:22px; background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:4px; color:var(--text);">
+              ${optionsHtml}
+            </select>
+          </div>
+          <div id="cmp-swing-media-${slotId}">
+            ${buildSwingMediaBoxHtml(rep, slotId)}
+          </div>
+        </div>
+      `;
+    }
+
+    function buildSwingMediaBoxHtml(sw, slotId) {
+      if (!sw) return "";
+      const startF = sw.start_frame || 0;
+      const contactF = sw.contact_frame ?? startF;
+      const offsetSec = Math.max(0, (contactF - startF) / 25.0).toFixed(2);
+      const mediaHtml = sw.clip_url ? `
+        <video id="cmp-video-${slotId}" src="${sw.clip_url}" poster="${sw.impact_freeze_url || ''}" controls loop playsinline
+               data-contact-sec="${offsetSec}"
+               style="width:100%; max-height:190px; border-radius:6px; background:#000;"></video>
+      ` : (sw.impact_freeze_url ? `
+        <img src="${sw.impact_freeze_url}" alt="触球定格" style="width:100%; max-height:190px; object-fit:contain; border-radius:6px; background:#000;"/>
+      ` : `<div style="height:120px;display:flex;align-items:center;justify-content:center;color:var(--muted);background:rgba(255,255,255,0.02);border-radius:6px;">无视频/定格切片</div>`);
+
+      const turnVal = sw.shoulder_turn_change != null ? `${Number(sw.shoulder_turn_change).toFixed(1)}°` : "—";
+      const extVal = sw.arm_extension != null ? `${Number(sw.arm_extension).toFixed(1)}°` : "—";
+      const spdVal = sw.racket_max_speed_px_s != null ? `${Math.round(sw.racket_max_speed_px_s)} px/s` : "—";
+
+      return `
+        ${mediaHtml}
+        <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-top:5px;">
+          <span>触球帧: ${sw.contact_frame ?? "—"}F (${offsetSec}s)</span>
+          <span>转肩 ${turnVal} · 肘角 ${extVal} · 峰值 ${spdVal}</span>
+        </div>
+      `;
+    }
+
+    function updateCompareSwingSlot(slotId) {
+      const sessId = slotId === "A" ? selectedCompareSessionA : selectedCompareSessionB;
+      const sess = latestCompareSessions.find(s => s.session_id === sessId);
+      const sel = document.getElementById(`cmp-swing-select-${slotId}`);
+      const box = document.getElementById(`cmp-swing-media-${slotId}`);
+      if (!sess || !sel || !box) return;
+      const eid = Number(sel.value);
+      const sw = (sess.swings || []).find(x => x.event_id === eid) || sess.representative_event;
+      box.innerHTML = buildSwingMediaBoxHtml(sw, slotId);
+    }
+
+    function syncPlayABClips(rate = 0.25) {
+      const vA = document.getElementById("cmp-video-A");
+      const vB = document.getElementById("cmp-video-B");
+      [vA, vB].forEach(v => {
+        if (!v) return;
+        const cSec = parseFloat(v.dataset.contactSec || "0") || 0;
+        v.pause();
+        v.playbackRate = rate;
+        v.currentTime = Math.max(0, cSec - 0.5);
+        v.play().catch(() => {});
+      });
+    }
+
+    function syncSeekABContact() {
+      const vA = document.getElementById("cmp-video-A");
+      const vB = document.getElementById("cmp-video-B");
+      [vA, vB].forEach(v => {
+        if (!v) return;
+        const cSec = parseFloat(v.dataset.contactSec || "0") || 0;
+        v.pause();
+        v.currentTime = Math.max(0, cSec);
+      });
+    }
+
+    function renderCompareDashboard() {
+      const body = document.getElementById("player-compare-body");
+      if (!body) return;
+      const sessions = latestCompareSessions;
+      if (!sessions || sessions.length === 0) {
+        body.innerHTML = `<span style="color:var(--muted);">该球员在当前筛选条件下暂无已入库击球会话。请先通过上方“球员”下拉框将历史或当前会话归属给该球员。</span>`;
+        return;
+      }
+
+      if (!selectedCompareSessionB || !sessions.some(s => s.session_id === selectedCompareSessionB)) {
+        selectedCompareSessionB = sessions[sessions.length - 1].session_id;
+      }
+      if (!selectedCompareSessionA || !sessions.some(s => s.session_id === selectedCompareSessionA)) {
+        selectedCompareSessionA = sessions.length >= 2 ? sessions[sessions.length - 2].session_id : sessions[0].session_id;
+      }
+
+      const sessA = sessions.find(s => s.session_id === selectedCompareSessionA) || sessions[0];
+      const sessB = sessions.find(s => s.session_id === selectedCompareSessionB) || sessions[sessions.length - 1];
+
+      const sessOptsA = sessions.map(s => `<option value="${escapeHtml(s.session_id)}" ${s.session_id === sessA.session_id ? "selected" : ""}>${escapeHtml(s.display_time)} (${s.matched_swings}拍)</option>`).join("");
+      const sessOptsB = sessions.map(s => `<option value="${escapeHtml(s.session_id)}" ${s.session_id === sessB.session_id ? "selected" : ""}>${escapeHtml(s.display_time)} (${s.matched_swings}拍)</option>`).join("");
+
+      const metricRowsHtml = CORE_COMPARE_METRICS.map(cfg => {
+        const mA = sessA?.metrics?.[cfg.key];
+        const mB = sessB?.metrics?.[cfg.key];
+        const valA = mA?.median;
+        const valB = mB?.median;
+        const iqrA = mA?.iqr;
+        const iqrB = mB?.iqr;
+
+        let deltaHtml = "—";
+        let proofHtml = "<span style='color:var(--muted);'>样本待积累</span>";
+        if (valA != null && valB != null) {
+          const diff = Number((valB - valA).toFixed(2));
+          const improved = cfg.higherBetter ? diff > 0 : diff < 0;
+          const sign = diff > 0 ? "+" : "";
+          const color = diff === 0 ? "var(--muted)" : (improved ? "#4ade80" : "#f87171");
+          deltaHtml = `<span style="color:${color}; font-weight:600;">${sign}${diff} ${cfg.unit}</span>`;
+
+          if (iqrA != null && iqrB != null && (mA.count >= 2 || mB.count >= 2)) {
+            const iqrDiff = Number((iqrB - iqrA).toFixed(2));
+            if (improved && iqrDiff <= 0) {
+              proofHtml = `<span style="color:#4ade80;">✅ 幅度提升 + 波动收窄 (${iqrA}→${iqrB})</span>`;
+            } else if (improved) {
+              proofHtml = `<span style="color:#38bdf8;">↗ 幅度提升 · 波动 ±${iqrB}</span>`;
+            } else if (iqrDiff < 0) {
+              proofHtml = `<span style="color:#fbbf24;">⚖️ 动作定型收窄 (${iqrA}→${iqrB})</span>`;
+            } else {
+              proofHtml = `<span style="color:var(--muted);">波动 IQR: ±${iqrB}</span>`;
+            }
+          }
+        }
+
+        return `
+          <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+            <td style="padding:5px 6px;"><strong>${cfg.label}</strong></td>
+            <td style="padding:5px 6px; color:#38bdf8;">${valA != null ? `${valA} ${cfg.unit} <small style="color:var(--muted);">±${iqrA ?? 0}</small>` : "—"}</td>
+            <td style="padding:5px 6px; color:#4ade80;">${valB != null ? `${valB} ${cfg.unit} <small style="color:var(--muted);">±${iqrB ?? 0}</small>` : "—"}</td>
+            <td style="padding:5px 6px;">${deltaHtml}</td>
+            <td style="padding:5px 6px; font-size:11px;">${proofHtml}</td>
+          </tr>
+        `;
+      }).join("");
+
+      body.innerHTML = `
+        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; background:rgba(255,255,255,0.03); border-radius:8px; margin-bottom:12px;">
+          <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
+            <span style="color:#38bdf8; font-weight:600;">基准 A:</span>
+            <select id="cmp-session-a" onchange="onChangeCompareAB()" style="font-size:11px; height:24px; background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:4px; color:var(--text);">${sessOptsA}</select>
+            <span style="color:var(--muted);">VS</span>
+            <span style="color:#4ade80; font-weight:600;">当前 B:</span>
+            <select id="cmp-session-b" onchange="onChangeCompareAB()" style="font-size:11px; height:24px; background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:4px; color:var(--text);">${sessOptsB}</select>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button type="button" class="button" style="height:24px; padding:0 8px; font-size:11px;" onclick="syncSeekABContact()">💥 对齐触球帧定格</button>
+            <button type="button" class="button" style="height:24px; padding:0 8px; font-size:11px;" onclick="syncPlayABClips(0.25)">🎬 0.25x 触球同步慢放</button>
+            <button type="button" class="button" style="height:24px; padding:0 8px; font-size:11px;" onclick="syncPlayABClips(0.5)">0.5x 同步</button>
+          </div>
+        </div>
+
+        <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
+          ${renderSwingVisualSlot("基准会话 A", sessA, "A")}
+          ${renderSwingVisualSlot("当前会话 B", sessB, "B")}
+        </div>
+
+        <div style="display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-bottom:12px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:10px;">
+          <div style="flex:0 0 230px; margin:0 auto;">
+            ${buildDualRadarSvg(sessA, sessB)}
+          </div>
+          <div style="flex:1; min-width:300px; overflow:auto;">
+            <table style="width:100%; font-size:12px; border-collapse:collapse; text-align:left;">
+              <thead>
+                <tr style="border-bottom:1px solid var(--border); color:var(--muted);">
+                  <th style="padding:5px 6px;">核心生物力学维度</th>
+                  <th style="padding:5px 6px;">基准 A (中位±IQR)</th>
+                  <th style="padding:5px 6px;">当前 B (中位±IQR)</th>
+                  <th style="padding:5px 6px;">中位变化 Δ</th>
+                  <th style="padding:5px 6px;">数据稳定性证明</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${metricRowsHtml}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <details style="margin-top:6px;">
+          <summary style="cursor:pointer; color:var(--muted); font-size:11px;">查看全部 ${sessions.length} 次训练会话序列明细</summary>
+          <div style="overflow:auto; margin-top:8px;">
+            <table style="width:100%; font-size:11px; border-collapse:collapse; text-align:left;">
+              <thead>
+                <tr style="border-bottom:1px solid var(--border); color:var(--muted);">
+                  <th style="padding:4px 6px;">日期时间</th>
+                  <th style="padding:4px 6px;">有效拍数</th>
+                  <th style="padding:4px 6px;">转肩变化</th>
+                  <th style="padding:4px 6px;">肩髋分离</th>
+                  <th style="padding:4px 6px;">肘伸展角</th>
+                  <th style="padding:4px 6px;">重心横移</th>
+                  <th style="padding:4px 6px;">拍框峰值</th>
+                  <th style="padding:4px 6px;">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${sessions.slice().reverse().map(s => `
+                  <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+                    <td style="padding:4px 6px;">${escapeHtml(s.display_time)}</td>
+                    <td style="padding:4px 6px;">${s.matched_swings} 拍</td>
+                    <td style="padding:4px 6px;">${s.metrics?.shoulder_turn_change?.median != null ? `${s.metrics.shoulder_turn_change.median}°` : "—"}</td>
+                    <td style="padding:4px 6px;">${s.metrics?.hip_shoulder_separation?.median != null ? `${s.metrics.hip_shoulder_separation.median}°` : "—"}</td>
+                    <td style="padding:4px 6px;">${s.metrics?.arm_extension?.median != null ? `${s.metrics.arm_extension.median}°` : "—"}</td>
+                    <td style="padding:4px 6px;">${s.metrics?.weight_transfer?.median != null ? `${s.metrics.weight_transfer.median} bw` : "—"}</td>
+                    <td style="padding:4px 6px;">${s.metrics?.racket_max_speed?.median != null ? `${Math.round(s.metrics.racket_max_speed.median)} px/s` : "—"}</td>
+                    <td style="padding:4px 6px;"><button type="button" class="button" style="height:20px;padding:0 6px;font-size:10px;" onclick="jumpToSession('${escapeHtml(s.session_id)}')">打开会话</button></td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      `;
+    }
+
+    function onChangeCompareAB() {
+      const selA = document.getElementById("cmp-session-a");
+      const selB = document.getElementById("cmp-session-b");
+      if (selA) selectedCompareSessionA = selA.value;
+      if (selB) selectedCompareSessionB = selB.value;
+      renderCompareDashboard();
+    }
+
     async function loadPlayerComparison() {
       const body = document.getElementById("player-compare-body");
       const playerSel = document.getElementById("compare-player-select");
@@ -438,59 +747,8 @@
           return;
         }
         const data = await res.json();
-        const sessions = data.sessions || [];
-        if (sessions.length === 0) {
-          body.innerHTML = `<span style="color:var(--muted);">该球员在当前筛选条件下暂无已入库击球会话。请先通过上方“球员”下拉框将历史或当前会话归属给该球员。</span>`;
-          return;
-        }
-        const delta = data.latest_delta || {};
-        const fmtDelta = (val, unit) => {
-          if (val == null) return "—";
-          const sign = val > 0 ? "+" : "";
-          const color = val > 0 ? "var(--green, #4ade80)" : (val < 0 ? "#f87171" : "var(--muted)");
-          return `<span style="color:${color}; font-weight:600;">${sign}${val}${unit}</span>`;
-        };
-        const deltaBanner = sessions.length >= 2 ? `
-          <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:10px; padding:8px 10px; background:rgba(255,255,255,0.03); border-radius:6px;">
-            <span>最近两次对比：</span>
-            <span>拍速 ${fmtDelta(delta.median_racket_speed_px_s, " px/s")}</span>
-            <span>刷球角 ${fmtDelta(delta.median_brush_angle_deg, "°")}</span>
-            <span>蹬地 ${fmtDelta(delta.median_leg_drive_px, " px")}</span>
-            <span>动力链达标率 ${fmtDelta(delta.kinematic_ok_rate, "%")}</span>
-          </div>
-        ` : "";
-
-        body.innerHTML = `
-          ${deltaBanner}
-          <div style="overflow:auto;">
-            <table style="width:100%; font-size:12px; border-collapse:collapse; text-align:left;">
-              <thead>
-                <tr style="border-bottom:1px solid var(--border); color:var(--muted);">
-                  <th style="padding:5px 6px;">日期时间</th>
-                  <th style="padding:5px 6px;">样本数</th>
-                  <th style="padding:5px 6px;">拍框速度中位</th>
-                  <th style="padding:5px 6px;">刷球角中位</th>
-                  <th style="padding:5px 6px;">蹬地位移中位</th>
-                  <th style="padding:5px 6px;">动力链达标</th>
-                  <th style="padding:5px 6px;">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${sessions.slice().reverse().map(s => `
-                  <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
-                    <td style="padding:5px 6px;">${escapeHtml(s.display_time)}${s.source_name ? `<small style="display:block;color:var(--muted);">${escapeHtml(s.source_name)}</small>` : ""}</td>
-                    <td style="padding:5px 6px;">${s.matched_swings} 拍</td>
-                    <td style="padding:5px 6px;">${s.median_racket_speed_px_s != null ? `${s.median_racket_speed_px_s} px/s` : "—"}</td>
-                    <td style="padding:5px 6px;">${s.median_brush_angle_deg != null ? `${s.median_brush_angle_deg}°` : "—"}</td>
-                    <td style="padding:5px 6px;">${s.median_leg_drive_px != null ? `${s.median_leg_drive_px} px` : "—"}</td>
-                    <td style="padding:5px 6px;">${s.kinematic_ok_rate != null ? `${s.kinematic_ok_rate}%` : "—"}</td>
-                    <td style="padding:5px 6px;"><button type="button" class="button" style="height:22px;padding:0 6px;font-size:11px;" onclick="jumpToSession('${escapeHtml(s.session_id)}')">查看</button></td>
-                  </tr>
-                `).join("")}
-              </tbody>
-            </table>
-          </div>
-        `;
+        latestCompareSessions = data.sessions || [];
+        renderCompareDashboard();
       } catch (err) {
         body.textContent = "查询对比数据异常";
       }
@@ -954,6 +1212,10 @@
       window.loadSessionList = loadSessionList;
       window.initSessionHistorySelector = initSessionHistorySelector;
       window.jumpToSession = jumpToSession;
+      window.onChangeCompareAB = onChangeCompareAB;
+      window.updateCompareSwingSlot = updateCompareSwingSlot;
+      window.syncPlayABClips = syncPlayABClips;
+      window.syncSeekABContact = syncSeekABContact;
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", initSessionHistorySelector);
       } else {
