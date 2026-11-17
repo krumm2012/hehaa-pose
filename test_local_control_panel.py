@@ -946,6 +946,39 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
                 server.server_close()
                 thread.join(timeout=2)
 
+    def test_session_cache_invalidation_on_update(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            s_dir = root / "data" / "analysis_results" / "control_panel" / "session_20261117T100000Z_abc"
+            s_dir.mkdir(parents=True)
+            events_path = s_dir / "test_swing_events.json"
+            events_path.write_text(json.dumps({"events": [{"event_id": 1, "stroke_type": "forehand"}]}), encoding="utf-8")
+
+            controller = self.make_controller(root)
+            listed_1 = controller.list_sessions()
+            self.assertEqual(len(listed_1), 1)
+            self.assertEqual(listed_1[0]["event_count"], 1)
+
+            ev_1 = controller.session_events("session_20261117T100000Z_abc")
+            self.assertEqual(ev_1["total_events"], 1)
+
+            # Update file with a second event (ensure size & mtime change)
+            events_path.write_text(
+                json.dumps({
+                    "events": [
+                        {"event_id": 1, "stroke_type": "forehand"},
+                        {"event_id": 2, "stroke_type": "backhand"},
+                    ]
+                }),
+                encoding="utf-8",
+            )
+
+            listed_2 = controller.list_sessions()
+            self.assertEqual(listed_2[0]["event_count"], 2)
+
+            ev_2 = controller.session_events("session_20261117T100000Z_abc")
+            self.assertEqual(ev_2["total_events"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

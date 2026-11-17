@@ -230,6 +230,7 @@ class MirrorCalibrationServer:
                 target["mirror_view"] = new_mirror_view
                 roi_bak = self.roi_config_path.with_name(f"{self.roi_config_path.name}.bak_{ts}")
                 shutil.copy2(self.roi_config_path, roi_bak)
+                self._prune_backups(self.roi_config_path, keep=3)
                 backup_names.append(roi_bak.name)
                 with open(self.roi_config_path, "w", encoding="utf-8") as f:
                     yaml.safe_dump(roi_doc, f, allow_unicode=True, sort_keys=False)
@@ -241,6 +242,7 @@ class MirrorCalibrationServer:
                 full_cfg = yaml.safe_load(f) or {}
             dual_bak = self.config_path.with_name(f"{self.config_path.name}.bak_{ts}")
             shutil.copy2(self.config_path, dual_bak)
+            self._prune_backups(self.config_path, keep=3)
             backup_names.append(dual_bak.name)
 
             if "mirror_view" not in full_cfg:
@@ -261,6 +263,20 @@ class MirrorCalibrationServer:
             "polygon": new_mirror_view["polygon"],
             "mask_polygon": new_mirror_view.get("mask_polygon", []),
         }
+
+    @staticmethod
+    def _prune_backups(config_path: Path, keep: int = 3) -> None:
+        """Retain only the newest `keep` timestamped `.bak_*` backups for a config file."""
+        backups = sorted(
+            config_path.parent.glob(f"{config_path.name}.bak_*"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for stale in backups[keep:]:
+            try:
+                stale.unlink()
+            except OSError:
+                pass
 
 
 def make_handler(server_instance: MirrorCalibrationServer):

@@ -339,6 +339,7 @@
         select.dataset.bound = "true";
         select.addEventListener("change", (e) => {
           selectedSessionId = e.target.value;
+          visibleSwingLimit = 20;
           pollSwings(true);
         });
       }
@@ -475,54 +476,9 @@
         </tbody></table></div></details>`;
     }
 
-    function renderSwingsFeed(events) {
-      const emptyEl = $("swings-empty");
-      const listEl = $("swings-feed-list");
-      const badgeEl = $("swings-count-badge");
-      if (!listEl) return;
+    let visibleSwingLimit = 20;
 
-      const allEvents = events || [];
-      const validEvents = allEvents.filter(ev => !isShadowEvent(ev));
-      const shadowCount = allEvents.length - validEvents.length;
-      const displayEvents = filterOnlyValidSwings ? validEvents : allEvents;
-
-      if (badgeEl) {
-        if (filterOnlyValidSwings) {
-          badgeEl.textContent = `${validEvents.length} 次挥拍候选`;
-          if (shadowCount > 0) {
-            badgeEl.title = `共检测到 ${allEvents.length} 次挥拍，已自动过滤 ${shadowCount} 次空挥试拍`;
-          } else {
-            badgeEl.removeAttribute("title");
-          }
-        } else {
-          badgeEl.textContent = `${allEvents.length} 次挥拍 (含空挥)`;
-          badgeEl.removeAttribute("title");
-        }
-      }
-
-      if (displayEvents.length === 0) {
-        if (emptyEl) {
-          emptyEl.hidden = false;
-          if (allEvents.length > 0 && filterOnlyValidSwings) {
-            emptyEl.innerHTML = `
-              <strong>暂无有效实战击球</strong>
-              <span>当前会话已自动过滤 ${shadowCount} 次空挥试拍。点击右上角“全部记录”可查看试拍动作，或在击球后查看针对性教练诊断。</span>
-            `;
-          } else {
-            emptyEl.innerHTML = `
-              <strong>暂无挥拍击球事件</strong>
-              <span>启动流水线分析后，检测到的击球动作、高级遥测卡片与慢动作视频切片将在此处实时显示。</span>
-            `;
-          }
-        }
-        listEl.innerHTML = "";
-        return;
-      }
-
-      if (emptyEl) emptyEl.hidden = true;
-
-      const reversed = [...displayEvents].reverse();
-      listEl.innerHTML = reversed.map(ev => {
+    function buildSwingCardHtml(ev) {
         const eid = ev.event_id;
         const isShadow = isShadowEvent(ev);
         const cardClass = isShadow ? "swing-item-card is-shadow-card" : "swing-item-card";
@@ -671,7 +627,105 @@
             </div>
           </div>
         `;
-      }).join("");
+    }
+
+    function renderSwingsFeed(events) {
+      const emptyEl = $("swings-empty");
+      const listEl = $("swings-feed-list");
+      const badgeEl = $("swings-count-badge");
+      if (!listEl) return;
+
+      const allEvents = events || [];
+      const validEvents = allEvents.filter(ev => !isShadowEvent(ev));
+      const shadowCount = allEvents.length - validEvents.length;
+      const displayEvents = filterOnlyValidSwings ? validEvents : allEvents;
+
+      if (badgeEl) {
+        if (filterOnlyValidSwings) {
+          badgeEl.textContent = `${validEvents.length} 次挥拍候选`;
+          if (shadowCount > 0) {
+            badgeEl.title = `共检测到 ${allEvents.length} 次挥拍，已自动过滤 ${shadowCount} 次空挥试拍`;
+          } else {
+            badgeEl.removeAttribute("title");
+          }
+        } else {
+          badgeEl.textContent = `${allEvents.length} 次挥拍 (含空挥)`;
+          badgeEl.removeAttribute("title");
+        }
+      }
+
+      if (displayEvents.length === 0) {
+        if (emptyEl) {
+          emptyEl.hidden = false;
+          if (allEvents.length > 0 && filterOnlyValidSwings) {
+            emptyEl.innerHTML = `
+              <strong>暂无有效实战击球</strong>
+              <span>当前会话已自动过滤 ${shadowCount} 次空挥试拍。点击右上角“全部记录”可查看试拍动作，或在击球后查看针对性教练诊断。</span>
+            `;
+          } else {
+            emptyEl.innerHTML = `
+              <strong>暂无挥拍击球事件</strong>
+              <span>启动流水线分析后，检测到的击球动作、高级遥测卡片与慢动作视频切片将在此处实时显示。</span>
+            `;
+          }
+        }
+        listEl.innerHTML = "";
+        return;
+      }
+
+      if (emptyEl) emptyEl.hidden = true;
+
+      const reversed = [...displayEvents].reverse();
+      const sliced = reversed.slice(0, visibleSwingLimit);
+      const targetIds = new Set(sliced.map(ev => `swing-card-${ev.event_id}`));
+
+      Array.from(listEl.children).forEach(child => {
+        if (child.id === "swing-load-more-wrap" || !targetIds.has(child.id)) {
+          child.remove();
+        }
+      });
+
+      sliced.forEach((ev, idx) => {
+        const eid = ev.event_id;
+        const cardId = `swing-card-${eid}`;
+        const cardHash = JSON.stringify(ev);
+        let cardEl = document.getElementById(cardId);
+
+        if (!cardEl || cardEl.dataset.cardHash !== cardHash) {
+          const tpl = document.createElement("template");
+          tpl.innerHTML = buildSwingCardHtml(ev).trim();
+          const newCard = tpl.content.firstElementChild;
+          newCard.dataset.cardHash = cardHash;
+          if (cardEl && cardEl.parentNode === listEl) {
+            listEl.replaceChild(newCard, cardEl);
+          } else {
+            const refNode = listEl.children[idx] || null;
+            listEl.insertBefore(newCard, refNode);
+          }
+        } else {
+          const refNode = listEl.children[idx] || null;
+          if (cardEl !== refNode) {
+            listEl.insertBefore(cardEl, refNode);
+          }
+        }
+      });
+
+      if (reversed.length > visibleSwingLimit) {
+        const remaining = reversed.length - visibleSwingLimit;
+        const moreWrap = document.createElement("div");
+        moreWrap.id = "swing-load-more-wrap";
+        moreWrap.style.cssText = "text-align:center; padding:12px 0 4px;";
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn-clip";
+        btn.textContent = `加载更早击球 (剩余 ${remaining} 拍)`;
+        btn.onclick = () => {
+          visibleSwingLimit += 20;
+          renderSwingsFeed(latestRawEvents);
+        };
+        moreWrap.appendChild(btn);
+        listEl.appendChild(moreWrap);
+      }
 
       activeVideoPlayers.forEach(eid => {
         const c = document.getElementById(`clip-player-${eid}`);

@@ -499,6 +499,9 @@ class LocalPipelineController:
         self._public_command: List[str] = []
         self._artifacts: Dict[str, str] = {}
         self._ground_contexts = {}
+        self._cache_lock = threading.Lock()
+        self._session_events_cache: Dict[str, Tuple[Tuple[int, int], Dict[str, Any]]] = {}
+        self._session_meta_cache: Dict[str, Dict[str, Any]] = {}
 
     def _notify_change(self) -> None:
         with self._change_condition:
@@ -990,6 +993,20 @@ class LocalPipelineController:
                 "summary": build_session_coaching_summary([]),
             }
 
+        resolved_sid = target_session_id or (session_dir.name if session_dir else None)
+        try:
+            st = target_file.stat()
+            file_sig = (int(st.st_mtime_ns), int(st.st_size))
+        except OSError:
+            file_sig = None
+
+        cache_key = f"{target_file}::{resolved_sid or ''}"
+        if file_sig is not None:
+            with self._cache_lock:
+                cached = self._session_events_cache.get(cache_key)
+                if cached is not None and cached[0] == file_sig:
+                    return dict(cached[1])
+
         try:
             with target_file.open("r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -1028,12 +1045,18 @@ class LocalPipelineController:
             processed_events.append(event_item)
 
         summary = build_session_coaching_summary(processed_events)
-        return {
-            "session_id": target_session_id or (session_dir.name if session_dir else None),
+        result = {
+            "session_id": resolved_sid,
             "events": processed_events,
             "total_events": len(processed_events),
             "summary": summary,
         }
+        if file_sig is not None:
+            with self._cache_lock:
+                if len(self._session_events_cache) >= 32:
+                    self._session_events_cache.pop(next(iter(self._session_events_cache)))
+                self._session_events_cache[cache_key] = (file_sig, result)
+        return dict(result)
 
     def session_summary(self, session_id: Optional[str] = None) -> Dict[str, Any]:
         events_res = self.session_events(session_id=session_id)
@@ -1050,10 +1073,39 @@ class LocalPipelineController:
             active_session_id = self._artifacts.get("session_id")
 
         sessions = []
+        seen_names = set()
         for d in base_dir.iterdir():
             if not d.is_dir() or d.name.startswith("."):
                 continue
+            seen_names.add(d.name)
             events_files = list(d.glob("*_swing_events.json"))
+            manifest_files = list(d.glob("*_evidence_manifest.json"))
+
+            ev_sig = None
+            if events_files:
+                try:
+                    ev_st = events_files[0].stat()
+                    ev_sig = (int(ev_st.st_mtime_ns), int(ev_st.st_size))
+                except OSError:
+                    ev_sig = None
+
+            mf_sig = None
+            if manifest_files:
+                try:
+                    mf_st = manifest_files[0].stat()
+                    mf_sig = (int(mf_st.st_mtime_ns), int(mf_st.st_size))
+                except OSError:
+                    mf_sig = None
+
+            meta_sig = (ev_sig, mf_sig)
+            with self._cache_lock:
+                cached_meta = self._session_meta_cache.get(d.name)
+            if cached_meta is not None and cached_meta.get("sig") == meta_sig:
+                entry = dict(cached_meta["data"])
+                entry["is_active"] = (d.name == active_session_id)
+                sessions.append(entry)
+                continue
+
             event_count = 0
             if events_files:
                 try:
@@ -1065,7 +1117,6 @@ class LocalPipelineController:
                     pass
 
             source_name = None
-            manifest_files = list(d.glob("*_evidence_manifest.json"))
             if manifest_files:
                 try:
                     with open(manifest_files[0], "r", encoding="utf-8") as f:
@@ -1089,14 +1140,24 @@ class LocalPipelineController:
             if not display_time:
                 display_time = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")
 
-            sessions.append({
+            meta_data = {
                 "session_id": d.name,
                 "display_time": display_time,
                 "timestamp": ts,
                 "event_count": event_count,
                 "source_name": source_name,
-                "is_active": (d.name == active_session_id),
-            })
+            }
+            with self._cache_lock:
+                self._session_meta_cache[d.name] = {"sig": meta_sig, "data": meta_data}
+
+            entry = dict(meta_data)
+            entry["is_active"] = (d.name == active_session_id)
+            sessions.append(entry)
+
+        with self._cache_lock:
+            stale_keys = [k for k in self._session_meta_cache if k not in seen_names]
+            for k in stale_keys:
+                del self._session_meta_cache[k]
 
         sessions.sort(key=lambda s: s["timestamp"], reverse=True)
         return sessions
