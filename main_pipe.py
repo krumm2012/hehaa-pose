@@ -32,16 +32,11 @@ from reader_runtime import DeadlinePacer, SourceFrameClock, SourceMediaClock
 from roi_stream_config import resolve_roi_stream_profile, sanitize_stream_source
 from video_overlay_primitives import draw_ball_outline
 
+from pipeline import create_output_directory
 from pipeline.cli import build_argument_parser, main_cli as _pipeline_main_cli
 from pipeline.evidence import write_evidence_manifest
 from pipeline.inference_worker import run_inference_process
 from pipeline.analyzer_worker import run_analyzer_process
-
-def create_output_directory(output_path):
-    output_dir = os.path.dirname(output_path)
-    if output_dir:
-        os.makedirs(output_dir, exist_ok=True)
-    return output_path
 
 
 def ignore_child_interrupts():
