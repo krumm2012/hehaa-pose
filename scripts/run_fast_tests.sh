@@ -19,6 +19,11 @@ echo "[3/3] Running fast Python unit tests..."
   test_swing_evaluation.py \
   test_swing_biomechanics.py \
   test_swing_report_builder.py \
-  test_swing_session_summary.py
+  test_swing_session_summary.py \
+  test_main_pipe_cli.py \
+  test_pipeline_supervision.py \
+  test_pipeline_runtime_optimizations.py \
+  test_reader_runtime.py \
+  test_pipeline_performance_controls.py
 
 echo "All fast tests passed."
