@@ -237,12 +237,6 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                 pose_detection_frame = frame_context.pose_detection_frame
 
             if pipeline.algo2_dual_view and dual_view_mgr is not None and dual_pose_estimator is not None:
-                dual_frame = dual_view_mgr.split_frame(
-                    frame_ptr, frame_id=task['idx'],
-                    for_inference=(dual_pose_estimator.supports_source_pixels and
-                        perf_cfg.get('pose_resize_policy', 'legacy') != 'legacy'),
-                    source_views=(('front',) if perf_cfg.get('pose_resize_policy') == 'direct_front'
-                                  else ('front', 'back')))
                 if stage_a:
                     from concurrent.futures import Future
                     f1 = Future()
@@ -254,6 +248,7 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                     )
                     f1.set_result(((candidates, adopted_rackets, 0.), stage_a['legacy_detection_ms']))
                 else:
+                    # Submit 960 detector before split_frame so crop/resize/flip overlaps with detector inference.
                     f1 = executor.submit(
                         timed_call,
                         detector.detect_unified,
@@ -263,6 +258,12 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                         retain_racket_candidates=racket_tracker is not None,
                         racket_source='external' if pipeline.exclusive_racket_source else 'legacy',
                     )
+                dual_frame = dual_view_mgr.split_frame(
+                    frame_ptr, frame_id=task['idx'],
+                    for_inference=(dual_pose_estimator.supports_source_pixels and
+                        perf_cfg.get('pose_resize_policy', 'legacy') != 'legacy'),
+                    source_views=(('front',) if perf_cfg.get('pose_resize_policy') == 'direct_front'
+                                  else ('front', 'back')))
                 f2 = executor.submit(timed_call, dual_pose_estimator.estimate_dual_pose, dual_frame)
 
                 (ball, raw_rackets, _), legacy_detection_ms = f1.result()
