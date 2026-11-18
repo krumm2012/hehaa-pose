@@ -175,6 +175,83 @@ class Algo2RealtimePipelineTests(unittest.TestCase):
 
         runtime.close()
 
+    def test_back_view_adaptive_cadence_skips_idle_and_wakes_on_motion_or_occlusion(self):
+        import numpy as np
+        from dual_pose_estimator import DualPoseEstimator
+        from dual_view_biomechanics import Keypoint
+        from dual_view_manager import DualViewCropInfo, DualViewFrame
+
+        est = DualPoseEstimator.__new__(DualPoseEstimator)
+        est.conf_threshold = 0.35
+        from dual_view_biomechanics import DualViewBiomechanicsEngine
+        est.biomech_engine = DualViewBiomechanicsEngine()
+        est.backend = "coreml"
+        est.concurrent = False
+        est.compute_units = "ALL"
+        est.back_view_adaptive_cadence = True
+        est.back_idle_max_skip = 2
+        est.active_wrist_motion_px = 10.0
+        est.model_front = object()
+        est.model_back = object()
+        est._pool = None
+        est._last_back_eyes = []
+        est._last_valid_back_pose = {}
+        est._back_missing_count = 0
+        est._has_back_orientation_anchor = False
+        est._last_valid_front_pose = {}
+        est._front_missing_count = 0
+        est._cached_back_pose_local = {}
+        est._cached_back_eyes = []
+        est._prev_front_pose_for_gate = {}
+        est._front_active_hold = 0
+        est._back_skipped_streak = 0
+        est._last_front_occluded = True
+        est.back_view_inferred_count = 0
+        est.back_view_skipped_count = 0
+
+        def make_pose(wrist_x=200.0, drop_wrist=False):
+            pts = {
+                "left_shoulder": Keypoint(180, 150, 0.9),
+                "right_shoulder": Keypoint(240, 150, 0.9),
+                "left_elbow": Keypoint(160, 210, 0.9),
+                "right_elbow": Keypoint(260, 210, 0.9),
+                "left_wrist": Keypoint(150, 260, 0.9),
+                "right_wrist": Keypoint(wrist_x, 260, 0.9),
+                "left_hip": Keypoint(190, 280, 0.9),
+                "right_hip": Keypoint(230, 280, 0.9),
+            }
+            if drop_wrist:
+                pts.pop("right_wrist")
+            return pts
+
+        back_calls = []
+        front_seq = [
+            make_pose(200.0),  # frame 0: cold start -> runs back
+            make_pose(201.0),  # frame 1: idle -> skips back
+            make_pose(202.0),  # frame 2: idle -> skips back
+            make_pose(202.0),  # frame 3: max_skip reached -> runs back
+            make_pose(260.0),  # frame 4: fast wrist jump (+58px) -> immediately wakes back!
+        ]
+
+        def fake_predict(img, is_back_view=False, **kwargs):
+            fid = est._source_frame_id
+            if is_back_view:
+                back_calls.append(fid)
+                return make_pose(210.0)
+            return front_seq[fid]
+
+        est._predict_single_view = fake_predict
+        dummy_img = np.zeros((720, 540, 3), dtype=np.uint8)
+        dummy_orig = np.zeros((1440, 2560, 3), dtype=np.uint8)
+        info = DualViewCropInfo(bbox_orig=(0, 0, 540, 720), crop_size=(540, 720), view_size=(540, 720))
+        for fid in range(len(front_seq)):
+            df = DualViewFrame(frame_id=fid, original_frame=dummy_orig, front_frame=dummy_img, back_frame=dummy_img, front_info=info, back_info=info)
+            est.estimate_dual_pose(df)
+
+        self.assertEqual(back_calls, [0, 3, 4])
+        self.assertEqual(est.back_view_inferred_count, 3)
+        self.assertEqual(est.back_view_skipped_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
