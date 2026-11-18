@@ -17,7 +17,21 @@ from analysis_metric_delivery import normalize_swing_event_for_delivery
 
 DEFAULT_PLAYER_ID = "default"
 DEFAULT_PLAYER_NAME = "默认球员"
+MAX_PLAUSIBLE_RACKET_SPEED_PX_S = 5000.0
 _PLAYER_ID_PATTERN = re.compile(r"[^A-Za-z0-9_-]+")
+
+
+def _sanitize_racket_speeds(
+    contact_val: Any,
+    max_val: Any,
+) -> Tuple[Optional[float], Optional[float]]:
+    c = _safe_float(contact_val)
+    m = _safe_float(max_val)
+    if c is not None and (c <= 0 or c > MAX_PLAUSIBLE_RACKET_SPEED_PX_S):
+        c = None
+    if m is not None and (m <= 0 or m > MAX_PLAUSIBLE_RACKET_SPEED_PX_S):
+        m = c
+    return c, (m if m is not None else c)
 
 
 def _utc_now_iso() -> str:
@@ -300,6 +314,34 @@ class SessionDatabase:
                 """,
                 (DEFAULT_PLAYER_ID, DEFAULT_PLAYER_NAME, _utc_now_iso()),
             )
+            # Clean up any historical bbox-jump speed spikes (> 5000 px/s)
+            conn.execute(
+                """
+                UPDATE swing_events
+                SET racket_max_speed_px_s = CASE
+                    WHEN racket_speed_px_s IS NOT NULL AND racket_speed_px_s <= ? THEN racket_speed_px_s
+                    ELSE NULL
+                END
+                WHERE racket_max_speed_px_s > ?
+                """,
+                (MAX_PLAUSIBLE_RACKET_SPEED_PX_S, MAX_PLAUSIBLE_RACKET_SPEED_PX_S),
+            )
+            conn.execute(
+                """
+                UPDATE swing_events
+                SET racket_speed_px_s = NULL
+                WHERE racket_speed_px_s > ?
+                """,
+                (MAX_PLAUSIBLE_RACKET_SPEED_PX_S,),
+            )
+            conn.execute(
+                """
+                DELETE FROM swing_metrics
+                WHERE metric_key IN ('racket_max_speed', 'racket_head_speed')
+                  AND value_num > ?
+                """,
+                (MAX_PLAUSIBLE_RACKET_SPEED_PX_S,),
+            )
 
     def list_players(self) -> List[Dict[str, Any]]:
         with self._lock, self._connect() as conn:
@@ -403,7 +445,12 @@ class SessionDatabase:
         with self._lock, self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT s.session_id, s.player_id, p.display_name AS player_name
+                SELECT s.session_id, s.player_id, p.display_name AS player_name,
+                       EXISTS(
+                           SELECT 1 FROM swing_metrics m
+                           WHERE m.session_id = s.session_id
+                             AND m.metric_key IN ('takeback_depth', 'scapular_retraction')
+                       ) AS is_dual_view
                 FROM sessions s
                 LEFT JOIN players p ON p.player_id = s.player_id
                 """
@@ -412,6 +459,7 @@ class SessionDatabase:
                 r["session_id"]: {
                     "player_id": r["player_id"] or DEFAULT_PLAYER_ID,
                     "player_name": r["player_name"] or DEFAULT_PLAYER_NAME,
+                    "view_mode": "dual_view" if r["is_dual_view"] else "single_view",
                 }
                 for r in rows
             }
@@ -524,6 +572,10 @@ class SessionDatabase:
                 brush = ext.get("brush_angle") or {}
                 leg = ext.get("leg_drive") or {}
                 seq = ev.get("kinematic_sequence") or {}
+                clean_contact_spd, clean_max_spd = _sanitize_racket_speeds(
+                    speed.get("contact_px_s"),
+                    speed.get("max_px_s"),
+                )
 
                 event_rows.append(
                     (
@@ -537,8 +589,8 @@ class SessionDatabase:
                         _safe_int(ev.get("start_frame")),
                         _safe_int(ev.get("end_frame")),
                         _safe_int(ev.get("contact_frame")),
-                        _safe_float(speed.get("contact_px_s")),
-                        _safe_float(speed.get("max_px_s")),
+                        clean_contact_spd,
+                        clean_max_spd,
                         _safe_float(brush.get("low_to_high_angle_deg")),
                         _safe_float(brush.get("drop_depth_ratio")),
                         _safe_float(leg.get("drive_px")),
@@ -554,6 +606,11 @@ class SessionDatabase:
                         continue
                     val = m.get("value")
                     val_num = _safe_float(val)
+                    if m_key in ("racket_max_speed", "racket_head_speed") and val_num is not None:
+                        if val_num <= 0 or val_num > MAX_PLAUSIBLE_RACKET_SPEED_PX_S:
+                            val_num = clean_contact_spd if m_key == "racket_max_speed" else None
+                            if val_num is None:
+                                continue
                     val_text = str(val) if val_num is None and val is not None else None
                     metric_rows.append(
                         (
@@ -718,6 +775,10 @@ class SessionDatabase:
                         if drift_v is not None and drift_v > 0.35:
                             warning_counter["回位期重心漂移偏大 (>0.35bw)"] = warning_counter.get("回位期重心漂移偏大 (>0.35bw)", 0) + 1
 
+                    clean_c, clean_m = _sanitize_racket_speeds(
+                        r["racket_speed_px_s"],
+                        r["racket_max_speed_px_s"] or ev_metrics.get("racket_max_speed"),
+                    )
                     swings_summary.append(
                         {
                             "event_id": r["event_id"],
@@ -727,8 +788,8 @@ class SessionDatabase:
                             "contact_frame": r["contact_frame"],
                             "clip_url": clip_url,
                             "impact_freeze_url": freeze_url,
-                            "racket_speed_px_s": r["racket_speed_px_s"],
-                            "racket_max_speed_px_s": r["racket_max_speed_px_s"] or ev_metrics.get("racket_max_speed"),
+                            "racket_speed_px_s": clean_c,
+                            "racket_max_speed_px_s": clean_m,
                             "shoulder_turn_change": ev_metrics.get("shoulder_turn_change"),
                             "hip_shoulder_separation": ev_metrics.get("hip_shoulder_separation"),
                             "arm_extension": ev_metrics.get("arm_extension"),
@@ -801,12 +862,16 @@ class SessionDatabase:
                     else None
                 )
 
+                is_dual_view = bool(
+                    "takeback_depth" in metric_medians or "scapular_retraction" in metric_medians
+                )
                 series.append(
                     {
                         "session_id": sid,
                         "display_time": s["display_time"],
                         "timestamp": s["timestamp"],
                         "source_name": s["source_name"],
+                        "view_mode": "dual_view" if is_dual_view else "single_view",
                         "matched_swings": len(ev_rows),
                         "forehand_count": s["forehand_count"],
                         "backhand_count": s["backhand_count"],

@@ -25,11 +25,14 @@ def create_handler(controller: LocalPipelineController):
         server_version = "TennisControlPanel/1.0"
 
         def log_message(self, format_string, *args):
-            sys.stdout.write(
-                "[web] "
-                + (format_string % args)
-                + "\n"
-            )
+            try:
+                sys.stdout.write(
+                    "[web] "
+                    + (format_string % args)
+                    + "\n"
+                )
+            except OSError:
+                pass
 
         def do_HEAD(self):
             self._do_request(head_only=True)

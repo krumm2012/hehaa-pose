@@ -328,9 +328,10 @@
           const opt = document.createElement("option");
           opt.value = s.session_id;
           const activeTag = s.is_active ? " [进行中]" : "";
+          const viewTag = s.view_mode === "dual_view" ? " [双视角]" : " [单视角]";
           const playerTag = (s.player_name && s.player_id && s.player_id !== "default") ? ` [${s.player_name}]` : "";
           const sourceTag = s.source_name ? ` · ${s.source_name}` : "";
-          opt.textContent = `${s.display_time}${activeTag}${playerTag} (${s.event_count}拍)${sourceTag}`;
+          opt.textContent = `${s.display_time}${activeTag}${viewTag}${playerTag} (${s.event_count}拍)${sourceTag}`;
           opt.title = `${s.session_id}`;
           select.appendChild(opt);
         });
@@ -427,6 +428,9 @@
     let latestPersonalAttribution = null;
     let selectedCompareSessionA = "";
     let selectedCompareSessionB = "";
+    let compareCropMode = "front_focus"; // "front_focus" | "back_focus" | "raw"
+    const compareFocusX = { A: 76, B: 76 };
+    const slotDetectedDualView = { A: null, B: null };
 
     const CORE_COMPARE_METRICS = [
       { key: "shoulder_turn_change", label: "转肩角度变化", unit: "°", refMax: 90, higherBetter: true },
@@ -500,49 +504,124 @@
       const rep = sess.representative_event || swings[0] || null;
       if (!rep) return `<div style="padding:10px;color:var(--muted);">该会话无有效实战挥拍</div>`;
 
+      const viewBadge = sess.view_mode === "dual_view" ? "双视角" : "单视角";
       const optionsHtml = swings.map(sw => {
         const selected = sw.event_id === rep.event_id ? "selected" : "";
-        const spd = sw.racket_max_speed_px_s != null ? ` · ${Math.round(sw.racket_max_speed_px_s)}px/s` : "";
+        const spdVal = sw.racket_speed_px_s ?? sw.racket_max_speed_px_s;
+        const spd = spdVal != null ? ` · ${Math.round(spdVal)}px/s` : "";
         return `<option value="${sw.event_id}" ${selected}>Event #${sw.event_id} (${escapeHtml(sw.stroke_type || "Swing")}${spd})</option>`;
       }).join("");
 
       return `
         <div style="flex:1; min-width:250px; background:rgba(0,0,0,0.22); border:1px solid rgba(255,255,255,0.07); border-radius:8px; padding:8px;">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
-            <strong style="font-size:11px; color:${slotId === 'A' ? '#38bdf8' : '#4ade80'};">${sideLabel} · ${escapeHtml(sess.display_time)}</strong>
+            <strong style="font-size:11px; color:${slotId === 'A' ? '#38bdf8' : '#4ade80'};">${sideLabel} [${viewBadge}] · ${escapeHtml(sess.display_time)}</strong>
             <select id="cmp-swing-select-${slotId}" onchange="updateCompareSwingSlot('${slotId}')" style="font-size:11px; height:22px; background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:4px; color:var(--text);">
               ${optionsHtml}
             </select>
           </div>
           <div id="cmp-swing-media-${slotId}">
-            ${buildSwingMediaBoxHtml(rep, slotId)}
+            ${buildSwingMediaBoxHtml(rep, slotId, sess.view_mode)}
           </div>
         </div>
       `;
     }
 
-    function buildSwingMediaBoxHtml(sw, slotId) {
+    function applyCompareMediaTransform(slotId, fallbackViewMode = "single_view") {
+      const mediaEl = document.getElementById(`cmp-video-${slotId}`) || document.getElementById(`cmp-img-${slotId}`);
+      const badgeEl = document.getElementById(`cmp-view-badge-${slotId}`);
+      const panWrap = document.getElementById(`cmp-pan-wrap-${slotId}`);
+      if (!mediaEl) return;
+
+      let w = mediaEl.videoWidth || mediaEl.naturalWidth || 0;
+      let h = mediaEl.videoHeight || mediaEl.naturalHeight || 0;
+      let isDual = fallbackViewMode === "dual_view";
+      if (w > 0 && h > 0) {
+        isDual = (w / h) <= 1.58; // 1080x720 = 1.50 (dual_view), 1280x720 = 1.78 (single_view)
+      }
+      slotDetectedDualView[slotId] = isDual;
+
+      if (compareCropMode === "raw") {
+        mediaEl.style.cssText = "width:100%; height:220px; object-fit:contain; transform:none; display:block;";
+        if (badgeEl) badgeEl.textContent = isDual ? "双视角全画幅 (1080×720)" : "单视角全画幅 (16:9)";
+        if (panWrap) panWrap.hidden = true;
+      } else if (compareCropMode === "front_focus") {
+        if (isDual) {
+          // Left half (0..50%) is the 540x720 front portrait view
+          mediaEl.style.cssText = "width:200%; max-width:none; height:220px; object-fit:cover; object-position:left center; transform:translateX(0%); display:block;";
+          if (badgeEl) badgeEl.textContent = "双视角 → 已裁左半屏 [正面特写]";
+          if (panWrap) panWrap.hidden = true;
+        } else {
+          const fx = compareFocusX[slotId] ?? 76;
+          mediaEl.style.cssText = `width:100%; height:220px; object-fit:cover; transform:scale(1.65); transform-origin:${fx}% 54%; display:block;`;
+          if (badgeEl) badgeEl.textContent = `单视角 → 1.65x 主体对齐 (焦点 ${fx}%)`;
+          if (panWrap) panWrap.hidden = false;
+        }
+      } else if (compareCropMode === "back_focus") {
+        if (isDual) {
+          // Right half (50%..100%) is the 540x720 mirror back portrait view
+          mediaEl.style.cssText = "width:200%; max-width:none; height:220px; object-fit:cover; object-position:left center; transform:translateX(-50%); display:block;";
+          if (badgeEl) badgeEl.textContent = "双视角 → 已裁右半屏 [背面镜像]";
+          if (panWrap) panWrap.hidden = true;
+        } else {
+          const fx = compareFocusX[slotId] ?? 74;
+          mediaEl.style.cssText = `width:100%; height:220px; object-fit:cover; transform:scale(2.1); transform-origin:${fx}% 25%; display:block;`;
+          if (badgeEl) badgeEl.textContent = `单视角 → 2.1x 后墙镜面放大 (焦点 ${fx}%)`;
+          if (panWrap) panWrap.hidden = false;
+        }
+      }
+    }
+
+    function nudgeCompareFocus(slotId, delta) {
+      const cur = compareFocusX[slotId] ?? 76;
+      compareFocusX[slotId] = Math.max(15, Math.min(90, cur + delta));
+      const sessId = slotId === "A" ? selectedCompareSessionA : selectedCompareSessionB;
+      const sess = latestCompareSessions.find(s => s.session_id === sessId);
+      applyCompareMediaTransform(slotId, sess?.view_mode || "single_view");
+    }
+
+    function setCompareCropMode(mode) {
+      compareCropMode = mode;
+      renderCompareDashboard();
+    }
+
+    function buildSwingMediaBoxHtml(sw, slotId, viewMode = "single_view") {
       if (!sw) return "";
       const startF = sw.start_frame || 0;
       const contactF = sw.contact_frame ?? startF;
       const offsetSec = Math.max(0, (contactF - startF) / 25.0).toFixed(2);
-      const mediaHtml = sw.clip_url ? `
+      const mediaInner = sw.clip_url ? `
         <video id="cmp-video-${slotId}" src="${sw.clip_url}" poster="${sw.impact_freeze_url || ''}" controls loop playsinline
                data-contact-sec="${offsetSec}"
-               style="width:100%; max-height:190px; border-radius:6px; background:#000;"></video>
+               onloadedmetadata="applyCompareMediaTransform('${slotId}', '${viewMode}')"
+               style="width:100%; height:220px; object-fit:contain; display:block;"></video>
       ` : (sw.impact_freeze_url ? `
-        <img src="${sw.impact_freeze_url}" alt="触球定格" style="width:100%; max-height:190px; object-fit:contain; border-radius:6px; background:#000;"/>
-      ` : `<div style="height:120px;display:flex;align-items:center;justify-content:center;color:var(--muted);background:rgba(255,255,255,0.02);border-radius:6px;">无视频/定格切片</div>`);
+        <img id="cmp-img-${slotId}" src="${sw.impact_freeze_url}" alt="触球定格"
+             onload="applyCompareMediaTransform('${slotId}', '${viewMode}')"
+             style="width:100%; height:220px; object-fit:contain; display:block;"/>
+      ` : `<div style="height:220px;display:flex;align-items:center;justify-content:center;color:var(--muted);background:rgba(255,255,255,0.02);border-radius:6px;">无视频/定格切片</div>`);
 
       const turnVal = sw.shoulder_turn_change != null ? `${Number(sw.shoulder_turn_change).toFixed(1)}°` : "—";
       const extVal = sw.arm_extension != null ? `${Number(sw.arm_extension).toFixed(1)}°` : "—";
-      const spdVal = sw.racket_max_speed_px_s != null ? `${Math.round(sw.racket_max_speed_px_s)} px/s` : "—";
+      const spdRaw = sw.racket_speed_px_s ?? sw.racket_max_speed_px_s;
+      const spdVal = spdRaw != null ? `${Math.round(spdRaw)} px/s` : "—";
+
+      setTimeout(() => applyCompareMediaTransform(slotId, viewMode), 20);
 
       return `
-        ${mediaHtml}
+        <div style="position:relative; width:100%; height:220px; overflow:hidden; border-radius:6px; background:#000;">
+          ${mediaInner}
+          <div style="position:absolute; top:6px; left:6px; right:6px; display:flex; justify-content:space-between; align-items:center; pointer-events:none;">
+            <span id="cmp-view-badge-${slotId}" style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(0,0,0,0.68); color:#e2e8f0; border:1px solid rgba(255,255,255,0.12);">视角加载中...</span>
+            <span id="cmp-pan-wrap-${slotId}" style="pointer-events:auto;" hidden>
+              <button type="button" onclick="nudgeCompareFocus('${slotId}', -8)" style="font-size:10px; padding:1px 5px; background:rgba(0,0,0,0.72); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:3px; cursor:pointer;" title="向左平移单视角放大焦点">◀左移</button>
+              <button type="button" onclick="nudgeCompareFocus('${slotId}', +8)" style="font-size:10px; padding:1px 5px; background:rgba(0,0,0,0.72); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:3px; cursor:pointer;" title="向右平移单视角放大焦点">右移▶</button>
+            </span>
+          </div>
+        </div>
         <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-top:5px;">
           <span>触球帧: ${sw.contact_frame ?? "—"}F (${offsetSec}s)</span>
-          <span>转肩 ${turnVal} · 肘角 ${extVal} · 峰值 ${spdVal}</span>
+          <span>转肩 ${turnVal} · 肘角 ${extVal} · 触球拍速 ${spdVal}</span>
         </div>
       `;
     }
@@ -555,7 +634,7 @@
       if (!sess || !sel || !box) return;
       const eid = Number(sel.value);
       const sw = (sess.swings || []).find(x => x.event_id === eid) || sess.representative_event;
-      box.innerHTML = buildSwingMediaBoxHtml(sw, slotId);
+      box.innerHTML = buildSwingMediaBoxHtml(sw, slotId, sess.view_mode);
     }
 
     function syncPlayABClips(rate = 0.25) {
@@ -601,8 +680,14 @@
       const sessA = sessions.find(s => s.session_id === selectedCompareSessionA) || sessions[0];
       const sessB = sessions.find(s => s.session_id === selectedCompareSessionB) || sessions[sessions.length - 1];
 
-      const sessOptsA = sessions.map(s => `<option value="${escapeHtml(s.session_id)}" ${s.session_id === sessA.session_id ? "selected" : ""}>${escapeHtml(s.display_time)} (${s.matched_swings}拍)</option>`).join("");
-      const sessOptsB = sessions.map(s => `<option value="${escapeHtml(s.session_id)}" ${s.session_id === sessB.session_id ? "selected" : ""}>${escapeHtml(s.display_time)} (${s.matched_swings}拍)</option>`).join("");
+      const sessOptsA = sessions.map(s => {
+        const vTag = s.view_mode === "dual_view" ? "[双视角] " : "[单视角] ";
+        return `<option value="${escapeHtml(s.session_id)}" ${s.session_id === sessA.session_id ? "selected" : ""}>${vTag}${escapeHtml(s.display_time)} (${s.matched_swings}拍)</option>`;
+      }).join("");
+      const sessOptsB = sessions.map(s => {
+        const vTag = s.view_mode === "dual_view" ? "[双视角] " : "[单视角] ";
+        return `<option value="${escapeHtml(s.session_id)}" ${s.session_id === sessB.session_id ? "selected" : ""}>${vTag}${escapeHtml(s.display_time)} (${s.matched_swings}拍)</option>`;
+      }).join("");
 
       const metricRowsHtml = CORE_COMPARE_METRICS.map(cfg => {
         const mA = sessA?.metrics?.[cfg.key];
@@ -726,7 +811,12 @@
             <span style="color:#4ade80; font-weight:600;">当前 B:</span>
             <select id="cmp-session-b" onchange="onChangeCompareAB()" style="font-size:11px; height:24px; background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:4px; color:var(--text);">${sessOptsB}</select>
           </div>
-          <div style="display:flex; gap:6px;">
+          <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+            <div style="display:inline-flex; gap:2px; background:rgba(0,0,0,0.25); padding:2px; border-radius:5px; border:1px solid rgba(255,255,255,0.08);">
+              <button type="button" onclick="setCompareCropMode('front_focus')" style="height:22px; padding:0 7px; font-size:11px; border:none; border-radius:4px; cursor:pointer; background:${compareCropMode === 'front_focus' ? 'var(--blue, #38bdf8)' : 'transparent'}; color:${compareCropMode === 'front_focus' ? '#000' : 'var(--text)'}; font-weight:${compareCropMode === 'front_focus' ? '600' : '400'};" title="双视角自动裁左半屏正面，单视角1.65x聚焦放大人物，消除跨视角比例差异">🎯 聚焦正面</button>
+              <button type="button" onclick="setCompareCropMode('back_focus')" style="height:22px; padding:0 7px; font-size:11px; border:none; border-radius:4px; cursor:pointer; background:${compareCropMode === 'back_focus' ? 'var(--blue, #38bdf8)' : 'transparent'}; color:${compareCropMode === 'back_focus' ? '#000' : 'var(--text)'}; font-weight:${compareCropMode === 'back_focus' ? '600' : '400'};" title="双视角裁右半屏背面镜像，单视角放大后墙镜面区">🪞 聚焦镜面</button>
+              <button type="button" onclick="setCompareCropMode('raw')" style="height:22px; padding:0 7px; font-size:11px; border:none; border-radius:4px; cursor:pointer; background:${compareCropMode === 'raw' ? 'var(--blue, #38bdf8)' : 'transparent'}; color:${compareCropMode === 'raw' ? '#000' : 'var(--text)'}; font-weight:${compareCropMode === 'raw' ? '600' : '400'};" title="显示原始未裁剪视频">🖼️ 原画幅</button>
+            </div>
             <button type="button" class="button" style="height:24px; padding:0 8px; font-size:11px;" onclick="syncSeekABContact()">💥 对齐触球帧定格</button>
             <button type="button" class="button" style="height:24px; padding:0 8px; font-size:11px;" onclick="syncPlayABClips(0.25)">🎬 0.25x 触球同步慢放</button>
             <button type="button" class="button" style="height:24px; padding:0 8px; font-size:11px;" onclick="syncPlayABClips(0.5)">0.5x 同步</button>
@@ -1292,6 +1382,9 @@
       window.updateCompareSwingSlot = updateCompareSwingSlot;
       window.syncPlayABClips = syncPlayABClips;
       window.syncSeekABContact = syncSeekABContact;
+      window.applyCompareMediaTransform = applyCompareMediaTransform;
+      window.nudgeCompareFocus = nudgeCompareFocus;
+      window.setCompareCropMode = setCompareCropMode;
       if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", initSessionHistorySelector);
       } else {

@@ -349,32 +349,33 @@ class DualViewRenderer:
         canvas = sbs_canvas.copy()
         h, w = canvas.shape[:2]
 
-        card_w = min(500, w - 40)
-        card_h = 220
+        card_w = min(350, w - 40)
+        card_h = 148
         x1 = (w - card_w) // 2
-        y1 = 80  # 紧接在顶部 HUD 下方居中浮动，位于左右机位交界处
+        y1 = 60  # 紧贴顶部中缝，紧凑尺寸避免遮挡左右人物主体
         x2 = x1 + card_w
         y2 = y1 + card_h
 
+        effective_opacity = min(float(opacity), 0.72)
         overlay = canvas.copy()
-        # 半透明深黑底板 (高级磨砂质感)
+        # 半透明深黑底板 (高透毛玻璃质感，保留底层人物/球拍可见性)
         cv2.rectangle(overlay, (x1, y1), (x2, y2), (16, 18, 24), -1)
         # 顶部标题栏背景
-        cv2.rectangle(overlay, (x1, y1), (x2, y1 + 38), (28, 35, 48), -1)
-        cv2.addWeighted(overlay, opacity, canvas, 1.0 - opacity, 0, canvas)
+        cv2.rectangle(overlay, (x1, y1), (x2, y1 + 28), (28, 35, 48), -1)
+        cv2.addWeighted(overlay, effective_opacity, canvas, 1.0 - effective_opacity, 0, canvas)
 
         # 发光外边框 (高科技青蓝色)
-        cv2.rectangle(canvas, (x1, y1), (x2, y2), (0, 220, 255), 2, cv2.LINE_AA)
-        cv2.line(canvas, (x1, y1 + 38), (x2, y1 + 38), (0, 180, 210), 1, cv2.LINE_AA)
+        cv2.rectangle(canvas, (x1, y1), (x2, y2), (0, 220, 255), 1, cv2.LINE_AA)
+        cv2.line(canvas, (x1, y1 + 28), (x2, y1 + 28), (0, 180, 210), 1, cv2.LINE_AA)
 
         # 标题栏文本
         title_text = "2D OBSERVATIONS"
         text_items = [dict(
             text=title_text,
-            org=(x1 + 16, y1 + 8),
-            font_scale=0.45,
+            org=(x1 + 12, y1 + 6),
+            font_scale=0.38,
             color=(0, 240, 255),
-            thickness=2,
+            thickness=1,
         )]
 
         score = card_data.get("swing_score")
@@ -390,10 +391,10 @@ class DualViewRenderer:
         score_badge = f"{score_label}: {score:.1f}" if score is not None else f"{score_label}: N/A"
         text_items.append(dict(
             text=score_badge,
-            org=(x2 - 190, y1 + 8),
-            font_scale=0.55,
+            org=(x2 - 135, y1 + 6),
+            font_scale=0.40,
             color=badge_color,
-            thickness=2,
+            thickness=1,
         ))
 
         # 4 行遥测核心指标
@@ -442,23 +443,23 @@ class DualViewRenderer:
             ("2D PEAK ORDER", f"{seq_text}", (255, 180, 255)),
         ]
 
-        row_y = y1 + 48
+        row_y = y1 + 36
         for label, val_str, val_col in items:
             text_items.append(dict(
                 text=label,
-                org=(x1 + 16, row_y),
-                font_scale=0.48,
+                org=(x1 + 12, row_y),
+                font_scale=0.38,
                 color=(170, 180, 195),
                 thickness=1,
             ))
             text_items.append(dict(
                 text=val_str,
-                org=(x1 + 160, row_y),
-                font_scale=0.50,
+                org=(x1 + 122, row_y),
+                font_scale=0.40,
                 color=val_col,
                 thickness=1,
             ))
-            row_y += 38
+            row_y += 26
 
         return self.font_mgr.put_texts_with_font(canvas, text_items)
 

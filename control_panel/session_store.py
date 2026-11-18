@@ -342,6 +342,7 @@ class SessionStore:
             p_info = player_map.get(entry["session_id"])
             entry["player_id"] = p_info["player_id"] if p_info else DEFAULT_PLAYER_ID
             entry["player_name"] = p_info["player_name"] if p_info else DEFAULT_PLAYER_NAME
+            entry["view_mode"] = p_info.get("view_mode", "single_view") if p_info else "single_view"
 
         with self._cache_lock:
             stale_keys = [k for k in self._session_meta_cache if k not in seen_names]
