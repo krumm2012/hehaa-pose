@@ -97,6 +97,67 @@
       }
     }
 
+    function syncEnginePresetFromFields() {
+      const presetEl = $("engine_preset");
+      if (!presetEl) return;
+      const mode = $("racket_pose_mode")?.value || "legacy";
+      const profile = $("racket_model_profile")?.value || "configured";
+      const proc = $("processing_mode")?.value || "buffered";
+      const sched = $("inference_schedule")?.value || "barrier";
+      const ipc = $("racket_ipc")?.value || "queue";
+
+      let detected = "custom";
+      if (profile === "configured" && mode === "legacy" && proc === "buffered" && sched === "barrier" && ipc === "queue") {
+        detected = "legacy_stable";
+      } else if (profile === "640_shadow" && mode === "shadow" && proc === "buffered" && sched === "barrier" && ipc === "shared_memory") {
+        detected = "640_shadow_stable";
+      } else if (profile === "640_shadow" && mode === "shadow" && proc === "offline" && sched === "barrier" && ipc === "shared_memory") {
+        detected = "640_shadow_offline";
+      }
+      presetEl.value = detected;
+
+      const hintEl = $("engine-preset-hint");
+      if (hintEl) {
+        const hints = {
+          legacy_stable: "默认稳定版：960 球拍/球检测 + 连续不丢帧，适合日常训练与实时分析。",
+          "640_shadow_stable": "已匹配 640-shadow-stable 验收组合（25FPS）：640 ALL 七点旁路 + 连续处理 + 共享源帧；事件与 Coach 沿用 960 主链路。",
+          "640_shadow_offline": "本地视频完整分析：640 ALL 七点旁路 + 不节流逐帧完整处理（仅支持本地视频）。",
+          custom: "当前使用自定义高级参数组合（可在下方展开查看或微调）。",
+        };
+        hintEl.textContent = hints[detected] || hints.custom;
+      }
+    }
+
+    function applyEnginePreset() {
+      const presetEl = $("engine_preset");
+      if (!presetEl) return;
+      const val = presetEl.value;
+      if (val === "legacy_stable") {
+        if ($("racket_model_profile")) $("racket_model_profile").value = "configured";
+        if ($("racket_pose_mode")) $("racket_pose_mode").value = "legacy";
+        if ($("processing_mode")) $("processing_mode").value = "buffered";
+        if ($("inference_schedule")) $("inference_schedule").value = "barrier";
+        if ($("racket_ipc")) $("racket_ipc").value = "queue";
+      } else if (val === "640_shadow_stable") {
+        if ($("racket_model_profile")) $("racket_model_profile").value = "640_shadow";
+        if ($("racket_pose_mode")) $("racket_pose_mode").value = "shadow";
+        if ($("processing_mode")) $("processing_mode").value = "buffered";
+        if ($("inference_schedule")) $("inference_schedule").value = "barrier";
+        if ($("racket_ipc")) $("racket_ipc").value = "shared_memory";
+      } else if (val === "640_shadow_offline") {
+        if ($("racket_model_profile")) $("racket_model_profile").value = "640_shadow";
+        if ($("racket_pose_mode")) $("racket_pose_mode").value = "shadow";
+        if ($("processing_mode")) $("processing_mode").value = "offline";
+        if ($("inference_schedule")) $("inference_schedule").value = "barrier";
+        if ($("racket_ipc")) $("racket_ipc").value = "shared_memory";
+      } else if (val === "custom") {
+        const adv = $("advanced-engine-details");
+        if (adv) adv.open = true;
+      }
+      updateStreamMeta();
+      savePreset();
+    }
+
     function updateStreamMeta() {
       const model640 = $("racket_model_profile")?.value === "640_shadow";
       const racketSelect = $("racket_pose_mode");
@@ -131,6 +192,7 @@
         ipc.disabled = legacy || processing?.value === "realtime";
         if (ipc.disabled) ipc.value = "queue";
       }
+      syncEnginePresetFromFields();
       const video = $("stream_id").value === "local_video";
       $("local-video-field").hidden = !video;
       $("username").disabled = video;
@@ -520,7 +582,12 @@
         }
         applyValues(config.defaults);
         const model640Option = $("racket_model_profile")?.querySelector('option[value="640_shadow"]');
-        if (model640Option) model640Option.disabled = !config.racket_model_profiles?.["640_shadow"]?.available;
+        const model640Available = Boolean(config.racket_model_profiles?.["640_shadow"]?.available);
+        if (model640Option) model640Option.disabled = !model640Available;
+        ["640_shadow_stable", "640_shadow_offline"].forEach(presetKey => {
+          const opt = $("engine_preset")?.querySelector(`option[value="${presetKey}"]`);
+          if (opt) opt.disabled = !model640Available;
+        });
         try {
           const saved = JSON.parse(localStorage.getItem("tennis-control-preset-v1") || "null");
           if (saved) {
@@ -617,6 +684,8 @@
       if (racketMode) racketMode.addEventListener("change", updateStreamMeta);
       const racketModel = $("racket_model_profile");
       if (racketModel) racketModel.addEventListener("change", updateStreamMeta);
+      const enginePreset = $("engine_preset");
+      if (enginePreset) enginePreset.addEventListener("change", applyEnginePreset);
       const css = $("custom_stream_source");
       if (css) css.addEventListener("input", updateStreamMeta);
       const sf = $("settings-form");

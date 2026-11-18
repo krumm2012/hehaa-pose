@@ -274,44 +274,59 @@
           </div>
 
           <div class="section">
-            <div class="section-title"><h3>性能与显示</h3><span>RTSP 推荐直播模式</span></div>
+            <div class="section-title"><h3>性能与显示</h3><span>一键预设 · 细节可展开</span></div>
             <div class="fields">
-              <div class="field">
-                <label for="racket_pose_mode">启动时选择球拍方案</label>
-                <select id="racket_pose_mode"><optgroup label="启动方案"><option value="legacy">旧版（默认）</option><option value="exclusive">新版：七点球拍独占</option></optgroup><optgroup label="兼容诊断"><option value="shadow">影子对照（不改旧选择）</option><option value="active">兼容增强（新旧混用）</option></optgroup></select>
-                <small id="racket-mode-hint">下次启动生效；新版不回退旧拍框，逐帧处理，跟不上时会积压。</small>
-              </div>
-              <div class="field">
-                <label for="processing_mode">处理方式</label>
-                <select id="processing_mode"><option value="buffered">连续处理（不丢帧，允许启动缓冲）</option><option value="auto">沿用配置</option><option value="realtime">旧版低延迟预览（会丢旧帧）</option><option value="offline">完整分析（本地视频）</option></select>
-              </div>
-              <div class="field">
-                <label for="racket_model_profile">启动球拍模型</label>
-                <select id="racket_model_profile"><option value="configured">当前已配置模型（默认960）</option><option value="640_shadow">640 ALL：七点球拍（影子）</option></select>
-                <div class="hint" id="racket-model-hint">模型在下次启动时加载。</div>
-                <small id="running-racket-model">最近启动模型：暂无</small>
-              </div>
-              <div class="field">
-                <label for="inference_schedule">启动推理调度</label>
-                <select id="inference_schedule"><option value="barrier">当前：同帧并行</option><option value="interframe">实验：两阶段跨帧（新版独占）</option></select>
-              </div>
-              <div class="field">
-                <label for="racket_ipc">球拍图像传输</label>
-                <select id="racket_ipc"><option value="queue">当前：独立图像队列</option><option value="shared_memory">实验：共享源帧（连续模式）</option></select>
-              </div>
-              <div class="field">
-                <label for="inference_workers">推理线程池</label>
-                <input id="inference_workers" type="number" min="1" max="32">
-              </div>
-              <div class="field">
-                <label for="display_origin_x">扩展屏 X</label>
-                <input id="display_origin_x" type="number" min="-10000" max="10000">
-              </div>
-              <div class="field">
-                <label for="display_origin_y">扩展屏 Y</label>
-                <input id="display_origin_y" type="number" min="-10000" max="10000">
+              <div class="field" style="grid-column: 1 / -1;">
+                <label for="engine_preset">分析模式预设</label>
+                <select id="engine_preset">
+                  <option value="legacy_stable">默认稳定版（960 主链路 · 连续不丢帧）</option>
+                  <option value="640_shadow_stable">640 七点球拍影子模式（已验收 25FPS · 共享源帧）</option>
+                  <option value="640_shadow_offline">640 七点球拍完整分析（本地视频 · 不节流）</option>
+                  <option value="custom">自定义高级组合</option>
+                </select>
+                <small id="engine-preset-hint">默认稳定版：960 球拍/球检测 + 连续不丢帧，适合日常训练与实时分析。</small>
+                <small id="running-racket-model" style="display:block; margin-top:2px;">最近启动模型：暂无</small>
               </div>
             </div>
+            <details id="advanced-engine-details" style="margin: 6px 0 10px; padding: 8px 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px;">
+              <summary style="cursor: pointer; font-size: 12px; color: var(--muted);">⚙️ 高级引擎参数（预设已自动联动，一般无需改动）</summary>
+              <div class="fields" style="margin-top: 10px;">
+                <div class="field">
+                  <label for="racket_pose_mode">球拍方案</label>
+                  <select id="racket_pose_mode"><optgroup label="启动方案"><option value="legacy">旧版（默认）</option><option value="exclusive">新版：七点球拍独占</option></optgroup><optgroup label="兼容诊断"><option value="shadow">影子对照（不改旧选择）</option><option value="active">兼容增强（新旧混用）</option></optgroup></select>
+                  <small id="racket-mode-hint">下次启动生效</small>
+                </div>
+                <div class="field">
+                  <label for="processing_mode">处理方式</label>
+                  <select id="processing_mode"><option value="buffered">连续处理（不丢帧，允许启动缓冲）</option><option value="auto">沿用配置</option><option value="realtime">旧版低延迟预览（会丢旧帧）</option><option value="offline">完整分析（本地视频）</option></select>
+                </div>
+                <div class="field">
+                  <label for="racket_model_profile">启动球拍模型</label>
+                  <select id="racket_model_profile"><option value="configured">当前已配置模型（默认960）</option><option value="640_shadow">640 ALL：七点球拍（影子）</option></select>
+                  <div class="hint" id="racket-model-hint">模型在下次启动时加载。</div>
+                </div>
+                <div class="field">
+                  <label for="inference_schedule">启动推理调度</label>
+                  <select id="inference_schedule"><option value="barrier">当前：同帧并行</option><option value="interframe">实验：两阶段跨帧（新版独占）</option></select>
+                </div>
+                <div class="field">
+                  <label for="racket_ipc">球拍图像传输</label>
+                  <select id="racket_ipc"><option value="queue">当前：独立图像队列</option><option value="shared_memory">实验：共享源帧（连续模式）</option></select>
+                </div>
+                <div class="field">
+                  <label for="inference_workers">推理线程池</label>
+                  <input id="inference_workers" type="number" min="1" max="32">
+                </div>
+                <div class="field">
+                  <label for="display_origin_x">扩展屏 X</label>
+                  <input id="display_origin_x" type="number" min="-10000" max="10000">
+                </div>
+                <div class="field">
+                  <label for="display_origin_y">扩展屏 Y</label>
+                  <input id="display_origin_y" type="number" min="-10000" max="10000">
+                </div>
+              </div>
+            </details>
             <div class="switches">
               <label class="switch"><input id="live_mode" type="checkbox">低延迟直播模式</label>
               <label class="switch"><input id="save_video" type="checkbox">保存完整视频</label>
