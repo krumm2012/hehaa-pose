@@ -551,7 +551,8 @@ class MultiprocessPipeline:
             self.output_fps = self.fps
 
         # --- 共享内存池 ---
-        normal_slots = max(3, int(perf_cfg.get('reader_buffer_slots', 12)))
+        min_normal_slots = 6 if self.processing_mode == 'offline' else 3
+        normal_slots = max(min_normal_slots, int(perf_cfg.get('reader_buffer_slots', 12)))
         live_slots = max(3, int(perf_cfg.get('live_reader_buffer_slots', 3)))
         self.shm_num = live_slots if self.live_mode else normal_slots
         run_token = f"{os.getpid():x}{uuid.uuid4().hex[:4]}"
@@ -635,6 +636,8 @@ class MultiprocessPipeline:
             )
         elif limit_reader_fps:
             print(f"⏱️ [Reader] 绝对时间线节流: {self.fps:.2f} FPS")
+        else:
+            print(f"🚀 [Reader] 离线全速模式 | 共享缓冲槽: {self.shm_num} | 时间线节流: 关闭")
 
         source_schedule_start = time.perf_counter()
         try:

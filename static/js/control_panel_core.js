@@ -121,7 +121,7 @@
         const hints = {
           legacy_stable: "默认稳定版：960 球拍/球检测 + 连续不丢帧，适合日常训练与实时分析。",
           "640_shadow_stable": "已匹配 640-shadow-stable 验收组合（25FPS）：640 ALL 七点旁路 + 连续处理 + 共享源帧；事件与 Coach 沿用 960 主链路。",
-          "640_shadow_offline": "本地视频完整分析：640 ALL 七点旁路 + 不节流逐帧完整处理（仅支持本地视频）。",
+          "640_shadow_offline": "离线极速分析：640 ALL 七点旁路 + 不节流满速处理（6–12 共享缓冲槽）+ 仅保存击球切片（关闭全片重编码以提速）。",
           custom: "当前使用自定义高级参数组合（可在下方展开查看或微调）。",
         };
         hintEl.textContent = hints[detected] || hints.custom;
@@ -150,6 +150,11 @@
         if ($("processing_mode")) $("processing_mode").value = "offline";
         if ($("inference_schedule")) $("inference_schedule").value = "barrier";
         if ($("racket_ipc")) $("racket_ipc").value = "shared_memory";
+        if ($("save_video")) $("save_video").checked = false;
+        if ($("live_mode")) $("live_mode").checked = false;
+        if ($("stream_id") && $("stream_id").value !== "local_video") {
+          $("stream_id").value = "local_video";
+        }
       } else if (val === "custom") {
         const adv = $("advanced-engine-details");
         if (adv) adv.open = true;
