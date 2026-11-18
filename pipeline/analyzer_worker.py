@@ -497,25 +497,25 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
                 timing_ms=render_stages,
             )
         else:
-            # 背景半透明面板
-            mask = canvas.copy()
-            cv2.rectangle(mask, (20, 20), (420, 620), (0, 0, 0), -1)
-            cv2.addWeighted(mask, 0.75, canvas, 0.25, 0, canvas)
-
-            # A. 核心文本显示 (English Only)
+            # 紧凑型半透明状态栏（仅在开启详细文本时展开面板，避免大黑块遮挡球场）
             font = cv2.FONT_HERSHEY_SIMPLEX
-            cv2.putText(canvas, f"Action: {swing_label}", (40, 65), font, 0.8, (0, 255, 255), 2)
-            cv2.putText(canvas, f"Frame: {fid:04d}", (40, 100), font, 0.5, (200, 200, 200), 1)
+            mask = canvas.copy()
+            panel_h = 580 if (draw_metrics_text and detailed_data) else 44
+            panel_w = 340 if (draw_metrics_text and detailed_data) else 260
+            cv2.rectangle(mask, (14, 12), (14 + panel_w, 12 + panel_h), (16, 18, 22), -1)
+            cv2.addWeighted(mask, 0.55, canvas, 0.45, 0, canvas)
+
+            cv2.putText(canvas, f"{swing_label} | F{fid:04d}", (24, 38), font, 0.52, (0, 240, 255), 1, cv2.LINE_AA)
 
             # B. 绘制详细肢体指标
-            if draw_metrics_text:
-                y_ptr = 140
+            if draw_metrics_text and detailed_data:
+                y_ptr = 68
                 for phase, metrics in detailed_data.items():
                     for k, v in metrics.items():
-                        color = (0, 255, 0) if "angle" in k or "ext" in k else (220, 220, 220)
-                        cv2.putText(canvas, f"{k}: {v}", (40, y_ptr), font, 0.5, color, 1)
-                        y_ptr += 26
-                        if y_ptr > 600:
+                        color = (0, 255, 128) if "angle" in k or "ext" in k else (210, 210, 210)
+                        cv2.putText(canvas, f"{k}: {v}", (24, y_ptr), font, 0.44, color, 1, cv2.LINE_AA)
+                        y_ptr += 22
+                        if y_ptr > 575:
                             break
 
             # C. 绘制视觉元素 (骨架、球、球拍)
@@ -525,7 +525,7 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
 
             for ra in racket_list:
                 x1, y1, x2, y2 = [int(round(v)) for v in ra['box']]
-                cv2.rectangle(canvas, (x1, y1), (x2, y2), (255, 128, 0), 2)
+                cv2.rectangle(canvas, (x1, y1), (x2, y2), (255, 160, 0), 1, cv2.LINE_AA)
             rendered_canvas = canvas
 
         if joint_diagnostic is not None:

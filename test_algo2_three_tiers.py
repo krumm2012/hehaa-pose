@@ -127,8 +127,8 @@ class TestAlgo2ThreeTiers(unittest.TestCase):
 
         rendered = self.renderer.draw_impact_telemetry_card(canvas, card_data)
         self.assertEqual(rendered.shape, (720, 1080, 3))
-        # 确保中央卡片区域已被有效着色绘制（不是全黑）
-        card_roi = rendered[100:200, 500:600]
+        # 确保底部中缝紧凑卡片区域已被有效着色绘制（不是全黑）
+        card_roi = rendered[600:680, 500:600]
         self.assertGreater(np.mean(card_roi), 5.0)
 
         # 测试 render_dual_frame 携带 telemetry_card 参数调用

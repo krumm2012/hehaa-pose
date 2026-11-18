@@ -29,14 +29,11 @@ from dual_view_manager import DualViewFrame
 
 logger = logging.getLogger("DualViewRenderer")
 
-# COCO 骨骼连线定义 (起点, 终点)
+# 忽略面部五官关键点，避免遮挡球员面部与视线
+HEAD_KEYPOINTS = {"nose", "left_eye", "right_eye", "left_ear", "right_ear"}
+
+# 躯干与四肢核心生物力学骨骼连线 (起点, 终点)
 COCO_SKELETON_PAIRS = [
-    # 头部五官
-    ("left_eye", "right_eye"),
-    ("left_eye", "nose"),
-    ("right_eye", "nose"),
-    ("left_eye", "left_ear"),
-    ("right_eye", "right_ear"),
     # 上肢与躯干
     ("left_shoulder", "right_shoulder"),
     ("left_shoulder", "left_elbow"),
@@ -71,7 +68,7 @@ class DualViewRenderer:
         show_hud: bool = True,
         show_skeleton: bool = True,
         line_thickness: int = 2,
-        point_radius: int = 4,
+        point_radius: int = 3,
         mask_backview_eyes: bool = True,
         eye_mask_style: str = "bar",  # "bar" | "mosaic"
     ):
@@ -135,17 +132,24 @@ class DualViewRenderer:
                 else:
                     cv2.line(canvas, pt1, pt2, cur_color, self.line_thickness, cv2.LINE_AA)
 
-        # 2. 绘制关节点
+        # 2. 绘制关节点（跳过面部五官，移除双层粗白圈，保持关节手部清晰）
         for name, kp in pose_dict.items():
+            if name in HEAD_KEYPOINTS:
+                continue
             pt = (int(round(kp.x)), int(round(kp.y)))
             pt_color = COLOR_JOINT_HEALED if kp.recovered_from_mirror else COLOR_JOINT
             if not kp.observed or kp.recovered_from_mirror:
-                pt_color = COLOR_JOINT_HEALED if kp.recovered_from_mirror else (140,140,140)
-            cv2.circle(canvas, pt, self.point_radius, pt_color,
-                       -1 if kp.observed and not kp.recovered_from_mirror else 1, cv2.LINE_AA)
-            cv2.circle(canvas, pt, self.point_radius + 1, (255, 255, 255), 1, cv2.LINE_AA)
+                pt_color = COLOR_JOINT_HEALED if kp.recovered_from_mirror else (140, 140, 140)
+            cv2.circle(
+                canvas,
+                pt,
+                self.point_radius,
+                pt_color,
+                -1 if kp.observed and not kp.recovered_from_mirror else 1,
+                cv2.LINE_AA,
+            )
 
-        return canvas
+        return cv2.addWeighted(canvas, 0.72, img, 0.28, 0)
 
     def draw_hud(
         self,
@@ -160,42 +164,39 @@ class DualViewRenderer:
         bio = pose_result.biomechanics
         shot = bio.shot_classification
 
-        # 1. 顶部半透明背景条 (根据是否有教练建议自适应高度)
-        top_bar_h = 82 if coaching_text else 52
+        # 1. 极简顶部与底部半透明信息条（降低高度与不透明度，杜绝遮挡人体）
+        top_bar_h = 56 if coaching_text else 34
         overlay = canvas.copy()
-        cv2.rectangle(overlay, (0, 0), (w, top_bar_h), (20, 20, 22), -1)
-        # 底部信息条
-        cv2.rectangle(overlay, (0, h - 46), (w, h), (20, 20, 22), -1)
-        cv2.addWeighted(overlay, 0.70, canvas, 0.30, 0, canvas)
+        cv2.rectangle(overlay, (0, 0), (w, top_bar_h), (18, 20, 24), -1)
+        cv2.rectangle(overlay, (0, h - 26), (w, h), (18, 20, 24), -1)
+        cv2.addWeighted(overlay, 0.48, canvas, 0.52, 0, canvas)
 
-        # 2. 视角标题 (左右两端对齐，绝不挤占中央区域)
-        # 左侧正面标题
-        cv2.putText(canvas, "FRONT VIEW", (20, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (0, 255, 0), 2, cv2.LINE_AA)
-        # 右侧背面标题 (靠右端对齐)
-        back_text = "BACK VIEW (MIRROR FLIPPED)"
-        (bw, bh), _ = cv2.getTextSize(back_text, cv2.FONT_HERSHEY_SIMPLEX, 0.70, 2)
+        # 2. 简洁视角标签（避开左上角事件徽章区域）
+        cv2.putText(canvas, "FRONT", (w // 2 - 175, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.46, (0, 230, 120), 1, cv2.LINE_AA)
+        back_text = "MIRROR"
+        (bw, _), _ = cv2.getTextSize(back_text, cv2.FONT_HERSHEY_SIMPLEX, 0.46, 1)
         cv2.putText(
             canvas,
             back_text,
-            (w - bw - 20, 32),
+            (w - bw - 14, 22),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.70,
-            (0, 220, 255),
-            2,
+            0.46,
+            (0, 210, 255),
+            1,
             cv2.LINE_AA,
         )
 
-        # 3. 击球分类核心指标 (居中胶囊徽章设计)
+        # 3. 击球分类核心指标 (紧凑居中胶囊徽章)
         if event_label is not None:
             shot_text = event_label.upper()
             if "SHADOW SWING" in shot_text or "MISSED" in shot_text:
-                shot_color = (0, 165, 255)      # 醒目橙黄色：空挥/未触球
+                shot_color = (0, 165, 255)
                 pill_bg = (35, 28, 20)
             elif "FOREHAND" in shot_text:
-                shot_color = (0, 255, 128)      # 亮绿：正手
+                shot_color = (0, 255, 128)
                 pill_bg = (20, 35, 25)
             elif "BACKHAND" in shot_text:
-                shot_color = (0, 215, 255)      # 青黄：反手
+                shot_color = (0, 215, 255)
                 pill_bg = (20, 32, 38)
             else:
                 shot_color = (180, 180, 180)
@@ -205,67 +206,61 @@ class DualViewRenderer:
             shot_text = f"{shot.shot_type.upper()} ({shot.confidence * 100:.0f}%)"
             pill_bg = (25, 30, 25)
 
-        (text_w, text_h), _ = cv2.getTextSize(shot_text, cv2.FONT_HERSHEY_SIMPLEX, 0.65, 2)
+        (text_w, _), _ = cv2.getTextSize(shot_text, cv2.FONT_HERSHEY_SIMPLEX, 0.48, 1)
         center_x = w // 2
-        badge_pad_x = 16
+        badge_pad_x = 10
         bx1 = max(170, center_x - text_w // 2 - badge_pad_x)
-        bx2 = min(w - bw - 30, center_x + text_w // 2 + badge_pad_x)
-        by1 = 8
-        by2 = 40
+        bx2 = min(w - bw - 24, center_x + text_w // 2 + badge_pad_x)
+        by1 = 5
+        by2 = 28
 
-        # 胶囊徽章底色与边框
         cv2.rectangle(canvas, (bx1, by1), (bx2, by2), pill_bg, -1)
         cv2.rectangle(canvas, (bx1, by1), (bx2, by2), shot_color, 1, cv2.LINE_AA)
         cv2.putText(
             canvas,
             shot_text,
-            (center_x - text_w // 2, 30),
+            (center_x - text_w // 2, 21),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
+            0.48,
             shot_color,
-            2,
+            1,
             cv2.LINE_AA,
         )
 
-        # 4. 实时智能教练建议 (居中第二行，防重叠提示框)
+        # 4. 实时智能教练建议
         if coaching_text:
-            coach_banner = f"💡 COACH: {coaching_text}"
-            coach_pill_w = max(280, len(coach_banner) * 14 + 30)
+            coach_banner = f"COACH: {coaching_text}"
+            coach_pill_w = max(220, len(coach_banner) * 12 + 24)
             cx1 = max(100, center_x - coach_pill_w // 2)
             cx2 = min(w - 100, center_x + coach_pill_w // 2)
-            cv2.rectangle(canvas, (cx1, 48), (cx2, 74), (28, 28, 34), -1)
-            cv2.rectangle(canvas, (cx1, 48), (cx2, 74), (70, 70, 85), 1, cv2.LINE_AA)
+            cv2.rectangle(canvas, (cx1, 32), (cx2, 53), (24, 26, 32), -1)
             canvas = self.font_mgr.put_text_with_font(
                 canvas,
                 coach_banner,
-                (cx1 + 12, 51),
-                font_scale=0.55,
+                (cx1 + 10, 34),
+                font_scale=0.44,
                 color=(0, 240, 255),
                 thickness=1,
             )
 
-        # 5. 底部生物力学指标详情
-        # 转肩角与 X-Factor
-        turn_text = f"Width-angle proxy: {bio.robust_shoulder_turn_deg:.1f} deg" if bio.robust_shoulder_turn_deg is not None else "Width-angle proxy: N/A"
+        # 5. 底部单行紧凑生物力学摘要
+        turn_text = f"Turn: {bio.robust_shoulder_turn_deg:.1f}deg" if bio.robust_shoulder_turn_deg is not None else "Turn: N/A"
         if bio.shoulder_hip_separation_deg is not None:
-            turn_text += f" | 2D shoulder-hip: {bio.shoulder_hip_separation_deg:.1f} deg"
-        cv2.putText(canvas, turn_text, (20, h - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (255, 255, 255), 1, cv2.LINE_AA)
+            turn_text += f" | X-Sep: {bio.shoulder_hip_separation_deg:.1f}deg"
+        cv2.putText(canvas, turn_text, (14, h - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (215, 220, 225), 1, cv2.LINE_AA)
 
-        # 后背引拍深度与自愈状态及 3D 相对深度
         depth = f"{bio.takeback_depth_ratio:.2f}x" if bio.takeback_depth_ratio is not None else "N/A"
         width = f"{bio.scapular_retraction_ratio:.2f}x" if bio.scapular_retraction_ratio is not None else "N/A"
-        back_text = f"Wrist-offset proxy: {depth} | Shoulder-width ratio: {width}"
-        if bio.relative_depth_z is not None:
-            back_text += f" | Rel-Z: {bio.relative_depth_z:.2f}x"
+        back_info_text = f"Takeback: {depth} | Scapular: {width}"
         if bio.occlusion_healed_points:
-            back_text += f" | Healed: {','.join(bio.occlusion_healed_points)}"
+            back_info_text += f" | Healed: {len(bio.occlusion_healed_points)}"
         cv2.putText(
             canvas,
-            back_text,
-            (w // 2 + 20, h - 16),
+            back_info_text,
+            (w // 2 + 14, h - 8),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            (255, 255, 255),
+            0.42,
+            (215, 220, 225),
             1,
             cv2.LINE_AA,
         )
@@ -349,31 +344,26 @@ class DualViewRenderer:
         canvas = sbs_canvas.copy()
         h, w = canvas.shape[:2]
 
-        card_w = min(350, w - 40)
-        card_h = 148
+        card_w = min(330, w - 40)
+        card_h = 108
         x1 = (w - card_w) // 2
-        y1 = 60  # 紧贴顶部中缝，紧凑尺寸避免遮挡左右人物主体
+        y1 = max(28, h - card_h - 30)  # 下沉至画面底部中缝边缘，彻底避开躯干、手臂与球拍核心区
         x2 = x1 + card_w
         y2 = y1 + card_h
 
-        effective_opacity = min(float(opacity), 0.72)
+        effective_opacity = min(float(opacity), 0.54)
         overlay = canvas.copy()
-        # 半透明深黑底板 (高透毛玻璃质感，保留底层人物/球拍可见性)
         cv2.rectangle(overlay, (x1, y1), (x2, y2), (16, 18, 24), -1)
-        # 顶部标题栏背景
-        cv2.rectangle(overlay, (x1, y1), (x2, y1 + 28), (28, 35, 48), -1)
+        cv2.rectangle(overlay, (x1, y1), (x2, y1 + 22), (28, 35, 48), -1)
         cv2.addWeighted(overlay, effective_opacity, canvas, 1.0 - effective_opacity, 0, canvas)
 
-        # 发光外边框 (高科技青蓝色)
-        cv2.rectangle(canvas, (x1, y1), (x2, y2), (0, 220, 255), 1, cv2.LINE_AA)
-        cv2.line(canvas, (x1, y1 + 28), (x2, y1 + 28), (0, 180, 210), 1, cv2.LINE_AA)
+        cv2.rectangle(canvas, (x1, y1), (x2, y2), (0, 200, 235), 1, cv2.LINE_AA)
 
-        # 标题栏文本
         title_text = "2D OBSERVATIONS"
         text_items = [dict(
             text=title_text,
-            org=(x1 + 12, y1 + 6),
-            font_scale=0.38,
+            org=(x1 + 10, y1 + 4),
+            font_scale=0.34,
             color=(0, 240, 255),
             thickness=1,
         )]
@@ -381,18 +371,18 @@ class DualViewRenderer:
         score = card_data.get("swing_score")
         grade = str(card_data.get("swing_grade", "N/A"))
         grade_colors = {
-            "PRO": (0, 215, 255),          # 金黄色
-            "ADVANCED": (0, 255, 128),     # 翡翠绿
-            "INTERMEDIATE": (0, 200, 255), # 暖橙
-            "DEVELOPING": (200, 200, 200), # 灰白
+            "PRO": (0, 215, 255),
+            "ADVANCED": (0, 255, 128),
+            "INTERMEDIATE": (0, 200, 255),
+            "DEVELOPING": (200, 200, 200),
         }
         badge_color = grade_colors.get(grade, (0, 240, 255))
         score_label = "COACH" if (card_data.get("practice_score") or {}).get("method") == "coach_manual" else "VISIBLE"
         score_badge = f"{score_label}: {score:.1f}" if score is not None else f"{score_label}: N/A"
         text_items.append(dict(
             text=score_badge,
-            org=(x2 - 135, y1 + 6),
-            font_scale=0.40,
+            org=(x2 - 120, y1 + 4),
+            font_scale=0.35,
             color=badge_color,
             thickness=1,
         ))
@@ -443,23 +433,23 @@ class DualViewRenderer:
             ("2D PEAK ORDER", f"{seq_text}", (255, 180, 255)),
         ]
 
-        row_y = y1 + 36
+        row_y = y1 + 26
         for label, val_str, val_col in items:
             text_items.append(dict(
                 text=label,
-                org=(x1 + 12, row_y),
-                font_scale=0.38,
+                org=(x1 + 10, row_y),
+                font_scale=0.34,
                 color=(170, 180, 195),
                 thickness=1,
             ))
             text_items.append(dict(
                 text=val_str,
-                org=(x1 + 122, row_y),
-                font_scale=0.40,
+                org=(x1 + 108, row_y),
+                font_scale=0.35,
                 color=val_col,
                 thickness=1,
             ))
-            row_y += 26
+            row_y += 20
 
         return self.font_mgr.put_texts_with_font(canvas, text_items)
 
@@ -504,22 +494,15 @@ class DualViewRenderer:
         if (ground_reference and ground_geometry and not ground_reference.get('reasons')
                 and ground_reference.get('source_frame_id') == dual_frame.frame_id
                 and ground_reference.get('image_size') == list(dual_frame.original_frame.shape[1::-1])):
-            for view, image, info in [('front', f_img, dual_frame.front_info),
-                                      ('back', b_img, dual_frame.back_info)]:
-                geometry = ground_geometry.get(view)
-                if not geometry:
-                    continue
-                color = (90, 220, 255) if view == 'front' else (210, 220, 60)
-                overlay = image.copy()
+            # 仅在正面视图绘制极低透明度地面参考线，避免在背面特写人物脸上画出网格线
+            geometry = ground_geometry.get('front')
+            if geometry:
+                color = (90, 220, 255)
+                overlay = f_img.copy()
                 for pair in geometry['lines']:
-                    a, b = [tuple(round(v) for v in info.map_from_original(*p)) for p in pair]
+                    a, b = [tuple(round(v) for v in dual_frame.front_info.map_from_original(*p)) for p in pair]
                     cv2.line(overlay, a, b, color, 1, cv2.LINE_AA)
-                cv2.addWeighted(overlay, .35, image, .65, 0, image)
-                for i, p in enumerate(geometry['corners']):
-                    x, y = (round(v) for v in info.map_from_original(*p))
-                    cv2.circle(image, (x, y), 5, color, -1, cv2.LINE_AA)
-                    cv2.putText(image, 'ABCD'[i]+("'" if view == 'back' else ''),
-                                (x+7, y-7), cv2.FONT_HERSHEY_SIMPLEX, .55, color, 1, cv2.LINE_AA)
+                cv2.addWeighted(overlay, .15, f_img, .85, 0, f_img)
 
         # 绘制球轨迹 (正面视角局部映射)
         if ball_trail:
@@ -578,18 +561,7 @@ class DualViewRenderer:
         if box_to_draw is not None:
             px1, py1, px2, py2 = box_to_draw
             r_color = (0, 235, 255) if recovered_to_draw else (255, 220, 0)
-            r_tag = "RACKET (RECOVERED)" if recovered_to_draw else "RACKET"
-            cv2.rectangle(f_img, (px1, py1), (px2, py2), r_color, 2, cv2.LINE_AA)
-            cv2.putText(
-                f_img,
-                r_tag,
-                (px1, max(18, py1 - 5)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.42,
-                r_color,
-                1,
-                cv2.LINE_AA,
-            )
+            cv2.rectangle(f_img, (px1, py1), (px2, py2), r_color, 1, cv2.LINE_AA)
 
         # 绘制背面视角原始镜中球拍 (Back View Racket，带平滑保持)
         back_box_to_draw = None
@@ -617,17 +589,7 @@ class DualViewRenderer:
 
         if back_box_to_draw is not None:
             bpx1, bpy1, bpx2, bpy2 = back_box_to_draw
-            cv2.rectangle(b_img, (bpx1, bpy1), (bpx2, bpy2), (255, 220, 0), 2, cv2.LINE_AA)
-            cv2.putText(
-                b_img,
-                "RACKET",
-                (bpx1, max(18, bpy1 - 5)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.42,
-                (255, 220, 0),
-                1,
-                cv2.LINE_AA,
-            )
+            cv2.rectangle(b_img, (bpx1, bpy1), (bpx2, bpy2), (255, 220, 0), 1, cv2.LINE_AA)
 
         if self.show_skeleton:
             # 严格依据当前正面视口几何投影映射骨骼（消除多进程跨帧视口漂移导致的骨骼错位）

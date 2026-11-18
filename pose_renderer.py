@@ -56,21 +56,24 @@ def draw_pose_keypoints(frame, person_keypoints_list):
     ):
         return frame
 
+    overlay = frame.copy()
     for name_a, name_b in SKELETON:
         point_a = keypoints.get(name_a)
         point_b = keypoints.get(name_b)
         if point_a and point_b:
             cv2.line(
-                frame,
+                overlay,
                 point_a,
                 point_b,
                 _connection_color(name_a, name_b),
                 2,
+                cv2.LINE_AA,
             )
 
     for name, point in keypoints.items():
         if name in HEAD_KEYPOINTS or point is None:
             continue
-        cv2.circle(frame, point, 5, _keypoint_color(name), -1)
+        cv2.circle(overlay, point, 3, _keypoint_color(name), -1, cv2.LINE_AA)
 
+    cv2.addWeighted(overlay, 0.72, frame, 0.28, 0, frame)
     return frame

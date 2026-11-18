@@ -1099,18 +1099,21 @@ class RealtimeSwingOutputManager:
     @staticmethod
     def _draw_event_badge(frame, frame_id: int, event: Dict) -> None:
         label = (
-            f"Swing #{event['event_id']} {event.get('stroke_type', 'Unknown')} "
-            f"| Frame {frame_id}"
+            f"#{event['event_id']} {event.get('stroke_type', 'Swing')} · F{frame_id}"
         )
-        cv2.rectangle(frame, (16, 16), (min(frame.shape[1] - 16, 620), 58), (0, 0, 0), -1)
+        (tw, _), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.46, 1)
+        box_w = min(frame.shape[1] - 12, tw + 20)
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (10, 6), (10 + box_w, 30), (16, 18, 22), -1)
+        cv2.addWeighted(overlay, 0.62, frame, 0.38, 0, frame)
         cv2.putText(
             frame,
             label,
-            (28, 46),
+            (18, 23),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.65,
-            (0, 255, 255),
-            2,
+            0.46,
+            (0, 240, 255),
+            1,
             cv2.LINE_AA,
         )
 
