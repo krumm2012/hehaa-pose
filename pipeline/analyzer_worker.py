@@ -460,7 +460,8 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
                 and pipeline.racket_pose_config.get('render_joint_2d', True)):
             joint_diagnostic = joint_2d_live.update(frame_record, canvas.shape[1::-1])
             frame_record['joint_racket_2d_live'] = joint_diagnostic
-            joint_2d_live.draw_source(canvas)
+            if not (pipeline.algo2_dual_view and dual_view_mgr is not None and dual_view_renderer is not None and pose_res is not None):
+                joint_2d_live.draw_source(canvas)
         render_stages['racket_overlay_wall_ms'] = (time.perf_counter_ns() - overlay_started) / 1e6
         if pipeline.algo2_dual_view and dual_view_mgr is not None and dual_view_renderer is not None and pose_res is not None:
             if norm_ball_pos:
@@ -481,6 +482,8 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
                 frame_id=fid,
                 front_crop_bbox=data.get('front_crop_bbox'),
             )
+            if joint_diagnostic is not None and getattr(dual_frame, "front_info", None) is not None:
+                joint_2d_live.draw_source(dual_frame.front_frame, coord_mapper=dual_frame.front_info.map_from_original)
             render_stages['split_wall_ms'] = (time.perf_counter_ns() - split_started) / 1e6
             rendered_canvas = dual_view_renderer.render_dual_frame(
                 dual_frame,

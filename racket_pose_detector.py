@@ -234,12 +234,16 @@ def select_pose_candidate(observation, frame_id, wrists, frame_size, config):
 
 def draw_racket_pose(canvas, observation):
     if not observation or observation.get('status')!='observed':return canvas
+    overlay = canvas.copy()
     for candidate in observation.get('candidates',[]):
         pts=candidate.get('keypoints') or {}
         for a,b in SKELETON_EDGES:
             p,q=pts.get(KEYPOINT_NAMES[a],{}),pts.get(KEYPOINT_NAMES[b],{})
             if p.get('observed') and q.get('observed'):
-                cv2.line(canvas,(round(p['x']),round(p['y'])),(round(q['x']),round(q['y'])),(0,220,255),2,cv2.LINE_AA)
+                cv2.line(overlay,(round(p['x']),round(p['y'])),(round(q['x']),round(q['y'])),(0,210,245),1,cv2.LINE_AA)
         for name,p in pts.items():
-            if p.get('observed'):cv2.circle(canvas,(round(p['x']),round(p['y'])),5,(0,0,255) if name=='sweet_spot' else (0,220,255),-1)
+            if p.get('observed'):
+                r = 3 if name=='sweet_spot' else 2
+                cv2.circle(overlay,(round(p['x']),round(p['y'])),r,(0,0,240) if name=='sweet_spot' else (0,210,245),-1,cv2.LINE_AA)
+    cv2.addWeighted(overlay, 0.45, canvas, 0.55, 0, canvas)
     return canvas

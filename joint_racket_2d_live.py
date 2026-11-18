@@ -55,21 +55,42 @@ class LiveJointRacket2D:
                         result.append((key, a, b))
         return result
 
-    def draw_source(self, canvas):
+    def draw_source(self, canvas, coord_mapper=None):
+        import math
         import cv2
-        def xy(p): return tuple(int(round(v)) for v in p)
-        for key, a, b in self.segments():
-            color = (255, 190, 70) if '.body.' in key else (80, 220, 220)
-            cv2.line(canvas, xy(a), xy(b), color, 2, cv2.LINE_AA)
-        if not self.history:
-            return
-        tracks = self.history[-1]['tracks']
-        for a, b in LINKS:
-            if tracks[a] is not None and tracks[b] is not None:
-                cv2.line(canvas, xy(tracks[a]), xy(tracks[b]), (90, 220, 140), 2, cv2.LINE_AA)
-        for key in set(k for pair in LINKS for k in pair):
-            if tracks[key] is not None:
-                cv2.circle(canvas, xy(tracks[key]), 4, (90, 220, 140), -1, cv2.LINE_AA)
+
+        def xy(p):
+            if coord_mapper is not None:
+                p = coord_mapper(p[0], p[1])
+            return tuple(int(round(v)) for v in p)
+
+        overlay = canvas.copy()
+        segs = self.segments()
+        total_segs = max(1, len(segs))
+        for idx, (key, a, b) in enumerate(segs):
+            # 过滤跨区域误匹配造成的长距离跳变伪轨迹线
+            if math.hypot(b[0] - a[0], b[1] - a[1]) > 140.0:
+                continue
+            # 仅保留拍面甜区与手腕两条核心轨迹，避免 4 条平行黄青线糊满全身
+            if key not in ('front.racket.sweet_spot', 'front.body.right_wrist'):
+                continue
+            fade = 0.35 + 0.65 * ((idx + 1) / total_segs)
+            base_col = (235, 175, 65) if '.body.' in key else (70, 200, 210)
+            color = tuple(int(round(c * fade)) for c in base_col)
+            cv2.line(overlay, xy(a), xy(b), color, 1, cv2.LINE_AA)
+
+        if self.history:
+            tracks = self.history[-1]['tracks']
+            for a, b in LINKS:
+                if tracks[a] is not None and tracks[b] is not None:
+                    if math.hypot(tracks[b][0] - tracks[a][0], tracks[b][1] - tracks[a][1]) <= 180.0:
+                        cv2.line(overlay, xy(tracks[a]), xy(tracks[b]), (80, 200, 130), 1, cv2.LINE_AA)
+            for key in set(k for pair in LINKS for k in pair):
+                if tracks[key] is not None:
+                    cv2.circle(overlay, xy(tracks[key]), 2, (80, 200, 130), -1, cv2.LINE_AA)
+
+        # 低透明度叠加（0.28），让挥拍轨迹作为轻盈残影参考而不遮挡人物与球拍
+        cv2.addWeighted(overlay, 0.28, canvas, 0.72, 0, canvas)
 
     @staticmethod
     def draw_status(canvas, diagnostic):
@@ -79,12 +100,13 @@ class LiveJointRacket2D:
         message = ('2D FRONT | candidate links | ' +
                    ('GAP >=3: ' + ', '.join(f"{short(g)}:{g['count']}" for g in gaps[:3])
                     if gaps else 'no active gap >=3'))
-        # Wrap to the rendered width; ASCII is supported by the OpenCV font.
         chars = max(20, int(canvas.shape[1] / 8))
         lines = [message[i:i+chars] for i in range(0, len(message), chars)]
-        height = len(lines) * 20 + 8
-        cv2.rectangle(canvas, (0, max(0, canvas.shape[0]-height)),
-                      (canvas.shape[1], canvas.shape[0]), (20, 20, 20), -1)
+        height = len(lines) * 16 + 6
+        overlay = canvas.copy()
+        cv2.rectangle(overlay, (0, max(0, canvas.shape[0]-height)),
+                      (canvas.shape[1], canvas.shape[0]), (18, 20, 24), -1)
+        cv2.addWeighted(overlay, 0.42, canvas, 0.58, 0, canvas)
         for i, line in enumerate(lines):
-            cv2.putText(canvas, line, (8, canvas.shape[0]-height+19+i*20),
-                        cv2.FONT_HERSHEY_SIMPLEX, .45, (100, 220, 240), 1, cv2.LINE_AA)
+            cv2.putText(canvas, line, (8, canvas.shape[0]-height+14+i*16),
+                        cv2.FONT_HERSHEY_SIMPLEX, .36, (130, 195, 210), 1, cv2.LINE_AA)
