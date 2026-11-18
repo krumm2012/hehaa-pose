@@ -154,28 +154,68 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                     return
                 yield task
 
-        if pipeline.inference_schedule=='interframe':
+        use_interframe = (
+            pipeline.inference_schedule == 'interframe'
+            or (
+                pipeline.processing_mode == 'offline'
+                and inference_workers >= 4
+                and hasattr(detector, 'candidate_inference_view')
+            )
+        )
+        if use_interframe:
             from interframe_pipeline import InterframePipeline
-            raw_detector=detector.candidate_inference_view()
+            raw_detector = detector.candidate_inference_view()
+            if pipeline.inference_schedule != 'interframe':
+                print('⚡ [Inference] 离线多帧流水线并发已开启：相邻帧 检测/7点 与 双路人体姿态 交错重叠执行')
+
             def prepare(task):
-                started=time.perf_counter()
-                started_unix_ns=time.time_ns()
-                frame=shared_frames[task['slot']]
-                submitted=racket_pose_runtime.submit(frame,task['idx'],task.get('source_time'),source_descriptor(task))
-                dispatch_ms=(time.perf_counter()-started)*1000
-                ctx=(DetectionFrameContext.build(task['idx'],frame,roi_manager,pipeline.config)
-                     if roi_manager is not None and not pipeline.algo2_dual_view else None)
-                packet,detection_ms=timed_call(raw_detector.external_candidate_packet,
-                    ctx.detection_frame if ctx else frame,task['idx'],(pipeline.width,pipeline.height),
-                    ctx.roi_offset if ctx else (0,0))
-                join=time.perf_counter()
-                observation=racket_pose_runtime.resolve(task['idx'],submitted)
-                return {**task,'_stage_a':{'packet':packet,'observation':observation,
-                    'started_at_unix_ns':started_unix_ns,'racket_dispatch_ms':dispatch_ms,
-                    'legacy_detection_ms':detection_ms,'racket_join_ms':(time.perf_counter()-join)*1000,
-                    'stage_a_ms':(time.perf_counter()-started)*1000}}
-            interframe=InterframePipeline(read_next,prepare,pipeline.stop_event,
-                close_timeout=pipeline.racket_pose_config['timeout_seconds']+2)
+                started = time.perf_counter()
+                started_unix_ns = time.time_ns()
+                frame = shared_frames[task['slot']]
+                submitted = (
+                    racket_pose_runtime.submit(frame, task['idx'], task.get('source_time'), source_descriptor(task))
+                    if racket_pose_runtime is not None else False
+                )
+                dispatch_ms = (time.perf_counter() - started) * 1000
+                ctx = (
+                    DetectionFrameContext.build(task['idx'], frame, roi_manager, pipeline.config)
+                    if roi_manager is not None and not pipeline.algo2_dual_view else None
+                )
+                det_frame = frame if pipeline.algo2_dual_view else (ctx.detection_frame if ctx else frame)
+                det_offset = (0, 0) if pipeline.algo2_dual_view else (ctx.roi_offset if ctx else (0, 0))
+                packet, detection_ms = timed_call(
+                    raw_detector.external_candidate_packet,
+                    det_frame,
+                    task['idx'],
+                    (pipeline.width, pipeline.height),
+                    det_offset,
+                    retain_racket_candidates=racket_tracker is not None,
+                    racket_source='external' if pipeline.exclusive_racket_source else 'legacy',
+                )
+                join = time.perf_counter()
+                observation = (
+                    racket_pose_runtime.resolve(task['idx'], submitted)
+                    if racket_pose_runtime is not None else None
+                )
+                return {
+                    **task,
+                    '_stage_a': {
+                        'packet': packet,
+                        'observation': observation,
+                        'started_at_unix_ns': started_unix_ns,
+                        'racket_dispatch_ms': dispatch_ms,
+                        'legacy_detection_ms': detection_ms,
+                        'racket_join_ms': (time.perf_counter() - join) * 1000,
+                        'stage_a_ms': (time.perf_counter() - started) * 1000,
+                    },
+                }
+
+            interframe = InterframePipeline(
+                read_next,
+                prepare,
+                pipeline.stop_event,
+                close_timeout=pipeline.racket_pose_config['timeout_seconds'] + 2,
+            )
         tasks=interframe if interframe is not None else serial_tasks()
         for task in tasks:
             slot = task['slot']
@@ -212,9 +252,11 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                                   else ('front', 'back')))
                 if stage_a:
                     from concurrent.futures import Future
-                    f1=Future()
-                    candidates=detector.adopt_external_packet(stage_a['packet'],task['idx'])
-                    f1.set_result(((candidates,[],0.),stage_a['legacy_detection_ms']))
+                    f1 = Future()
+                    candidates, adopted_rackets = detector.adopt_external_packet(
+                        stage_a['packet'], task['idx'], return_rackets=True
+                    )
+                    f1.set_result(((candidates, adopted_rackets, 0.), stage_a['legacy_detection_ms']))
                 else:
                     f1 = executor.submit(
                         timed_call,
@@ -405,9 +447,11 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                 # 使用 ThreadPool 同时驱动检测和姿态模型。
                 if stage_a:
                     from concurrent.futures import Future
-                    f1=Future()
-                    candidates=detector.adopt_external_packet(stage_a['packet'],task['idx'])
-                    f1.set_result(((candidates,[],0.),stage_a['legacy_detection_ms']))
+                    f1 = Future()
+                    candidates, adopted_rackets = detector.adopt_external_packet(
+                        stage_a['packet'], task['idx'], return_rackets=True
+                    )
+                    f1.set_result(((candidates, adopted_rackets, 0.), stage_a['legacy_detection_ms']))
                 else:
                     f1 = executor.submit(
                         timed_call,

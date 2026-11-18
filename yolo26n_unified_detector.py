@@ -131,22 +131,42 @@ class YOLO26nUnifiedDetector:
         view.ball_track_selector = None
         return view
 
-    def external_candidate_packet(self, frame, frame_id, full_frame_size, coordinate_offset=(0,0)):
+    def external_candidate_packet(
+        self,
+        frame,
+        frame_id,
+        full_frame_size,
+        coordinate_offset=(0, 0),
+        retain_racket_candidates=False,
+        racket_source='external',
+    ):
         import copy
-        balls, _, _ = self.detect_unified(frame, coordinate_offset=coordinate_offset, full_frame_size=full_frame_size, racket_source='external')
-        return copy.deepcopy({'frame_id':frame_id, 'balls':balls,
-            'parse_diagnostics':self.last_parse_diagnostics,
-            'racket_diagnostics':self.last_racket_diagnostics,
-            'dimensions':(self.original_height,self.original_width,self.tracking_frame_width,self.tracking_frame_height)})
+        balls, rackets, _ = self.detect_unified(
+            frame,
+            coordinate_offset=coordinate_offset,
+            full_frame_size=full_frame_size,
+            retain_racket_candidates=retain_racket_candidates,
+            racket_source=racket_source,
+        )
+        return copy.deepcopy({
+            'frame_id': frame_id,
+            'balls': balls,
+            'rackets': rackets,
+            'parse_diagnostics': self.last_parse_diagnostics,
+            'racket_diagnostics': self.last_racket_diagnostics,
+            'dimensions': (self.original_height, self.original_width, self.tracking_frame_width, self.tracking_frame_height),
+        })
 
-    def adopt_external_packet(self, packet, frame_id):
+    def adopt_external_packet(self, packet, frame_id, return_rackets=False):
         """Called only by ordered aggregation; does not invoke the model."""
         import copy
         if packet['frame_id'] != frame_id:
             raise ValueError('Candidate packet source identity mismatch')
         self.last_parse_diagnostics = copy.deepcopy(packet['parse_diagnostics'])
         self.last_racket_diagnostics = copy.deepcopy(packet['racket_diagnostics'])
-        (self.original_height,self.original_width,self.tracking_frame_width,self.tracking_frame_height) = packet['dimensions']
+        (self.original_height, self.original_width, self.tracking_frame_width, self.tracking_frame_height) = packet['dimensions']
+        if return_rackets:
+            return packet['balls'], packet.get('rackets') or []
         return packet['balls']
     
     def detect_unified(
