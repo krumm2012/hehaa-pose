@@ -154,14 +154,7 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                     return
                 yield task
 
-        use_interframe = (
-            pipeline.inference_schedule == 'interframe'
-            or (
-                pipeline.processing_mode == 'offline'
-                and inference_workers >= 4
-                and hasattr(detector, 'candidate_inference_view')
-            )
-        )
+        use_interframe = pipeline.inference_schedule == 'interframe'
         if use_interframe:
             from interframe_pipeline import InterframePipeline
             raw_detector = detector.candidate_inference_view()
