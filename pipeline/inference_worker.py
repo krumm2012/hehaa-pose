@@ -254,7 +254,10 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                     from concurrent.futures import Future
                     f1 = Future()
                     candidates, adopted_rackets = detector.adopt_external_packet(
-                        stage_a['packet'], task['idx'], return_rackets=True
+                        stage_a['packet'],
+                        task['idx'],
+                        return_rackets=True,
+                        retain_racket_candidates=racket_tracker is not None,
                     )
                     f1.set_result(((candidates, adopted_rackets, 0.), stage_a['legacy_detection_ms']))
                 else:
@@ -449,7 +452,10 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                     from concurrent.futures import Future
                     f1 = Future()
                     candidates, adopted_rackets = detector.adopt_external_packet(
-                        stage_a['packet'], task['idx'], return_rackets=True
+                        stage_a['packet'],
+                        task['idx'],
+                        return_rackets=True,
+                        retain_racket_candidates=racket_tracker is not None,
                     )
                     f1.set_result(((candidates, adopted_rackets, 0.), stage_a['legacy_detection_ms']))
                 else:

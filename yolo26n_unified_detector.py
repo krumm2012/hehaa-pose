@@ -141,23 +141,25 @@ class YOLO26nUnifiedDetector:
         racket_source='external',
     ):
         import copy
+        effective_source = 'raw_legacy' if racket_source != 'external' else 'external'
         balls, rackets, _ = self.detect_unified(
             frame,
             coordinate_offset=coordinate_offset,
             full_frame_size=full_frame_size,
             retain_racket_candidates=retain_racket_candidates,
-            racket_source=racket_source,
+            racket_source=effective_source,
         )
         return copy.deepcopy({
             'frame_id': frame_id,
             'balls': balls,
             'rackets': rackets,
+            'raw_legacy': effective_source == 'raw_legacy',
             'parse_diagnostics': self.last_parse_diagnostics,
             'racket_diagnostics': self.last_racket_diagnostics,
             'dimensions': (self.original_height, self.original_width, self.tracking_frame_width, self.tracking_frame_height),
         })
 
-    def adopt_external_packet(self, packet, frame_id, return_rackets=False):
+    def adopt_external_packet(self, packet, frame_id, return_rackets=False, retain_racket_candidates=False):
         """Called only by ordered aggregation; does not invoke the model."""
         import copy
         if packet['frame_id'] != frame_id:
@@ -165,9 +167,26 @@ class YOLO26nUnifiedDetector:
         self.last_parse_diagnostics = copy.deepcopy(packet['parse_diagnostics'])
         self.last_racket_diagnostics = copy.deepcopy(packet['racket_diagnostics'])
         (self.original_height, self.original_width, self.tracking_frame_width, self.tracking_frame_height) = packet['dimensions']
+        balls = packet['balls']
+        rackets = packet.get('rackets') or []
+        if packet.get('raw_legacy'):
+            strong_rackets = [r for r in rackets if r.get("confidence", 0) >= self.racket_conf_threshold]
+            balls = self._filter_static_balls(balls, strong_rackets)
+            if isinstance(self.last_ball_diagnostics, dict):
+                self.last_ball_diagnostics["model_candidates"] = dict(
+                    (getattr(self, "last_parse_diagnostics", {}) or {}).get("ball") or {}
+                )
+            if not retain_racket_candidates:
+                rackets = self._select_primary_racket(strong_rackets, balls)
+            else:
+                self.last_racket_diagnostics = {
+                    **dict(self.last_parse_diagnostics.get("racket") or {}),
+                    "selection_candidates": len(rackets),
+                    "final_decision": "awaiting_front_temporal_association",
+                }
         if return_rackets:
-            return packet['balls'], packet.get('rackets') or []
-        return packet['balls']
+            return balls, rackets
+        return balls
     
     def detect_unified(
         self,
@@ -252,6 +271,8 @@ class YOLO26nUnifiedDetector:
                 detection_type="ball",
             )
 
+        if racket_source == 'raw_legacy':
+            return ball_detections, racket_detections, inference_time
         if racket_source == 'external':
             # Keep the shared inference for balls, but do not use legacy racket
             # boxes even as ball-selection support. Finalize after the pose worker.
