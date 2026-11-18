@@ -205,7 +205,7 @@ class YOLO26nUnifiedDetector:
         Returns:
             tuple: (ball_detections, racket_detections, inference_time)
         """
-        if racket_source not in ('legacy','external'):
+        if racket_source not in ('legacy', 'external', 'raw_legacy'):
             raise ValueError('Unsupported racket source')
         # 保存原始尺寸
         self.original_height, self.original_width = frame.shape[:2]
