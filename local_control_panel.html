@@ -20,6 +20,9 @@
         <a href="/mirror-calibration" target="_blank" class="button" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;background:rgba(0,240,255,0.12);border:1px solid var(--blue);color:var(--text);font-weight:600;">
           🪞 镜面与人像遮挡标定
         </a>
+        <a id="header-player-compare-link" href="/player-compare" target="_blank" rel="noopener" class="button" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.55);color:var(--text);font-weight:600;">
+          📊 学员挥拍对比 ↗
+        </a>
         <span id="sse-status-badge" class="sse-badge connecting" title="实时事件流推送通道状态">🟡 连接中…</span>
         <span id="status-pill" class="status-pill">已停止</span>
         <button id="start-button" class="button primary">启动分析</button>
@@ -95,7 +98,7 @@
                   <option value="default">默认球员</option>
                 </select>
                 <button id="add-player-btn" class="button" type="button" style="height: 26px; padding: 0 7px; font-size: 12px;" title="新增球员档案">+</button>
-                <button id="toggle-player-compare-btn" class="button" type="button" style="height: 26px; padding: 0 8px; font-size: 11px;" title="查看同一球员跨会话指标趋势对比">📊 历史对比</button>
+                <button id="toggle-player-compare-btn" class="button" type="button" style="height: 26px; padding: 0 8px; font-size: 11px;" title="在新页面打开同人跨会话挥拍趋势对比">📊 历史对比 ↗</button>
               </div>
               <div class="swing-filter-toggle" role="group" aria-label="击球过滤模式">
                 <button id="filter-valid-btn" class="filter-btn active" type="button" title="隐藏已确认空挥；候选仍需人工复核">🎯 查看挥拍候选</button>
@@ -107,23 +110,6 @@
           </div>
           <!-- Session Coaching Summary Dashboard -->
           <div id="session-summary-box" class="session-summary-box" hidden></div>
-
-          <!-- Cross-Session Player Comparison Panel -->
-          <div id="player-compare-panel" hidden style="margin-bottom: 14px; padding: 12px 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 10px;">
-            <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;">
-              <strong style="font-size:13px;">📊 同人跨会话挥拍趋势对比</strong>
-              <div style="display:flex; align-items:center; gap:6px;">
-                <select id="compare-player-select" class="session-select" style="font-size:11px; height:26px; padding:2px 6px; background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:4px; color:var(--text);"></select>
-                <select id="compare-stroke-select" class="session-select" style="font-size:11px; height:26px; padding:2px 6px; background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:4px; color:var(--text);">
-                  <option value="all">全部动作</option>
-                  <option value="Forehand">正手 (Forehand)</option>
-                  <option value="Backhand">反手 (Backhand)</option>
-                </select>
-                <button id="refresh-compare-btn" class="button" type="button" style="height:26px; padding:0 8px; font-size:11px;">刷新</button>
-              </div>
-            </div>
-            <div id="player-compare-body" style="font-size:12px; color:var(--muted);">请选择球员查看历次训练对比...</div>
-          </div>
 
           <div id="swings-empty" class="preview-empty" style="min-height: 110px;">
             <strong>暂无挥拍击球事件</strong>
@@ -142,21 +128,21 @@
                 <label for="stream_id">球场码流</label>
                 <select id="stream_id" name="stream_id"></select>
               </div>
-          <div id="local-video-field" class="field wide" hidden>
-            <label for="local_video_file">选择本地视频（最大 2 GB）</label>
-            <input id="local_video_file" type="file" accept=".mp4,.mov,.mkv,.avi,.webm,.m4v">
-            <span id="video-upload-status">视频上传至本机后，可刷新预览并启动分析。</span>
-            <div style="margin-top: 8px;">
-              <label for="mapped_stream_id">匹配球场机位（绑定 ROI 与镜面配置）</label>
-              <select id="mapped_stream_id" name="mapped_stream_id" style="width: 100%; margin-top: 4px;">
-                <option value="">不使用机位绑定 (全画幅分析)</option>
-              </select>
-              <span class="help" style="font-size: 11px; color: var(--muted); display: block; margin-top: 2px;">
-                可将导入的视频映射到指定的球场机位，自动应用该机位的四点 ROI、后墙镜面区域与人像屏蔽。
-              </span>
-            </div>
-          </div>
-          <div id="custom-stream-field" class="field wide" hidden>
+              <div id="local-video-field" class="field wide" hidden>
+                <label for="local_video_file">选择本地视频（最大 2 GB）</label>
+                <input id="local_video_file" type="file" accept=".mp4,.mov,.mkv,.avi,.webm,.m4v">
+                <span id="video-upload-status">视频上传至本机后，可刷新预览并启动分析。</span>
+                <div style="margin-top: 8px;">
+                  <label for="mapped_stream_id">匹配球场机位（绑定 ROI 与镜面配置）</label>
+                  <select id="mapped_stream_id" name="mapped_stream_id" style="width: 100%; margin-top: 4px;">
+                    <option value="">不使用机位绑定 (全画幅分析)</option>
+                  </select>
+                  <span class="help" style="font-size: 11px; color: var(--muted); display: block; margin-top: 2px;">
+                    可将导入的视频映射到指定的球场机位，自动应用该机位的四点 ROI、后墙镜面区域与人像屏蔽。
+                  </span>
+                </div>
+              </div>
+              <div id="custom-stream-field" class="field wide" hidden>
                 <label for="custom_stream_source">自定义码流地址</label>
                 <input
                   id="custom_stream_source"
@@ -168,115 +154,26 @@
                   placeholder="例如 rtsp://192.168.1.100:554/live"
                 >
               </div>
-              <div class="field">
-                <label for="username">用户名</label>
-                <input id="username" name="username" placeholder="留空使用本机配置；可临时覆盖">
-              </div>
-              <div class="field">
-                <label for="password">密码</label>
-                <input id="password" name="password" type="password" placeholder="不在浏览器中保存">
-              </div>
             </div>
-          </div>
-
-          <div class="section">
-            <div class="section-title"><h3>ROI 参数</h3><span>本次运行</span></div>
-            <button type="button" class="button" id="open-ground-calibration">地面四点标定 / 双视角参考</button>
-            <p class="help" style="font-size:12px;color:var(--muted)">独立保存地面标定。脚踝投影供核对，不作为真实着地点或技术评分。</p>
-            <div class="fields">
-              <div class="field">
-                <label for="crop_margin">裁剪边距 px</label>
-                <input id="crop_margin" name="crop_margin" type="number" min="0" max="256">
+            <details id="credentials-details" style="margin-top: 10px; padding: 8px 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px;">
+              <summary style="cursor: pointer; font-size: 12px; color: var(--muted);">🔑 临时覆盖码流凭据（留空自动使用本机配置）</summary>
+              <div class="fields" style="margin-top: 10px;">
+                <div class="field">
+                  <label for="username">用户名</label>
+                  <input id="username" name="username" placeholder="留空使用本机配置；可临时覆盖">
+                </div>
+                <div class="field">
+                  <label for="password">密码</label>
+                  <input id="password" name="password" type="password" placeholder="不在浏览器中保存">
+                </div>
               </div>
-              <div class="field">
-                <label for="output_fps">目标 FPS</label>
-                <input id="output_fps" name="output_fps" type="number" min="1" max="60" step="1">
-              </div>
-            </div>
-            <div class="switches">
-              <label class="switch"><input id="roi_enabled" type="checkbox">启用 ROI 推理</label>
-              <label class="switch"><input id="show_roi_boundary" type="checkbox">显示 ROI 边界</label>
-              <label class="switch"><input id="show_roi_fill" type="checkbox">显示 ROI 填充</label>
-              <label class="switch"><input id="show_roi_points" type="checkbox">显示 P1–P4</label>
-            </div>
-            <div id="roi-boundary-editor" style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line);">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                <label style="font-weight: 600; font-size: 13px;">ROI 与镜面区域定义</label>
-                <span id="roi-mirror-tag" class="status-tag" style="background: rgba(255, 110, 115, 0.15); color: #ff6e73; font-size: 11px; padding: 2px 6px; border-radius: 4px;">🛡️ 镜面排除已启用</span>
-              </div>
-              <div class="roi-target-switch" style="width: 100%; margin-bottom: 10px; display: flex;">
-                <button type="button" class="roi-target-btn active" id="btn-sidebar-target-court" data-target="court" style="flex: 1; justify-content: center;">🎾 球场 ROI (P1~P4)</button>
-                <button type="button" class="roi-target-btn" id="btn-sidebar-target-mirror" data-target="mirror" style="flex: 1; justify-content: center;">🪞 镜面排除区 (M1~M4)</button>
-              </div>
-              <div style="display: flex; gap: 6px; margin-bottom: 10px;">
-                <button type="button" id="btn-toggle-roi-editor" class="button" style="flex: 1; padding: 6px 8px; font-size: 12px; background: rgba(0, 240, 255, 0.1); border-color: var(--cyan); color: var(--cyan); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 4px;">
-                  📐 画面交互描点编辑
-                </button>
-                <button type="button" id="btn-repoint-roi" class="button" style="padding: 6px 10px; font-size: 12px;" title="清空并在画面中重新依次点击 4 个角点">
-                  🔄 重新描点
-                </button>
-                <button type="button" id="btn-auto-sort-roi" class="button" style="padding: 6px 10px; font-size: 12px;" title="自动对齐四角：左上→右上→右下→左下">
-                  ⚡ 排序
-                </button>
-              </div>
-              <div id="sidebar-court-box" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                <div class="field"><label style="font-size: 11px; color: var(--cyan);">P1 (左上)</label><input id="roi_p1" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
-                <div class="field"><label style="font-size: 11px; color: var(--cyan);">P2 (右上)</label><input id="roi_p2" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
-                <div class="field"><label style="font-size: 11px; color: var(--cyan);">P3 (右下)</label><input id="roi_p3" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
-                <div class="field"><label style="font-size: 11px; color: var(--cyan);">P4 (左下)</label><input id="roi_p4" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
-              </div>
-              <div id="sidebar-mirror-box" style="display: none; grid-template-columns: 1fr 1fr; gap: 8px;">
-                <div class="field"><label style="font-size: 11px; color: #ff6e73;">M1 (左上)</label><input id="mirror_m1" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
-                <div class="field"><label style="font-size: 11px; color: #ff6e73;">M2 (右上)</label><input id="mirror_m2" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
-                <div class="field"><label style="font-size: 11px; color: #ff6e73;">M3 (右下)</label><input id="mirror_m3" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
-                <div class="field"><label style="font-size: 11px; color: #ff6e73;">M4 (左下)</label><input id="mirror_m4" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
-              </div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                <label class="switch" style="font-size: 12px; margin: 0;"><input id="roi_mirror_exclusion" type="checkbox" checked>自动排除镜面反射区</label>
-                <button type="button" id="save-roi-boundary-btn" class="button" style="padding: 4px 12px; font-size: 12px; font-weight: 600; background: #007799; border-color: var(--cyan); color: #fff;">保存边界与镜面</button>
-              </div>
-            </div>
-          </div>
-
-          <div class="section">
-            <div class="section-title"><h3>Swing 与 Coach</h3><span>事件级实时输出</span></div>
-            <div class="fields">
-              <div class="field">
-                <label for="analysis_interval">分析间隔/帧</label>
-                <input id="analysis_interval" type="number" min="1" max="60">
-              </div>
-              <div class="field">
-                <label for="settle_frames">事件等待/帧</label>
-                <input id="settle_frames" type="number" min="0" max="300">
-              </div>
-              <div class="field">
-                <label for="max_suggestions">建议条数</label>
-                <select id="max_suggestions">
-                  <option value="1">1 条</option>
-                  <option value="2">最多 2 条</option>
-                  <option value="3" selected>最多 3 条 (推荐)</option>
-                </select>
-              </div>
-              <div class="field">
-                <label for="min_confidence">最低证据参考阈值</label>
-                <input id="min_confidence" type="number" min="0" max="1" step="0.05" placeholder="0.45" title="启发式证据过滤阈值，未经准确率校准；它不能批准未经独立验证的技术规则。">
-              </div>
-            </div>
-            <div class="switches">
-              <label class="switch"><input id="realtime_swing_events" type="checkbox">实时 Swing 事件</label>
-              <label class="switch"><input id="realtime_coach" type="checkbox">本地动作纠错</label>
-              <label class="switch"><input id="coach_tts" type="checkbox">Qwen3-TTS 语音播报（MLX）</label>
-              <label class="switch"><input id="coach_tts_playback" type="checkbox">通过本机扬声器播报</label>
-              <label class="switch"><input id="deepseek_coach" type="checkbox">DeepSeek 旁路</label>
-              <label class="switch"><input id="realtime_frame_output" type="checkbox">保存逐帧 JSONL</label>
-              <label class="switch"><input id="evidence_bundle" type="checkbox">可重放证据包</label>
-            </div>
+            </details>
           </div>
 
           <div class="section">
             <div class="section-title"><h3>性能与显示</h3><span>一键预设 · 细节可展开</span></div>
             <div class="fields">
-              <div class="field" style="grid-column: 1 / -1;">
+              <div class="field wide">
                 <label for="engine_preset">分析模式预设</label>
                 <select id="engine_preset">
                   <option value="legacy_stable">默认稳定版（960 主链路 · 连续不丢帧）</option>
@@ -288,7 +185,21 @@
                 <small id="running-racket-model" style="display:block; margin-top:2px;">最近启动模型：暂无</small>
               </div>
             </div>
-            <details id="advanced-engine-details" style="margin: 6px 0 10px; padding: 8px 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px;">
+            <div class="switches">
+              <label class="switch"><input id="save_video" type="checkbox">保存完整视频</label>
+              <label class="switch"><input id="hdmi_output" type="checkbox">HDMI 全屏输出</label>
+            </div>
+            <div id="hdmi-origin-fields" class="fields" hidden style="margin-top: 8px;">
+              <div class="field">
+                <label for="display_origin_x">扩展屏 X</label>
+                <input id="display_origin_x" type="number" min="-10000" max="10000">
+              </div>
+              <div class="field">
+                <label for="display_origin_y">扩展屏 Y</label>
+                <input id="display_origin_y" type="number" min="-10000" max="10000">
+              </div>
+            </div>
+            <details id="advanced-engine-details" style="margin-top: 10px; padding: 8px 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px;">
               <summary style="cursor: pointer; font-size: 12px; color: var(--muted);">⚙️ 高级引擎参数（预设已自动联动，一般无需改动）</summary>
               <div class="fields" style="margin-top: 10px;">
                 <div class="field">
@@ -306,119 +217,214 @@
                   <div class="hint" id="racket-model-hint">模型在下次启动时加载。</div>
                 </div>
                 <div class="field">
-                  <label for="inference_schedule">启动推理调度</label>
-                  <select id="inference_schedule"><option value="barrier">当前：同帧并行</option><option value="interframe">实验：两阶段跨帧（新版独占）</option></select>
-                </div>
-                <div class="field">
                   <label for="racket_ipc">球拍图像传输</label>
                   <select id="racket_ipc"><option value="queue">当前：独立图像队列</option><option value="shared_memory">实验：共享源帧（连续模式）</option></select>
                 </div>
                 <div class="field">
-                  <label for="inference_workers">推理线程池</label>
-                  <input id="inference_workers" type="number" min="1" max="32">
+                  <label for="output_fps">目标 FPS</label>
+                  <input id="output_fps" name="output_fps" type="number" min="1" max="60" step="1">
+                </div>
+              </div>
+              <div id="live-mode-field" class="switches" hidden style="margin-top: 8px; grid-template-columns: 1fr;">
+                <label class="switch"><input id="live_mode" type="checkbox">低延迟直播模式</label>
+              </div>
+              <div id="legacy-engine-compat" hidden>
+                <select id="inference_schedule"><option value="barrier">当前：同帧并行</option><option value="interframe">实验：两阶段跨帧（新版独占）</option></select>
+                <input id="inference_workers" type="number" min="1" max="32">
+              </div>
+            </details>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><h3>Swing 与 Coach</h3><span>事件级实时输出</span></div>
+            <div class="switches" style="margin-top: 0;">
+              <label class="switch"><input id="realtime_coach" type="checkbox">本地动作纠错</label>
+              <label class="switch"><input id="coach_tts" type="checkbox">Qwen3-TTS 语音播报（MLX）</label>
+              <label class="switch"><input id="deepseek_coach" type="checkbox">DeepSeek 旁路</label>
+            </div>
+            <div id="tts-playback-field" class="switches" hidden style="padding-left: 18px; margin-top: 8px; grid-template-columns: 1fr;">
+              <label class="switch"><input id="coach_tts_playback" type="checkbox">通过本机扬声器播报</label>
+            </div>
+            <div class="fields" style="margin-top: 10px;">
+              <div class="field wide">
+                <label for="max_suggestions">建议条数</label>
+                <select id="max_suggestions">
+                  <option value="1">1 条</option>
+                  <option value="2">最多 2 条</option>
+                  <option value="3" selected>最多 3 条 (推荐)</option>
+                </select>
+              </div>
+            </div>
+            <details id="advanced-swing-details" style="margin-top: 10px; padding: 8px 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px;">
+              <summary style="cursor: pointer; font-size: 12px; color: var(--muted);">🎛️ Swing 阈值与诊断导出（默认已优化）</summary>
+              <div class="fields" style="margin-top: 10px;">
+                <div class="field">
+                  <label for="analysis_interval">分析间隔/帧</label>
+                  <input id="analysis_interval" type="number" min="1" max="60">
                 </div>
                 <div class="field">
-                  <label for="display_origin_x">扩展屏 X</label>
-                  <input id="display_origin_x" type="number" min="-10000" max="10000">
+                  <label for="settle_frames">事件等待/帧</label>
+                  <input id="settle_frames" type="number" min="0" max="300">
                 </div>
-                <div class="field">
-                  <label for="display_origin_y">扩展屏 Y</label>
-                  <input id="display_origin_y" type="number" min="-10000" max="10000">
+                <div class="field wide">
+                  <label for="min_confidence">最低证据参考阈值</label>
+                  <input id="min_confidence" type="number" min="0" max="1" step="0.05" placeholder="0.45" title="启发式证据过滤阈值，未经准确率校准；它不能批准未经独立验证的技术规则。">
+                </div>
+              </div>
+              <div class="switches" style="margin-top: 8px;">
+                <label class="switch"><input id="realtime_swing_events" type="checkbox">实时 Swing 事件</label>
+                <label class="switch"><input id="realtime_frame_output" type="checkbox">保存逐帧 JSONL</label>
+                <label class="switch"><input id="evidence_bundle" type="checkbox">可重放证据包</label>
+              </div>
+            </details>
+          </div>
+
+          <div class="section">
+            <div class="section-title"><h3>ROI 参数</h3><span>本次运行</span></div>
+            <div class="switches" style="margin-top: 0; margin-bottom: 10px; grid-template-columns: 1fr;">
+              <label class="switch"><input id="roi_enabled" type="checkbox">启用 ROI 推理</label>
+            </div>
+            <button type="button" class="button" id="open-ground-calibration" style="width: 100%;">地面四点标定 / 双视角参考</button>
+            <p class="help" style="font-size:12px;color:var(--muted);margin:6px 0 0;">独立保存地面标定；脚踝投影仅供核对。</p>
+            <details id="roi-advanced-details" style="margin-top: 10px; padding: 8px 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px;">
+              <summary style="cursor: pointer; font-size: 12px; color: var(--muted);">📐 ROI 坐标微调与叠加样式</summary>
+              <div class="fields" style="margin-top: 10px;">
+                <div class="field wide">
+                  <label for="crop_margin">裁剪边距 px</label>
+                  <input id="crop_margin" name="crop_margin" type="number" min="0" max="256">
+                </div>
+              </div>
+              <div class="switches" style="margin-top: 8px;">
+                <label class="switch"><input id="show_roi_boundary" type="checkbox">显示 ROI 边界</label>
+                <label class="switch"><input id="show_roi_fill" type="checkbox">显示 ROI 填充</label>
+                <label class="switch"><input id="show_roi_points" type="checkbox">显示 P1–P4</label>
+              </div>
+              <div id="roi-boundary-editor" style="margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <label style="font-weight: 600; font-size: 13px;">ROI 与镜面区域定义</label>
+                  <span id="roi-mirror-tag" class="status-tag" style="background: rgba(255, 110, 115, 0.15); color: #ff6e73; font-size: 11px; padding: 2px 6px; border-radius: 4px;">🛡️ 镜面排除已启用</span>
+                </div>
+                <div class="roi-target-switch" style="width: 100%; margin-bottom: 10px; display: flex;">
+                  <button type="button" class="roi-target-btn active" id="btn-sidebar-target-court" data-target="court" style="flex: 1; justify-content: center;">🎾 球场 ROI (P1~P4)</button>
+                  <button type="button" class="roi-target-btn" id="btn-sidebar-target-mirror" data-target="mirror" style="flex: 1; justify-content: center;">🪞 镜面排除区 (M1~M4)</button>
+                </div>
+                <div style="display: flex; gap: 6px; margin-bottom: 10px;">
+                  <button type="button" id="btn-toggle-roi-editor" class="button" style="flex: 1; padding: 6px 8px; font-size: 12px; background: rgba(0, 240, 255, 0.1); border-color: var(--cyan); color: var(--cyan); font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 4px;">
+                    📐 画面交互描点编辑
+                  </button>
+                  <button type="button" id="btn-repoint-roi" class="button" style="padding: 6px 10px; font-size: 12px;" title="清空并在画面中重新依次点击 4 个角点">
+                    🔄 重新描点
+                  </button>
+                  <button type="button" id="btn-auto-sort-roi" class="button" style="padding: 6px 10px; font-size: 12px;" title="自动对齐四角：左上→右上→右下→左下">
+                    ⚡ 排序
+                  </button>
+                </div>
+                <div id="sidebar-court-box" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                  <div class="field"><label style="font-size: 11px; color: var(--cyan);">P1 (左上)</label><input id="roi_p1" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                  <div class="field"><label style="font-size: 11px; color: var(--cyan);">P2 (右上)</label><input id="roi_p2" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                  <div class="field"><label style="font-size: 11px; color: var(--cyan);">P3 (右下)</label><input id="roi_p3" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                  <div class="field"><label style="font-size: 11px; color: var(--cyan);">P4 (左下)</label><input id="roi_p4" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                </div>
+                <div id="sidebar-mirror-box" style="display: none; grid-template-columns: 1fr 1fr; gap: 8px;">
+                  <div class="field"><label style="font-size: 11px; color: #ff6e73;">M1 (左上)</label><input id="mirror_m1" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                  <div class="field"><label style="font-size: 11px; color: #ff6e73;">M2 (右上)</label><input id="mirror_m2" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                  <div class="field"><label style="font-size: 11px; color: #ff6e73;">M3 (右下)</label><input id="mirror_m3" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                  <div class="field"><label style="font-size: 11px; color: #ff6e73;">M4 (左下)</label><input id="mirror_m4" placeholder="X, Y" style="font-size: 12px; padding: 4px 6px;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                  <label class="switch" style="font-size: 12px; margin: 0;"><input id="roi_mirror_exclusion" type="checkbox" checked>自动排除镜面反射区</label>
+                  <button type="button" id="save-roi-boundary-btn" class="button" style="padding: 4px 12px; font-size: 12px; font-weight: 600; background: #007799; border-color: var(--cyan); color: #fff;">保存边界与镜面</button>
                 </div>
               </div>
             </details>
-            <div class="switches">
-              <label class="switch"><input id="live_mode" type="checkbox">低延迟直播模式</label>
-              <label class="switch"><input id="save_video" type="checkbox">保存完整视频</label>
-              <label class="switch"><input id="hdmi_output" type="checkbox">HDMI 全屏输出</label>
-            </div>
           </div>
 
           <div class="section">
             <div class="section-title"><h3>算法 2.0 虚拟双机位</h3><span>镜面与人像隐私标定</span></div>
-            <p style="margin: 0 0 10px 0; font-size: 12px; color: var(--muted); line-height: 1.5;">
-              使用单摄像头与镜子反射生成 Side-by-Side 虚实双视角。通过标定工具精细化设定镜面反射区域与人像隐私屏蔽多边形。
-            </p>
-            <div class="switches" style="margin-bottom: 10px;">
+            <div class="switches" style="margin-top: 0; margin-bottom: 10px; grid-template-columns: 1fr;">
               <label class="switch"><input id="algo2_dual_view" type="checkbox">启用算法 2.0 虚拟双机位 (Side-by-Side)</label>
             </div>
-
-            <!-- 🪞 镜面深度立体几何与光路微缩示意 -->
-            <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 10px;">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;">
-                <span style="color:var(--blue);font-weight:600;">🪞 空间立体光路与虚像深度</span>
-                <span style="color:var(--text);background:rgba(0,240,255,0.12);padding:1px 6px;border-radius:4px;border:1px solid rgba(0,240,255,0.3);">各向异性仿射解耦</span>
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;margin-bottom:8px;">
-                <div style="background:var(--panel-2);padding:5px 8px;border-radius:5px;">
-                  <span style="color:var(--muted);display:block;font-size:10px;">相机安装 / 俯角</span>
-                  <strong style="color:var(--blue);">H=3.3m / 35°</strong>
-                </div>
-                <div style="background:var(--panel-2);padding:5px 8px;border-radius:5px;">
-                  <span style="color:var(--muted);display:block;font-size:10px;">站位与平镜深度</span>
-                  <strong style="color:var(--text);">Y_p=4.68m / Y_w=6.2m</strong>
-                </div>
-                <div style="background:var(--panel-2);padding:5px 8px;border-radius:5px;">
-                  <span style="color:var(--muted);display:block;font-size:10px;">镜中虚像 / 相对视差</span>
-                  <strong style="color:#c084fc;">Y_v=7.72m (ΔY=3.04m)</strong>
-                </div>
-                <div style="background:var(--panel-2);padding:5px 8px;border-radius:5px;">
-                  <span style="color:var(--muted);display:block;font-size:10px;">横纵尺度比 (k_x / k_y)</span>
-                  <strong style="color:#f5d04c;">×1.65 / ×1.27 (+30%)</strong>
-                </div>
-              </div>
-              <svg viewBox="0 0 320 80" style="width:100%;height:auto;display:block;background:#090e17;border-radius:6px;border:1px solid #1c2738;">
-                <defs>
-                  <marker id="ar-cp" viewBox="0 0 6 6" refX="4" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto-start-reverse">
-                    <path d="M 0 1 L 6 3 L 0 5 z" fill="#00f0ff"/>
-                  </marker>
-                  <marker id="ar-yp" viewBox="0 0 6 6" refX="4" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto-start-reverse">
-                    <path d="M 0 1 L 6 3 L 0 5 z" fill="#f5d04c"/>
-                  </marker>
-                </defs>
-                <line x1="20" y1="62" x2="300" y2="62" stroke="#25354c" stroke-width="1"/>
-                <!-- 相机 -->
-                <line x1="35" y1="62" x2="35" y2="22" stroke="#4a5f78" stroke-width="1.5"/>
-                <rect x="28" y="16" width="14" height="10" rx="2" fill="#182336" stroke="#00f0ff" stroke-width="1"/>
-                <text x="35" y="11" fill="#00f0ff" font-size="8.5" text-anchor="middle">📷 3.3m</text>
-                <!-- 真实选手 -->
-                <ellipse cx="145" cy="62" rx="10" ry="3" fill="rgba(64,214,139,0.3)"/>
-                <line x1="145" y1="62" x2="145" y2="35" stroke="#40d68b" stroke-width="2"/>
-                <circle cx="145" cy="32" r="3" fill="#40d68b"/>
-                <text x="145" y="73" fill="#40d68b" font-size="8.5" text-anchor="middle">👤 4.68m</text>
-                <!-- 平面镜 -->
-                <line x1="205" y1="62" x2="205" y2="20" stroke="#f5d04c" stroke-width="2"/>
-                <polygon points="202,20 208,20 208,62 202,62" fill="rgba(0,240,255,0.15)"/>
-                <text x="205" y="14" fill="#f5d04c" font-size="8.5" text-anchor="middle">🪞 6.20m</text>
-                <!-- 虚像 -->
-                <ellipse cx="265" cy="62" rx="10" ry="3" fill="rgba(168,85,247,0.2)"/>
-                <line x1="265" y1="62" x2="265" y2="35" stroke="#a855f7" stroke-width="2" stroke-dasharray="2,2"/>
-                <circle cx="265" cy="32" r="3" fill="#a855f7"/>
-                <text x="265" y="73" fill="#c084fc" font-size="8.5" text-anchor="middle">🪞 7.72m</text>
-                <!-- 光路 -->
-                <line x1="42" y1="22" x2="142" y2="42" stroke="#00f0ff" stroke-width="1.2" marker-end="url(#ar-cp)"/>
-                <line x1="42" y1="22" x2="205" y2="46" stroke="#f5d04c" stroke-width="1.2" marker-end="url(#ar-yp)"/>
-                <line x1="205" y1="46" x2="147" y2="42" stroke="#f5d04c" stroke-width="1.2" stroke-dasharray="2,2"/>
-                <line x1="205" y1="46" x2="263" y2="42" stroke="#a855f7" stroke-width="1" stroke-dasharray="2,2" opacity="0.8"/>
-              </svg>
-            </div>
-
             <a href="/mirror-calibration" target="_blank" class="button" style="text-decoration:none;display:flex;align-items:center;justify-content:center;gap:8px;background:rgba(0,240,255,0.12);border:1px solid var(--blue);color:var(--text);font-weight:600;padding:10px;">
               🪞 打开镜面与人像遮挡标定工具 ↗
             </a>
+            <details id="dual-view-geometry-details" style="margin-top: 10px; padding: 8px 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px;">
+              <summary style="cursor: pointer; font-size: 12px; color: var(--muted);">ℹ️ 查看空间光路与虚像深度说明</summary>
+              <p style="margin: 8px 0 8px 0; font-size: 12px; color: var(--muted); line-height: 1.5;">
+                使用单摄像头与镜子反射生成 Side-by-Side 虚实双视角。通过标定工具精细化设定镜面反射区域与人像隐私屏蔽多边形。
+              </p>
+              <!-- 🪞 镜面深度立体几何与光路微缩示意 -->
+              <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--line); border-radius: 8px; padding: 10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;">
+                  <span style="color:var(--blue);font-weight:600;">🪞 空间立体光路与虚像深度</span>
+                  <span style="color:var(--text);background:rgba(0,240,255,0.12);padding:1px 6px;border-radius:4px;border:1px solid rgba(0,240,255,0.3);">各向异性仿射解耦</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;margin-bottom:8px;">
+                  <div style="background:var(--panel-2);padding:5px 8px;border-radius:5px;">
+                    <span style="color:var(--muted);display:block;font-size:10px;">相机安装 / 俯角</span>
+                    <strong style="color:var(--blue);">H=3.3m / 35°</strong>
+                  </div>
+                  <div style="background:var(--panel-2);padding:5px 8px;border-radius:5px;">
+                    <span style="color:var(--muted);display:block;font-size:10px;">站位与平镜深度</span>
+                    <strong style="color:var(--text);">Y_p=4.68m / Y_w=6.2m</strong>
+                  </div>
+                  <div style="background:var(--panel-2);padding:5px 8px;border-radius:5px;">
+                    <span style="color:var(--muted);display:block;font-size:10px;">镜中虚像 / 相对视差</span>
+                    <strong style="color:#c084fc;">Y_v=7.72m (ΔY=3.04m)</strong>
+                  </div>
+                  <div style="background:var(--panel-2);padding:5px 8px;border-radius:5px;">
+                    <span style="color:var(--muted);display:block;font-size:10px;">横纵尺度比 (k_x / k_y)</span>
+                    <strong style="color:#f5d04c;">×1.65 / ×1.27 (+30%)</strong>
+                  </div>
+                </div>
+                <svg viewBox="0 0 320 80" style="width:100%;height:auto;display:block;background:#090e17;border-radius:6px;border:1px solid #1c2738;">
+                  <defs>
+                    <marker id="ar-cp" viewBox="0 0 6 6" refX="4" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto-start-reverse">
+                      <path d="M 0 1 L 6 3 L 0 5 z" fill="#00f0ff"/>
+                    </marker>
+                    <marker id="ar-yp" viewBox="0 0 6 6" refX="4" refY="3" markerWidth="3.5" markerHeight="3.5" orient="auto-start-reverse">
+                      <path d="M 0 1 L 6 3 L 0 5 z" fill="#f5d04c"/>
+                    </marker>
+                  </defs>
+                  <line x1="20" y1="62" x2="300" y2="62" stroke="#25354c" stroke-width="1"/>
+                  <!-- 相机 -->
+                  <line x1="35" y1="62" x2="35" y2="22" stroke="#4a5f78" stroke-width="1.5"/>
+                  <rect x="28" y="16" width="14" height="10" rx="2" fill="#182336" stroke="#00f0ff" stroke-width="1"/>
+                  <text x="35" y="11" fill="#00f0ff" font-size="8.5" text-anchor="middle">📷 3.3m</text>
+                  <!-- 真实选手 -->
+                  <ellipse cx="145" cy="62" rx="10" ry="3" fill="rgba(64,214,139,0.3)"/>
+                  <line x1="145" y1="62" x2="145" y2="35" stroke="#40d68b" stroke-width="2"/>
+                  <circle cx="145" cy="32" r="3" fill="#40d68b"/>
+                  <text x="145" y="73" fill="#40d68b" font-size="8.5" text-anchor="middle">👤 4.68m</text>
+                  <!-- 平面镜 -->
+                  <line x1="205" y1="62" x2="205" y2="20" stroke="#f5d04c" stroke-width="2"/>
+                  <polygon points="202,20 208,20 208,62 202,62" fill="rgba(0,240,255,0.15)"/>
+                  <text x="205" y="14" fill="#f5d04c" font-size="8.5" text-anchor="middle">🪞 6.20m</text>
+                  <!-- 虚像 -->
+                  <ellipse cx="265" cy="62" rx="10" ry="3" fill="rgba(168,85,247,0.2)"/>
+                  <line x1="265" y1="62" x2="265" y2="35" stroke="#a855f7" stroke-width="2" stroke-dasharray="2,2"/>
+                  <circle cx="265" cy="32" r="3" fill="#a855f7"/>
+                  <text x="265" y="73" fill="#c084fc" font-size="8.5" text-anchor="middle">🪞 7.72m</text>
+                  <!-- 光路 -->
+                  <line x1="42" y1="22" x2="142" y2="42" stroke="#00f0ff" stroke-width="1.2" marker-end="url(#ar-cp)"/>
+                  <line x1="42" y1="22" x2="205" y2="46" stroke="#f5d04c" stroke-width="1.2" marker-end="url(#ar-yp)"/>
+                  <line x1="205" y1="46" x2="147" y2="42" stroke="#f5d04c" stroke-width="1.2" stroke-dasharray="2,2"/>
+                  <line x1="205" y1="46" x2="263" y2="42" stroke="#a855f7" stroke-width="1" stroke-dasharray="2,2" opacity="0.8"/>
+                </svg>
+              </div>
+            </details>
           </div>
 
           <div class="section">
             <div class="section-title"><h3>输出</h3><span>限制在项目目录内</span></div>
             <div class="fields">
               <div class="field wide">
-                <label for="output_dir">输出目录</label>
-                <input id="output_dir">
-              </div>
-              <div class="field wide">
                 <label for="session_name">会话名称</label>
                 <input id="session_name" maxlength="64">
+                <span class="help" style="font-size: 11px; color: var(--muted); display: block; margin-top: 4px;">
+                  统一保存至 <code>data/analysis_results/control_panel</code>，可在顶部历史会话列表回看。
+                </span>
               </div>
+              <input id="output_dir" type="hidden" value="data/analysis_results/control_panel">
             </div>
           </div>
         </form>

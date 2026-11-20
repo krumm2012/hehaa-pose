@@ -31,26 +31,9 @@ front_view:
   target_size:
   - 540
   - 720
-unified_detection:
-  enabled: true
-  model_path: models/detectors/tennis-yolo26n-exp004-960-fp16/model.mlpackage
-  ball_class_id: 0
-  racket_class_id: 1
-  coreml_detection_output: var_1440
-  preprocess_mode: letterbox
-  ball_confidence_threshold: 0.692
-  racket_confidence_threshold: 0.524
-  ball_racket_contact_distance_px: 180.0
-  compute_units: ANE
 visualization:
-  side_by_side: true
   front_label: FRONT VIEW
   back_label: BACK VIEW (MIRROR FLIPPED)
-  font_scale: 0.8
-  label_color:
-  - 0
-  - 255
-  - 0
 racket_resolution:
   mirror_fallback_zone:
   - 680.0

@@ -549,12 +549,488 @@ class LocalPipelineController:
     def assign_session_player(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         return self._session_store.assign_session_player(payload)
 
+    def assign_sessions_player_batch(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        return self._session_store.assign_sessions_player_batch(payload)
+
     def compare_player_sessions(
         self,
         player_id: Optional[str] = None,
         stroke_type: Optional[str] = None,
     ) -> Dict[str, Any]:
         return self._session_store.compare_player_sessions(player_id, stroke_type)
+
+    def get_player_global_profile(
+        self,
+        player_id: Optional[str] = None,
+        days: Optional[int] = None,
+        dedup: bool = True,
+    ) -> Dict[str, Any]:
+        return self._session_store.get_player_global_profile(player_id, days, dedup=dedup)
+
+    def list_duplicate_sessions(self, player_id: Optional[str] = None) -> Dict[str, Any]:
+        return self._session_store.list_duplicate_sessions(player_id=player_id)
+
+    def get_swing_trajectory(self, session_id: str, event_id: int) -> Dict[str, Any]:
+        return self._session_store.get_swing_trajectory(session_id=session_id, event_id=event_id)
+
+    def get_player_trajectory_summary(
+        self,
+        player_id: Optional[str] = None,
+        stroke_side: str = "forehand",
+        days: Optional[int] = None,
+        dedup: bool = True,
+    ) -> Dict[str, Any]:
+        return self._session_store.get_player_trajectory_summary(
+            player_id=player_id,
+            stroke_side=stroke_side,
+            days=days,
+            dedup=dedup,
+        )
+
+    def cleanup_duplicate_sessions(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        session_ids = payload.get("session_ids")
+        if not isinstance(session_ids, list):
+            raise ValueError("session_ids 必须是列表")
+        mode = str(payload.get("mode") or "archive").strip().lower()
+        return self._session_store.cleanup_duplicate_sessions(session_ids=session_ids, mode=mode)
+
+    def generate_player_global_review(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        player_id = str(payload.get("player_id") or "").strip() or None
+        days_raw = payload.get("days")
+        days = int(days_raw) if days_raw not in (None, "", "all") else None
+        dedup_raw = payload.get("dedup", True)
+        dedup_val = (
+            str(dedup_raw).strip().lower() not in ("0", "false", "no", "off")
+            if isinstance(dedup_raw, str)
+            else bool(dedup_raw)
+        )
+        requested_side = str(payload.get("stroke_side") or "").strip().lower()
+        profile = self.get_player_global_profile(player_id=player_id, days=days, dedup=dedup_val)
+        fh = profile.get("forehand") or {}
+        bh = profile.get("backhand") or {}
+        if requested_side not in ("forehand", "backhand"):
+            requested_side = "forehand" if (fh.get("total_swings", 0) > 0 or bh.get("total_swings", 0) == 0) else "backhand"
+        side_data = fh if requested_side == "forehand" else bh
+        side_label = "正手 (Forehand)" if requested_side == "forehand" else "反手 (Backhand)"
+        if side_data.get("total_swings", 0) < 1:
+            raise ValueError(f"该学员在当前范围内暂无足够的{side_label}实战挥拍记录，无法生成分析总评")
+
+        config = yaml.safe_load(self.config_path.read_text(encoding="utf-8")) or {}
+        rt_cfg = config.get("realtime_swing") or {}
+        raw_provider = str(payload.get("provider") or "deepseek").strip().lower()
+        requested_model = str(payload.get("model") or "").strip()
+        if raw_provider in ("gemini", "google") or requested_model.lower().startswith("gemini-"):
+            provider_key = "gemini"
+            provider_label = "Google Gemini"
+            gemini_cfg = rt_cfg.get("gemini") or {}
+            api_key_env = str(gemini_cfg.get("api_key_env") or "GEMINI_API_KEY")
+            base_url_env = str(gemini_cfg.get("base_url_env") or "GEMINI_BASE_URL")
+            model_env = str(gemini_cfg.get("model_env") or "GEMINI_MODEL")
+            load_local_environment_variable(self.workspace / ".env.local", api_key_env)
+            load_local_environment_variable(self.workspace / ".env.local", base_url_env)
+            load_local_environment_variable(self.workspace / ".env.local", model_env)
+            api_key = str(os.environ.get(api_key_env) or os.environ.get("OPENAI_API_KEY") or "").strip()
+            if not api_key:
+                raise RuntimeError(
+                    f"未配置 {api_key_env}，请在 .env.local 中添加 {api_key_env}=AIzaSy...（或配置 OPENAI_API_KEY 中转）"
+                )
+            base_url = str(
+                os.environ.get(base_url_env)
+                or gemini_cfg.get("base_url")
+                or "https://generativelanguage.googleapis.com/v1beta/openai/"
+            ).strip()
+            configured_model = (
+                requested_model
+                or str(os.environ.get(model_env) or "").strip()
+                or str(gemini_cfg.get("model") or "gemini-2.5-flash").strip()
+            )
+            candidate_models = list(dict.fromkeys([configured_model, "gemini-2.5-flash", "gemini-2.0-flash"]))
+        elif raw_provider in ("openai", "gpt", "claude") or requested_model.lower().startswith(("gpt-", "o1", "o3", "o4", "claude-")):
+            is_claude = "claude" in requested_model.lower() or raw_provider == "claude"
+            provider_key = "openai"
+            provider_label = "Claude" if is_claude else "OpenAI GPT"
+            openai_cfg = rt_cfg.get("openai") or {}
+            api_key_env = str(openai_cfg.get("api_key_env") or "OPENAI_API_KEY")
+            base_url_env = str(openai_cfg.get("base_url_env") or "OPENAI_BASE_URL")
+            model_env = str(openai_cfg.get("model_env") or "OPENAI_MODEL")
+            load_local_environment_variable(self.workspace / ".env.local", api_key_env)
+            load_local_environment_variable(self.workspace / ".env.local", base_url_env)
+            load_local_environment_variable(self.workspace / ".env.local", model_env)
+            api_key = str(os.environ.get(api_key_env) or "").strip()
+            if not api_key:
+                raise RuntimeError(
+                    f"未配置 {api_key_env} 环境变量，请在 .env.local 中添加 {api_key_env}=sk-...（可选配置 {base_url_env}）"
+                )
+            base_url = str(
+                os.environ.get(base_url_env)
+                or openai_cfg.get("base_url")
+                or "https://api.openai.com/v1"
+            ).strip()
+            configured_model = (
+                requested_model
+                or str(os.environ.get(model_env) or "").strip()
+                or str(openai_cfg.get("model") or "o3-mini").strip()
+            )
+            candidate_models = list(dict.fromkeys([configured_model, "gpt-4o", "gpt-4o-mini"]))
+        else:
+            provider_key = "deepseek"
+            provider_label = "DeepSeek"
+            ds_cfg = rt_cfg.get("deepseek") or {}
+            api_key_env = str(ds_cfg.get("api_key_env") or "DEEPSEEK_API_KEY")
+            load_local_environment_variable(self.workspace / ".env.local", api_key_env)
+            load_local_environment_variable(self.workspace / ".env.local", "DEEPSEEK_BASE_URL")
+            load_local_environment_variable(self.workspace / ".env.local", "DEEPSEEK_MODEL")
+            api_key = str(os.environ.get(api_key_env) or "").strip()
+            if not api_key:
+                raise RuntimeError(f"未配置 {api_key_env} 环境变量，无法调用 DeepSeek")
+            base_url = (
+                str(os.environ.get("DEEPSEEK_BASE_URL") or "").strip()
+                or str(ds_cfg.get("base_url") or "https://api.deepseek.com").strip()
+            )
+            configured_model = (
+                requested_model
+                or str(os.environ.get("DEEPSEEK_MODEL") or "").strip()
+                or str(ds_cfg.get("model") or "deepseek-flash").strip()
+            )
+            candidate_models = list(dict.fromkeys([configured_model, "deepseek-flash", "deepseek-chat"]))
+
+        import statistics as _stats
+
+        # Pull PCHIP+SG fitted per-swing trajectory diagnostics so AI sees the same clean data as the UI
+        traj_summary = self.get_player_trajectory_summary(
+            player_id=player_id,
+            stroke_side=requested_side,
+            days=days,
+            dedup=dedup_val,
+        )
+        traj_map = {
+            (str(it.get("session_id")), int(it.get("event_id"))): it
+            for it in (traj_summary.get("swings") or [])
+        }
+        side_prefix = "反" if requested_side == "backhand" else "正"
+        raw_swings = side_data.get("swings") or []
+
+        def _val_of(sw: Dict[str, Any], dg: Optional[Dict[str, Any]], key: str) -> Optional[float]:
+            if dg and isinstance(dg.get("summary"), dict):
+                rv = (dg["summary"].get(key) or {}).get("refined")
+                if rv is not None:
+                    return float(rv)
+            fb = sw.get("racket_max_speed_px_s") if key == "racket_max_speed" else sw.get(key)
+            return float(fb) if fb is not None else None
+
+        valid_swings_clean: List[Dict[str, Any]] = []
+        tier_c_labels: List[str] = []
+        for idx, sw in enumerate(raw_swings):
+            sid = str(sw.get("session_id") or "")
+            eid = int(sw.get("event_id") or 0)
+            dg = traj_map.get((sid, eid))
+            tier = str(dg.get("tier") or "A") if dg else "A"
+            seq_label = f"{side_prefix}{idx + 1}(#{eid})"
+            if tier == "C":
+                tier_c_labels.append(seq_label)
+                continue
+            item = {
+                "seq": seq_label,
+                "session_time": str(sw.get("display_time") or "")[5:16],
+                "tier": tier,
+                "turn": _val_of(sw, dg, "shoulder_turn_change"),
+                "sep": _val_of(sw, dg, "hip_shoulder_separation"),
+                "ext": _val_of(sw, dg, "arm_extension"),
+                "knee": _val_of(sw, dg, "preparation_knee_flexion"),
+                "stance": _val_of(sw, dg, "stance"),
+                "takeback": _val_of(sw, dg, "takeback_depth"),
+                "weight": _val_of(sw, dg, "weight_transfer"),
+                "drift": float(sw["balance_drift"]) if sw.get("balance_drift") is not None else None,
+                "speed": _val_of(sw, dg, "racket_max_speed"),
+            }
+            valid_swings_clean.append(item)
+
+        def _summarize_metric(key: str, label: str, unit: str) -> Optional[Dict[str, Any]]:
+            vals = [x[key] for x in valid_swings_clean if x.get(key) is not None]
+            if not vals:
+                return None
+            s_vals = sorted(vals)
+            n_v = len(s_vals)
+            med = float(_stats.median(s_vals))
+            q1 = s_vals[int((n_v - 1) * 0.25)]
+            q3 = s_vals[int((n_v - 1) * 0.75)]
+            mid = n_v // 2
+            early_v = [x[key] for x in valid_swings_clean[:mid] if x.get(key) is not None] if n_v >= 4 else []
+            late_v = [x[key] for x in valid_swings_clean[mid:] if x.get(key) is not None] if n_v >= 4 else []
+            early_med = round(float(_stats.median(early_v)), 1) if early_v else None
+            late_med = round(float(_stats.median(late_v)), 1) if late_v else None
+            return {
+                "label": label,
+                "unit": unit,
+                "n": n_v,
+                "median": round(med, 2),
+                "iqr": round(q3 - q1, 2),
+                "min": round(s_vals[0], 2),
+                "max": round(s_vals[-1], 2),
+                "early_half_median": early_med,
+                "late_half_median": late_med,
+                "half_delta": round(late_med - early_med, 2) if (early_med is not None and late_med is not None) else None,
+            }
+
+        fitted_metrics: Dict[str, Any] = {}
+        for k_short, k_full, lbl, unit in (
+            ("turn", "shoulder_turn_change", "转肩角度变化", "deg_2d"),
+            ("sep", "hip_shoulder_separation", "肩髋分离角(2D像面投影)", "image_plane_deg"),
+            ("ext", "arm_extension", "触球肘伸展角", "deg_2d"),
+            ("knee", "preparation_knee_flexion", "准备期屈膝弯曲度(180-膝内角)", "deg_2d"),
+            ("stance", "stance", "足部连线站位倾角", "deg_2d"),
+            ("takeback", "takeback_depth", "镜面引拍深度比(双视角)", "ratio"),
+            ("weight", "weight_transfer", "躯干重心横移", "body_width"),
+            ("drift", "balance_drift", "回位期重心漂移", "body_width"),
+            ("speed", "racket_max_speed", "拟合球拍峰值速度(相对值)", "px/s"),
+        ):
+            sm_m = _summarize_metric(k_short, lbl, unit)
+            if sm_m is not None:
+                fitted_metrics[k_full] = sm_m
+
+        # Top-3 vs Bottom-3 clean swings by fitted speed (for concrete good-vs-weak attribution)
+        ranked_by_spd = sorted(
+            [x for x in valid_swings_clean if x.get("speed") is not None],
+            key=lambda x: float(x["speed"]),
+            reverse=True,
+        )
+        top_k = min(3, max(1, len(ranked_by_spd) // 4)) if len(ranked_by_spd) >= 4 else 0
+        top_swings = ranked_by_spd[:top_k] if top_k else []
+        weak_swings = ranked_by_spd[-top_k:] if top_k else []
+
+        # Separate capture notices from biomechanical flaws
+        capture_keywords = ("遮挡", "复核", "候选")
+        capture_notices = [
+            {"message": w.get("message"), "rate_pct": w.get("rate_pct"), "count": w.get("count")}
+            for w in (side_data.get("coach_warnings") or [])
+            if any(kw in str(w.get("message") or "") for kw in capture_keywords)
+        ]
+        n_valid = len(valid_swings_clean)
+        bio_flaws = []
+        if n_valid > 0:
+            for lbl, pred in (
+                ("转腰拧发条不足(肩髋未拉开差距，单靠手臂挥拍)", lambda x: x["sep"] is not None and x["sep"] < 10.0),
+                ("侧身引拍转肩不充分(<30°，身体容易正对球网)", lambda x: x["turn"] is not None and x["turn"] < 30.0),
+                ("击球前下蹲蓄力不足(<35°，站得太直)", lambda x: x["knee"] is not None and x["knee"] < 35.0),
+                ("触球瞬间缩肘(<155°，手臂未充分迎前伸展)", lambda x: x["ext"] is not None and x["ext"] < 155.0),
+                ("击球后身体重心回位不稳", lambda x: x["drift"] is not None and x["drift"] > 0.45),
+                ("迎球重心向前传递不足", lambda x: x["weight"] is not None and x["weight"] < 0.40),
+            ):
+                hits = [x["seq"] for x in valid_swings_clean if pred(x)]
+                if hits:
+                    bio_flaws.append({
+                        "issue": lbl,
+                        "count": len(hits),
+                        "rate_pct": round(len(hits) / n_valid * 100.0, 1),
+                        "example_swings": hits[:5],
+                    })
+            bio_flaws.sort(key=lambda x: x["rate_pct"], reverse=True)
+
+        # Compact chronological swing sample list (cap at 24 swings to keep prompt concise & sharp)
+        compact_swings = [
+            {
+                "seq": x["seq"],
+                "t": x["session_time"],
+                "tier": x["tier"],
+                "turn": round(x["turn"], 1) if x["turn"] is not None else None,
+                "sep": round(x["sep"], 1) if x["sep"] is not None else None,
+                "ext": round(x["ext"], 1) if x["ext"] is not None else None,
+                "knee": round(x["knee"], 1) if x["knee"] is not None else None,
+                "stance": round(x["stance"], 0) if x["stance"] is not None else None,
+                "spd": round(x["speed"], 0) if x["speed"] is not None else None,
+            }
+            for x in valid_swings_clean[-24:]
+        ]
+
+        session_count = int(side_data.get("session_count") or 0)
+        evidence_packet = {
+            "player_name": (profile.get("player") or {}).get("display_name"),
+            "dominant_hand": (profile.get("player") or {}).get("dominant_hand"),
+            "stroke_side": side_label,
+            "analysis_scope": "single_session_multi_swing" if session_count <= 1 else "multi_session_longitudinal",
+            "window_days": days or "all",
+            "session_count": session_count,
+            "total_swings_raw": side_data.get("total_swings", 0),
+            "valid_swings_fitted": n_valid,
+            "tier_counts": traj_summary.get("tier_counts"),
+            "excluded_tier_c_swings": tier_c_labels,
+            "dual_view_swings": side_data.get("dual_view_swings", 0),
+            "metric_semantics": {
+                "shoulder_turn_change": "侧身引拍转肩幅度（≥40°表示侧身蓄力充分，<30°表示身体正对球网不侧身）",
+                "hip_shoulder_separation": "引拍转体时身体拧紧发条程度（肩线与髋线夹角，越大说明核心弹性储能越强）",
+                "preparation_knee_flexion": "击球前屈膝深蹲蓄力程度（180°-膝内角，数值越大代表下蹲踩实越深、像弹簧压下）",
+                "arm_extension": "触球瞬间持拍手臂伸展程度（160°-175°为充分延展，<145°为严重缩肘）",
+                "contact_lateral_distance": "击球点与身体的横向距离（≥0.55倍肩宽为身前舒适空间，过小代表球顶在身上缩手打）",
+                "weight_transfer": "击球时身体向前迎球传递重心幅度（≥0.40倍肩宽表示身体主动迎前压上去打）",
+                "balance_drift": "击球后身体回位漂移（<0.30倍肩宽为稳固复位，>0.45倍肩宽表示打完身体东倒西歪）",
+                "takeback_depth": "双视角手腕拉后引拍深度比（≥1.8为充分拉开引拍，过小代表推球式短引拍）",
+                "brush_angle": "击球时由下向上的刷球上升角（≥14°为充分制造上旋，过低容易平击出界）",
+                "drop_depth_ratio": "触球前拍头下潜掉拍头深度比（≥0.25为拍头下沉充分，有由下向上的抽击杠杆）",
+                "stance": "双脚连线站位倾角（0°-15°为开放式站位适合快速对攻，30°-60°为半开放/关闭式适合主动发力）",
+                "leg_drive": "蹬地髋部纵向垂直抬升幅度（蹬地起伏发力程度）",
+                "whip_amplification_ratio": "甜区与手腕鞭打加速比（≥2.2倍表示拍头如同鞭子末端猛烈甩出）",
+                "kinematic_sequence": "动力链传导时序（标准顺序：下肢蹬地 -> 髋转 -> 肩转 -> 手臂 -> 拍头）",
+                "racket_max_speed": "击球全行程峰值拍速（相对值，用于区分高质重炮球 vs 发软推球）",
+                "racket_head_speed": "触球瞬间有效拍头速度",
+                "swing_quality_score": "动作综合定型度评分（百分制，衡量动作一致性与发力完整性）",
+                "iqr": "四分位距（衡量动作离散波动：数值过大代表动作时好时坏、极不稳定）",
+                "half_delta": "后半程相对前半程中位数变化（正值代表越打越好，负值且拍数充足代表后程走样偷懒）",
+            },
+            "fitted_metrics": fitted_metrics,
+            "biomechanical_flaws": bio_flaws,
+            "top_swings_by_speed": [{"seq": x["seq"], "spd": round(x["speed"], 0), "turn": x["turn"], "knee": x["knee"], "ext": x["ext"], "weight": x["weight"]} for x in top_swings],
+            "weak_swings_by_speed": [{"seq": x["seq"], "spd": round(x["speed"], 0), "turn": x["turn"], "knee": x["knee"], "ext": x["ext"], "weight": x["weight"]} for x in weak_swings],
+            "per_swing_sequence": compact_swings,
+            "capture_quality_notices": capture_notices,
+        }
+
+        from deepseek_realtime_coach import UrllibDeepSeekTransport
+        import urllib.error
+
+        transport = UrllibDeepSeekTransport()
+        if session_count <= 1:
+            if n_valid < 8:
+                sample_confidence_tip = f"【样本量警示】：当前仅记录到 {n_valid} 拍有效击球，样本较少（属于摸底小样本）。切勿妄下'体能严重耗竭'等过度推论，重点只针对这几拍动作规范性与单拍发力手感进行点拨。"
+            elif n_valid < 15:
+                sample_confidence_tip = f"【样本量提示】：当前共有 {n_valid} 拍有效击球，具备初步统计参考。重点对比好球与弱球的发力差异，前后半程演变请用'后半段节奏波动/轻微起伏'客观描述，不要武断断言体能耗尽。"
+            else:
+                sample_confidence_tip = f"【样本量充足】：当前共有 {n_valid} 拍连贯击球，数据统计稳定可靠。请深入对比好坏球发力开关以及前后半程动作定型度演变。"
+            scope_instruction = (
+                f"当前为单场训练击球记录（共 {n_valid} 拍有效{side_label}）。{sample_confidence_tip}"
+            )
+        else:
+            scope_instruction = (
+                f"当前为跨 {session_count} 场训练的长期数据（共 {n_valid} 拍有效{side_label}），请重点对比【跨场次固化的发力共性】与【不同场次间反复出现的动作毛病】。"
+            )
+        system_prompt = (
+            f"你是一位拥有15年一线执教经验的【职业网球主教练】。\n"
+            f"你的核心使命：基于下方经过拟合清洗的学员真实击球数据，给学员写一份【句句听得懂、直击发力痛点、像在场边面对面指导】的《{side_label}主教练实战评语》（中文，约500-700字）。\n"
+            f"{scope_instruction}\n\n"
+            "【核心表达铁律 - 严禁出现算法与统计行话，必须翻译成通俗教练语言】：\n"
+            "1. 绝对严禁向学员输出算法研发术语！文中绝对不能出现：'IQR'、'half_delta'、'px/s'、'Tier C'、'bw'、'PCHIP'、'SG平滑'、'2D投影' 等词汇！\n"
+            "   - 'IQR 很大' 必须翻译为：'动作定型度不足，击球动作忽大忽小，发挥不够稳定'\n"
+            "   - 'half_delta 为负'：若拍数充足且为转肩/深蹲/拍速等关键发力指标下滑，翻译为：'前半程体力充沛时很到位，后半程一累就开始走样偷懒'；若拍数较少，严禁断言体能耗尽，用'后半段击球节奏出现明显波动/下滑'客观表述。\n"
+            "   - 'px/s 速度对比'：根据好球与弱球速度的实际落差客观描述（如'重炮好球 vs 偏软的推球，球速有明显落差'，切勿死板写死'差了一倍多'，尊重真实比例）。\n"
+            "   - '屈膝度高/低' 必须翻译为：'击球前深蹲下压蓄力充分（像弹簧压下）' / '站得太直没下蹲'\n"
+            "   - '转肩角度' 必须翻译为：'侧身引拍转肩充不充分'\n"
+            "   - '肩髋分离' 必须翻译为：'身体像拧毛巾一样把发条拧紧'\n"
+            "   - '触球肘伸展' 必须翻译为：'击球瞬间手臂充分迎前延展，没有缩着肘打'\n"
+            "   - 'Tier C 剔除' 必须翻译为：'部分受拍摄角度遮挡的拍次已自动过滤，非学员技术问题'\n\n"
+            "2. 严格按以下四个板块输出（口吻专业生动、有鼓励有鞭策、指导性极强）：\n"
+            f"   【一、🎾 主教练一句话定性（学员画像）】\n"
+            "   用大白话打个生动形象的比喻，一针见血概括学员这侧动作的根本特质（例如：“你的下盘蹲得很扎实，手也敢甩，但中间的‘转体发条’没拧紧！前半场很生猛，后半场一累就开始纯靠胳膊硬抡！”）。\n\n"
+            f"   【二、🌟 你的标杆好球 vs ⚠️ 你的偷懒弱球（具体拍号对照）】\n"
+            "   - 【标杆好球（记住这种感觉）】：具体点名打得最好的拍号（如正5、正15），告诉他当时身体感觉好在哪（深蹲踩实了、侧身转体拉满了、手臂甩得顺畅，打出了全场最爆的球速），让他强化肌肉记忆。\n"
+            "   - 【偷懒弱球（抓出发力毛病）】：具体点名打得软、没威胁的拍号（如正1、正11，以及后半程偷懒的几拍），指出当时是怎么偷懒的（站直了没蹲、身体正对球网不侧身、单靠手去够球），并说明后半程体能下滑导致的动作变形。\n\n"
+            f"   【三、🎯 场上即刻口诀与 1 个课后练习】\n"
+            "   - 【球场实战口诀】：提炼一句学员在场上准备击球时能默念的 6~8 字口令（例如：“先侧身、深蹲下、转髋甩拍”）。\n"
+            "   - 【课后专属练习】：给 1 项不拿球在家里或场边就能练的针对性动作（如“原地持拍拧毛巾转体练习”或“分腿垫步深蹲启动”），标明组数和练习感觉。\n\n"
+            f"   【四、📊 好坏球关键动作对比（通俗对比表）】\n"
+            "   用学员一目了然的简单列表，对比打得好的几拍与打得差的几拍的关键动作差异（如：好球时转肩侧身43°/下肢深蹲充分/打出全场最高速度；弱球时转肩仅17°/站得太直/球速下降近一半）。\n\n"
+            "3. 严禁混入另一侧（反手/正手）数据，必须严格基于数据包中真实拍号（如 正5、正15、正1 等）。"
+        )
+        user_prompt = f"学员【{side_label}】拟合清洗后训练证据包（JSON）：\n" + json.dumps(
+            evidence_packet, ensure_ascii=False, separators=(",", ":")
+        )
+
+        last_exc: Optional[Exception] = None
+        used_model = configured_model
+        raw_reply = ""
+        fallback_model = candidate_models[-1]
+        for candidate_model in candidate_models:
+            try:
+                m_lower = candidate_model.lower()
+                is_openai_reasoning = m_lower.startswith(("o1", "o3", "o4", "gpt-5"))
+                is_deepseek_reasoning = "reasoner" in m_lower
+                is_reasoning = is_openai_reasoning or is_deepseek_reasoning
+
+                system_role = "developer" if is_openai_reasoning else "system"
+                req_payload: Dict[str, Any] = {
+                    "model": candidate_model,
+                    "messages": [
+                        {"role": system_role, "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                }
+                if is_openai_reasoning:
+                    req_payload["max_completion_tokens"] = 3000
+                elif is_deepseek_reasoning:
+                    req_payload["max_tokens"] = 3000
+                else:
+                    req_payload["temperature"] = 0.25
+                    req_payload["max_tokens"] = 1600
+
+                timeout_sec = 65.0 if is_reasoning else 35.0
+                resp = transport.complete(
+                    base_url=base_url,
+                    api_key=api_key,
+                    payload=req_payload,
+                    timeout=timeout_sec,
+                )
+                choices = resp.get("choices") or []
+                msg = (choices[0].get("message") or {}) if choices else {}
+                raw_reply = str(msg.get("content") or "").strip()
+                used_model = str(resp.get("model") or candidate_model)
+                if raw_reply:
+                    break
+            except urllib.error.HTTPError as exc:
+                last_exc = exc
+                if exc.code in (400, 404) and candidate_model != fallback_model:
+                    continue
+                raise RuntimeError(f"{provider_label} 请求失败 (HTTP {exc.code})") from exc
+            except Exception as exc:
+                last_exc = exc
+                raise RuntimeError(f"{provider_label} 请求异常: {exc}") from exc
+
+        if not raw_reply:
+            raise RuntimeError(f"{provider_label} 返回为空: {last_exc or 'unknown'}")
+
+        session_ids = list(dict.fromkeys(str(sw.get("session_id") or "") for sw in raw_swings if sw.get("session_id")))
+        video_paths: List[str] = []
+        for s in (profile.get("sessions_catalog") or []):
+            if str(s.get("session_id") or "") in session_ids:
+                vp = s.get("source_path") or s.get("source_name")
+                if vp and str(vp) not in video_paths:
+                    video_paths.append(str(vp))
+
+        saved_rec = self._session_store.save_coach_review(
+            player_id=(profile.get("player") or {}).get("player_id") or player_id or "default",
+            stroke_side=requested_side,
+            provider=provider_key,
+            model=used_model,
+            review_text=raw_reply,
+            session_ids=session_ids,
+            video_paths=video_paths,
+            evidence_packet=evidence_packet,
+            days_scope=str(days) if days is not None else "all",
+            dedup=1 if dedup_val else 0,
+        )
+
+        return {
+            "review_id": saved_rec.get("review_id"),
+            "player": profile.get("player"),
+            "stroke_side": requested_side,
+            "days": days,
+            "provider": provider_key,
+            "model": used_model,
+            "generated_at": saved_rec.get("created_at"),
+            "review_text": raw_reply,
+            "session_ids": session_ids,
+            "video_paths": video_paths,
+            "evidence_packet": evidence_packet,
+        }
+
+    def list_coach_reviews(
+        self,
+        player_id: Optional[str] = None,
+        stroke_side: Optional[str] = None,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        return self._session_store.list_coach_reviews(
+            player_id=player_id or "default",
+            stroke_side=stroke_side,
+            limit=limit,
+        )
 
     def evaluate_manual_review(
         self,

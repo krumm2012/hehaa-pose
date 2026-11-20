@@ -140,6 +140,12 @@ def create_handler(controller: LocalPipelineController):
                         self._send_file(calib_html, "text/html", head_only=head_only)
                     else:
                         self.send_error(HTTPStatus.NOT_FOUND, "mirror_calibration.html not found")
+                elif path in ("/player-compare", "/player_compare.html"):
+                    compare_html = controller.workspace / "player_compare.html"
+                    if compare_html.exists():
+                        self._send_file(compare_html, "text/html", head_only=head_only)
+                    else:
+                        self.send_error(HTTPStatus.NOT_FOUND, "player_compare.html not found")
                 elif path in ("/api/mirror/info", "/api/info"):
                     from urllib.parse import parse_qs, urlsplit
                     query = parse_qs(urlsplit(self.path).query)
@@ -178,6 +184,11 @@ def create_handler(controller: LocalPipelineController):
                     self._send_json(controller.status(), head_only=head_only)
                 elif path == "/api/sessions":
                     self._send_json(controller.list_sessions(), head_only=head_only)
+                elif path == "/api/sessions/duplicates":
+                    from urllib.parse import parse_qs, urlsplit
+                    query = parse_qs(urlsplit(self.path).query)
+                    p_id = query.get("player_id", [None])[0]
+                    self._send_json(controller.list_duplicate_sessions(player_id=p_id), head_only=head_only)
                 elif path == "/api/players":
                     self._send_json({"players": controller.list_players()}, head_only=head_only)
                 elif path == "/api/players/compare":
@@ -187,6 +198,67 @@ def create_handler(controller: LocalPipelineController):
                     s_type = query.get("stroke_type", [None])[0]
                     self._send_json(
                         controller.compare_player_sessions(player_id=p_id, stroke_type=s_type),
+                        head_only=head_only,
+                    )
+                elif path == "/api/players/global-profile":
+                    from urllib.parse import parse_qs, urlsplit
+                    query = parse_qs(urlsplit(self.path).query)
+                    p_id = query.get("player_id", [None])[0]
+                    days_raw = query.get("days", [None])[0]
+                    days_val = int(days_raw) if days_raw and str(days_raw).isdigit() else None
+                    dedup_raw = str(query.get("dedup", ["1"])[0] or "1").strip().lower()
+                    dedup_val = dedup_raw not in ("0", "false", "no", "off")
+                    self._send_json(
+                        controller.get_player_global_profile(
+                            player_id=p_id,
+                            days=days_val,
+                            dedup=dedup_val,
+                        ),
+                        head_only=head_only,
+                    )
+                elif path == "/api/players/coach-reviews":
+                    from urllib.parse import parse_qs, urlsplit
+                    query = parse_qs(urlsplit(self.path).query)
+                    p_id = query.get("player_id", ["default"])[0]
+                    side = query.get("stroke_side", [None])[0]
+                    limit_raw = query.get("limit", ["20"])[0]
+                    limit = int(limit_raw) if str(limit_raw).isdigit() else 20
+                    self._send_json(
+                        controller.list_coach_reviews(
+                            player_id=p_id,
+                            stroke_side=side,
+                            limit=limit,
+                        ),
+                        head_only=head_only,
+                    )
+                elif path == "/api/players/trajectory-summary":
+                    from urllib.parse import parse_qs, urlsplit
+                    query = parse_qs(urlsplit(self.path).query)
+                    p_id = query.get("player_id", [None])[0]
+                    side = query.get("stroke_side", ["forehand"])[0]
+                    days_raw = query.get("days", [None])[0]
+                    days_val = int(days_raw) if days_raw and str(days_raw).isdigit() else None
+                    dedup_raw = str(query.get("dedup", ["1"])[0] or "1").strip().lower()
+                    dedup_val = dedup_raw not in ("0", "false", "no", "off")
+                    self._send_json(
+                        controller.get_player_trajectory_summary(
+                            player_id=p_id,
+                            stroke_side=side,
+                            days=days_val,
+                            dedup=dedup_val,
+                        ),
+                        head_only=head_only,
+                    )
+                elif path == "/api/session/swing-trajectory":
+                    from urllib.parse import parse_qs, urlsplit
+                    query = parse_qs(urlsplit(self.path).query)
+                    s_id = query.get("session_id", [""])[0]
+                    ev_raw = query.get("event_id", [""])[0]
+                    if not s_id or not str(ev_raw).lstrip("-").isdigit():
+                        self._send_json({"error": "缺少合法的 session_id 或 event_id"}, status=HTTPStatus.BAD_REQUEST)
+                        return
+                    self._send_json(
+                        controller.get_swing_trajectory(session_id=s_id, event_id=int(ev_raw)),
                         head_only=head_only,
                     )
                 elif path == "/api/session/events":
@@ -272,7 +344,10 @@ def create_handler(controller: LocalPipelineController):
                 "/api/ground/save",
                 "/api/ground/profile/import",
                 "/api/players",
+                "/api/players/global-review",
                 "/api/sessions/assign-player",
+                "/api/sessions/assign-player-batch",
+                "/api/sessions/dedup-cleanup",
             }
             if path not in allowed_paths:
                 self.send_error(HTTPStatus.NOT_FOUND)
@@ -321,8 +396,14 @@ def create_handler(controller: LocalPipelineController):
                     self._send_json(controller.import_ground_camera_profile(payload))
                 elif path == "/api/players":
                     self._send_json(controller.create_or_update_player(payload))
+                elif path == "/api/players/global-review":
+                    self._send_json(controller.generate_player_global_review(payload))
                 elif path == "/api/sessions/assign-player":
                     self._send_json(controller.assign_session_player(payload))
+                elif path == "/api/sessions/assign-player-batch":
+                    self._send_json(controller.assign_sessions_player_batch(payload))
+                elif path == "/api/sessions/dedup-cleanup":
+                    self._send_json(controller.cleanup_duplicate_sessions(payload))
                 elif path == "/api/manual-review/evaluate":
                     self._send_json(
                         controller.evaluate_manual_review(

@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Tennis AI · 学员全局正反手姿态与对比</title>
+  <link rel="stylesheet" href="/static/css/control_panel.css">
+  <style>
+    .shell {
+      width: min(1680px, calc(100vw - 24px));
+    }
+    .compare-header-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .compare-select {
+      width: auto;
+      min-width: 120px;
+      height: 36px;
+      padding: 0 10px;
+      font-size: 13px;
+      border-radius: 9px;
+      background: #0a1018;
+      border: 1px solid var(--line);
+      color: var(--text);
+    }
+    .mode-pill-group {
+      display: inline-flex;
+      gap: 3px;
+      padding: 3px;
+      border-radius: 9px;
+      background: #090d14;
+      border: 1px solid var(--line);
+    }
+    .mode-pill {
+      height: 30px;
+      padding: 0 11px;
+      border: none;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .mode-pill.active {
+      background: rgba(56, 189, 248, 0.2);
+      color: #eef4fb;
+      border: 1px solid rgba(56, 189, 248, 0.45);
+    }
+    .kpi-strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .kpi-card {
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid var(--line);
+    }
+    .kpi-card span {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 3px;
+    }
+    .kpi-card strong {
+      display: block;
+      font-size: 18px;
+      color: var(--text);
+    }
+    .kpi-card small {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .compare-grid-1x4 {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .cmp-grid-stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      overflow: hidden;
+      border-radius: 8px;
+      background: #000;
+      border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    .compare-ab-slots {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .cmp-media-stage {
+      position: relative;
+      width: min(100%, 400px);
+      aspect-ratio: 3 / 4;
+      margin: 0 auto;
+      overflow: hidden;
+      border-radius: 8px;
+      background: #000;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(5, 8, 13, 0.82);
+      backdrop-filter: blur(4px);
+    }
+    .modal-panel {
+      width: min(860px, 100%);
+      max-height: 86vh;
+      display: flex;
+      flex-direction: column;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: #101722;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    @media (max-width: 1180px) {
+      .compare-grid-1x4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 1100px) {
+      .kpi-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 960px) {
+      .compare-ab-slots {
+        grid-template-columns: 1fr;
+      }
+    }
+    @media (max-width: 640px) {
+      .compare-grid-1x4 {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand">
+        <div class="brand-mark">TA</div>
+        <div>
+          <h1>学员单侧姿态跨场次全局分析</h1>
+          <p>正反手严格分开分析 · 跨多次训练提炼共性与前后矛盾 · 1×4 四路全身同步视频复盘</p>
+        </div>
+      </div>
+      <div class="header-actions compare-header-controls">
+        <div class="mode-pill-group" role="tablist" aria-label="视图模式">
+          <button id="mode-forehand-btn" type="button" class="mode-pill active">🎾 正手全局分析</button>
+          <button id="mode-backhand-btn" type="button" class="mode-pill">🛡️ 反手全局分析</button>
+          <button id="mode-ab-btn" type="button" class="mode-pill">⚖️ 单场 A/B 对比</button>
+        </div>
+        <select id="compare-player-select" class="compare-select" aria-label="选择学员"></select>
+        <button id="add-player-btn" type="button" class="button">+ 新建学员</button>
+        <button id="batch-assign-btn" type="button" class="button" title="勾选多场历史训练会话批量归属到某位学员">📂 批量归属会话</button>
+        <button id="dedup-manage-btn" type="button" class="button" title="识别并安全归档同视频重复跑批会话">🧹 视频去重管理</button>
+        <label style="display:inline-flex; align-items:center; gap:5px; padding:0 9px; height:34px; border-radius:8px; border:1px solid var(--line); background:rgba(255,255,255,0.03); font-size:12px; color:var(--text); cursor:pointer; margin:0; text-transform:none; letter-spacing:0;" title="开启后自动对同源原视频合并，优先保留双视角与最新场次">
+          <input id="compare-dedup-toggle" type="checkbox" checked style="width:14px; height:14px; accent-color:var(--blue, #38bdf8);">
+          <span>🔀 按原视频去重</span>
+        </label>
+        <select id="compare-days-select" class="compare-select" aria-label="时间范围">
+          <option value="all">全部训练</option>
+          <option value="30">近 30 天</option>
+          <option value="7">近 7 天</option>
+        </select>
+        <select id="compare-stroke-select" class="compare-select" aria-label="筛选动作类型" hidden>
+          <option value="all">全部动作</option>
+          <option value="Forehand">正手 (Forehand)</option>
+          <option value="Backhand">反手 (Backhand)</option>
+        </select>
+        <button id="refresh-compare-btn" type="button" class="button">刷新</button>
+        <a href="/" class="button ghost" style="text-decoration:none;display:inline-flex;align-items:center;">← 返回控制台</a>
+      </div>
+    </header>
+
+    <section class="card" style="padding: 16px;">
+      <div id="player-compare-body" style="font-size: 13px; color: var(--muted);">正在加载学员姿态数据...</div>
+    </section>
+  </div>
+
+  <!-- Batch Session Assignment Modal -->
+  <div id="batch-assign-modal" class="modal-backdrop" hidden onclick="if(event.target===this)closeBatchAssignModal()">
+    <div class="modal-panel">
+      <div class="card-heading">
+        <div>
+          <h2>📂 批量归属历史会话到学员</h2>
+          <p>勾选中需要合并分析的训练会话，一键归入指定学员名下</p>
+        </div>
+        <button type="button" class="button" onclick="closeBatchAssignModal()">✕ 关闭</button>
+      </div>
+      <div style="padding: 12px 16px; border-bottom: 1px solid var(--line); display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; background:rgba(255,255,255,0.02);">
+        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
+          <label for="batch-target-player" style="margin:0; font-size:12px;">目标学员:</label>
+          <select id="batch-target-player" class="compare-select" style="height:32px;"></select>
+          <button type="button" class="button" style="min-height:30px; font-size:12px; padding:0 10px;" onclick="selectAllBatchRows(true)">全选当前</button>
+          <button type="button" class="button" style="min-height:30px; font-size:12px; padding:0 10px;" onclick="selectAllBatchRows(false)">清空</button>
+          <label style="display:inline-flex; align-items:center; gap:5px; margin:0; text-transform:none; letter-spacing:0; font-size:12px; cursor:pointer;">
+            <input id="batch-only-default-chk" type="checkbox" style="width:14px; height:14px;" onchange="renderBatchSessionRows()"> 仅显示「默认球员」
+          </label>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span id="batch-selected-count" style="font-size:12px; color:var(--blue);">已选 0 场</span>
+          <button id="batch-submit-btn" type="button" class="button primary" style="min-height:32px; padding:0 14px;" onclick="submitBatchAssign()">确认批量归属</button>
+        </div>
+      </div>
+      <div id="batch-sessions-list" style="padding: 10px 16px; overflow:auto; flex:1;">正在加载会话列表...</div>
+    </div>
+  </div>
+
+  <!-- Duplicate Video Session Cleanup Modal -->
+  <div id="dedup-modal" class="modal-backdrop" hidden onclick="if(event.target===this)closeDedupModal()">
+    <div class="modal-panel">
+      <div class="card-heading">
+        <div>
+          <h2>🧹 重复视频分析记录去重与归档清理</h2>
+          <p>按原视频文件 SHA-256 指纹与文件名自动识别重跑场次（不合并 RTSP 实时相机）。默认归档移出控制台，保留原始数据可随时恢复。</p>
+        </div>
+        <button type="button" class="button" onclick="closeDedupModal()">✕ 关闭</button>
+      </div>
+      <div style="padding: 12px 16px; border-bottom: 1px solid var(--line); display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; background:rgba(255,255,255,0.02);">
+        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
+          <label for="dedup-scope-select" style="margin:0; font-size:12px;">检查范围:</label>
+          <select id="dedup-scope-select" class="compare-select" style="height:32px;" onchange="loadDedupGroups()">
+            <option value="current">当前学员</option>
+            <option value="all">全部学员 (跨学员)</option>
+          </select>
+          <button type="button" class="button" style="min-height:30px; font-size:12px; padding:0 10px;" onclick="selectRecommendedDuplicates(true)">一键选中全部推荐清理项</button>
+          <button type="button" class="button" style="min-height:30px; font-size:12px; padding:0 10px;" onclick="selectRecommendedDuplicates(false)">清空选择</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span id="dedup-selected-count" style="font-size:12px; color:#fbbf24;">已选 0 场冗余</span>
+          <button id="dedup-archive-btn" type="button" class="button primary" style="min-height:32px; padding:0 14px;" onclick="submitDedupCleanup('archive')">归档移出选中冗余</button>
+        </div>
+      </div>
+      <div id="dedup-groups-list" style="padding: 12px 16px; overflow:auto; flex:1;">正在扫描重复视频记录...</div>
+    </div>
+  </div>
+
+  <!-- Per-Swing Trajectory Fitting & Repair Inspector Modal -->
+  <div id="trajectory-modal" class="modal-backdrop" hidden onclick="if(event.target===this)closeTrajectoryModal()">
+    <div class="modal-panel" style="width: min(1060px, 100%); max-height: 90vh;">
+      <div class="card-heading">
+        <div>
+          <h2 id="traj-modal-title">📈 单拍逐帧轨迹拟合与修复观测</h2>
+          <p id="traj-modal-subtitle">门控剔除误检 · PCHIP 保形三次插值 · Savitzky-Golay 平滑 · 固定蓄力窗重算</p>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <button id="traj-prev-btn" type="button" class="button" style="min-height:30px; padding:0 10px; font-size:12px;" onclick="stepTrajectoryModal(-1)">◀ 上一拍</button>
+          <button id="traj-next-btn" type="button" class="button" style="min-height:30px; padding:0 10px; font-size:12px;" onclick="stepTrajectoryModal(1)">下一拍 ▶</button>
+          <button type="button" class="button" style="min-height:30px; padding:0 10px; font-size:12px;" onclick="closeTrajectoryModal()">✕ 关闭</button>
+        </div>
+      </div>
+      <div id="traj-modal-body" style="padding: 12px 16px; overflow:auto; flex:1;">正在拟合逐帧轨迹...</div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="/static/js/player_compare.js"></script>
+</body>
+</html>

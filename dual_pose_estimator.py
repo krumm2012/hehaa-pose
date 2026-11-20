@@ -116,9 +116,6 @@ class DualPoseEstimator:
         backend: str = "auto",  # 'auto' | 'coreml' | 'ultralytics'
         concurrent: bool = True,
         compute_units: str = "ALL",
-        back_view_adaptive_cadence: bool = True,
-        back_idle_max_skip: int = 2,
-        active_wrist_motion_px: float = 10.0,
     ):
         self.conf_threshold = conf_threshold
         self.biomech_engine = DualViewBiomechanicsEngine(
@@ -131,9 +128,6 @@ class DualPoseEstimator:
         self.compute_units = str(compute_units).upper()
         if self.compute_units not in {"ANE", "ALL", "CPU", "GPU"}:
             raise ValueError("Unsupported pose compute units")
-        self.back_view_adaptive_cadence = bool(back_view_adaptive_cadence)
-        self.back_idle_max_skip = max(0, int(back_idle_max_skip))
-        self.active_wrist_motion_px = float(active_wrist_motion_px)
         self.model_front = None
         self.model_back = None
         self.model = None  # 兼容原有单实例属性访问 (指向 model_front)
@@ -148,14 +142,6 @@ class DualPoseEstimator:
         self._has_back_orientation_anchor: bool = False
         self._last_valid_front_pose: Dict[str, Keypoint] = {}
         self._front_missing_count: int = 0
-        self._cached_back_pose_local: Dict[str, Keypoint] = {}
-        self._cached_back_eyes: List[Tuple[int, int, int, int]] = []
-        self._prev_front_pose_for_gate: Dict[str, Keypoint] = {}
-        self._front_active_hold: int = 0
-        self._back_skipped_streak: int = 0
-        self._last_front_occluded: bool = True
-        self.back_view_inferred_count: int = 0
-        self.back_view_skipped_count: int = 0
         self._init_backend(model_path)
 
     def _init_backend(self, model_path: Optional[str]):
@@ -886,33 +872,6 @@ class DualPoseEstimator:
             )
         return mapped
 
-    def _evaluate_front_activity(
-        self, front_pose_local: Dict[str, Keypoint]
-    ) -> Tuple[bool, bool]:
-        """Return (is_active_or_occluded, has_occlusion) for adaptive back-view gating."""
-        upper_keys = (
-            "left_shoulder", "right_shoulder",
-            "left_elbow", "right_elbow",
-            "left_wrist", "right_wrist",
-        )
-        occluded = any(
-            (k not in front_pose_local)
-            or (not getattr(front_pose_local[k], "observed", True))
-            or (front_pose_local[k].conf < self.conf_threshold)
-            for k in upper_keys
-        )
-        moving = False
-        if self._prev_front_pose_for_gate:
-            for w_key in ("left_wrist", "right_wrist"):
-                cur = front_pose_local.get(w_key)
-                prev = self._prev_front_pose_for_gate.get(w_key)
-                if cur is not None and prev is not None:
-                    if math.hypot(cur.x - prev.x, cur.y - prev.y) >= self.active_wrist_motion_px:
-                        moving = True
-                        break
-        self._prev_front_pose_for_gate = dict(front_pose_local)
-        return (occluded or moving), occluded
-
     def estimate_dual_pose(
         self,
         dual_frame: DualViewFrame,
@@ -920,32 +879,21 @@ class DualPoseEstimator:
     ) -> DualPoseResult:
         """
         双视角主估计流程：
-        1. 分别在正面和背面提取姿态（支持独立双实例并发 + 运动/遮挡门控背面自适应步长）
+        1. 分别在正面和背面提取姿态（支持独立双实例并发）
         2. 坐标转换映射至原始全局像素
         3. 进行生物力学融合、抗侧身塌陷及遮挡自愈
         """
-        # 1. 运动与遮挡门控：非挥拍静止/无遮挡帧按间隔跳过冗余背面推理，降低 ANE 并发饱和度
+        # 1. 独立并发估计
         self._source_frame_id = dual_frame.frame_id
         self._last_back_eyes = []
         is_mirror_fn = getattr(dual_frame, "is_point_in_mirror_fn", None)
-        run_back_eagerly = (
-            (not self.back_view_adaptive_cadence)
-            or (not self._cached_back_pose_local)
-            or (self._back_skipped_streak >= self.back_idle_max_skip)
-            or (self._front_active_hold > 0)
-            or self._last_front_occluded
-        )
-
-        can_concurrent = (
+        if (
             self.concurrent
             and self._pool is not None
             and self.model_front is not None
             and self.model_back is not None
             and self.model_front is not self.model_back
-        )
-
-        back_inferred_this_frame = False
-        if run_back_eagerly and can_concurrent:
+        ):
             fut_front = self._pool.submit(
                 self._predict_single_view,
                 dual_frame.front_frame,
@@ -966,7 +914,6 @@ class DualPoseEstimator:
             )
             front_pose_local = fut_front.result()
             back_pose_local = fut_back.result()
-            back_inferred_this_frame = True
         else:
             front_pose_local = self._predict_single_view(
                 dual_frame.front_frame,
@@ -976,54 +923,14 @@ class DualPoseEstimator:
                 is_point_in_mirror_fn=is_mirror_fn,
                 source_pixels=dual_frame.front_source_pixels,
             )
-            if run_back_eagerly:
-                back_pose_local = self._predict_single_view(
-                    dual_frame.back_frame,
-                    is_back_view=True,
-                    model=self.model_back,
-                    crop_info=dual_frame.back_info,
-                    is_point_in_mirror_fn=is_mirror_fn,
-                    source_pixels=dual_frame.back_source_pixels,
-                )
-                back_inferred_this_frame = True
-            else:
-                back_pose_local = None
-
-        active_now, occluded_now = self._evaluate_front_activity(front_pose_local)
-        self._last_front_occluded = occluded_now
-        if active_now:
-            self._front_active_hold = 6
-        elif self._front_active_hold > 0:
-            self._front_active_hold -= 1
-
-        if not back_inferred_this_frame:
-            if active_now or self._front_active_hold > 0:
-                # 安全兜底：本帧刚进入挥拍或遮挡，立即补跑背面推理，绝不漏帧
-                back_pose_local = self._predict_single_view(
-                    dual_frame.back_frame,
-                    is_back_view=True,
-                    model=self.model_back,
-                    crop_info=dual_frame.back_info,
-                    is_point_in_mirror_fn=is_mirror_fn,
-                    source_pixels=dual_frame.back_source_pixels,
-                )
-                back_inferred_this_frame = True
-            else:
-                back_pose_local = {
-                    k: replace(v, observed=False)
-                    for k, v in self._cached_back_pose_local.items()
-                }
-                self._last_back_eyes = list(self._cached_back_eyes)
-                self._back_skipped_streak += 1
-                self.back_view_skipped_count += 1
-
-        if back_inferred_this_frame:
-            self.back_view_inferred_count += 1
-            self._back_skipped_streak = 0
-            if back_pose_local:
-                self._cached_back_pose_local = dict(back_pose_local)
-            self._cached_back_eyes = list(self._last_back_eyes)
-
+            back_pose_local = self._predict_single_view(
+                dual_frame.back_frame,
+                is_back_view=True,
+                model=self.model_back,
+                crop_info=dual_frame.back_info,
+                is_point_in_mirror_fn=is_mirror_fn,
+                source_pixels=dual_frame.back_source_pixels,
+            )
         back_eyes = list(self._last_back_eyes)
 
         # 2. 映射回原图坐标

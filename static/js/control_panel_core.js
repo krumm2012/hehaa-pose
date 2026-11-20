@@ -61,6 +61,7 @@
       delete payload.username;
       delete payload.custom_stream_source;
       delete payload.video_id;
+      delete payload.output_dir;
       if (payload.stream_id === "local_video") delete payload.stream_id;
       if (payload.stream_id === CUSTOM_STREAM_ID) delete payload.stream_id;
       if (payload.stream_id !== "local_video") delete payload.mapped_stream_id;
@@ -163,6 +164,36 @@
       savePreset();
     }
 
+    function syncConditionalFields() {
+      const streamValue = $("stream_id")?.value || "";
+      const video = streamValue === "local_video";
+      const custom = streamValue === CUSTOM_STREAM_ID;
+      const configured = custom ? state.defaultCredentialsConfigured :
+        (state.cameraCredentialsConfigured || {})[streamValue];
+
+      const credDetails = $("credentials-details");
+      if (credDetails) {
+        credDetails.hidden = video;
+        if (custom && !configured) credDetails.open = true;
+      }
+
+      const ttsPlaybackField = $("tts-playback-field");
+      if (ttsPlaybackField) {
+        ttsPlaybackField.hidden = !Boolean($("coach_tts")?.checked);
+      }
+
+      const hdmiOriginFields = $("hdmi-origin-fields");
+      if (hdmiOriginFields) {
+        hdmiOriginFields.hidden = !Boolean($("hdmi_output")?.checked);
+      }
+
+      const liveModeField = $("live-mode-field");
+      if (liveModeField) {
+        const procMode = $("processing_mode")?.value || "buffered";
+        liveModeField.hidden = video || !["auto", "realtime"].includes(procMode);
+      }
+    }
+
     function updateStreamMeta() {
       const model640 = $("racket_model_profile")?.value === "640_shadow";
       const racketSelect = $("racket_pose_mode");
@@ -198,6 +229,7 @@
         if (ipc.disabled) ipc.value = "queue";
       }
       syncEnginePresetFromFields();
+      syncConditionalFields();
       const video = $("stream_id").value === "local_video";
       $("local-video-field").hidden = !video;
       $("username").disabled = video;
@@ -598,6 +630,7 @@
           if (saved) {
             if (saved.stream_id === CUSTOM_STREAM_ID) delete saved.stream_id;
             if (saved.stream_id !== "local_video") delete saved.mapped_stream_id;
+            delete saved.output_dir;
             // Migrate the prior implicit dropping default once; later explicit
             // mode selections continue to persist in the same control panel.
             if (!localStorage.getItem("tennis-continuous-default-v1")) {
@@ -691,6 +724,10 @@
       if (racketModel) racketModel.addEventListener("change", updateStreamMeta);
       const enginePreset = $("engine_preset");
       if (enginePreset) enginePreset.addEventListener("change", applyEnginePreset);
+      const coachTts = $("coach_tts");
+      if (coachTts) coachTts.addEventListener("change", syncConditionalFields);
+      const hdmiOutput = $("hdmi_output");
+      if (hdmiOutput) hdmiOutput.addEventListener("change", syncConditionalFields);
       const css = $("custom_stream_source");
       if (css) css.addEventListener("input", updateStreamMeta);
       const sf = $("settings-form");

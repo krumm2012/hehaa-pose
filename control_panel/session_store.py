@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
+import shutil
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,8 +13,15 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote, unquote
 
 from analysis_metric_delivery import normalize_swing_event_for_delivery
-from control_panel.db_store import DEFAULT_PLAYER_ID, DEFAULT_PLAYER_NAME, SessionDatabase
+from control_panel.db_store import (
+    DEFAULT_PLAYER_ID,
+    DEFAULT_PLAYER_NAME,
+    _SESSION_ID_SAFE_PATTERN,
+    _group_duplicate_sessions,
+    SessionDatabase,
+)
 from control_panel.settings import _session_capture_time
+from control_panel.trajectory_refiner import SessionTrajectoryCache, refine_swing_trajectory
 from manual_review_workflow import (
     discover_session_paths,
     load_review_state,
@@ -36,7 +45,85 @@ class SessionStore:
         self._cache_lock = threading.Lock()
         self._session_events_cache: Dict[str, Tuple[Tuple[int, int], Dict[str, Any]]] = {}
         self._session_meta_cache: Dict[str, Dict[str, Any]] = {}
+        self._file_hash_cache: Dict[Tuple[str, int, int], str] = {}
+        self._trajectory_cache = SessionTrajectoryCache()
         self.db = SessionDatabase(self.workspace / "data" / "tennis_sessions.db")
+
+    def _file_sha256(self, raw_source: str) -> Optional[str]:
+        """Compute cached SHA-256 of a local video source if it exists on disk."""
+        src_str = str(raw_source or "").strip()
+        if not src_str or "://" in src_str:
+            return None
+        candidate = Path(src_str)
+        if not candidate.is_absolute():
+            candidate = self.workspace / candidate
+        if not candidate.is_file():
+            fallback = self.workspace / "data" / "control_uploads" / Path(src_str).name
+            if fallback.is_file():
+                candidate = fallback
+            else:
+                return None
+        try:
+            resolved = candidate.resolve()
+            st = resolved.stat()
+        except OSError:
+            return None
+        cache_key = (str(resolved), int(st.st_mtime_ns), int(st.st_size))
+        with self._cache_lock:
+            cached = self._file_hash_cache.get(cache_key)
+        if cached:
+            return cached
+        digest = hashlib.sha256()
+        try:
+            with open(resolved, "rb") as f:
+                for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                    digest.update(chunk)
+        except OSError:
+            return None
+        hex_digest = digest.hexdigest()
+        with self._cache_lock:
+            self._file_hash_cache[cache_key] = hex_digest
+        return hex_digest
+
+    def _extract_manifest_source_meta(
+        self,
+        manifest_files: List[Path],
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """Return (source_name, source_path, source_sha256, stream_id, processing_mode)."""
+        source_name: Optional[str] = None
+        source_path: Optional[str] = None
+        source_sha256: Optional[str] = None
+        stream_id_val: Optional[str] = None
+        processing_mode_val: Optional[str] = None
+        if not manifest_files:
+            return source_name, source_path, source_sha256, stream_id_val, processing_mode_val
+        try:
+            with open(manifest_files[0], "r", encoding="utf-8") as f:
+                m_data = json.load(f)
+        except Exception:
+            return source_name, source_path, source_sha256, stream_id_val, processing_mode_val
+
+        cap = m_data.get("capture") or {}
+        sess_m = m_data.get("session") or {}
+        src = cap.get("source") or sess_m.get("source")
+        if src:
+            src_str = str(src).strip()
+            if "://" in src_str:
+                source_name = src_str
+            else:
+                source_name = Path(src_str).name
+                source_path = src_str
+                source_sha256 = self._file_sha256(src_str)
+        if not source_sha256:
+            gc_bind = (sess_m.get("ground_calibration") or {}).get("binding") or {}
+            gc_app_bind = (m_data.get("ground_calibration_application") or {}).get("input_binding") or {}
+            for bind in (gc_bind, gc_app_bind):
+                if isinstance(bind, dict) and bind.get("kind") == "video_sha256" and bind.get("source_id"):
+                    source_sha256 = str(bind["source_id"]).strip().lower()
+                    break
+        stream_id_val = sess_m.get("stream_id")
+        processing_mode_val = cap.get("processing_mode")
+        return source_name, source_path, source_sha256, stream_id_val, processing_mode_val
 
     @property
     def _artifacts(self) -> Dict[str, str]:
@@ -231,6 +318,7 @@ class SessionStore:
             active_session_id = self._artifacts.get("session_id")
 
         db_sigs = self.db.get_session_signatures()
+        db_source_status = self.db.get_session_source_status()
         sessions = []
         seen_names = set()
         for d in base_dir.iterdir():
@@ -276,22 +364,13 @@ class SessionStore:
                 except Exception:
                     pass
 
-            source_name = None
-            stream_id_val = None
-            processing_mode_val = None
-            if manifest_files:
-                try:
-                    with open(manifest_files[0], "r", encoding="utf-8") as f:
-                        m_data = json.load(f)
-                        cap = m_data.get("capture") or {}
-                        sess_m = m_data.get("session") or {}
-                        src = cap.get("source") or sess_m.get("source")
-                        if src:
-                            source_name = Path(src).name
-                        stream_id_val = sess_m.get("stream_id")
-                        processing_mode_val = cap.get("processing_mode")
-                except Exception:
-                    pass
+            (
+                source_name,
+                source_path,
+                source_sha256,
+                stream_id_val,
+                processing_mode_val,
+            ) = self._extract_manifest_source_meta(manifest_files)
 
             m = re.search(r"_(\d{8}T\d{6}Z)_", d.name)
             display_time = ""
@@ -314,6 +393,8 @@ class SessionStore:
                         timestamp=ts,
                         events=ev_list,
                         source_name=source_name,
+                        source_path=source_path,
+                        source_sha256=source_sha256,
                         stream_id=stream_id_val,
                         processing_mode=processing_mode_val,
                         json_mtime_ns=ev_sig[0],
@@ -322,6 +403,23 @@ class SessionStore:
                     )
                 except Exception:
                     pass
+            elif d.name in db_source_status and (source_sha256 or source_name or source_path):
+                cur_meta = db_source_status[d.name]
+                need_backfill = (
+                    (source_sha256 and not cur_meta.get("source_sha256"))
+                    or (source_name and not cur_meta.get("source_name"))
+                    or (source_path and not cur_meta.get("source_path"))
+                )
+                if need_backfill:
+                    try:
+                        self.db.update_session_source_meta(
+                            d.name,
+                            source_name=source_name,
+                            source_path=source_path,
+                            source_sha256=source_sha256,
+                        )
+                    except Exception:
+                        pass
 
             meta_data = {
                 "session_id": d.name,
@@ -329,6 +427,7 @@ class SessionStore:
                 "timestamp": ts,
                 "event_count": event_count,
                 "source_name": source_name,
+                "source_sha256": source_sha256,
             }
             with self._cache_lock:
                 self._session_meta_cache[d.name] = {"sig": meta_sig, "data": meta_data}
@@ -343,6 +442,25 @@ class SessionStore:
             entry["player_id"] = p_info["player_id"] if p_info else DEFAULT_PLAYER_ID
             entry["player_name"] = p_info["player_name"] if p_info else DEFAULT_PLAYER_NAME
             entry["view_mode"] = p_info.get("view_mode", "single_view") if p_info else "single_view"
+
+        _, dedup_summary = _group_duplicate_sessions(sessions)
+        kept_map = dedup_summary["kept_duplicates_map"]
+        hidden_set = set(dedup_summary["hidden_session_ids"])
+        for entry in sessions:
+            sid = entry["session_id"]
+            dup_siblings = kept_map.get(sid)
+            if dup_siblings:
+                entry["duplicate_count"] = len(dup_siblings)
+                entry["source_group_size"] = 1 + len(dup_siblings)
+                entry["is_duplicate"] = False
+            elif sid in hidden_set:
+                entry["duplicate_count"] = 0
+                entry["source_group_size"] = 1
+                entry["is_duplicate"] = True
+            else:
+                entry["duplicate_count"] = 0
+                entry["source_group_size"] = 1
+                entry["is_duplicate"] = False
 
         with self._cache_lock:
             stale_keys = [k for k in self._session_meta_cache if k not in seen_names]
@@ -369,6 +487,15 @@ class SessionStore:
             player_id=str(payload.get("player_id") or DEFAULT_PLAYER_ID),
         )
 
+    def assign_sessions_player_batch(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        session_ids = payload.get("session_ids")
+        if not isinstance(session_ids, list):
+            raise ValueError("session_ids 必须是列表")
+        return self.db.assign_sessions_player_batch(
+            session_ids=[str(x) for x in session_ids],
+            player_id=str(payload.get("player_id") or DEFAULT_PLAYER_ID),
+        )
+
     def compare_player_sessions(
         self,
         player_id: Optional[str] = None,
@@ -378,6 +505,149 @@ class SessionStore:
             player_id=player_id or DEFAULT_PLAYER_ID,
             stroke_type=stroke_type,
         )
+
+    def get_player_global_profile(
+        self,
+        player_id: Optional[str] = None,
+        days: Optional[int] = None,
+        dedup: bool = True,
+    ) -> Dict[str, Any]:
+        self.list_sessions()
+        return self.db.get_player_global_profile(
+            player_id=player_id or DEFAULT_PLAYER_ID,
+            days=days,
+            dedup=dedup,
+        )
+
+    def _resolve_session_dir(self, session_id: str, stored_dir: Optional[str] = None) -> Path:
+        if stored_dir:
+            p = Path(stored_dir)
+            if p.exists():
+                return p
+        return self.workspace / "data" / "analysis_results" / "control_panel" / session_id
+
+    def get_swing_trajectory(self, session_id: str, event_id: int) -> Dict[str, Any]:
+        self.list_sessions()
+        sid = str(session_id or "").strip()
+        if not sid or not _SESSION_ID_SAFE_PATTERN.match(sid):
+            raise ValueError(f"非法 session_id: {sid}")
+        rec = self.db.get_swing_event_record(sid, int(event_id))
+        if rec is None:
+            raise FileNotFoundError(f"未找到挥拍记录: {sid} #{event_id}")
+        s_dir = self._resolve_session_dir(sid, rec.get("session_dir"))
+        frames_idx = self._trajectory_cache.load_frames_index(s_dir)
+        return refine_swing_trajectory(
+            rec,
+            frames_idx,
+            dominant_hand=str(rec.get("dominant_hand") or "right"),
+            include_series=True,
+        )
+
+    def get_player_trajectory_summary(
+        self,
+        player_id: Optional[str] = None,
+        stroke_side: str = "forehand",
+        days: Optional[int] = None,
+        dedup: bool = True,
+    ) -> Dict[str, Any]:
+        side_key = "backhand" if str(stroke_side or "").strip().lower() == "backhand" else "forehand"
+        profile = self.get_player_global_profile(player_id=player_id, days=days, dedup=dedup)
+        dom_hand = str((profile.get("player") or {}).get("dominant_hand") or "right")
+        swings = (profile.get(side_key) or {}).get("swings") or []
+        frames_by_sid: Dict[str, Dict[int, Dict[str, Any]]] = {}
+        items: List[Dict[str, Any]] = []
+        tier_counts = {"A": 0, "B": 0, "C": 0}
+        for sw in swings:
+            sid = str(sw["session_id"])
+            eid = int(sw["event_id"])
+            rec = self.db.get_swing_event_record(sid, eid)
+            if rec is None:
+                continue
+            if sid not in frames_by_sid:
+                s_dir = self._resolve_session_dir(sid, rec.get("session_dir"))
+                frames_by_sid[sid] = self._trajectory_cache.load_frames_index(s_dir)
+            diag = refine_swing_trajectory(
+                rec,
+                frames_by_sid[sid],
+                dominant_hand=dom_hand,
+                include_series=False,
+            )
+            t_key = diag.get("tier") or "B"
+            if t_key in tier_counts:
+                tier_counts[t_key] += 1
+            items.append(diag)
+        return {
+            "player": profile.get("player"),
+            "stroke_side": side_key,
+            "count": len(items),
+            "tier_counts": tier_counts,
+            "swings": items,
+        }
+
+    def list_duplicate_sessions(self, player_id: Optional[str] = None) -> Dict[str, Any]:
+        self.list_sessions()
+        return self.db.list_duplicate_sessions(player_id=player_id)
+
+    def cleanup_duplicate_sessions(
+        self,
+        session_ids: List[str],
+        mode: str = "archive",
+    ) -> Dict[str, Any]:
+        if mode not in ("archive", "delete"):
+            raise ValueError(f"不支持的清理模式: {mode}")
+        if not isinstance(session_ids, list) or not session_ids:
+            raise ValueError("session_ids 不能为空")
+
+        with self._state_lock:
+            active_session_id = self._artifacts.get("session_id")
+
+        cleaned_ids: List[str] = []
+        seen = set()
+        for raw in session_ids:
+            sid = str(raw or "").strip()
+            if not sid or sid in seen:
+                continue
+            if not _SESSION_ID_SAFE_PATTERN.match(sid):
+                raise ValueError(f"非法 session_id: {sid}")
+            if active_session_id and sid == active_session_id:
+                raise ValueError(f"不能清理当前正在进行的会话: {sid}")
+            seen.add(sid)
+            cleaned_ids.append(sid)
+
+        if not cleaned_ids:
+            raise ValueError("没有可清理的合法 session_id")
+
+        base_dir = self.workspace / "data" / "analysis_results" / "control_panel"
+        archive_root = self.workspace / "data" / "analysis_results" / "control_panel_duplicates_archive"
+        moved_or_deleted: List[str] = []
+
+        for sid in cleaned_ids:
+            src_dir = base_dir / sid
+            if src_dir.exists() and src_dir.is_dir():
+                if mode == "archive":
+                    archive_root.mkdir(parents=True, exist_ok=True)
+                    dst = archive_root / sid
+                    if dst.exists():
+                        dst = archive_root / f"{sid}_{int(datetime.now(timezone.utc).timestamp())}"
+                    shutil.move(str(src_dir), str(dst))
+                else:
+                    shutil.rmtree(src_dir)
+            moved_or_deleted.append(sid)
+
+        db_deleted = self.db.delete_sessions_from_db(moved_or_deleted)
+        with self._cache_lock:
+            for sid in moved_or_deleted:
+                self._session_meta_cache.pop(sid, None)
+                self._session_events_cache.pop(sid, None)
+
+        return {
+            "ok": True,
+            "mode": mode,
+            "cleaned_count": len(moved_or_deleted),
+            "db_deleted": db_deleted,
+            "cleaned_session_ids": moved_or_deleted,
+            "archive_dir": str(archive_root) if mode == "archive" else None,
+        }
 
 
     def evaluate_manual_review(
@@ -389,4 +659,14 @@ class SessionStore:
             self.manual_review_paths(report_path),
             payload,
         )
+
+    def save_coach_review(self, **kwargs) -> Dict[str, Any]:
+        return self.db.save_coach_review(**kwargs)
+
+    def get_latest_coach_review(self, player_id: str, stroke_side: str = "forehand") -> Optional[Dict[str, Any]]:
+        return self.db.get_latest_coach_review(player_id, stroke_side)
+
+    def list_coach_reviews(self, player_id: str, stroke_side: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+        return self.db.list_coach_reviews(player_id, stroke_side, limit)
+
 

@@ -55,6 +55,7 @@ data/analysis_results/data_chain_audit_*/
 data/analysis_results/joint_racket_2d_review_*/
 data/analysis_results/project_advancement_*/
 data/analysis_results/dual_view_merged_dataset_*/
+data/analysis_results/dual_view_mined_*/
 
 # Videos and frames (large)
 *.mp4
