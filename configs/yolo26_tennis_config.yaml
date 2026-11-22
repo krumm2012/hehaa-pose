@@ -7,7 +7,8 @@ save_video: true                               # 是否保存结果视频
 
 # ==================== 🤖 姿态模型与时序平滑 ====================
 yolo_pose_model_path: "yolo26m-pose.mlpackage"
-pose_compute_units: "ALL"                      # 显式沿用原双视角实际后端；ANE 独占对照未带来收益
+pose_compute_units: "ALL"                      # 显式沿用原双视角实际后端；macOS 26.7.1 上 GPU 触发 MPSGraph MLIR 崩溃，勿切 GPU
+pose_preprocess_mode: "letterbox"              # 等比灰边填充（消除 3:4 与 2:1 镜面拉伸畸变；可回退为 stretch）
 pose_confidence_threshold: 0.4                 # 姿态检测置信度阈值
 pose_keypoint_confidence: 0.3                  # 关键点置信度阈值
 pose_smoothing_enabled: true                   # 关键点时序平滑开关
@@ -97,7 +98,7 @@ font_dir: "fonts"
 
 # ==================== 🚄 Pipeline 性能开关 ====================
 pipeline_perf:
-  pose_resize_policy: legacy                   # direct_front / direct_source 单次缩放候选；legacy保留旧输入像素
+  pose_resize_policy: direct_source            # 单次源像素直裁缩放（消除 4K→540×720→640 二次缩放损耗；可回退 legacy）
   inference_schedule: barrier                  # barrier / interframe；跨帧仅新版独占，最多两帧在途
   processing_mode: buffered                    # 默认连续处理；启动预热后逐帧，不丢旧帧/不采样新球拍
   async_display_enabled: true                  # 独立显示进程；有界背压，逐帧提交，正常结束排空

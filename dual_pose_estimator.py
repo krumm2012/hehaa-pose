@@ -116,6 +116,7 @@ class DualPoseEstimator:
         backend: str = "auto",  # 'auto' | 'coreml' | 'ultralytics'
         concurrent: bool = True,
         compute_units: str = "ALL",
+        preprocess_mode: str = "stretch",  # 'stretch' | 'letterbox'
     ):
         self.conf_threshold = conf_threshold
         self.biomech_engine = DualViewBiomechanicsEngine(
@@ -128,6 +129,9 @@ class DualPoseEstimator:
         self.compute_units = str(compute_units).upper()
         if self.compute_units not in {"ANE", "ALL", "CPU", "GPU"}:
             raise ValueError("Unsupported pose compute units")
+        self.preprocess_mode = str(preprocess_mode or "stretch").lower()
+        if self.preprocess_mode not in {"stretch", "letterbox"}:
+            raise ValueError(f"Unsupported pose preprocess_mode: {self.preprocess_mode}")
         self.model_front = None
         self.model_back = None
         self.model = None  # 兼容原有单实例属性访问 (指向 model_front)
@@ -163,6 +167,7 @@ class DualPoseEstimator:
                             "pose_keypoint_confidence": self.conf_threshold * 0.7,
                             "pose_smoothing_enabled": False,
                             "pose_compute_units": self.compute_units,
+                            "pose_preprocess_mode": self.preprocess_mode,
                         }
                         self.model_front = PoseEstimatorYOLO26(str(cp), cfg)
                         if self.concurrent:
@@ -653,6 +658,97 @@ class DualPoseEstimator:
 
         return None
 
+    @staticmethod
+    def _enforce_backview_anatomical_consistency(
+        curr_pose: Dict[str, Keypoint],
+    ) -> Optional[str]:
+        """
+        同帧解剖防打结校验（Anatomical Uncross Guard）：
+        防止背面视口（无五官）出现“肩-髋 X 型沙漏扭曲”或“髋-膝反向锁死”污染历史缓存。
+        以最稳定的双肩横轴方向为主锚，自动解开明显张开状态下的左右交叉打结。
+        """
+        if not curr_pose:
+            return None
+
+        fixed_parts: List[str] = []
+        ls, rs = curr_pose.get("left_shoulder"), curr_pose.get("right_shoulder")
+        lh, rh = curr_pose.get("left_hip"), curr_pose.get("right_hip")
+        lk, rk = curr_pose.get("left_knee"), curr_pose.get("right_knee")
+        la, ra = curr_pose.get("left_ankle"), curr_pose.get("right_ankle")
+
+        sh_dx = (ls.x - rs.x) if (ls is not None and rs is not None) else None
+        hip_dx = (lh.x - rh.x) if (lh is not None and rh is not None) else None
+
+        # 1. 肩-髋 X 交叉校验：双肩明显张开时，髋部横轴绝不能与肩线反号
+        if sh_dx is not None and hip_dx is not None and abs(sh_dx) >= 18.0 and abs(hip_dx) >= 12.0:
+            if sh_dx * hip_dx < 0:
+                swap_pose_pairs(curr_pose, [("left_hip", "right_hip")])
+                lh, rh = curr_pose.get("left_hip"), curr_pose.get("right_hip")
+                hip_dx = lh.x - rh.x
+                fixed_parts.append("hips")
+
+        # 确定躯干主导横向符号（优先双肩，其次双髋）
+        torso_dx: Optional[float] = None
+        if sh_dx is not None and abs(sh_dx) >= 18.0:
+            torso_dx = sh_dx
+        elif hip_dx is not None and abs(hip_dx) >= 15.0:
+            torso_dx = hip_dx
+
+        # 2. 躯干-下肢（膝+踝）X 交叉校验：双膝明显张开且与躯干反号时解开下肢打结
+        knee_dx = (lk.x - rk.x) if (lk is not None and rk is not None) else None
+        if torso_dx is not None and knee_dx is not None and abs(knee_dx) >= 20.0:
+            if torso_dx * knee_dx < 0:
+                swap_pose_pairs(curr_pose, LEG_KEYPOINT_PAIRS)
+                lk, rk = curr_pose.get("left_knee"), curr_pose.get("right_knee")
+                la, ra = curr_pose.get("left_ankle"), curr_pose.get("right_ankle")
+                knee_dx = lk.x - rk.x if (lk is not None and rk is not None) else None
+                fixed_parts.append("legs")
+
+        # 3. 膝-踝局部交叉校验：双膝与双踝均明显张开却互相反号时仅解开双踝
+        ankle_dx = (la.x - ra.x) if (la is not None and ra is not None) else None
+        if knee_dx is not None and ankle_dx is not None and abs(knee_dx) >= 18.0 and abs(ankle_dx) >= 25.0:
+            if knee_dx * ankle_dx < 0:
+                swap_pose_pairs(curr_pose, [("left_ankle", "right_ankle")])
+                fixed_parts.append("ankles")
+
+        if fixed_parts:
+            tag = "+".join(fixed_parts)
+            logger.info(f"Back view anatomical uncross applied: {tag}")
+            return tag
+        return None
+
+    @staticmethod
+    def _suppress_backview_foreground_occluded_ankles(
+        curr_pose: Dict[str, Keypoint],
+        eye_boxes: List[Tuple[int, int, int, int]],
+        view_h: int,
+    ) -> List[str]:
+        """
+        镜面视口前景遮挡区过滤：
+        利用背面视口已检出的前景闯入者眼部框（位于画面下半部），向下外推其头肩躯干遮挡区。
+        若镜中人的脚踝落入该前景人体遮挡区，说明被前景真人挡住并误吸附到前景肩/背心上，直接剔除。
+        """
+        if not curr_pose or not eye_boxes or view_h <= 0:
+            return []
+
+        occ_zones: List[Tuple[float, float, float, float]] = []
+        for ex1, ey1, ex2, ey2 in eye_boxes:
+            bw = max(60.0, float(ex2 - ex1))
+            bh = max(16.0, float(ey2 - ey1))
+            ecx = 0.5 * (ex1 + ex2)
+            # 前景真人的头顶到双肩躯干（横向覆盖约 ±1.45 倍眼条宽，纵向直达画面底边）
+            occ_zones.append((ecx - bw * 1.45, float(ey1) - bh * 0.8, ecx + bw * 1.45, float(view_h)))
+
+        suppressed: List[str] = []
+        for name in ("left_ankle", "right_ankle"):
+            kp = curr_pose.get(name)
+            if kp is None:
+                continue
+            if any(zx1 <= kp.x <= zx2 and zy1 <= kp.y <= zy2 for zx1, zy1, zx2, zy2 in occ_zones):
+                curr_pose.pop(name, None)
+                suppressed.append(name)
+        return suppressed
+
     def _verify_cross_view_cold_start(
         self,
         front_pose_orig: Dict[str, Keypoint],
@@ -764,6 +860,8 @@ class DualPoseEstimator:
             if is_back_view:
                 if parsed:
                     self._filter_backview_temporal_swap(parsed)
+                    self._enforce_backview_anatomical_consistency(parsed)
+                    self._suppress_backview_foreground_occluded_ankles(parsed, self._last_back_eyes, h)
                     self._last_valid_back_pose = parsed
                     self._last_valid_back_crop = crop_info
                     self._back_missing_count = 0
@@ -823,6 +921,8 @@ class DualPoseEstimator:
                 if is_back_view:
                     if parsed:
                         self._filter_backview_temporal_swap(parsed)
+                        self._enforce_backview_anatomical_consistency(parsed)
+                        self._suppress_backview_foreground_occluded_ankles(parsed, self._last_back_eyes, h)
                         self._last_valid_back_pose = parsed
                         self._last_valid_back_crop = crop_info
                         self._back_missing_count = 0

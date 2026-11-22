@@ -72,8 +72,12 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                 dominant_hand=pipeline.swing_analysis_options.get('dominant_hand', 'right'),
                 backend='auto',
                 compute_units=pipeline.config.get('pose_compute_units', 'ALL'),
+                preprocess_mode=pipeline.config.get('pose_preprocess_mode', 'stretch'),
             )
-            print(f"🚀 [Inference] 双视角姿态引擎就绪 | 后端: {dual_pose_estimator.backend} | 请求计算单元: {dual_pose_estimator.compute_units}")
+            print(
+                f"🚀 [Inference] 双视角姿态引擎就绪 | 后端: {dual_pose_estimator.backend} | "
+                f"计算单元: {dual_pose_estimator.compute_units} | 预处理: {dual_pose_estimator.preprocess_mode}"
+            )
         else:
             pose_estimator = PoseEstimatorYOLO26(
                 pipeline.config['yolo_pose_model_path'],

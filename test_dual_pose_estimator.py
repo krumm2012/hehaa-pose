@@ -316,6 +316,46 @@ class DualPoseEstimatorTests(unittest.TestCase):
         self.assertAlmostEqual(back_local["left_shoulder"].x, 270.0)
         self.assertAlmostEqual(back_local["right_shoulder"].x, 200.0)
 
+    def test_backview_anatomical_uncross_prevents_lock_in(self):
+        """验证同帧解剖防打结校验能解开肩-髋/髋-膝 X 型交叉，防止脏缓存连续锁死。"""
+        estimator = DualPoseEstimator(backend="mock")
+        from dual_view_biomechanics import Keypoint
+
+        # 构造类似截图中的 X 型打结：左肩在右(380)、右肩在左(300)，但髋和腿全反了
+        x_crossed = {
+            "left_shoulder": Keypoint(x=380.0, y=150.0, conf=0.95),
+            "right_shoulder": Keypoint(x=300.0, y=155.0, conf=0.95),
+            "left_hip": Keypoint(x=325.0, y=310.0, conf=0.95),
+            "right_hip": Keypoint(x=360.0, y=308.0, conf=0.95),
+            "left_knee": Keypoint(x=290.0, y=450.0, conf=0.95),
+            "right_knee": Keypoint(x=400.0, y=450.0, conf=0.95),
+            "left_ankle": Keypoint(x=260.0, y=580.0, conf=0.95),
+            "right_ankle": Keypoint(x=430.0, y=575.0, conf=0.95),
+        }
+        fixed = estimator._enforce_backview_anatomical_consistency(x_crossed)
+        self.assertEqual(fixed, "hips+legs")
+        # 校验解开后：肩、髋、膝、踝四层横轴方向完全一致（left.x > right.x）
+        self.assertGreater(x_crossed["left_shoulder"].x, x_crossed["right_shoulder"].x)
+        self.assertGreater(x_crossed["left_hip"].x, x_crossed["right_hip"].x)
+        self.assertGreater(x_crossed["left_knee"].x, x_crossed["right_knee"].x)
+        self.assertGreater(x_crossed["left_ankle"].x, x_crossed["right_ankle"].x)
+
+    def test_backview_foreground_occluded_ankle_suppression(self):
+        """验证前景真人眼框下方遮挡区能过滤被误吸附到前景肩膀的脚踝，且保留正常脚踝。"""
+        estimator = DualPoseEstimator(backend="mock")
+        from dual_view_biomechanics import Keypoint
+
+        # 左下角前景真人眼部打码条 (x: 160~240, y: 490~515)
+        eye_boxes = [(160, 490, 240, 515)]
+        pose = {
+            "left_ankle": Keypoint(x=265.0, y=585.0, conf=0.80),   # 落在前景右肩背心带位置
+            "right_ankle": Keypoint(x=445.0, y=580.0, conf=0.95),  # 右侧正常可见脚踝
+        }
+        suppressed = estimator._suppress_backview_foreground_occluded_ankles(pose, eye_boxes, view_h=720)
+        self.assertEqual(suppressed, ["left_ankle"])
+        self.assertNotIn("left_ankle", pose)
+        self.assertIn("right_ankle", pose)
+
 
 if __name__ == "__main__":
     unittest.main()

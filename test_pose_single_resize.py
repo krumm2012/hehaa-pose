@@ -124,5 +124,41 @@ class SingleResizeTests(unittest.TestCase):
             self.assertEqual(resize.call_count,0)
             np.testing.assert_array_equal(np.asarray(image),expected)
 
+    def test_pose_letterbox_preserves_aspect_and_subpixel_precision(self):
+        # 2:1 wide mirror crop (1280x640 -> letterbox 640x320 with pad_y=160 inside 640x640)
+        est=self.estimator()
+        est.preprocess_mode='letterbox'
+        # Set non-integer model keypoint (160.5, 240.25) -> in 1280x640 source: (321.0, 160.5)
+        # Mapped to canonical (540, 720): x = 321.0 * (540 / 1280) = 135.421875, y = 160.5 * (720 / 640) = 180.5625
+        output=np.zeros((1,1,57),np.float32);output[0,0,4]=.9
+        output[0,0,6:]=np.array([160.5,240.25,.9]*17)
+        class Model:
+            def predict(self,inputs):return {'output':output}
+        est.model=Model()
+
+        wide_crop=np.full((640,1280,3),200,dtype=np.uint8)
+        pil_img=est._preprocess_frame(wide_crop)
+        arr=np.asarray(pil_img)
+        self.assertEqual(arr.shape,(640,640,3))
+        # Top and bottom letterbox bands must be 114 gray, middle band must be content (200)
+        self.assertEqual(int(arr[0,0,0]),114)
+        self.assertEqual(int(arr[639,639,0]),114)
+        self.assertEqual(int(arr[320,320,0]),200)
+
+        res=est.get_keypoints_from_source(wide_crop,coordinate_size=(540,720))
+        x,y,conf=res[0]['joint0']
+        self.assertIsInstance(x,float)
+        self.assertIsInstance(y,float)
+        self.assertAlmostEqual(x,135.421875,places=5)
+        self.assertAlmostEqual(y,180.5625,places=5)
+        self.assertAlmostEqual(conf,0.9,places=5)
+
+    def test_dual_pose_estimator_preprocess_mode_validation(self):
+        est=DualPoseEstimator(backend="mock",concurrent=False,preprocess_mode="letterbox")
+        self.addCleanup(est.close)
+        self.assertEqual(est.preprocess_mode,"letterbox")
+        with self.assertRaises(ValueError):
+            DualPoseEstimator(backend="mock",concurrent=False,preprocess_mode="invalid_mode")
+
 
 if __name__=='__main__':unittest.main()

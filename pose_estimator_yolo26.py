@@ -98,6 +98,14 @@ class PoseEstimatorYOLO26:
         self.confidence_threshold = config.get('pose_confidence_threshold', 0.5)
         self.keypoint_confidence = config.get('pose_keypoint_confidence', 0.3)
 
+        # 预处理缩放模式：'stretch'（旧版直接拉伸）或 'letterbox'（等比灰边填充，消除畸变）
+        self.preprocess_mode = str(config.get('pose_preprocess_mode', 'stretch')).lower()
+        if self.preprocess_mode not in {'stretch', 'letterbox'}:
+            raise ValueError(f"unsupported pose_preprocess_mode: {self.preprocess_mode}")
+        self._preprocess_gain: Optional[float] = None
+        self._preprocess_pad: Tuple[int, int] = (0, 0)
+        self._source_frame_size: Optional[Tuple[int, int]] = None
+
         # 时序平滑配置（抑制骨骼节点跳动）
         self.pose_smoothing_enabled = bool(config.get('pose_smoothing_enabled', True))
         self.pose_smoothing_alpha = float(config.get('pose_smoothing_alpha', 0.45))
@@ -148,11 +156,31 @@ class PoseEstimatorYOLO26:
         """
         from PIL import Image
 
-        # 保存原始尺寸用于后处理
-        self.original_size = (frame.shape[1], frame.shape[0])
+        # 保存输入帧原始尺寸用于后处理坐标逆映射
+        src_w, src_h = frame.shape[1], frame.shape[0]
+        self.original_size = (src_w, src_h)
+        self._source_frame_size = (src_w, src_h)
+        in_w, in_h = self.input_size
 
-        # 调整大小到模型输入尺寸
-        resized = frame if self.original_size == self.input_size else cv2.resize(frame, self.input_size)
+        if getattr(self, 'preprocess_mode', 'stretch') == 'letterbox':
+            gain = min(in_w / float(src_w), in_h / float(src_h))
+            resized_w = max(1, round(src_w * gain))
+            resized_h = max(1, round(src_h * gain))
+            content_size = (resized_w, resized_h)
+            resized_content = frame if (src_w, src_h) == content_size else cv2.resize(frame, content_size)
+            pad_x = (in_w - resized_w) // 2
+            pad_y = (in_h - resized_h) // 2
+            if content_size == (in_w, in_h):
+                resized = resized_content
+            else:
+                resized = np.full((in_h, in_w, 3), 114, dtype=np.uint8)
+                resized[pad_y:pad_y + resized_h, pad_x:pad_x + resized_w] = resized_content
+            self._preprocess_gain = gain
+            self._preprocess_pad = (pad_x, pad_y)
+        else:
+            resized = frame if (src_w, src_h) == self.input_size else cv2.resize(frame, self.input_size)
+            self._preprocess_gain = None
+            self._preprocess_pad = (0, 0)
 
         # BGR 转 RGB
         rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
@@ -278,12 +306,23 @@ class PoseEstimatorYOLO26:
                                 name = self.keypoint_names[kp_idx]
 
                                 if kp_conf > self.keypoint_confidence:
-                                    # 坐标映射回原始尺寸
-                                    scale_x = self.original_size[0] / self.input_size[0]
-                                    scale_y = self.original_size[1] / self.input_size[1]
-                                    x = int(kp_x * scale_x)
-                                    y = int(kp_y * scale_y)
-                                    valid_kpts[name] = (x, y, float(kp_conf)) if include_confidence else (x, y)
+                                    # 坐标映射回目标坐标系（支持 letterbox 等比逆映射与亚像素浮点精度）
+                                    out_w, out_h = self.original_size
+                                    if getattr(self, 'preprocess_mode', 'stretch') == 'letterbox' and getattr(self, '_preprocess_gain', None):
+                                        gain = float(self._preprocess_gain)
+                                        pad_x, pad_y = getattr(self, '_preprocess_pad', (0, 0))
+                                        src_w, src_h = getattr(self, '_source_frame_size', None) or self.original_size
+                                        src_x = max(0.0, min((float(kp_x) - pad_x) / gain, float(src_w)))
+                                        src_y = max(0.0, min((float(kp_y) - pad_y) / gain, float(src_h)))
+                                        mapped_x = src_x * (float(out_w) / float(src_w))
+                                        mapped_y = src_y * (float(out_h) / float(src_h))
+                                    else:
+                                        mapped_x = float(kp_x) * (float(out_w) / float(self.input_size[0]))
+                                        mapped_y = float(kp_y) * (float(out_h) / float(self.input_size[1]))
+                                    if include_confidence:
+                                        valid_kpts[name] = (float(mapped_x), float(mapped_y), float(kp_conf))
+                                    else:
+                                        valid_kpts[name] = (int(mapped_x), int(mapped_y))
                                 else:
                                     valid_kpts[name] = None
 
