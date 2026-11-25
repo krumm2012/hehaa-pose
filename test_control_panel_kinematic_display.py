@@ -27,7 +27,48 @@ class ControlPanelKinematicDisplayTests(unittest.TestCase):
         event = {'event_id': 3, 'extended_biomechanics': {'kinematic_sequence': sequence}}
         harness = '''
 const elements = {};
-const $ = id => elements[id] || (elements[id] = {innerHTML:'', removeAttribute:()=>{}});
+const makeEl = (id = '') => ({
+  id, _html: '', dataset: {}, style: {}, children: [], parentNode: null,
+  removeAttribute: () => {},
+  remove() {
+    if (this.parentNode) {
+      this.parentNode.children = this.parentNode.children.filter(c => c !== this);
+      this.parentNode._sync();
+    }
+  },
+  _sync() { this._html = this.children.map(c => c.outerHTML || c._html || '').join('\\n'); },
+  insertBefore(node, ref) {
+    node.parentNode = this;
+    const idx = ref ? this.children.indexOf(ref) : -1;
+    if (idx >= 0) this.children.splice(idx, 0, node); else this.children.push(node);
+    this._sync();
+  },
+  replaceChild(newNode, oldNode) {
+    newNode.parentNode = this;
+    const idx = this.children.indexOf(oldNode);
+    if (idx >= 0) this.children[idx] = newNode; else this.children.push(newNode);
+    this._sync();
+  },
+  appendChild(node) { this.insertBefore(node, null); },
+  get innerHTML() { return this._html; },
+  set innerHTML(v) { this._html = v; },
+});
+const $ = id => elements[id] || (elements[id] = makeEl(id));
+const document = {
+  getElementById: id => elements[id] || null,
+  createElement: tag => tag === 'template'
+    ? {
+        _html: '',
+        set innerHTML(v) { this._html = v; },
+        get content() {
+          const child = makeEl();
+          child.outerHTML = this._html;
+          child.id = (this._html.match(/id="([^"]+)"/) || [])[1] || '';
+          return { firstElementChild: child };
+        },
+      }
+    : makeEl(),
+};
 const filterOnlyValidSwings = false;
 const activeVideoPlayers = new Set();
 const isShadowEvent = () => false;

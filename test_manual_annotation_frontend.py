@@ -181,7 +181,7 @@ const annotationWorkspace={contains(){return false;},addEventListener(name,fn){l
 function saveAnnotations(){writes++;}
 """+bindings+"""
 for(const row of listeners.filter(row=>row.root==='document'&&row.name==='input')){
- row.fn({target:{closest(){return {};}}});
+ row.fn({target:{closest(){return {dataset:{}};}}});
 }
 assert.equal(writes,1,'Event cards are outside annotationWorkspace and must reach validation');
 """)

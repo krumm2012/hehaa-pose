@@ -77,9 +77,9 @@ class GroundReferenceTests(unittest.TestCase):
         engine=self.engine();reference=engine.observe(record())
         baseline=renderer.render_dual_frame(dual,pose)
         result=renderer.render_dual_frame(dual,pose,ground_reference=reference,ground_geometry=engine.overlay_geometry)
-        # A is (10,20) in front, and x=599-500 after the back-view flip.
+        # Ground reference grid is rendered only on the front view; back view stays untouched.
         self.assertFalse(np.array_equal(result[20,10],baseline[20,10]))
-        self.assertFalse(np.array_equal(result[500,600+99],baseline[500,600+99]))
+        self.assertTrue(np.array_equal(result[500,600+99],baseline[500,600+99]))
         for change in [{'source_frame_id':1},{'image_size':[1200,1080]},{'reasons':['camera_geometry_not_confirmed']}]:
             actual=renderer.render_dual_frame(dual,pose,ground_reference={**reference,**change},ground_geometry=engine.overlay_geometry)
             np.testing.assert_array_equal(actual,baseline)

@@ -651,7 +651,7 @@
         const brushText = `${brushDirection}<small> · 上升比 ${riseRatio != null ? escapeHtml(String(riseRatio)) + "x" : "未观测"}</small>`;
 
         const seqMetric = ev.kinematic_sequence_metric || {};
-        const seq = ev.kinematic_sequence || {};
+        const seq = ev.kinematic_sequence || ext.kinematic_sequence || {};
         const seqDisplay = kinematicDisplay(seq, seqMetric);
 
         const leg = ext.leg_drive || {};

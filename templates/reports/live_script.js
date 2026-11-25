@@ -234,7 +234,7 @@
       if (event.target?.id === 'auto-calibrate-and-save') return;
       const card = event.target?.closest('[data-annotation-card]');
       if (card || annotationWorkspace.contains(event.target)) {
-        if (card && card.dataset.sourceEventId) {
+        if (card?.dataset?.sourceEventId) {
           const sid = Number(card.dataset.sourceEventId);
           if (Number.isInteger(sid)) manuallyEditedEventIds.add(sid);
         }
