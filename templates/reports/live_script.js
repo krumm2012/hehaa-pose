@@ -16,6 +16,12 @@
     const coachComparisons = document.getElementById('coach-comparisons');
     const evaluateImportedReview = document.getElementById('evaluate-imported-review');
     const evaluateCurrentReview = document.getElementById('evaluate-current-review');
+    const autoCalibrateBtn = document.getElementById('auto-calibrate-review');
+    const autoCalibrateAndSave = document.getElementById('auto-calibrate-and-save');
+    const autoCalibrateSummary = document.getElementById('auto-calibrate-summary');
+    const autoCalibrateSummaryText = document.getElementById('auto-calibrate-summary-text');
+    const autoCalibrateCommit = document.getElementById('auto-calibrate-commit');
+    const manuallyEditedEventIds = new Set();
     const annotationStorageKey = `tennis.swing.annotations.v2:${location.pathname}:${eventJsonUrl}`;
     const refreshStorageKey = `tennis.swing.auto-refresh.v1:${location.pathname}`;
     let autoRefreshEnabled = true;
@@ -225,7 +231,13 @@
     }
 
     function handleAnnotationEdit(event) {
-      if (event.target?.closest('[data-annotation-card]') || annotationWorkspace.contains(event.target)) {
+      if (event.target?.id === 'auto-calibrate-and-save') return;
+      const card = event.target?.closest('[data-annotation-card]');
+      if (card || annotationWorkspace.contains(event.target)) {
+        if (card && card.dataset.sourceEventId) {
+          const sid = Number(card.dataset.sourceEventId);
+          if (Number.isInteger(sid)) manuallyEditedEventIds.add(sid);
+        }
         importedReviewPayload = null;
         evaluateImportedReview.disabled = true;
         saveAnnotations();
@@ -490,6 +502,98 @@
         setReviewStatus('导入失败', 'error', error.message || String(error));
       }
     });
+    function renderAutoCalibrateBadges(itemDiffs) {
+      if (!itemDiffs || typeof itemDiffs !== 'object') return;
+      const statusLabels = {
+        auto_calibrated: { text: '已自动校订', cls: 'auto-badge-ok' },
+        needs_review: { text: '低置信 · 待人工确认', cls: 'auto-badge-warn' },
+        filtered_invalid: { text: '已标空挥/误检', cls: 'auto-badge-muted' },
+        preserved_manual: { text: '保留人工修改', cls: 'auto-badge-keep' },
+      };
+      document.querySelectorAll('[data-annotation-card]').forEach(card => {
+        const sid = card.dataset.sourceEventId;
+        if (!sid || !itemDiffs[sid]) return;
+        const diff = itemDiffs[sid];
+        const box = card.querySelector('.annotation-box');
+        if (!box) return;
+        let strip = box.querySelector('.auto-calibrate-strip');
+        if (!strip) {
+          strip = document.createElement('div');
+          strip.className = 'auto-calibrate-strip';
+          box.prepend(strip);
+        }
+        const meta = statusLabels[diff.status] || statusLabels.auto_calibrated;
+        const changesText = Array.isArray(diff.changes) && diff.changes.length
+          ? diff.changes.join(' · ')
+          : '与物理证据一致，无需调整帧边界';
+        strip.replaceChildren();
+        const badge = document.createElement('span');
+        badge.className = `auto-badge ${meta.cls}`;
+        badge.textContent = meta.text;
+        const detail = document.createElement('span');
+        detail.className = 'auto-diff-detail';
+        detail.textContent = changesText;
+        strip.append(badge, detail);
+      });
+    }
+
+    async function runAutoCalibrate() {
+      if (!autoCalibrateBtn) return;
+      if (location.protocol === 'file:') {
+        annotationStatus.textContent = '请通过本地控制台 http://127.0.0.1:8766 打开本页后再使用自动校订。';
+        return;
+      }
+      autoCalibrateBtn.disabled = true;
+      const originalText = autoCalibrateBtn.textContent;
+      autoCalibrateBtn.textContent = '正在校订…';
+      lastAnnotationInteraction = Date.now();
+      try {
+        const response = await fetch('/api/manual-review/auto-calibrate', {
+          method: 'POST',
+          headers: await manualReviewRequestHeaders(),
+          body: JSON.stringify({
+            current_annotations: collectAnnotations(),
+            edited_event_ids: [...manuallyEditedEventIds],
+          }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || result.error || '自动校订失败');
+        const applied = applyImportedReviewToEditor(result.annotations);
+        if (!applied) throw new Error('自动校订结果未通过前端校验');
+        renderAutoCalibrateBadges(result.item_diffs);
+        const s = result.summary || {};
+        const frameEdits = (s.boundary_adjusted_count || 0) + (s.contact_adjusted_count || 0);
+        const parts = [
+          `共 ${s.total_events || 0} 拍`,
+          `自动确认 ${s.auto_calibrated_count || 0} 拍`,
+          `精修边界/触球 ${frameEdits} 处`,
+          `修正类型 ${s.type_corrected_count || 0} 拍`,
+          `标为空挥 ${s.filtered_invalid_count || 0} 拍`,
+          `待人工确认 ${s.pending_review_count || 0} 拍`,
+        ];
+        if (s.preserved_manual_count) parts.push(`保留人工修改 ${s.preserved_manual_count} 拍`);
+        if (autoCalibrateSummaryText) autoCalibrateSummaryText.textContent = parts.join(' · ');
+        if (autoCalibrateSummary) autoCalibrateSummary.hidden = false;
+        annotationStatus.textContent = '已完成一键自动校订并回填表单';
+        if (autoCalibrateAndSave && autoCalibrateAndSave.checked) {
+          await submitManualReview(collectAnnotations());
+        }
+      } catch (error) {
+        annotationStatus.textContent = `自动校订失败：${error.message || String(error)}`;
+      } finally {
+        autoCalibrateBtn.disabled = false;
+        autoCalibrateBtn.textContent = originalText;
+      }
+    }
+
+    if (autoCalibrateBtn) autoCalibrateBtn.addEventListener('click', runAutoCalibrate);
+    if (autoCalibrateCommit) {
+      autoCalibrateCommit.addEventListener('click', () => {
+        try { submitManualReview(collectAnnotations()); }
+        catch (error) { showAnnotationError(error); setReviewStatus('标注校验失败', 'error', error.message); }
+      });
+    }
+
     evaluateImportedReview.addEventListener('click', () => submitManualReview(importedReviewPayload));
     evaluateCurrentReview.addEventListener('click', () => {
       try { submitManualReview(collectAnnotations()); }

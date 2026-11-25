@@ -338,6 +338,7 @@ def create_handler(controller: LocalPipelineController):
                 "/api/video/upload",
                 "/api/stop",
                 "/api/manual-review/evaluate",
+                "/api/manual-review/auto-calibrate",
                 "/api/roi/config",
                 "/api/ground/preview",
                 "/api/ground/info",
@@ -369,7 +370,7 @@ def create_handler(controller: LocalPipelineController):
                 payload = self._read_json(
                     max_bytes=(
                         MAX_ANNOTATION_BYTES
-                        if path == "/api/manual-review/evaluate"
+                        if path in ("/api/manual-review/evaluate", "/api/manual-review/auto-calibrate")
                         else MAX_REQUEST_BYTES
                     )
                 )
@@ -411,6 +412,13 @@ def create_handler(controller: LocalPipelineController):
                             self.headers.get("X-Manual-Review-Report"),
                         )
                     )
+                elif path == "/api/manual-review/auto-calibrate":
+                    self._send_json(
+                        controller.auto_calibrate_manual_review(
+                            payload,
+                            self.headers.get("X-Manual-Review-Report"),
+                        )
+                    )
             except FileNotFoundError as exc:
                 self._send_json(
                     {
@@ -424,14 +432,14 @@ def create_handler(controller: LocalPipelineController):
                     {
                         "error": (
                             "invalid_annotations"
-                            if path == "/api/manual-review/evaluate"
+                            if path in ("/api/manual-review/evaluate", "/api/manual-review/auto-calibrate")
                             else str(exc)
                         ),
                         "message": str(exc),
                     },
                     status=(
                         HTTPStatus.UNPROCESSABLE_ENTITY
-                        if path == "/api/manual-review/evaluate"
+                        if path in ("/api/manual-review/evaluate", "/api/manual-review/auto-calibrate")
                         else HTTPStatus.BAD_REQUEST
                     ),
                 )
@@ -441,7 +449,7 @@ def create_handler(controller: LocalPipelineController):
                     status=HTTPStatus.BAD_REQUEST,
                 )
             except Exception as exc:
-                if path != "/api/manual-review/evaluate":
+                if path not in ("/api/manual-review/evaluate", "/api/manual-review/auto-calibrate"):
                     raise
                 self._send_json(
                     {"error": "workflow_failed", "message": str(exc)},

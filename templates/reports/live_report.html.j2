@@ -30,9 +30,15 @@
       <label class="timeline-review"><input id="timeline-review-complete" type="checkbox"> 已完整检查整段视频（完成后才计算 Precision / Recall / F1）</label>
       <p id="annotation-readiness" class="annotation-readiness"></p>
       <div class="annotation-actions">
+        <button id="auto-calibrate-review" class="btn-auto-calibrate" type="button">一键自动校订</button>
+        <label class="auto-calibrate-opt"><input id="auto-calibrate-and-save" type="checkbox"> 校订后自动保存评测</label>
         <button id="add-missed-event" type="button">新增漏检挥拍</button>
         <button id="download-annotations" type="button">下载标注 JSON</button>
         <span id="annotation-status" class="summary"></span>
+      </div>
+      <div id="auto-calibrate-summary" class="auto-calibrate-summary" hidden>
+        <div id="auto-calibrate-summary-text" class="auto-calibrate-summary-text"></div>
+        <button id="auto-calibrate-commit" class="secondary" type="button">立即保存并评测</button>
       </div>
       <div id="manual-events" class="manual-events"></div>
     </section>

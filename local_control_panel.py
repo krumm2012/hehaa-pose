@@ -1042,6 +1042,17 @@ class LocalPipelineController:
             payload,
         )
 
+    def auto_calibrate_manual_review(
+        self,
+        payload: Dict[str, Any],
+        report_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        from manual_review_workflow import auto_calibrate_manual_review as _auto_calibrate
+        return _auto_calibrate(
+            self.manual_review_paths(report_path),
+            payload,
+        )
+
     def _stream(self, stream_id: str) -> Dict[str, Any]:
         selected = next(
             (
