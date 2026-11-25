@@ -117,6 +117,7 @@ class DualPoseEstimator:
         concurrent: bool = True,
         compute_units: str = "ALL",
         preprocess_mode: str = "stretch",  # 'stretch' | 'letterbox'
+        stitched_single_pass: bool = False,
     ):
         self.conf_threshold = conf_threshold
         self.biomech_engine = DualViewBiomechanicsEngine(
@@ -125,7 +126,8 @@ class DualPoseEstimator:
             min_keypoint_conf=conf_threshold,
         )
         self.backend = backend
-        self.concurrent = bool(concurrent)
+        self.stitched_single_pass = bool(stitched_single_pass)
+        self.concurrent = bool(concurrent) and not self.stitched_single_pass
         self.compute_units = str(compute_units).upper()
         if self.compute_units not in {"ANE", "ALL", "CPU", "GPU"}:
             raise ValueError("Unsupported pose compute units")
@@ -891,66 +893,89 @@ class DualPoseEstimator:
                 predict = getattr(active_model, "get_keypoints_with_confidence", active_model.get_keypoints)
                 kpts_list = (active_model.get_keypoints_from_source(view_frame, crop_info.view_size)
                              if source_pixels else predict(view_frame))
-                if not kpts_list:
-                    if is_back_view and self._last_valid_back_pose and self._back_missing_count < 3:
-                        self._back_missing_count += 1
-                        return self._cached_pose('back', crop_info)
-                    elif not is_back_view and self._last_valid_front_pose and self._front_missing_count < 3:
-                        self._front_missing_count += 1
-                        return self._cached_pose('front', crop_info)
-                    return {}
-
-                best = None
-                if is_back_view:
-                    # 背面机位提取人脸眼睛遮挡区域（区域判断：仅针对下部真实人脸）
-                    self._last_back_eyes = self._extract_eye_boxes_from_kpts_list(kpts_list, h, w)
-                    index = self._select_back_candidate(kpts_list, crop_info, is_point_in_mirror_fn)
-                    if index is not None:
-                        best = kpts_list[index]
-                else:
-                    best = self._select_front_candidate_coreml(
-                        kpts_list, h, w, crop_info=crop_info, is_point_in_mirror_fn=is_point_in_mirror_fn
-                    )
-
-                parsed = {}
-                if best is not None:
-                    for name, pt in best.items():
-                        if pt is not None:
-                            parsed[name] = Keypoint(x=float(pt[0]), y=float(pt[1]), conf=float(pt[2]) if len(pt) > 2 else 0.0, source_frame_id=getattr(self, "_source_frame_id", None), confidence_source="model" if len(pt) > 2 else "unavailable")
-
-                if is_back_view:
-                    if parsed:
-                        self._filter_backview_temporal_swap(parsed)
-                        self._enforce_backview_anatomical_consistency(parsed)
-                        self._suppress_backview_foreground_occluded_ankles(parsed, self._last_back_eyes, h)
-                        self._last_valid_back_pose = parsed
-                        self._last_valid_back_crop = crop_info
-                        self._back_missing_count = 0
-                        return parsed
-                    elif self._last_valid_back_pose and self._back_missing_count < 3:
-                        self._back_missing_count += 1
-                        return self._cached_pose('back', crop_info)
-                    else:
-                        self._back_missing_count += 1
-                        return {}
-                else:
-                    if parsed:
-                        self._last_valid_front_pose = parsed
-                        self._last_valid_front_crop = crop_info
-                        self._front_missing_count = 0
-                        return parsed
-                    elif self._last_valid_front_pose and self._front_missing_count < 3:
-                        self._front_missing_count += 1
-                        return self._cached_pose('front', crop_info)
-                    else:
-                        self._front_missing_count += 1
-                        return {}
-
+                return self._finalize_coreml_view_candidates(
+                    kpts_list,
+                    is_back_view=is_back_view,
+                    crop_info=crop_info,
+                    is_point_in_mirror_fn=is_point_in_mirror_fn,
+                    w=w,
+                    h=h,
+                )
             except Exception as e:
                 logger.debug(f"CoreML prediction exception: {e}")
                 return {}
 
         return {}
+
+    def _finalize_coreml_view_candidates(
+        self,
+        kpts_list: List[Dict],
+        is_back_view: bool,
+        crop_info: Optional[DualViewCropInfo],
+        is_point_in_mirror_fn: Optional[Callable[[float, float], bool]],
+        w: int,
+        h: int,
+    ) -> Dict[str, Keypoint]:
+        """复用 Core ML 单视角候选筛选、背面双守卫与短时缓存逻辑。"""
+        if not kpts_list:
+            if is_back_view and self._last_valid_back_pose and self._back_missing_count < 3:
+                self._back_missing_count += 1
+                return self._cached_pose('back', crop_info)
+            elif not is_back_view and self._last_valid_front_pose and self._front_missing_count < 3:
+                self._front_missing_count += 1
+                return self._cached_pose('front', crop_info)
+            return {}
+
+        best = None
+        if is_back_view:
+            self._last_back_eyes = self._extract_eye_boxes_from_kpts_list(kpts_list, h, w)
+            index = self._select_back_candidate(kpts_list, crop_info, is_point_in_mirror_fn)
+            if index is not None:
+                best = kpts_list[index]
+        else:
+            best = self._select_front_candidate_coreml(
+                kpts_list, h, w, crop_info=crop_info, is_point_in_mirror_fn=is_point_in_mirror_fn
+            )
+
+        parsed = {}
+        if best is not None:
+            for name, pt in best.items():
+                if pt is not None:
+                    parsed[name] = Keypoint(
+                        x=float(pt[0]),
+                        y=float(pt[1]),
+                        conf=float(pt[2]) if len(pt) > 2 else 0.0,
+                        source_frame_id=getattr(self, "_source_frame_id", None),
+                        confidence_source="model" if len(pt) > 2 else "unavailable",
+                    )
+
+        if is_back_view:
+            if parsed:
+                self._filter_backview_temporal_swap(parsed)
+                self._enforce_backview_anatomical_consistency(parsed)
+                self._suppress_backview_foreground_occluded_ankles(parsed, self._last_back_eyes, h)
+                self._last_valid_back_pose = parsed
+                self._last_valid_back_crop = crop_info
+                self._back_missing_count = 0
+                return parsed
+            elif self._last_valid_back_pose and self._back_missing_count < 3:
+                self._back_missing_count += 1
+                return self._cached_pose('back', crop_info)
+            else:
+                self._back_missing_count += 1
+                return {}
+        else:
+            if parsed:
+                self._last_valid_front_pose = parsed
+                self._last_valid_front_crop = crop_info
+                self._front_missing_count = 0
+                return parsed
+            elif self._last_valid_front_pose and self._front_missing_count < 3:
+                self._front_missing_count += 1
+                return self._cached_pose('front', crop_info)
+            else:
+                self._front_missing_count += 1
+                return {}
 
 
     def _map_pose_to_original(
@@ -983,11 +1008,49 @@ class DualPoseEstimator:
         2. 坐标转换映射至原始全局像素
         3. 进行生物力学融合、抗侧身塌陷及遮挡自愈
         """
-        # 1. 独立并发估计
+        # 1. 姿态估计（支持 2 合 1 拼图单次推理，或双实例并发）
         self._source_frame_id = dual_frame.frame_id
         self._last_back_eyes = []
         is_mirror_fn = getattr(dual_frame, "is_point_in_mirror_fn", None)
         if (
+            self.stitched_single_pass
+            and self.backend == "coreml"
+            and self.model_front is not None
+            and callable(getattr(self.model_front, "get_keypoints_from_stitched_views", None))
+        ):
+            fw, fh = (
+                dual_frame.front_info.view_size
+                if dual_frame.front_source_pixels
+                else (dual_frame.front_frame.shape[1], dual_frame.front_frame.shape[0])
+            )
+            bw, bh = (
+                dual_frame.back_info.view_size
+                if dual_frame.back_source_pixels
+                else (dual_frame.back_frame.shape[1], dual_frame.back_frame.shape[0])
+            )
+            front_kpts_list, back_kpts_list = self.model_front.get_keypoints_from_stitched_views(
+                dual_frame.front_frame,
+                (fw, fh),
+                dual_frame.back_frame,
+                (bw, bh),
+            )
+            front_pose_local = self._finalize_coreml_view_candidates(
+                front_kpts_list,
+                is_back_view=False,
+                crop_info=dual_frame.front_info,
+                is_point_in_mirror_fn=is_mirror_fn,
+                w=fw,
+                h=fh,
+            )
+            back_pose_local = self._finalize_coreml_view_candidates(
+                back_kpts_list,
+                is_back_view=True,
+                crop_info=dual_frame.back_info,
+                is_point_in_mirror_fn=is_mirror_fn,
+                w=bw,
+                h=bh,
+            )
+        elif (
             self.concurrent
             and self._pool is not None
             and self.model_front is not None

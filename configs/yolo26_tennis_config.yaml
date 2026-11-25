@@ -99,6 +99,7 @@ font_dir: "fonts"
 # ==================== 🚄 Pipeline 性能开关 ====================
 pipeline_perf:
   pose_resize_policy: direct_source            # 单次源像素直裁缩放（消除 4K→540×720→640 二次缩放损耗；可回退 legacy）
+  pose_stitched_single_pass: true              # 正/背 2 合 1 拼图单次姿态推理（600帧实测 16.54ms/60.5FPS，可随时设 false 回退双实例）
   inference_schedule: barrier                  # barrier / interframe；跨帧仅新版独占，最多两帧在途
   processing_mode: buffered                    # 默认连续处理；启动预热后逐帧，不丢旧帧/不采样新球拍
   async_display_enabled: true                  # 独立显示进程；有界背压，逐帧提交，正常结束排空

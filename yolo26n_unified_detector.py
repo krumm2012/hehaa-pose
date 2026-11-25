@@ -349,29 +349,26 @@ class YOLO26nUnifiedDetector:
             resized_content = frame if frame.shape[1::-1] == content_size else cv2.resize(frame, content_size)
             pad_x = (self.input_width - resized_width) // 2
             pad_y = (self.input_height - resized_height) // 2
-            resized = np.full(
-                (self.input_height, self.input_width, 3),
-                114,
-                dtype=np.uint8,
+            buf = getattr(self, '_letterbox_rgb_buf', None)
+            if buf is None or buf.shape != (self.input_height, self.input_width, 3):
+                buf = np.empty((self.input_height, self.input_width, 3), dtype=np.uint8)
+                self._letterbox_rgb_buf = buf
+            buf.fill(114)
+            cv2.cvtColor(
+                resized_content,
+                cv2.COLOR_BGR2RGB,
+                dst=buf[pad_y:pad_y + resized_height, pad_x:pad_x + resized_width],
             )
-            resized[
-                pad_y:pad_y + resized_height,
-                pad_x:pad_x + resized_width,
-            ] = resized_content
             self._preprocess_gain = gain
             self._preprocess_pad = (pad_x, pad_y)
+            return Image.fromarray(buf)
         else:
             target_size = (self.input_width, self.input_height)
             resized = frame if frame.shape[1::-1] == target_size else cv2.resize(frame, target_size)
             self._preprocess_gain = None
             self._preprocess_pad = (0, 0)
-        
-        # 转换为 PIL Image
-        # Channel permutation commutes with resize; avoid converting every
-        # 2560x1440 source pixel when the model consumes only 960x960.
-        pil_image = Image.fromarray(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB))
-        
-        return pil_image
+            pil_image = Image.fromarray(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB))
+            return pil_image
     
     def _parse_predictions(self, predictions):
         """解析模型输出"""

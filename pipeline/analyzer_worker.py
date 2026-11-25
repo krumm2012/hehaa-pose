@@ -355,8 +355,19 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
         fid, slot = data['id'], data['slot']
         if count == 0:
             fps_tracker.start()
-        # 严格对齐图像
-        canvas = shared_frames[slot].copy()
+        # 双视角且无需在 4K 全图叠画 7 点骨架时，直接只读切片并提前归还 shm 槽，省去每帧 24.9MB 4K 拷贝
+        draw_full_frame_racket = bool(
+            data.get('racket_pose') and pipeline.racket_pose_config.get('render_skeleton', True)
+        )
+        zero_copy_dual_view = bool(
+            pipeline.algo2_dual_view
+            and dual_view_mgr is not None
+            and dual_view_renderer is not None
+            and data.get('dual_pose_res') is not None
+            and not draw_full_frame_racket
+        )
+        canvas = shared_frames[slot] if zero_copy_dual_view else shared_frames[slot].copy()
+        slot_released = False
 
         ball_pos = data['ball'][0]['position'] if data['ball'] else None
         racket_list = data['racket']
@@ -482,6 +493,9 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
                 frame_id=fid,
                 front_crop_bbox=data.get('front_crop_bbox'),
             )
+            if zero_copy_dual_view and not slot_released:
+                pipeline.q_free.put(slot)
+                slot_released = True
             if joint_diagnostic is not None and getattr(dual_frame, "front_info", None) is not None:
                 joint_2d_live.draw_source(dual_frame.front_frame, coord_mapper=dual_frame.front_info.map_from_original)
             render_stages['split_wall_ms'] = (time.perf_counter_ns() - split_started) / 1e6
@@ -612,7 +626,8 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
                 "ball_diagnostics": data.get("ball_diagnostics") or {},
             })
 
-        pipeline.q_free.put(slot) # 释放回池子
+        if not slot_released:
+            pipeline.q_free.put(slot) # 释放回池子
 
         snapshot = fps_tracker.tick()
         count = snapshot.frame_count

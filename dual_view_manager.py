@@ -469,14 +469,14 @@ class DualViewManager:
             fx1, fy1, fx2, fy2 = front_crop_bbox
         else:
             fx1, fy1, fx2, fy2 = self.compute_front_crop_bbox(fw, fh, player_bbox=player_bbox)
-        f_crop = frame[fy1:fy2, fx1:fx2].copy()
+        f_crop = frame[fy1:fy2, fx1:fx2]
         f_orig_size = (f_crop.shape[1], f_crop.shape[0])
 
         if self.front_target_size is not None and not front_source_pixels:
             f_view = cv2.resize(f_crop, self.front_target_size)
             f_view_size = self.front_target_size
         else:
-            f_view = f_crop
+            f_view = f_crop if front_source_pixels else f_crop.copy()
             f_view_size = self.front_target_size or f_orig_size
 
         front_info = DualViewCropInfo(
@@ -488,10 +488,10 @@ class DualViewManager:
 
         # 2. 提取背面机位区域 (Mirror ROI)
         bx1, by1, bx2, by2 = self.get_mirror_bbox_pixels(fw, fh, player_bbox=player_bbox)
-        b_crop = frame[by1:by2, bx1:bx2].copy()
+        b_crop = frame[by1:by2, bx1:bx2]
         b_orig_size = (b_crop.shape[1], b_crop.shape[0])
 
-        # 水平镜像翻转 (纠正左右反向)
+        # 水平镜像翻转 (纠正左右反向)；cv2.flip 本身返回新数组，无需前置 .copy()
         if self.mirror_flip:
             b_processed = cv2.flip(b_crop, 1)
         else:
@@ -504,7 +504,7 @@ class DualViewManager:
             b_view = cv2.resize(b_processed, self.mirror_target_size)
             b_view_size = self.mirror_target_size
         else:
-            b_view = b_processed
+            b_view = b_processed if (self.mirror_flip or back_source_pixels) else b_processed.copy()
             b_view_size = self.mirror_target_size or b_orig_size
 
         back_info = DualViewCropInfo(

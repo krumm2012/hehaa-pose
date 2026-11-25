@@ -170,25 +170,28 @@ class PoseEstimatorYOLO26:
             resized_content = frame if (src_w, src_h) == content_size else cv2.resize(frame, content_size)
             pad_x = (in_w - resized_w) // 2
             pad_y = (in_h - resized_h) // 2
+            buf = getattr(self, '_letterbox_rgb_buf', None)
+            if buf is None or buf.shape != (in_h, in_w, 3):
+                buf = np.empty((in_h, in_w, 3), dtype=np.uint8)
+                self._letterbox_rgb_buf = buf
             if content_size == (in_w, in_h):
-                resized = resized_content
+                cv2.cvtColor(resized_content, cv2.COLOR_BGR2RGB, dst=buf)
             else:
-                resized = np.full((in_h, in_w, 3), 114, dtype=np.uint8)
-                resized[pad_y:pad_y + resized_h, pad_x:pad_x + resized_w] = resized_content
+                buf.fill(114)
+                cv2.cvtColor(
+                    resized_content,
+                    cv2.COLOR_BGR2RGB,
+                    dst=buf[pad_y:pad_y + resized_h, pad_x:pad_x + resized_w],
+                )
             self._preprocess_gain = gain
             self._preprocess_pad = (pad_x, pad_y)
+            return Image.fromarray(buf)
         else:
             resized = frame if (src_w, src_h) == self.input_size else cv2.resize(frame, self.input_size)
             self._preprocess_gain = None
             self._preprocess_pad = (0, 0)
-
-        # BGR 转 RGB
-        rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
-
-        # 转换为 PIL.Image (Core ML 需要)
-        pil_image = Image.fromarray(rgb)
-
-        return pil_image
+            rgb = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+            return Image.fromarray(rgb)
 
     def _postprocess_keypoints(self, keypoints: np.ndarray, confidences: np.ndarray) -> List[Dict]:
         """
@@ -362,6 +365,118 @@ class PoseEstimatorYOLO26:
     def get_keypoints_from_source(self, frame: np.ndarray, coordinate_size: Tuple[int, int]) -> List[Dict]:
         """Resize source pixels once; decode and smooth in canonical view space."""
         return self.get_keypoints(frame, include_confidence=True, coordinate_size=coordinate_size)
+
+    def get_keypoints_from_stitched_views(
+        self,
+        front_frame: np.ndarray,
+        front_coordinate_size: Tuple[int, int],
+        back_frame: np.ndarray,
+        back_coordinate_size: Tuple[int, int],
+        gap_px: int = 8,
+    ) -> Tuple[List[Dict], List[Dict]]:
+        """
+        将正面与背面裁剪图等比拼入同一张模型输入画布，仅执行 1 次 Core ML 推理，
+        再按左右半区归属逆映射回各自规范视图坐标系（浮点亚像素精度）。
+        """
+        from PIL import Image
+
+        in_w, in_h = self.input_size
+        gap = max(0, int(gap_px))
+        left_w = max(1, (in_w - gap) // 2)
+        right_x0 = left_w + gap
+        right_w = max(1, in_w - right_x0)
+        split_x = left_w + gap * 0.5
+
+        buf = getattr(self, '_stitched_rgb_buf', None)
+        if buf is None or buf.shape != (in_h, in_w, 3):
+            buf = np.empty((in_h, in_w, 3), dtype=np.uint8)
+            self._stitched_rgb_buf = buf
+        buf.fill(114)
+
+        def _place_half(frame: np.ndarray, slot_x0: int, slot_w: int):
+            src_h, src_w = frame.shape[:2]
+            gain = min(slot_w / float(max(1, src_w)), in_h / float(max(1, src_h)))
+            rw = max(1, min(slot_w, round(src_w * gain)))
+            rh = max(1, min(in_h, round(src_h * gain)))
+            ox = slot_x0 + (slot_w - rw) // 2
+            oy = (in_h - rh) // 2
+            resized = frame if (src_w, src_h) == (rw, rh) else cv2.resize(frame, (rw, rh))
+            cv2.cvtColor(resized, cv2.COLOR_BGR2RGB, dst=buf[oy:oy + rh, ox:ox + rw])
+            return ox, oy, gain, src_w, src_h
+
+        f_ox, f_oy, f_gain, f_sw, f_sh = _place_half(front_frame, 0, left_w)
+        b_ox, b_oy, b_gain, b_sw, b_sh = _place_half(back_frame, right_x0, right_w)
+
+        try:
+            prediction = self.model.predict({'image': Image.fromarray(buf)})
+            output_key = next(iter(prediction.keys()))
+            output = prediction[output_key]
+            if not isinstance(output, np.ndarray) or output.ndim != 3:
+                return [], []
+        except Exception as e:
+            print(f"❌ 拼图姿态推理失败: {e}")
+            return [], []
+
+        front_list: List[Dict] = []
+        back_list: List[Dict] = []
+        _, num_detections, data_size = output.shape
+        if data_size < 6 + 17 * 3:
+            return [], []
+
+        f_out_w, f_out_h = float(front_coordinate_size[0]), float(front_coordinate_size[1])
+        b_out_w, b_out_h = float(back_coordinate_size[0]), float(back_coordinate_size[1])
+        f_sx = f_out_w / float(max(1, f_sw))
+        f_sy = f_out_h / float(max(1, f_sh))
+        b_sx = b_out_w / float(max(1, b_sw))
+        b_sy = b_out_h / float(max(1, b_sh))
+        kp_names = self.keypoint_names
+        kp_conf_thr = self.keypoint_confidence
+        det_conf_thr = self.confidence_threshold
+
+        dets = output[0]
+        for i in range(num_detections):
+            det = dets[i]
+            if float(det[4]) < det_conf_thr:
+                continue
+
+            bx1, bx2 = float(det[0]), float(det[2])
+            cx = 0.5 * (bx1 + bx2) if bx2 > bx1 else None
+            if cx is None:
+                xs = [
+                    float(det[6 + k * 3])
+                    for k in range(17)
+                    if float(det[6 + k * 3 + 2]) > kp_conf_thr
+                ]
+                if not xs:
+                    continue
+                cx = sum(xs) / len(xs)
+
+            is_front = cx < split_x
+            if is_front:
+                ox, oy, gain, sw, sh, sx, sy = f_ox, f_oy, f_gain, float(f_sw), float(f_sh), f_sx, f_sy
+            else:
+                ox, oy, gain, sw, sh, sx, sy = b_ox, b_oy, b_gain, float(b_sw), float(b_sh), b_sx, b_sy
+
+            valid_kpts: Dict[str, Optional[Tuple[float, float, float]]] = {}
+            for k in range(17):
+                base = 6 + k * 3
+                kp_conf = float(det[base + 2])
+                name = kp_names[k]
+                if kp_conf > kp_conf_thr:
+                    kp_x = float(det[base])
+                    kp_y = float(det[base + 1])
+                    src_x = max(0.0, min((kp_x - ox) / gain, sw))
+                    src_y = max(0.0, min((kp_y - oy) / gain, sh))
+                    valid_kpts[name] = (src_x * sx, src_y * sy, kp_conf)
+                else:
+                    valid_kpts[name] = None
+
+            if is_front:
+                front_list.append(valid_kpts)
+            else:
+                back_list.append(valid_kpts)
+
+        return front_list, back_list
 
     def get_keypoints_with_confidence(self, frame: np.ndarray) -> List[Dict]:
         """Raw detector scores; no temporal replacement or extra inference."""

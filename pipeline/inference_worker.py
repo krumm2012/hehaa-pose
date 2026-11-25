@@ -67,16 +67,19 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                 config_path=pipeline.algo2_config_path,
                 stream_profile=pipeline.roi_profile,
             )
+            perf_cfg = pipeline.config.get('pipeline_perf', {})
             dual_pose_estimator = DualPoseEstimator(
                 model_path=pipeline.config.get('yolo_pose_model_path'),
                 dominant_hand=pipeline.swing_analysis_options.get('dominant_hand', 'right'),
                 backend='auto',
                 compute_units=pipeline.config.get('pose_compute_units', 'ALL'),
                 preprocess_mode=pipeline.config.get('pose_preprocess_mode', 'stretch'),
+                stitched_single_pass=bool(perf_cfg.get('pose_stitched_single_pass', False)),
             )
             print(
                 f"🚀 [Inference] 双视角姿态引擎就绪 | 后端: {dual_pose_estimator.backend} | "
-                f"计算单元: {dual_pose_estimator.compute_units} | 预处理: {dual_pose_estimator.preprocess_mode}"
+                f"计算单元: {dual_pose_estimator.compute_units} | 预处理: {dual_pose_estimator.preprocess_mode} | "
+                f"拼图单次推理: {'开启' if dual_pose_estimator.stitched_single_pass else '关闭'}"
             )
         else:
             pose_estimator = PoseEstimatorYOLO26(
@@ -125,8 +128,14 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                 print('⚠️ [RacketPose] 旁路停用，保留旧链路: ' + racket_pose_runtime.disabled_reason)
         if pipeline.lossless_realtime:
             from pipeline_startup import warm_coreml_wrappers
-            wrappers = ([detector, dual_pose_estimator.model_front, dual_pose_estimator.model_back]
-                        if dual_pose_estimator is not None else [detector, pose_estimator])
+            if dual_pose_estimator is not None:
+                wrappers = (
+                    [detector, dual_pose_estimator.model_front]
+                    if dual_pose_estimator.model_front is dual_pose_estimator.model_back
+                    else [detector, dual_pose_estimator.model_front, dual_pose_estimator.model_back]
+                )
+            else:
+                wrappers = [detector, pose_estimator]
             warming = warm_coreml_wrappers(wrappers)
             print(f'🔥 [Inference] 源帧开始前完成 Core ML 内核预热: {warming} ms')
         pipeline.inf_ready.set()
