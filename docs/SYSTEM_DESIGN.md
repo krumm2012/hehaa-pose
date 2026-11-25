@@ -46,7 +46,7 @@ flowchart TD
 | --- | --- |
 | `main_pipe.py` | 共享内存、多进程管道监督；支持 `buffered`、`realtime`、`offline` 三种调度模式 |
 | `dual_view_manager.py` | 动态人像 3:4 比例自适应追踪，后墙镜面区域多边形提取与水平镜像翻转 |
-| `dual_pose_estimator.py` | 正反两路独立的 `yolo26m-pose` CoreML 实例并发推理，消除单实例 ANE 锁争用 |
+| `dual_pose_estimator.py` | 默认正背 2 合 1 拼图单次 `yolo26m-pose` CoreML 推理（`pose_stitched_single_pass: true`），支持回退正反双实例并发推理 |
 | `dual_view_biomechanics.py` | 躯干四边形仿射变换、跨视角手腕互投自愈（`allow_recovered=True`）、7 点球拍跨视角投影、2D 规则指标计算 |
 | `swing_event_classifier.py` | 挥拍动作分类器；集成双反家族比例（`bh_family_ratio >= 0.55`）与自愈姿态，杜绝镜面双反判 Unknown |
 | `coach_rule_contract.py` | 2D 可观测规则评估（转肩、引拍、击球手臂舒展、重心前移、平衡稳定等），即刻输出诊断标签 |
@@ -67,7 +67,7 @@ flowchart TD
 1. 默认`buffered`在模型及窗口预热后开始读取，保留所有已解码源帧；三个源槽满时背压，不重置落后的名义输入节奏。`offline`逐帧且不节流，只有显式`realtime`允许丢旧帧。上游摄像头/网络丢失不在本地解码完整性证明范围内。
 2. 根据实际机位解析球场ROI、正面与镜面配置；双人体分别使用相应视图裁剪。球场过滤、模型输入裁剪与显示ROI是不同环节，不能认为所有模型共用一个四边形裁剪。每路结果恢复原图坐标，并记录裁剪及输入几何。本地视频绑定机位才继承摄像头ROI。
 3. 默认`tennis-yolo26n-exp004-960-fp16`以960 letterbox输入、`ANE`运行，类别`ball=0`、`racket=1`，阈值分别0.692/0.524；它不承担人体姿态。Shadow保留该旧球/球拍业务选择。
-4. 两路`yolo26m-pose`以640模型输入和Core ML `ALL`输出人体关键点；正式配置保留ROI→540×720标准视图→模型输入的`legacy`像素路径。`direct_front/direct_source`是未采用的实验选项。
+4. `yolo26m-pose` 以 640 模型输入和 Core ML `ALL` 输出人体关键点；默认启用 `pose_resize_policy: direct_source` + `pose_preprocess_mode: letterbox` + 浮点亚像素与 `pose_stitched_single_pass: true`（正/背 2 合 1 拼图单次推理），并保留配置开关可回退 `legacy` 或双实例路径。
 5. 显式`640_shadow`额外加载640/ALL七点模型，只记录/显示旁路观测，不能一次输出人体与球拍。正式七点仍取全源帧独立letterbox，ROI/镜面分区裁剪是未采用实验。正式组合为`barrier + shared_memory`，逐帧等待七点同源结果；进程失败/超时使本轮失败。基础默认仍为`legacy/barrier/queue`，不是自动切换到640。
 6. 主球选择结合轨迹支持、速度预测、球拍距离及镜像区域惩罚；静止锚点用于抑制背景球。重捕获窗口配置为 8 帧。
 7. 球拍候选结合球位置、历史连续性和镜像惩罚重排。覆盖层恢复可从已标注视频中恢复球圈和球拍框，来源保留为 `overlay_*`；这种视频不能直接用作纯检测准确率验收。
