@@ -17,6 +17,7 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
     """进程 2: AI 推理核心 (平行调度)"""
     (ignore_child_interrupts_fn() if ignore_child_interrupts_fn else None)
     print("🚀 [Inference] 加载 Core ML 并行架构...")
+    from collections import deque
     from concurrent.futures import ThreadPoolExecutor
     from performance_metrics import timed_call
     shms = []
@@ -24,36 +25,34 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
     dual_pose_estimator = None
     racket_pose_runtime = None
     interframe = None
+    det_pool = None
     try:
         from detection_frame_context import DetectionFrameContext
+        from pipeline.det_worker_pool import DetWorkerPool, build_roi_manager
         from pose_estimator_yolo26 import PoseEstimatorYOLO26
-        from roi_manager import ROIManager
         from yolo26n_unified_detector import YOLO26nUnifiedDetector
 
-        roi_manager = None
-        if pipeline.roi_profile.enabled:
-            candidate = ROIManager(pipeline.config)
-            if candidate.set_roi_points(pipeline.roi_profile.points):
-                # 自动将镜面多边形注册为排除区域，阻止镜中虚像被锁定追踪
-                if pipeline.roi_profile.has_mirror_view and pipeline.roi_profile.mirror_polygon:
-                    mirror_px = pipeline.roi_profile.get_mirror_polygon_pixels((pipeline.width, pipeline.height))
-                    if mirror_px:
-                        candidate.add_exclusion_polygon(mirror_px, label="mirror_zone")
-                for ex_poly in pipeline.roi_profile.exclusion_polygons:
-                    candidate.add_exclusion_polygon(ex_poly, label="custom_exclusion")
-                roi_manager = candidate
+        roi_manager = build_roi_manager(
+            pipeline.roi_profile,
+            pipeline.config,
+            (pipeline.width, pipeline.height),
+            pipeline.algo2_dual_view,
+        )
 
-        if (
-            roi_manager is not None
+        use_interframe = pipeline.inference_schedule == 'interframe'
+        det_workers = max(0, int(getattr(pipeline, 'det_workers', 0) or 0))
+        use_det_pool = (
+            det_workers > 0
             and pipeline.algo2_dual_view
-            and pipeline.config.get("roi_settings", {}).get("preserve_upper_airspace", True)
-        ):
-            roi_manager.configure_ball_airspace((pipeline.width, pipeline.height))
+            and pipeline.racket_pose_config['mode'] == 'legacy'
+            and not use_interframe
+        )
 
         detector = YOLO26nUnifiedDetector(
             pipeline.config['unified_detection']['model_path'],
             pipeline.config['unified_detection'],
             roi_manager=roi_manager,
+            load_model=not use_det_pool,
         )
         pose_estimator = None
         dual_view_mgr = None
@@ -100,16 +99,35 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
             or 2
         )
         inference_workers = max(1, int(perf_cfg.get('inference_workers', unified_workers)))
-        executor = ThreadPoolExecutor(max_workers=inference_workers)
-        print(f"⚙️ [Inference] 线程池并发数: {inference_workers}")
+        executor = None if use_det_pool else ThreadPoolExecutor(max_workers=inference_workers)
+        if not use_det_pool:
+            print(f"⚙️ [Inference] 线程池并发数: {inference_workers}")
         print(f"⚙️ [Inference] 启动调度: {pipeline.inference_schedule} | 球拍 IPC: {pipeline.racket_pose_config['ipc_transport']}")
         if pipeline.algo2_dual_view:
             print("⚙️ [Inference] 人体ROI缩放: " + perf_cfg.get('pose_resize_policy', 'legacy'))
-        if pipeline.inference_schedule=='interframe':
+        if use_det_pool:
+            max_in_flight = min(pipeline.shm_num - 3, det_workers * 3 + 2)
+            det_pool = DetWorkerPool(
+                num_workers=det_workers,
+                cfg_dict=pipeline.config,
+                roi_profile=pipeline.roi_profile,
+                frame_size=(pipeline.width, pipeline.height),
+                algo2_dual_view=pipeline.algo2_dual_view,
+                shm_names=pipeline.shm_names,
+                retain_racket_candidates=bool(pipeline.config.get("unified_detection", {}).get("racket_temporal_recovery_enabled", False)),
+                warmup=True,
+                opencv_threads=perf_cfg.get('opencv_threads'),
+            )
+            det_pool.start()
+            print(
+                f"⚡ [Inference] 多进程 ANE 检测池已就绪 | Det进程: {det_workers} + 主进程顺序Pose | "
+                f"在途窗口: {max_in_flight}"
+            )
+        elif pipeline.inference_schedule=='interframe':
             print('⚙️ [Inference] 两帧在途：候选/球拍准备与同帧人体/时序聚合重叠')
         else:
             print("⚙️ [Inference] 单帧并行任务数: 2（目标检测 + 姿态估计）")
-        if inference_workers > 2 and pipeline.inference_schedule=='barrier':
+        if not use_det_pool and inference_workers > 2 and pipeline.inference_schedule=='barrier':
             print(
                 f"ℹ️ [Inference] 当前执行图每帧最多使用 2 个 worker；"
                 f"其余 {inference_workers - 2} 个用于后续多帧并发扩展"
@@ -126,16 +144,17 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
             )
             if racket_pose_runtime.disabled_reason:
                 print('⚠️ [RacketPose] 旁路停用，保留旧链路: ' + racket_pose_runtime.disabled_reason)
-        if pipeline.lossless_realtime:
+        if pipeline.lossless_realtime or use_det_pool:
             from pipeline_startup import warm_coreml_wrappers
             if dual_pose_estimator is not None:
-                wrappers = (
-                    [detector, dual_pose_estimator.model_front]
+                pose_wrappers = (
+                    [dual_pose_estimator.model_front]
                     if dual_pose_estimator.model_front is dual_pose_estimator.model_back
-                    else [detector, dual_pose_estimator.model_front, dual_pose_estimator.model_back]
+                    else [dual_pose_estimator.model_front, dual_pose_estimator.model_back]
                 )
             else:
-                wrappers = [detector, pose_estimator]
+                pose_wrappers = [pose_estimator]
+            wrappers = pose_wrappers if use_det_pool else [detector, *pose_wrappers]
             warming = warm_coreml_wrappers(wrappers)
             print(f'🔥 [Inference] 源帧开始前完成 Core ML 内核预热: {warming} ms')
         pipeline.inf_ready.set()
@@ -167,12 +186,41 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                     return
                 yield task
 
-        use_interframe = pipeline.inference_schedule == 'interframe'
+        def det_pool_tasks():
+            in_flight = deque()
+            reader_exhausted = False
+
+            def refill():
+                nonlocal reader_exhausted
+                while not reader_exhausted and not pipeline.stop_event.is_set() and len(in_flight) < max_in_flight:
+                    if not in_flight:
+                        next_task = read_next()
+                        if next_task is None:
+                            reader_exhausted = True
+                            break
+                    else:
+                        try:
+                            next_task = pipeline.q_inference.get_nowait()
+                        except queue.Empty:
+                            if pipeline.rd_done.is_set():
+                                next_task = read_next()
+                                if next_task is None:
+                                    reader_exhausted = True
+                                    break
+                            else:
+                                break
+                    det_pool.submit(next_task['idx'], next_task['slot'])
+                    in_flight.append(next_task)
+
+            refill()
+            while in_flight and not pipeline.stop_event.is_set():
+                current = in_flight.popleft()
+                refill()
+                yield current
+
         if use_interframe:
             from interframe_pipeline import InterframePipeline
             raw_detector = detector.candidate_inference_view()
-            if pipeline.inference_schedule != 'interframe':
-                print('⚡ [Inference] 离线多帧流水线并发已开启：相邻帧 检测/7点 与 双路人体姿态 交错重叠执行')
 
             def prepare(task):
                 started = time.perf_counter()
@@ -222,7 +270,11 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                 pipeline.stop_event,
                 close_timeout=pipeline.racket_pose_config['timeout_seconds'] + 2,
             )
-        tasks=interframe if interframe is not None else serial_tasks()
+        tasks = (
+            det_pool_tasks()
+            if use_det_pool
+            else (interframe if interframe is not None else serial_tasks())
+        )
         for task in tasks:
             slot = task['slot']
             frame_ptr = shared_frames[slot]
@@ -239,7 +291,7 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
             )
             racket_pose_observation = stage_a['observation'] if stage_a else None
             racket_dispatch_ms = stage_a['racket_dispatch_ms'] if stage_a else (time.perf_counter() - dispatch_started) * 1000
-            if roi_manager is not None:
+            if roi_manager is not None and not pipeline.algo2_dual_view:
                 frame_context = DetectionFrameContext.build(
                     task['idx'],
                     frame_ptr,
@@ -249,17 +301,46 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                 detection_frame = frame_context.detection_frame
                 pose_detection_frame = frame_context.pose_detection_frame
 
+            det_wait_ms = 0.0
             if pipeline.algo2_dual_view and dual_view_mgr is not None and dual_pose_estimator is not None:
-                if stage_a:
-                    from concurrent.futures import Future
-                    f1 = Future()
+                if use_det_pool:
+                    dual_frame = dual_view_mgr.split_frame(
+                        frame_ptr, frame_id=task['idx'],
+                        for_inference=(dual_pose_estimator.supports_source_pixels and
+                            perf_cfg.get('pose_resize_policy', 'legacy') != 'legacy'),
+                        source_views=(('front',) if perf_cfg.get('pose_resize_policy') == 'direct_front'
+                                      else ('front', 'back')))
+                    pose_res, human_pose_ms = timed_call(dual_pose_estimator.estimate_dual_pose, dual_frame)
+                    det_wait_t0 = time.perf_counter()
+                    packet, legacy_detection_ms, det_started_unix_ns = det_pool.get_result(
+                        task['idx'], stop_event=pipeline.stop_event
+                    )
+                    det_wait_ms = (time.perf_counter() - det_wait_t0) * 1000.0
+                    inference_started_at_unix_ns = min(inference_started_at_unix_ns, det_started_unix_ns)
+                    ball, raw_rackets = detector.adopt_external_packet(
+                        packet,
+                        task['idx'],
+                        return_rackets=True,
+                        retain_racket_candidates=racket_tracker is not None,
+                        copy_diagnostics=False,
+                    )
+                elif stage_a:
+                    dual_frame = dual_view_mgr.split_frame(
+                        frame_ptr, frame_id=task['idx'],
+                        for_inference=(dual_pose_estimator.supports_source_pixels and
+                            perf_cfg.get('pose_resize_policy', 'legacy') != 'legacy'),
+                        source_views=(('front',) if perf_cfg.get('pose_resize_policy') == 'direct_front'
+                                      else ('front', 'back')))
+                    # Submit Pose ANE immediately, and adopt Stage A packet while ANE executes.
+                    f2 = executor.submit(timed_call, dual_pose_estimator.estimate_dual_pose, dual_frame)
                     candidates, adopted_rackets = detector.adopt_external_packet(
                         stage_a['packet'],
                         task['idx'],
                         return_rackets=True,
                         retain_racket_candidates=racket_tracker is not None,
                     )
-                    f1.set_result(((candidates, adopted_rackets, 0.), stage_a['legacy_detection_ms']))
+                    ball, raw_rackets, legacy_detection_ms = candidates, adopted_rackets, stage_a['legacy_detection_ms']
+                    pose_res, human_pose_ms = f2.result()
                 else:
                     # Submit 960 detector before split_frame so crop/resize/flip overlaps with detector inference.
                     f1 = executor.submit(
@@ -271,17 +352,16 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                         retain_racket_candidates=racket_tracker is not None,
                         racket_source='external' if pipeline.exclusive_racket_source else 'legacy',
                     )
-                dual_frame = dual_view_mgr.split_frame(
-                    frame_ptr, frame_id=task['idx'],
-                    for_inference=(dual_pose_estimator.supports_source_pixels and
-                        perf_cfg.get('pose_resize_policy', 'legacy') != 'legacy'),
-                    source_views=(('front',) if perf_cfg.get('pose_resize_policy') == 'direct_front'
-                                  else ('front', 'back')))
-                f2 = executor.submit(timed_call, dual_pose_estimator.estimate_dual_pose, dual_frame)
-
-                (ball, raw_rackets, _), legacy_detection_ms = f1.result()
+                    dual_frame = dual_view_mgr.split_frame(
+                        frame_ptr, frame_id=task['idx'],
+                        for_inference=(dual_pose_estimator.supports_source_pixels and
+                            perf_cfg.get('pose_resize_policy', 'legacy') != 'legacy'),
+                        source_views=(('front',) if perf_cfg.get('pose_resize_policy') == 'direct_front'
+                                      else ('front', 'back')))
+                    f2 = executor.submit(timed_call, dual_pose_estimator.estimate_dual_pose, dual_frame)
+                    (ball, raw_rackets, _), legacy_detection_ms = f1.result()
+                    pose_res, human_pose_ms = f2.result()
                 from ball_observation_contract import stamp_ball_detections
-                pose_res, human_pose_ms = f2.result()
                 join_started = time.perf_counter()
                 legacy_rackets = list(raw_rackets or [])
                 if racket_pose_runtime is not None and not stage_a:
@@ -445,6 +525,7 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                         'legacy_detection_ms': legacy_detection_ms,
                         'human_pose_ms': human_pose_ms, 'racket_dispatch_ms': racket_dispatch_ms,
                         'racket_join_ms': racket_join_ms,
+                        'det_wait_ms': det_wait_ms,
                         'association_ms': (time.perf_counter() - association_started) * 1000},
                     'reader_schedule_lag_ms': task.get('reader_schedule_lag_ms'),
                     'captured_at': task.get('captured_at'),
@@ -554,6 +635,12 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                 interframe.close()
             except Exception as exc:
                 preparation_error = exc
+        if det_pool is not None:
+            try:
+                det_pool.close()
+            except Exception as exc:
+                if preparation_error is None:
+                    preparation_error = exc
         if racket_pose_runtime is not None:
             racket_pose_runtime.close()
         if executor is not None:

@@ -387,11 +387,15 @@ class PoseEstimatorYOLO26:
         right_w = max(1, in_w - right_x0)
         split_x = left_w + gap * 0.5
 
+        geom = (in_w, in_h, gap, front_frame.shape[:2], back_frame.shape[:2])
         buf = getattr(self, '_stitched_rgb_buf', None)
         if buf is None or buf.shape != (in_h, in_w, 3):
             buf = np.empty((in_h, in_w, 3), dtype=np.uint8)
             self._stitched_rgb_buf = buf
-        buf.fill(114)
+            self._stitched_geom = None
+        if getattr(self, '_stitched_geom', None) != geom:
+            buf.fill(114)
+            self._stitched_geom = geom
 
         def _place_half(frame: np.ndarray, slot_x0: int, slot_w: int):
             src_h, src_w = frame.shape[:2]
@@ -434,10 +438,9 @@ class PoseEstimatorYOLO26:
         det_conf_thr = self.confidence_threshold
 
         dets = output[0]
-        for i in range(num_detections):
+        active_indices = np.flatnonzero(dets[:, 4] >= det_conf_thr) if num_detections > 0 else ()
+        for i in active_indices:
             det = dets[i]
-            if float(det[4]) < det_conf_thr:
-                continue
 
             bx1, bx2 = float(det[0]), float(det[2])
             cx = 0.5 * (bx1 + bx2) if bx2 > bx1 else None

@@ -25,7 +25,7 @@ from static_ball_filter import StaticBallFilter
 class YOLO26nUnifiedDetector:
     """YOLO26n Core ML 统一检测器 - 同时检测球和球拍"""
     
-    def __init__(self, model_path, config, roi_manager=None):
+    def __init__(self, model_path, config, roi_manager=None, load_model: bool = True):
         """
         初始化统一检测器
         
@@ -33,8 +33,9 @@ class YOLO26nUnifiedDetector:
             model_path: Core ML 模型路径
             config: 配置字典
             roi_manager: ROI 管理器（可选）
+            load_model: 是否加载 Core ML 权重（仅使用 adopt_external_packet 时可传 False）
         """
-        if ct is None:
+        if load_model and ct is None:
             raise RuntimeError("coremltools is required to initialize YOLO26nUnifiedDetector")
 
         print(f"🚀 初始化 YOLO26n 统一检测器...")
@@ -42,32 +43,41 @@ class YOLO26nUnifiedDetector:
         self.config = config
         self.roi_manager = roi_manager
         
-        # 获取计算单元配置
-        compute_units_str = config.get('compute_units', 'ALL')
-        compute_units_map = {
-            'CPU': ct.ComputeUnit.CPU_ONLY,
-            'GPU': ct.ComputeUnit.CPU_AND_GPU,
-            'ANE': ct.ComputeUnit.CPU_AND_NE,
-            'ALL': ct.ComputeUnit.ALL
-        }
-        compute_units = compute_units_map.get(compute_units_str.upper(), ct.ComputeUnit.ALL)
-        
-        # 加载 Core ML 模型
-        print(f"   加载模型: {model_path}")
-        print(f"   计算单元: {compute_units_str}")
-        self.model = ct.models.MLModel(model_path, compute_units=compute_units)
-        
-        # 获取模型输入尺寸
-        spec = self.model.get_spec()
-        self._coreml_input_names = {inp.name for inp in spec.description.input}
-        self._coreml_output_names = {out.name for out in spec.description.output}
-        input_desc = spec.description.input[0]
-        if hasattr(input_desc.type, 'imageType'):
-            self.input_height = input_desc.type.imageType.height
-            self.input_width = input_desc.type.imageType.width
+        if load_model:
+            # 获取计算单元配置
+            compute_units_str = config.get('compute_units', 'ALL')
+            compute_units_map = {
+                'CPU': ct.ComputeUnit.CPU_ONLY,
+                'GPU': ct.ComputeUnit.CPU_AND_GPU,
+                'ANE': ct.ComputeUnit.CPU_AND_NE,
+                'ALL': ct.ComputeUnit.ALL
+            }
+            compute_units = compute_units_map.get(compute_units_str.upper(), ct.ComputeUnit.ALL)
+            
+            # 加载 Core ML 模型
+            print(f"   加载模型: {model_path}")
+            print(f"   计算单元: {compute_units_str}")
+            self.model = ct.models.MLModel(model_path, compute_units=compute_units)
+            
+            # 获取模型输入尺寸
+            spec = self.model.get_spec()
+            self._coreml_input_names = {inp.name for inp in spec.description.input}
+            self._coreml_output_names = {out.name for out in spec.description.output}
+            input_desc = spec.description.input[0]
+            if hasattr(input_desc.type, 'imageType'):
+                self.input_height = input_desc.type.imageType.height
+                self.input_width = input_desc.type.imageType.width
+            else:
+                self.input_height = 640
+                self.input_width = 640
         else:
-            self.input_height = 640
-            self.input_width = 640
+            print(f"   跳过模型加载（外部多进程检测聚合模式）")
+            self.model = None
+            self._coreml_input_names = set()
+            self._coreml_output_names = set()
+            input_size = int(config.get('input_size', 960))
+            self.input_height = input_size
+            self.input_width = input_size
         
         print(f"   模型输入尺寸: {self.input_width}x{self.input_height}")
         
@@ -139,8 +149,9 @@ class YOLO26nUnifiedDetector:
         coordinate_offset=(0, 0),
         retain_racket_candidates=False,
         racket_source='external',
+        prepared_input=None,
+        copy_packet=True,
     ):
-        import copy
         effective_source = 'raw_legacy' if racket_source != 'external' else 'external'
         balls, rackets, _ = self.detect_unified(
             frame,
@@ -148,8 +159,9 @@ class YOLO26nUnifiedDetector:
             full_frame_size=full_frame_size,
             retain_racket_candidates=retain_racket_candidates,
             racket_source=effective_source,
+            prepared_input=prepared_input,
         )
-        return copy.deepcopy({
+        packet = {
             'frame_id': frame_id,
             'balls': balls,
             'rackets': rackets,
@@ -157,15 +169,23 @@ class YOLO26nUnifiedDetector:
             'parse_diagnostics': self.last_parse_diagnostics,
             'racket_diagnostics': self.last_racket_diagnostics,
             'dimensions': (self.original_height, self.original_width, self.tracking_frame_width, self.tracking_frame_height),
-        })
-
-    def adopt_external_packet(self, packet, frame_id, return_rackets=False, retain_racket_candidates=False):
-        """Called only by ordered aggregation; does not invoke the model."""
+        }
+        if not copy_packet:
+            return packet
         import copy
+        return copy.deepcopy(packet)
+
+    def adopt_external_packet(self, packet, frame_id, return_rackets=False, retain_racket_candidates=False, copy_diagnostics=True):
+        """Called only by ordered aggregation; does not invoke the model."""
         if packet['frame_id'] != frame_id:
             raise ValueError('Candidate packet source identity mismatch')
-        self.last_parse_diagnostics = copy.deepcopy(packet['parse_diagnostics'])
-        self.last_racket_diagnostics = copy.deepcopy(packet['racket_diagnostics'])
+        if copy_diagnostics:
+            import copy
+            self.last_parse_diagnostics = copy.deepcopy(packet['parse_diagnostics'])
+            self.last_racket_diagnostics = copy.deepcopy(packet['racket_diagnostics'])
+        else:
+            self.last_parse_diagnostics = packet['parse_diagnostics']
+            self.last_racket_diagnostics = packet['racket_diagnostics']
         (self.original_height, self.original_width, self.tracking_frame_width, self.tracking_frame_height) = packet['dimensions']
         balls = packet['balls']
         rackets = packet.get('rackets') or []
@@ -195,6 +215,7 @@ class YOLO26nUnifiedDetector:
         full_frame_size=None,
         retain_racket_candidates=False,
         racket_source='legacy',
+        prepared_input=None,
     ):
         """
         统一检测球和球拍
@@ -207,8 +228,16 @@ class YOLO26nUnifiedDetector:
         """
         if racket_source not in ('legacy', 'external', 'raw_legacy'):
             raise ValueError('Unsupported racket source')
-        # 保存原始尺寸
-        self.original_height, self.original_width = frame.shape[:2]
+        if prepared_input is not None:
+            input_image, gain, pad, orig_h, orig_w = prepared_input
+            self.original_height = orig_h
+            self.original_width = orig_w
+            self._preprocess_gain = gain
+            self._preprocess_pad = pad
+        else:
+            # 保存原始尺寸
+            self.original_height, self.original_width = frame.shape[:2]
+            input_image = self._preprocess(frame)
         self.tracking_frame_width = (
             int(full_frame_size[0])
             if full_frame_size is not None
@@ -219,9 +248,6 @@ class YOLO26nUnifiedDetector:
             if full_frame_size is not None
             else self.original_height
         )
-        
-        # 预处理
-        input_image = self._preprocess(frame)
         
         # 推理
         start_time = time.time()
@@ -336,39 +362,46 @@ class YOLO26nUnifiedDetector:
             adjusted.append(item)
         return adjusted
     
-    def _preprocess(self, frame):
-        """预处理图像"""
+    def _build_input_packet(self, frame):
+        """将输入 BGR 帧预处理为 PIL 图像与 letterbox 几何元数据。"""
+        orig_h, orig_w = frame.shape[:2]
         if self.preprocess_mode == 'letterbox':
-            gain = min(
-                self.input_width / self.original_width,
-                self.input_height / self.original_height,
-            )
-            resized_width = max(1, round(self.original_width * gain))
-            resized_height = max(1, round(self.original_height * gain))
+            gain = min(self.input_width / orig_w, self.input_height / orig_h)
+            resized_width = max(1, round(orig_w * gain))
+            resized_height = max(1, round(orig_h * gain))
             content_size = (resized_width, resized_height)
             resized_content = frame if frame.shape[1::-1] == content_size else cv2.resize(frame, content_size)
             pad_x = (self.input_width - resized_width) // 2
             pad_y = (self.input_height - resized_height) // 2
+            geom = (pad_x, pad_y, resized_width, resized_height, self.input_width, self.input_height)
             buf = getattr(self, '_letterbox_rgb_buf', None)
             if buf is None or buf.shape != (self.input_height, self.input_width, 3):
                 buf = np.empty((self.input_height, self.input_width, 3), dtype=np.uint8)
                 self._letterbox_rgb_buf = buf
-            buf.fill(114)
+                self._letterbox_geom = None
+            if getattr(self, '_letterbox_geom', None) != geom:
+                buf.fill(114)
+                self._letterbox_geom = geom
             cv2.cvtColor(
                 resized_content,
                 cv2.COLOR_BGR2RGB,
                 dst=buf[pad_y:pad_y + resized_height, pad_x:pad_x + resized_width],
             )
-            self._preprocess_gain = gain
-            self._preprocess_pad = (pad_x, pad_y)
-            return Image.fromarray(buf)
-        else:
-            target_size = (self.input_width, self.input_height)
-            resized = frame if frame.shape[1::-1] == target_size else cv2.resize(frame, target_size)
-            self._preprocess_gain = None
-            self._preprocess_pad = (0, 0)
-            pil_image = Image.fromarray(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB))
-            return pil_image
+            return (Image.fromarray(buf), gain, (pad_x, pad_y), orig_h, orig_w)
+        target_size = (self.input_width, self.input_height)
+        resized = frame if frame.shape[1::-1] == target_size else cv2.resize(frame, target_size)
+        return (Image.fromarray(cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)), None, (0, 0), orig_h, orig_w)
+
+    def prepare_input_packet(self, frame):
+        """预处理帧图像供跨帧流水线线程提前准备输入，不修改检测几何状态。"""
+        return self._build_input_packet(frame)
+
+    def _preprocess(self, frame):
+        """预处理图像"""
+        pil_image, gain, pad, _, _ = self._build_input_packet(frame)
+        self._preprocess_gain = gain
+        self._preprocess_pad = pad
+        return pil_image
     
     def _parse_predictions(self, predictions):
         """解析模型输出"""
@@ -424,81 +457,94 @@ class YOLO26nUnifiedDetector:
                 detections = output[0]
             else:
                 detections = output
-            
-            for detection in detections:
-                x1, y1, x2, y2, conf, cls = detection
-                cls_id = int(cls)
-                confidence = float(conf)
-                if cls_id == self.ball_class_id:
-                    diagnostics["ball"]["class_candidates"] += 1
-                    diagnostics["ball"]["max_confidence"] = max(
-                        diagnostics["ball"]["max_confidence"], confidence
-                    )
-                elif cls_id == self.racket_class_id:
-                    diagnostics["racket"]["class_candidates"] += 1
-                    diagnostics["racket"]["max_confidence"] = max(
-                        diagnostics["racket"]["max_confidence"], confidence
-                    )
-                
-                # 恢复到推理输入前的图像坐标。微调模型使用 letterbox，旧模型仍可使用 stretch。
-                if getattr(self, 'preprocess_mode', 'stretch') == 'letterbox':
+
+            if detections.size > 0:
+                cls_ids = detections[:, 5].astype(np.int32)
+                confs = detections[:, 4].astype(np.float64)
+                ball_mask = cls_ids == self.ball_class_id
+                racket_mask = cls_ids == self.racket_class_id
+
+                ball_count = int(ball_mask.sum())
+                diagnostics["ball"]["class_candidates"] = ball_count
+                if ball_count > 0:
+                    diagnostics["ball"]["max_confidence"] = float(confs[ball_mask].max())
+
+                racket_count = int(racket_mask.sum())
+                diagnostics["racket"]["class_candidates"] = racket_count
+                if racket_count > 0:
+                    diagnostics["racket"]["max_confidence"] = float(confs[racket_mask].max())
+
+                active_mask = (ball_mask & (confs >= self.ball_conf_threshold)) | (
+                    racket_mask & (confs >= racket_candidate_threshold)
+                )
+                active_indices = np.flatnonzero(active_mask)
+
+                is_letterbox = getattr(self, 'preprocess_mode', 'stretch') == 'letterbox'
+                if is_letterbox:
                     gain = float(self._preprocess_gain)
                     pad_x, pad_y = self._preprocess_pad
-                    real_x1 = max(0, min((float(x1) - pad_x) / gain, self.original_width))
-                    real_y1 = max(0, min((float(y1) - pad_y) / gain, self.original_height))
-                    real_x2 = max(0, min((float(x2) - pad_x) / gain, self.original_width))
-                    real_y2 = max(0, min((float(y2) - pad_y) / gain, self.original_height))
                 else:
                     scale_x = self.original_width / self.input_width
                     scale_y = self.original_height / self.input_height
-                    real_x1 = max(0, min(float(x1) * scale_x, self.original_width))
-                    real_y1 = max(0, min(float(y1) * scale_y, self.original_height))
-                    real_x2 = max(0, min(float(x2) * scale_x, self.original_width))
-                    real_y2 = max(0, min(float(y2) * scale_y, self.original_height))
-                
-                box = [real_x1, real_y1, real_x2, real_y2]
-                
-                # 球检测
-                if cls_id == self.ball_class_id and conf >= self.ball_conf_threshold:
-                    diagnostics["ball"]["above_threshold_candidates"] += 1
-                    ball_detections.append({
-                        'position': [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2],  # 中心点
-                        'box': box,
-                        'confidence': float(conf),
-                        'model_confidence': float(conf),
-                        'source': 'model_detection',
-                        'radius': int((box[2] - box[0]) / 2)
-                    })
-                
-                # 球拍检测
-                elif cls_id == self.racket_class_id and conf >= racket_candidate_threshold:
-                    diagnostics["racket"]["above_threshold_candidates"] += int(conf >= self.racket_conf_threshold)
-                    # 计算边界框面积
-                    box_width = box[2] - box[0]
-                    box_height = box[3] - box[1]
-                    box_area = box_width * box_height
-                    
-                    # 过滤过大的边界框（可能是误检）
-                    # 修正后的过滤逻辑：球拍面积通常较小
-                    max_area = (self.original_width * self.original_height) / 10 # 缩小范围到 1/10
-                    min_area = 500  # 缩小最小面积
-                    
-                    # 宽高比检查（球拍通常是长条形）
-                    aspect_ratio = box_height / max(box_width, 1)
-                    min_aspect_ratio = 0.3  # 扩大范围
-                    max_aspect_ratio = 10.0  # 扩大范围
-                    
-                    if (min_area <= box_area <= max_area and 
-                        min_aspect_ratio <= aspect_ratio <= max_aspect_ratio):
-                        racket_detections.append({
-                            'box': [int(b) for b in box],
-                            'confidence': float(conf),
-                            'class_name': 'tennis racket',
-                            'area': int(box_area),
-                            'aspect_ratio': round(aspect_ratio, 2)
-                        })
+
+                max_area = (self.original_width * self.original_height) / 10
+                min_area = 500
+                min_aspect_ratio = 0.3
+                max_aspect_ratio = 10.0
+
+                for idx in active_indices:
+                    x1, y1, x2, y2, conf, cls = detections[idx]
+                    cls_id = int(cls)
+                    confidence = float(conf)
+
+                    # 恢复到推理输入前的图像坐标。微调模型使用 letterbox，旧模型仍可使用 stretch。
+                    if is_letterbox:
+                        real_x1 = max(0, min((float(x1) - pad_x) / gain, self.original_width))
+                        real_y1 = max(0, min((float(y1) - pad_y) / gain, self.original_height))
+                        real_x2 = max(0, min((float(x2) - pad_x) / gain, self.original_width))
+                        real_y2 = max(0, min((float(y2) - pad_y) / gain, self.original_height))
                     else:
-                        diagnostics["racket"]["geometry_rejections"] += 1
+                        real_x1 = max(0, min(float(x1) * scale_x, self.original_width))
+                        real_y1 = max(0, min(float(y1) * scale_y, self.original_height))
+                        real_x2 = max(0, min(float(x2) * scale_x, self.original_width))
+                        real_y2 = max(0, min(float(y2) * scale_y, self.original_height))
+
+                    box = [real_x1, real_y1, real_x2, real_y2]
+
+                    # 球检测
+                    if cls_id == self.ball_class_id and confidence >= self.ball_conf_threshold:
+                        diagnostics["ball"]["above_threshold_candidates"] += 1
+                        ball_detections.append({
+                            'position': [(box[0] + box[2]) / 2, (box[1] + box[3]) / 2],  # 中心点
+                            'box': box,
+                            'confidence': confidence,
+                            'model_confidence': confidence,
+                            'source': 'model_detection',
+                            'radius': int((box[2] - box[0]) / 2)
+                        })
+
+                    # 球拍检测
+                    elif cls_id == self.racket_class_id and confidence >= racket_candidate_threshold:
+                        diagnostics["racket"]["above_threshold_candidates"] += int(confidence >= self.racket_conf_threshold)
+                        # 计算边界框面积
+                        box_width = box[2] - box[0]
+                        box_height = box[3] - box[1]
+                        box_area = box_width * box_height
+
+                        # 宽高比检查（球拍通常是长条形）
+                        aspect_ratio = box_height / max(box_width, 1)
+
+                        if (min_area <= box_area <= max_area and
+                            min_aspect_ratio <= aspect_ratio <= max_aspect_ratio):
+                            racket_detections.append({
+                                'box': [int(b) for b in box],
+                                'confidence': confidence,
+                                'class_name': 'tennis racket',
+                                'area': int(box_area),
+                                'aspect_ratio': round(aspect_ratio, 2)
+                            })
+                        else:
+                            diagnostics["racket"]["geometry_rejections"] += 1
         # 兼容带 NMS 的 CoreML 检测输出（坐标 + 80类置信）
         elif 'coordinates' in predictions and 'confidence' in predictions:
             diagnostics["output_format"] = "coordinates_confidence"

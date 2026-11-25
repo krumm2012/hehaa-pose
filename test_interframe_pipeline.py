@@ -222,4 +222,71 @@ class InterframeTests(unittest.TestCase):
         self.assertEqual(raw.last_parse_diagnostics,{'value':[8]})
         with self.assertRaises(ValueError):detector.adopt_external_packet(first,8)
 
+    def test_three_stage_preprocess_preserves_order_and_propagates_errors(self):
+        inputs = iter(range(6))
+        stop = threading.Event()
+        pipe = InterframePipeline(
+            lambda cancelled: next(inputs, None),
+            lambda item: {'frame': item['frame'], 'prep': item['prep']},
+            stop,
+            close_timeout=1,
+            max_in_flight=3,
+            preprocess=lambda n: {'frame': n, 'prep': n * 10},
+        )
+        try:
+            self.assertEqual(list(pipe), [{'frame': i, 'prep': i * 10} for i in range(6)])
+        finally:
+            pipe.close()
+
+        inputs_err = iter(range(4))
+        stop_err = threading.Event()
+        pipe_err = InterframePipeline(
+            lambda cancelled: next(inputs_err, None),
+            lambda item: item,
+            stop_err,
+            close_timeout=1,
+            max_in_flight=3,
+            preprocess=lambda n: (_ for _ in ()).throw(ValueError('prep failed')) if n == 1 else n,
+        )
+        try:
+            with self.assertRaisesRegex(RuntimeError, 'preparation failed'):
+                list(pipe_err)
+        finally:
+            pipe_err.close()
+
+    def test_detector_prepare_input_packet_matches_preprocess_and_reuses_letterbox(self):
+        det = YOLO26nUnifiedDetector.__new__(YOLO26nUnifiedDetector)
+        det.input_width = 960
+        det.input_height = 960
+        det.preprocess_mode = 'letterbox'
+        det.model = Mock()
+        det.model.predict.return_value = {}
+        det._coreml_input_names = set()
+        det.detection_times = deque(maxlen=10)
+        det.last_parse_diagnostics = {}
+        det.last_ball_diagnostics = {}
+        det.last_racket_diagnostics = {}
+        det.roi_manager = None
+        det.config = {}
+        det.racket_conf_threshold = 0.5
+        det.ball_conf_threshold = 0.5
+        det._parse_predictions = lambda preds: ([], [])
+        det._filter_static_balls = lambda b, r: b
+        det._select_primary_racket = lambda r, b: r
+
+        frame = np.full((1440, 2560, 3), 64, dtype=np.uint8)
+        pkt1 = det.prepare_input_packet(frame)
+        self.assertEqual(pkt1[0].size, (960, 960))
+        self.assertEqual(pkt1[1:], (960 / 2560, (0, 210), 1440, 2560))
+        geom_first = det._letterbox_geom
+        pkt2 = det.prepare_input_packet(frame)
+        self.assertEqual(det._letterbox_geom, geom_first)
+        self.assertEqual(np.asarray(pkt1[0])[0, 0].tolist(), [114, 114, 114])
+        self.assertEqual(np.asarray(pkt2[0])[300, 100].tolist(), [64, 64, 64])
+
+        det.detect_unified(frame, prepared_input=pkt2)
+        self.assertEqual(det._preprocess_gain, pkt2[1])
+        self.assertEqual(det._preprocess_pad, pkt2[2])
+
+
 if __name__=='__main__':unittest.main()

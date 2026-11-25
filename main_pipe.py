@@ -62,8 +62,12 @@ class MultiprocessPipeline:
         no_metrics_text=False,
         no_frame_results=False,
         no_save_video=False,
+        headless=False,
+        pose_model=None,
+        racket_model_profile=None,
         output_fps=None,
         inference_workers=None,
+        det_workers=None,
         analyze_swings=False,
         swing_output_json=None,
         swing_events_csv=None,
@@ -140,7 +144,10 @@ class MultiprocessPipeline:
             self.config["video_output_path"] = str(
                 self.session_output_dir / configured_output.name
             )
-        if no_save_video:
+        self.headless = bool(headless)
+        if pose_model:
+            self.config['yolo_pose_model_path'] = str(pose_model)
+        if no_save_video or self.headless:
             self.config['save_video'] = False
 
         self.video_path = self.config['video_input_path']
@@ -168,6 +175,18 @@ class MultiprocessPipeline:
         self.processing_mode = 'buffered' if self.lossless_realtime else ('realtime' if self.live_mode else 'offline')
         from racket_pose_detector import pose_config
         racket_cfg = dict(self.config.get('racket_pose') or {})
+        effective_racket_mode = (
+            racket_pose_mode if racket_pose_mode is not None else racket_cfg.get('mode', 'legacy')
+        )
+        if racket_model_profile and racket_model_profile != 'configured':
+            from racket_model_profiles import apply_model_profile
+            apply_model_profile(
+                self.config,
+                racket_model_profile,
+                effective_racket_mode,
+                Path(__file__).resolve().parent,
+            )
+            racket_cfg = dict(self.config.get('racket_pose') or {})
         if racket_pose_mode is not None:
             racket_cfg['mode'] = racket_pose_mode
             racket_cfg['selection_policy'] = 'exclusive' if racket_pose_mode=='exclusive' else 'mixed'
@@ -181,8 +200,11 @@ class MultiprocessPipeline:
         self.inference_schedule = inference_schedule or perf_cfg.get('inference_schedule', 'barrier')
         if self.inference_schedule not in ('barrier','interframe'):
             raise ValueError('Unsupported inference schedule')
-        if self.inference_schedule=='interframe' and (not self.exclusive_racket_source or self.processing_mode=='realtime'):
-            raise ValueError('Interframe scheduling requires exclusive buffered/offline processing')
+        if self.inference_schedule == 'interframe' and (
+            self.processing_mode == 'realtime'
+            or (self.processing_mode == 'buffered' and not self.exclusive_racket_source)
+        ):
+            raise ValueError('Interframe scheduling requires offline mode or exclusive buffered processing')
         if (self.racket_pose_config['mode']!='legacy' and self.racket_pose_config['ipc_transport']=='shared_memory'
                 and self.processing_mode=='realtime'):
             raise ValueError('Shared source IPC requires buffered/offline processing')
@@ -206,8 +228,17 @@ class MultiprocessPipeline:
         )
         if self.algo2_dual_view:
             perf_cfg['dual_view_enabled'] = False
-            realtime_swing_events = True
-            realtime_coach = True
+            if not self.headless:
+                realtime_swing_events = True
+                realtime_coach = True
+
+        if self.headless:
+            self.config['save_video'] = False
+            perf_cfg['dual_view_enabled'] = False
+            perf_cfg['hdmi_output_enabled'] = False
+            perf_cfg['async_display_enabled'] = False
+            perf_cfg['draw_metrics_text'] = False
+            perf_cfg['json_dump_indent'] = None
 
         if self.live_mode:
             self.drop_stale_frames = not self.lossless_realtime
@@ -230,6 +261,33 @@ class MultiprocessPipeline:
             perf_cfg['collect_frame_results'] = False
         if inference_workers is not None:
             perf_cfg['inference_workers'] = max(1, int(inference_workers))
+        configured_det_workers = det_workers if det_workers is not None else perf_cfg.get('det_workers')
+        if configured_det_workers is not None:
+            resolved_det_workers = int(configured_det_workers)
+            if resolved_det_workers < 0:
+                raise ValueError('det_workers must be >= 0')
+            if resolved_det_workers > 0 and (
+                self.racket_pose_config['mode'] != 'legacy'
+                or not self.algo2_dual_view
+                or self.live_mode
+                or self.drop_stale_frames
+            ):
+                raise ValueError(
+                    '--det-workers > 0 requires offline/legacy dual-view mode without live frame dropping'
+                )
+            self.det_workers = resolved_det_workers
+        elif (
+            self.processing_mode == 'offline'
+            and self.headless
+            and self.algo2_dual_view
+            and self.racket_pose_config['mode'] == 'legacy'
+            and self.inference_schedule == 'barrier'
+        ):
+            pose_model_name = str(self.config.get('yolo_pose_model_path', '')).lower()
+            self.det_workers = 1 if 'yolo26m' in pose_model_name else 2
+        else:
+            self.det_workers = 0
+        perf_cfg['det_workers'] = self.det_workers
         self.analyze_swings = bool(analyze_swings)
         self.swing_output_json = swing_output_json
         self.swing_events_csv = swing_events_csv
@@ -553,6 +611,8 @@ class MultiprocessPipeline:
         # --- 共享内存池 ---
         min_normal_slots = 6 if self.processing_mode == 'offline' else 3
         normal_slots = max(min_normal_slots, int(perf_cfg.get('reader_buffer_slots', 12)))
+        if getattr(self, 'det_workers', 0) > 0:
+            normal_slots = max(normal_slots, self.det_workers * 4 + 8)
         live_slots = max(3, int(perf_cfg.get('live_reader_buffer_slots', 3)))
         self.shm_num = live_slots if self.live_mode else normal_slots
         run_token = f"{os.getpid():x}{uuid.uuid4().hex[:4]}"
@@ -681,7 +741,7 @@ class MultiprocessPipeline:
                         self.stop_event.set()
                         raise RuntimeError("Reader buffer acquisition failed") from exc
 
-                ret, frame = cap.read()
+                ret, frame = cap.read(shared_frames[slot])
                 captured_at = time.perf_counter()
                 captured_at_unix_ns = time.time_ns()
                 if not ret:
@@ -702,7 +762,8 @@ class MultiprocessPipeline:
                     source_frame_id,
                     cap.get(cv2.CAP_PROP_POS_MSEC) if not self.is_stream_source else None,
                 )
-                shared_frames[slot][:] = frame[:]
+                if frame is not shared_frames[slot]:
+                    shared_frames[slot][:] = frame[:]
                 import struct
                 struct.pack_into('<q', shms[slot].buf, self.frame_size, source_frame_id)
                 self.q_inference.put({

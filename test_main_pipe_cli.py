@@ -169,6 +169,147 @@ class MainPipeCliTests(unittest.TestCase):
         self.assertEqual(kwargs['evidence_manifest'], 'data/live/evidence.json')
         pipeline_class.return_value.run.assert_called_once_with()
 
+    @patch('main_pipe.MultiprocessPipeline')
+    def test_headless_and_model_override_flags_are_forwarded(self, pipeline_class):
+        main_cli([
+            '--input', 'data/example.mp4',
+            '--no-render',
+            '--pose-model', 'yolo26n-pose.mlpackage',
+            '--racket-pose-mode', 'shadow',
+            '--racket-model-profile', '640_shadow',
+            '--det-workers', '2',
+            '--analyze-swings',
+        ])
+
+        pipeline_class.assert_called_once()
+        kwargs = pipeline_class.call_args.kwargs
+        self.assertTrue(kwargs['headless'])
+        self.assertEqual(kwargs['pose_model'], 'yolo26n-pose.mlpackage')
+        self.assertEqual(kwargs['racket_model_profile'], '640_shadow')
+        self.assertEqual(kwargs['det_workers'], 2)
+
+    def test_headless_mode_disables_render_and_realtime_sidecars(self):
+        import tempfile
+        from pathlib import Path
+        from types import SimpleNamespace
+        from main_pipe import MultiprocessPipeline
+
+        fake_cap = SimpleNamespace(
+            isOpened=lambda: True,
+            get=lambda prop: 2560 if prop == 3 else (1440 if prop == 4 else 25.0),
+            release=lambda: None,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            out_path = str(Path(tmp) / 'merged.mp4')
+            with patch.object(MultiprocessPipeline, '_open_capture', return_value=fake_cap):
+                pipe = MultiprocessPipeline(
+                    'configs/yolo26_tennis_config.yaml',
+                    input_path='data/example.mp4',
+                    output_path=out_path,
+                    processing_mode='offline',
+                    algo2_dual_view=True,
+                    headless=True,
+                    analyze_swings=True,
+                    pose_model='yolo26n-pose.mlpackage',
+                    racket_pose_mode='shadow',
+                    racket_model_profile='640_shadow',
+                )
+            self.assertTrue(pipe.headless)
+            self.assertFalse(pipe.config['save_video'])
+            self.assertFalse(pipe.realtime_swing_events)
+            self.assertFalse(pipe.realtime_coach)
+            self.assertFalse(pipe.config['pipeline_perf']['dual_view_enabled'])
+            self.assertFalse(pipe.config['pipeline_perf']['async_display_enabled'])
+            self.assertIsNone(pipe.config['pipeline_perf']['json_dump_indent'])
+            self.assertEqual(pipe.config['yolo_pose_model_path'], 'yolo26n-pose.mlpackage')
+            self.assertEqual(pipe.racket_pose_config['imgsz'], 640)
+            self.assertEqual(pipe.racket_pose_config['mode'], 'shadow')
+            self.assertEqual(pipe.det_workers, 0)
+
+            # Auto det_workers selection for offline headless legacy dual-view
+            with patch.object(MultiprocessPipeline, '_open_capture', return_value=fake_cap):
+                pipe_auto_n = MultiprocessPipeline(
+                    'configs/yolo26_tennis_config.yaml',
+                    input_path='data/example.mp4',
+                    output_path=out_path,
+                    processing_mode='offline',
+                    algo2_dual_view=True,
+                    headless=True,
+                    analyze_swings=True,
+                    pose_model='yolo26n-pose.mlpackage',
+                    racket_pose_mode='legacy',
+                )
+            self.assertEqual(pipe_auto_n.det_workers, 2)
+            self.assertGreaterEqual(pipe_auto_n.shm_num, 16)
+
+            with patch.object(MultiprocessPipeline, '_open_capture', return_value=fake_cap):
+                pipe_auto_m = MultiprocessPipeline(
+                    'configs/yolo26_tennis_config.yaml',
+                    input_path='data/example.mp4',
+                    output_path=out_path,
+                    processing_mode='offline',
+                    algo2_dual_view=True,
+                    headless=True,
+                    analyze_swings=True,
+                    pose_model='yolo26m-pose.mlpackage',
+                    racket_pose_mode='legacy',
+                )
+            self.assertEqual(pipe_auto_m.det_workers, 1)
+            self.assertGreaterEqual(pipe_auto_m.shm_num, 12)
+
+            with patch.object(MultiprocessPipeline, '_open_capture', return_value=fake_cap):
+                pipe_non_headless = MultiprocessPipeline(
+                    'configs/yolo26_tennis_config.yaml',
+                    input_path='data/example.mp4',
+                    output_path=out_path,
+                    processing_mode='offline',
+                    algo2_dual_view=True,
+                    headless=False,
+                    analyze_swings=True,
+                    pose_model='yolo26n-pose.mlpackage',
+                    racket_pose_mode='legacy',
+                )
+            self.assertEqual(pipe_non_headless.det_workers, 0)
+
+            with patch.object(MultiprocessPipeline, '_open_capture', return_value=fake_cap):
+                pipe_interframe = MultiprocessPipeline(
+                    'configs/yolo26_tennis_config.yaml',
+                    input_path='data/example.mp4',
+                    output_path=out_path,
+                    processing_mode='offline',
+                    algo2_dual_view=True,
+                    headless=True,
+                    analyze_swings=True,
+                    racket_pose_mode='legacy',
+                    inference_schedule='interframe',
+                )
+            self.assertEqual(pipe_interframe.inference_schedule, 'interframe')
+            self.assertEqual(pipe_interframe.processing_mode, 'offline')
+            self.assertEqual(pipe_interframe.det_workers, 0)
+
+            with patch.object(MultiprocessPipeline, '_open_capture', return_value=fake_cap):
+                with self.assertRaises(ValueError):
+                    MultiprocessPipeline(
+                        'configs/yolo26_tennis_config.yaml',
+                        input_path='data/example.mp4',
+                        output_path=out_path,
+                        processing_mode='offline',
+                        algo2_dual_view=True,
+                        racket_pose_mode='exclusive',
+                        det_workers=2,
+                    )
+
+            with patch.object(MultiprocessPipeline, '_open_capture', return_value=fake_cap):
+                with self.assertRaises(ValueError):
+                    MultiprocessPipeline(
+                        'configs/yolo26_tennis_config.yaml',
+                        input_path='data/example.mp4',
+                        output_path=out_path,
+                        processing_mode='offline',
+                        racket_pose_mode='exclusive',
+                        racket_model_profile='640_shadow',
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()

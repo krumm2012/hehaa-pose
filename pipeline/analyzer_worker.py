@@ -37,7 +37,15 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
     from joint_racket_2d_live import LiveJointRacket2D
     joint_2d_live = LiveJointRacket2D()
 
-    if pipeline.algo2_dual_view:
+    headless_no_render = (
+        bool(getattr(pipeline, 'headless', False))
+        and not bool(pipeline.config.get('save_video', True))
+        and not pipeline.realtime_swing_events
+    )
+    if headless_no_render:
+        print("⚡ [Analyzer] 无渲染纯 JSON 离线极速模式：跳过窗口、录像与视觉叠画")
+
+    if pipeline.algo2_dual_view and not headless_no_render:
         from dual_view_manager import DualViewManager
         from dual_view_renderer import DualViewRenderer
 
@@ -84,9 +92,9 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
     count = 0
     fps_tracker = FpsTracker()
     # 性能开关（默认兼容原行为）
-    dual_view_enabled = bool(perf_cfg.get('dual_view_enabled', True))
+    dual_view_enabled = False if headless_no_render else bool(perf_cfg.get('dual_view_enabled', True))
     dual_view_scale = float(perf_cfg.get('dual_view_scale', 0.5))
-    hdmi_output_enabled = bool(perf_cfg.get('hdmi_output_enabled', False))
+    hdmi_output_enabled = False if headless_no_render else bool(perf_cfg.get('hdmi_output_enabled', False))
     display_origin = perf_cfg.get('display_origin') or [0, 0]
     processed_display = None
     if hdmi_output_enabled:
@@ -103,7 +111,7 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
             ' | ESC/q 退出'
         )
     queued_display = None
-    if perf_cfg.get('async_display_enabled', False) and (hdmi_output_enabled or pipeline.algo2_dual_view or dual_view_enabled):
+    if not headless_no_render and perf_cfg.get('async_display_enabled', False) and (hdmi_output_enabled or pipeline.algo2_dual_view or dual_view_enabled):
         from queued_video_display import QueuedVideoDisplay
         if hdmi_output_enabled or pipeline.algo2_dual_view:
             display_shape = (sbs_height, sbs_width, 3)
@@ -355,19 +363,24 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
         fid, slot = data['id'], data['slot']
         if count == 0:
             fps_tracker.start()
-        # 双视角且无需在 4K 全图叠画 7 点骨架时，直接只读切片并提前归还 shm 槽，省去每帧 24.9MB 4K 拷贝
-        draw_full_frame_racket = bool(
-            data.get('racket_pose') and pipeline.racket_pose_config.get('render_skeleton', True)
-        )
-        zero_copy_dual_view = bool(
-            pipeline.algo2_dual_view
-            and dual_view_mgr is not None
-            and dual_view_renderer is not None
-            and data.get('dual_pose_res') is not None
-            and not draw_full_frame_racket
-        )
-        canvas = shared_frames[slot] if zero_copy_dual_view else shared_frames[slot].copy()
-        slot_released = False
+        if headless_no_render:
+            canvas = None
+            pipeline.q_free.put(slot)
+            slot_released = True
+        else:
+            # 双视角且无需在 4K 全图叠画 7 点骨架时，直接只读切片并提前归还 shm 槽，省去每帧 24.9MB 4K 拷贝
+            draw_full_frame_racket = bool(
+                data.get('racket_pose') and pipeline.racket_pose_config.get('render_skeleton', True)
+            )
+            zero_copy_dual_view = bool(
+                pipeline.algo2_dual_view
+                and dual_view_mgr is not None
+                and dual_view_renderer is not None
+                and data.get('dual_pose_res') is not None
+                and not draw_full_frame_racket
+            )
+            canvas = shared_frames[slot] if zero_copy_dual_view else shared_frames[slot].copy()
+            slot_released = False
 
         ball_pos = data['ball'][0]['position'] if data['ball'] else None
         racket_list = data['racket']
@@ -460,143 +473,155 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
                 analysis_completed_at_unix_ns=analysis_completed_at_unix_ns,
             )
         # --- 2. 视觉渲染流程 ---
-        render_stages = {}
-        render_features = {}
-        overlay_started = time.perf_counter_ns()
-        if data.get('racket_pose') and pipeline.racket_pose_config.get('render_skeleton', True):
-            from racket_pose_detector import draw_racket_pose
-            draw_racket_pose(canvas, data['racket_pose'])
-        joint_diagnostic = None
-        if (frame_record is not None and data.get('racket_pose') is not None
-                and pipeline.racket_pose_config.get('render_joint_2d', True)):
-            joint_diagnostic = joint_2d_live.update(frame_record, canvas.shape[1::-1])
-            frame_record['joint_racket_2d_live'] = joint_diagnostic
-            if not (pipeline.algo2_dual_view and dual_view_mgr is not None and dual_view_renderer is not None and pose_res is not None):
-                joint_2d_live.draw_source(canvas)
-        render_stages['racket_overlay_wall_ms'] = (time.perf_counter_ns() - overlay_started) / 1e6
-        if pipeline.algo2_dual_view and dual_view_mgr is not None and dual_view_renderer is not None and pose_res is not None:
-            if norm_ball_pos:
-                ball_trail.append(norm_ball_pos)
-            if len(ball_trail) > 8:
-                ball_trail.pop(0)
-
-            disp = realtime_runtime.get_active_display_state(fid) if realtime_runtime is not None else {}
-            ev_label = disp.get("event_label") or swing_label or "READY STANCE"
-            ev_coach = disp.get("coaching_text") or ""
-            telemetry_card = disp.get("telemetry_card")
-            render_features = {'coach': bool(ev_coach), 'telemetry_card': telemetry_card is not None}
-
-            split_started = time.perf_counter_ns()
-            dual_frame = dual_view_mgr.split_frame(
-                canvas,
-                player_bbox=data.get('player_bbox'),
-                frame_id=fid,
-                front_crop_bbox=data.get('front_crop_bbox'),
-            )
-            if zero_copy_dual_view and not slot_released:
-                pipeline.q_free.put(slot)
-                slot_released = True
-            if joint_diagnostic is not None and getattr(dual_frame, "front_info", None) is not None:
-                joint_2d_live.draw_source(dual_frame.front_frame, coord_mapper=dual_frame.front_info.map_from_original)
-            render_stages['split_wall_ms'] = (time.perf_counter_ns() - split_started) / 1e6
-            rendered_canvas = dual_view_renderer.render_dual_frame(
-                dual_frame,
-                pose_res,
-                event_label=ev_label,
-                coaching_text=ev_coach,
-                ball_trail=list(ball_trail),
-                racket_box=racket_box,
-                back_racket_box=back_racket_box,
-                is_racket_recovered=is_racket_recovered,
-                telemetry_card=telemetry_card,
-                ground_reference=frame_record.get('ground_reference') if frame_record else None,
-                ground_geometry=pipeline.ground_reference.overlay_geometry if pipeline.ground_reference else None,
-                timing_ms=render_stages,
-            )
+        if headless_no_render:
+            render_stages = {'headless_skipped': True}
+            render_features = {}
+            rendered_canvas = None
+            output_stages = {'encoder_write_ms': 0.0, 'display_submit_ms': 0.0, 'display_wait_ms': 0.0}
+            if (frame_record is not None and data.get('racket_pose') is not None
+                    and pipeline.racket_pose_config.get('render_joint_2d', True)):
+                frame_record['joint_racket_2d_live'] = joint_2d_live.update(
+                    frame_record, (pipeline.width, pipeline.height)
+                )
+            render_completed_at_unix_ns = time.time_ns()
         else:
-            # 紧凑型半透明状态栏（仅在开启详细文本时展开面板，避免大黑块遮挡球场）
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            mask = canvas.copy()
-            panel_h = 580 if (draw_metrics_text and detailed_data) else 44
-            panel_w = 340 if (draw_metrics_text and detailed_data) else 260
-            cv2.rectangle(mask, (14, 12), (14 + panel_w, 12 + panel_h), (16, 18, 22), -1)
-            cv2.addWeighted(mask, 0.55, canvas, 0.45, 0, canvas)
+            render_stages = {}
+            render_features = {}
+            overlay_started = time.perf_counter_ns()
+            if data.get('racket_pose') and pipeline.racket_pose_config.get('render_skeleton', True):
+                from racket_pose_detector import draw_racket_pose
+                draw_racket_pose(canvas, data['racket_pose'])
+            joint_diagnostic = None
+            if (frame_record is not None and data.get('racket_pose') is not None
+                    and pipeline.racket_pose_config.get('render_joint_2d', True)):
+                joint_diagnostic = joint_2d_live.update(frame_record, canvas.shape[1::-1])
+                frame_record['joint_racket_2d_live'] = joint_diagnostic
+                if not (pipeline.algo2_dual_view and dual_view_mgr is not None and dual_view_renderer is not None and pose_res is not None):
+                    joint_2d_live.draw_source(canvas)
+            render_stages['racket_overlay_wall_ms'] = (time.perf_counter_ns() - overlay_started) / 1e6
+            if pipeline.algo2_dual_view and dual_view_mgr is not None and dual_view_renderer is not None and pose_res is not None:
+                if norm_ball_pos:
+                    ball_trail.append(norm_ball_pos)
+                if len(ball_trail) > 8:
+                    ball_trail.pop(0)
 
-            cv2.putText(canvas, f"{swing_label} | F{fid:04d}", (24, 38), font, 0.52, (0, 240, 255), 1, cv2.LINE_AA)
+                disp = realtime_runtime.get_active_display_state(fid) if realtime_runtime is not None else {}
+                ev_label = disp.get("event_label") or swing_label or "READY STANCE"
+                ev_coach = disp.get("coaching_text") or ""
+                telemetry_card = disp.get("telemetry_card")
+                render_features = {'coach': bool(ev_coach), 'telemetry_card': telemetry_card is not None}
 
-            # B. 绘制详细肢体指标
-            if draw_metrics_text and detailed_data:
-                y_ptr = 68
-                for phase, metrics in detailed_data.items():
-                    for k, v in metrics.items():
-                        color = (0, 255, 128) if "angle" in k or "ext" in k else (210, 210, 210)
-                        cv2.putText(canvas, f"{k}: {v}", (24, y_ptr), font, 0.44, color, 1, cv2.LINE_AA)
-                        y_ptr += 22
-                        if y_ptr > 575:
-                            break
-
-            # C. 绘制视觉元素 (骨架、球、球拍)
-            canvas = draw_pose_keypoints(canvas, poses)
-            if norm_ball_pos:
-                draw_ball_outline(canvas, norm_ball_pos)
-
-            for ra in racket_list:
-                x1, y1, x2, y2 = [int(round(v)) for v in ra['box']]
-                cv2.rectangle(canvas, (x1, y1), (x2, y2), (255, 160, 0), 1, cv2.LINE_AA)
-            rendered_canvas = canvas
-
-        if joint_diagnostic is not None:
-            joint_2d_live.draw_status(rendered_canvas, joint_diagnostic)
-            render_features['joint_racket_2d_live'] = True
-        # --- 3. 提交并释放 ---
-        render_completed_at_unix_ns = time.time_ns()
-        output_stages = {'encoder_write_ms': 0.0, 'display_submit_ms': 0.0, 'display_wait_ms': 0.0}
-        if out_writer:
-            _, output_stages['encoder_write_ms'] = timed_call(out_writer.write, rendered_canvas)
-        display_started = time.perf_counter()
-
-        # HDMI 单路输出、双视角全屏输出与双窗口对比显示
-        if processed_display is not None:
-            if (queued_display.show(rendered_canvas, fid) if queued_display else processed_display.show(rendered_canvas)):
-                pipeline.stop_event.set()
-        elif pipeline.algo2_dual_view:
-            if queued_display:
-                key = 27 if queued_display.show(rendered_canvas, fid) else -1
+                split_started = time.perf_counter_ns()
+                dual_frame = dual_view_mgr.split_frame(
+                    canvas,
+                    player_bbox=data.get('player_bbox'),
+                    frame_id=fid,
+                    front_crop_bbox=data.get('front_crop_bbox'),
+                )
+                if zero_copy_dual_view and not slot_released:
+                    pipeline.q_free.put(slot)
+                    slot_released = True
+                if joint_diagnostic is not None and getattr(dual_frame, "front_info", None) is not None:
+                    joint_2d_live.draw_source(dual_frame.front_frame, coord_mapper=dual_frame.front_info.map_from_original)
+                render_stages['split_wall_ms'] = (time.perf_counter_ns() - split_started) / 1e6
+                rendered_canvas = dual_view_renderer.render_dual_frame(
+                    dual_frame,
+                    pose_res,
+                    event_label=ev_label,
+                    coaching_text=ev_coach,
+                    ball_trail=list(ball_trail),
+                    racket_box=racket_box,
+                    back_racket_box=back_racket_box,
+                    is_racket_recovered=is_racket_recovered,
+                    telemetry_card=telemetry_card,
+                    ground_reference=frame_record.get('ground_reference') if frame_record else None,
+                    ground_geometry=pipeline.ground_reference.overlay_geometry if pipeline.ground_reference else None,
+                    timing_ms=render_stages,
+                )
             else:
-                cv2.imshow("Tennis AI Analyzer - Algo 2.0 Dual View (ESC to Quit)", rendered_canvas)
-                key, output_stages['display_wait_ms'] = timed_call(cv2.waitKey, 1)
-                key &= 0xFF
-            if key == 27 or key == ord('q'):
-                pipeline.stop_event.set()
-        elif dual_view_enabled:
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            h, w = canvas.shape[:2]
-            scaled_size = (int(w * dual_view_scale), int(h * dual_view_scale))
-            orig_small = cv2.resize(shared_frames[slot], scaled_size)
-            proc_small = cv2.resize(canvas, scaled_size)
+                # 紧凑型半透明状态栏（仅在开启详细文本时展开面板，避免大黑块遮挡球场）
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                mask = canvas.copy()
+                panel_h = 580 if (draw_metrics_text and detailed_data) else 44
+                panel_w = 340 if (draw_metrics_text and detailed_data) else 260
+                cv2.rectangle(mask, (14, 12), (14 + panel_w, 12 + panel_h), (16, 18, 22), -1)
+                cv2.addWeighted(mask, 0.55, canvas, 0.45, 0, canvas)
 
-            dual_view = np.hstack((orig_small, proc_small))
-            cv2.putText(dual_view, "ORIGINAL", (20, 30), font, 1.0, (255, 255, 255), 2)
-            cv2.putText(
-                dual_view,
-                "PROCESSED",
-                (int(w * dual_view_scale) + 20, 30),
-                font,
-                1.0,
-                (255, 255, 255),
-                2
-            )
+                cv2.putText(canvas, f"{swing_label} | F{fid:04d}", (24, 38), font, 0.52, (0, 240, 255), 1, cv2.LINE_AA)
 
-            if queued_display:
-                key = 27 if queued_display.show(dual_view, fid) else -1
-            else:
-                cv2.imshow("Tennis AI Analyer - Dual Comparison (ESC to Quit)", dual_view)
-                key, output_stages['display_wait_ms'] = timed_call(cv2.waitKey, 1)
-                key &= 0xFF
-            if key == 27:
-                pipeline.stop_event.set()
+                # B. 绘制详细肢体指标
+                if draw_metrics_text and detailed_data:
+                    y_ptr = 68
+                    for phase, metrics in detailed_data.items():
+                        for k, v in metrics.items():
+                            color = (0, 255, 128) if "angle" in k or "ext" in k else (210, 210, 210)
+                            cv2.putText(canvas, f"{k}: {v}", (24, y_ptr), font, 0.44, color, 1, cv2.LINE_AA)
+                            y_ptr += 22
+                            if y_ptr > 575:
+                                break
 
-        output_stages['display_submit_ms'] = (time.perf_counter() - display_started) * 1000
+                # C. 绘制视觉元素 (骨架、球、球拍)
+                canvas = draw_pose_keypoints(canvas, poses)
+                if norm_ball_pos:
+                    draw_ball_outline(canvas, norm_ball_pos)
+
+                for ra in racket_list:
+                    x1, y1, x2, y2 = [int(round(v)) for v in ra['box']]
+                    cv2.rectangle(canvas, (x1, y1), (x2, y2), (255, 160, 0), 1, cv2.LINE_AA)
+                rendered_canvas = canvas
+
+            if joint_diagnostic is not None:
+                joint_2d_live.draw_status(rendered_canvas, joint_diagnostic)
+                render_features['joint_racket_2d_live'] = True
+            # --- 3. 提交并释放 ---
+            render_completed_at_unix_ns = time.time_ns()
+            output_stages = {'encoder_write_ms': 0.0, 'display_submit_ms': 0.0, 'display_wait_ms': 0.0}
+            if out_writer:
+                _, output_stages['encoder_write_ms'] = timed_call(out_writer.write, rendered_canvas)
+            display_started = time.perf_counter()
+
+            # HDMI 单路输出、双视角全屏输出与双窗口对比显示
+            if processed_display is not None:
+                if (queued_display.show(rendered_canvas, fid) if queued_display else processed_display.show(rendered_canvas)):
+                    pipeline.stop_event.set()
+            elif pipeline.algo2_dual_view:
+                if queued_display:
+                    key = 27 if queued_display.show(rendered_canvas, fid) else -1
+                else:
+                    cv2.imshow("Tennis AI Analyzer - Algo 2.0 Dual View (ESC to Quit)", rendered_canvas)
+                    key, output_stages['display_wait_ms'] = timed_call(cv2.waitKey, 1)
+                    key &= 0xFF
+                if key == 27 or key == ord('q'):
+                    pipeline.stop_event.set()
+            elif dual_view_enabled:
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                h, w = canvas.shape[:2]
+                scaled_size = (int(w * dual_view_scale), int(h * dual_view_scale))
+                orig_small = cv2.resize(shared_frames[slot], scaled_size)
+                proc_small = cv2.resize(canvas, scaled_size)
+
+                dual_view = np.hstack((orig_small, proc_small))
+                cv2.putText(dual_view, "ORIGINAL", (20, 30), font, 1.0, (255, 255, 255), 2)
+                cv2.putText(
+                    dual_view,
+                    "PROCESSED",
+                    (int(w * dual_view_scale) + 20, 30),
+                    font,
+                    1.0,
+                    (255, 255, 255),
+                    2
+                )
+
+                if queued_display:
+                    key = 27 if queued_display.show(dual_view, fid) else -1
+                else:
+                    cv2.imshow("Tennis AI Analyer - Dual Comparison (ESC to Quit)", dual_view)
+                    key, output_stages['display_wait_ms'] = timed_call(cv2.waitKey, 1)
+                    key &= 0xFF
+                if key == 27:
+                    pipeline.stop_event.set()
+
+            output_stages['display_submit_ms'] = (time.perf_counter() - display_started) * 1000
         if frame_record is not None:
             frame_record['render_stage_ms'] = render_stages
             frame_record['render_features'] = render_features
@@ -612,7 +637,8 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
                 'null_reason':'queue depth unavailable on backend; stage waiting times are recorded separately'}
         if realtime_runtime is not None and frame_record is not None:
             realtime_runtime.submit_frame(frame_record)
-            realtime_runtime.record_rendered_frame(fid, rendered_canvas)
+            if rendered_canvas is not None:
+                realtime_runtime.record_rendered_frame(fid, rendered_canvas)
         if collect_frame_results and frame_record is not None:
             if frame_results_fp is not None:
                 if not first_frame_record:
@@ -810,7 +836,8 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
                 json.dump(diagnostics_payload, fp, ensure_ascii=False, indent=json_dump_indent)
             print(f"🩺 [Analyzer] 诊断数据已保存至: {diagnostics_path}")
 
-    cv2.destroyAllWindows()
+    if not headless_no_render:
+        cv2.destroyAllWindows()
     for s in shms: s.close()
     if pipeline.drop_stale_frames:
         print(f"⚡ [Analyzer] 已丢弃旧帧: {pipeline.dropped_stale_frames.value}")

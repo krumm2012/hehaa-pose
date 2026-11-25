@@ -13,7 +13,7 @@ def build_argument_parser():
     parser.add_argument('--input', '-i', default=None, help='输入视频路径，覆盖配置文件')
     parser.add_argument('--output', '-o', default=None, help='输出视频路径，覆盖配置文件')
     parser.add_argument('--inference-schedule', choices=('barrier','interframe'), default=None,
-                        help='启动推理调度；interframe 为新版独占连续模式的两阶段实验')
+                        help='启动推理调度；interframe 支持 offline 或新版独占连续两阶段重叠流水线')
     parser.add_argument('--racket-ipc', choices=('queue','shared_memory'), default=None,
                         help='球拍图像传输；共享源帧槽仅用于连续模式')
     parser.add_argument('--racket-pose-mode', choices=('legacy','exclusive','shadow','active'), default=None,
@@ -58,12 +58,35 @@ def build_argument_parser():
     parser.add_argument('--no-metrics-text', action='store_true', help='关闭逐帧详细指标文字绘制')
     parser.add_argument('--no-frame-results', action='store_true', help='关闭逐帧 JSON 与诊断 JSON 写入')
     parser.add_argument('--no-save-video', action='store_true', help='禁用处理后视频录制')
+    parser.add_argument(
+        '--headless', '--no-render',
+        dest='headless',
+        action='store_true',
+        help='纯计算/纯JSON离线极速模式：关闭录制、窗口显示、视觉叠画与默认实时HTML/切片，零拷贝释放源帧槽',
+    )
+    parser.add_argument(
+        '--pose-model',
+        default=None,
+        help='覆写人体姿态模型路径（如 yolo26m-pose.mlpackage / yolo26n-pose.mlpackage）',
+    )
+    parser.add_argument(
+        '--racket-model-profile',
+        choices=('configured', '640_shadow'),
+        default=None,
+        help='选择预设 7 点球拍模型配置（640_shadow 仅限 shadow 模式）',
+    )
     parser.add_argument('--output-fps', type=float, default=None, help='覆盖输出视频帧率')
     parser.add_argument(
         '--inference-workers',
         type=int,
         default=None,
         help='推理线程池 worker 数；当前执行图每帧最多并行 2 个任务',
+    )
+    parser.add_argument(
+        '--det-workers',
+        type=int,
+        default=None,
+        help='独立 Core ML 检测子进程数（offline+legacy+dual_view 饱和 ANE；0=关闭，默认离线headless自动选择）',
     )
     parser.add_argument('--analyze-swings', action='store_true',
                         help='逐帧 JSON 写完后自动生成 Swing 事件 JSON/CSV；不可与 --live-mode 或 --no-frame-results 同用')
@@ -203,8 +226,12 @@ def main_cli(argv=None, pipeline_cls=None):
         no_metrics_text=args.no_metrics_text,
         no_frame_results=args.no_frame_results,
         no_save_video=args.no_save_video,
+        headless=args.headless,
+        pose_model=args.pose_model,
+        racket_model_profile=args.racket_model_profile,
         output_fps=args.output_fps,
         inference_workers=args.inference_workers,
+        det_workers=args.det_workers,
         analyze_swings=args.analyze_swings,
         swing_output_json=args.swing_output_json,
         swing_events_csv=args.swing_events_csv,
