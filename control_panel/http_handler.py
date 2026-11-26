@@ -20,6 +20,28 @@ if TYPE_CHECKING:
     from local_control_panel import LocalPipelineController
 
 
+_MAX_INJECTED_HTML_BYTES = 16 * 1024 * 1024
+
+
+def _inject_workbench_back_link(html_text: str) -> str:
+    """Inject a restrained return-to-workbench link when serving HTML reports over HTTP."""
+    if "back-to-workbench" in html_text:
+        return html_text
+    if '<div class="header-tools">' in html_text:
+        return html_text.replace(
+            '<div class="header-tools">',
+            '<div class="header-tools"><a class="refresh-button back-to-workbench" href="/" style="display:inline-flex;align-items:center;gap:4px;text-decoration:none;background:#142033;">← 返回工作台</a>',
+            1,
+        )
+    if "</header>" in html_text:
+        return html_text.replace(
+            "</header>",
+            '<a class="back-to-workbench" href="/" style="display:inline-flex;align-items:center;gap:4px;padding:6px 11px;border:1px solid var(--line,#d8d0c0);border-radius:8px;text-decoration:none;color:inherit;font-weight:600;white-space:nowrap;">← 返回工作台</a></header>',
+            1,
+        )
+    return html_text
+
+
 def create_handler(controller: LocalPipelineController):
     class ControlPanelHandler(BaseHTTPRequestHandler):
         server_version = "TennisControlPanel/1.0"
@@ -304,7 +326,25 @@ def create_handler(controller: LocalPipelineController):
                     artifact = controller.artifact_path(
                         path[len("/artifacts/") :]
                     )
-                    self._send_file(artifact, head_only=head_only)
+                    if (
+                        artifact.is_file()
+                        and artifact.suffix.lower() == ".html"
+                        and artifact.stat().st_size <= _MAX_INJECTED_HTML_BYTES
+                    ):
+                        try:
+                            raw_html = artifact.read_text(encoding="utf-8")
+                        except UnicodeDecodeError:
+                            self._send_file(artifact, head_only=head_only)
+                        else:
+                            rendered = _inject_workbench_back_link(raw_html)
+                            self._send_bytes(
+                                rendered.encode("utf-8"),
+                                "text/html; charset=utf-8",
+                                no_cache=True,
+                                head_only=head_only,
+                            )
+                    else:
+                        self._send_file(artifact, head_only=head_only)
                 else:
                     self.send_error(HTTPStatus.NOT_FOUND)
             except (ValueError, RuntimeError, OSError) as exc:

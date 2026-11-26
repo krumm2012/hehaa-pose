@@ -140,6 +140,22 @@ class LocalPipelineController:
             ),
             self.streams[0]["stream_id"],
         )
+        configured_pose_model = str(config.get("yolo_pose_model_path") or "yolo26m-pose.mlpackage")
+        det_cfg = config.get("unified_detection") or {}
+        det_model_path = str(det_cfg.get("model_path") or "yolo26n.mlpackage")
+        det_path_obj = Path(det_model_path)
+        det_raw_name = (
+            det_path_obj.parent.name
+            if det_path_obj.name == "model.mlpackage" and det_path_obj.parent.name
+            else det_path_obj.stem
+        )
+        exp_match = re.search(r"(exp\d+-\d+)", det_raw_name)
+        det_model_label = exp_match.group(1) if exp_match else det_raw_name
+        model_640_available = (
+            self.workspace
+            / "models/racket_pose/candidates/bn-repaired-640-v1/racket_pose_bounded_fp16_640.mlpackage"
+        ).is_dir()
+        pose_n_available = (self.workspace / "yolo26n-pose.mlpackage").is_dir()
         return {
             "token": self.token,
             "camera_credentials_configured": {
@@ -147,9 +163,24 @@ class LocalPipelineController:
                 for stream in self.streams
             },
             "streams": self.streams,
+            "detector_model": {
+                "path": det_model_path,
+                "label": det_model_label,
+                "compute_units": str(det_cfg.get("compute_units") or "ANE"),
+            },
             "racket_model_profiles": {
                 "configured": {"available": True, "imgsz": (config.get('racket_pose') or {}).get('imgsz', 960)},
-                "640_shadow": {"available": (self.workspace / 'models/racket_pose/candidates/bn-repaired-640-v1/racket_pose_bounded_fp16_640.mlpackage').is_dir(), "imgsz": 640},
+                "640_shadow": {"available": model_640_available, "imgsz": 640},
+            },
+            "pose_models": {
+                "configured": {"available": True, "path": configured_pose_model},
+                "yolo26n-pose.mlpackage": {"available": pose_n_available},
+                "yolo26m-pose.mlpackage": {
+                    "available": (
+                        (self.workspace / "yolo26m-pose.mlpackage").is_dir()
+                        or (self.workspace / "models/yolo26m-pose.mlpackage").is_dir()
+                    )
+                },
             },
             "credentials_configured": bool(
                 os.environ.get(self.username_env)
@@ -174,11 +205,13 @@ class LocalPipelineController:
                 "show_roi_fill": False,
                 "show_roi_points": True,
                 "live_mode": True,
-                "racket_pose_mode": "legacy",
+                "analysis_mode": "standard" if model_640_available else "lite",
+                "racket_pose_mode": "shadow" if model_640_available else "legacy",
                 "processing_mode": "buffered",
                 "inference_schedule": "barrier",
-                "racket_ipc": "queue",
-                "racket_model_profile": "configured",
+                "racket_ipc": "shared_memory" if model_640_available else "queue",
+                "racket_model_profile": "640_shadow" if model_640_available else "configured",
+                "pose_model": "yolo26n-pose.mlpackage" if pose_n_available else "configured",
                 "save_video": False,
                 "realtime_swing_events": True,
                 "realtime_frame_output": bool(
@@ -354,6 +387,19 @@ class LocalPipelineController:
             result = GroundCalibrationStore(self.workspace).save(document, binding)
         return {'calibration': result, 'message': '已保存独立标定版本；下次分析加载。着地与准确性仍待核验。'}
 
+    def _resolve_pose_model_path(self, pose_model: str, config: Dict[str, Any]) -> str:
+        if pose_model == "configured":
+            return str(config.get("yolo_pose_model_path") or "yolo26m-pose.mlpackage")
+        if (
+            pose_model == "yolo26m-pose.mlpackage"
+            and not (self.workspace / "yolo26m-pose.mlpackage").is_dir()
+            and (self.workspace / "models/yolo26m-pose.mlpackage").is_dir()
+        ):
+            return "models/yolo26m-pose.mlpackage"
+        if not (self.workspace / pose_model).exists():
+            raise ValueError(f"姿态模型不存在: {pose_model}")
+        return pose_model
+
     def start(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         settings = ControlSettings.from_payload(payload)
         stream = self._stream_from_payload(payload)
@@ -372,6 +418,9 @@ class LocalPipelineController:
                 self.config_path.read_text(encoding="utf-8")
             ) or {}
             config["video_input_path"] = source
+            effective_pose_model = self._resolve_pose_model_path(settings.pose_model, config)
+            if settings.pose_model != "configured":
+                config["yolo_pose_model_path"] = effective_pose_model
             from racket_model_profiles import apply_model_profile
             apply_model_profile(config, settings.racket_model_profile, settings.racket_pose_mode, self.workspace)
             config["video_output_path"] = str(
@@ -422,6 +471,7 @@ class LocalPipelineController:
                 settings,
                 runtime_config,
                 output_dir,
+                effective_pose_model=effective_pose_model,
             )
             environment = os.environ.copy()
             environment["PYTHONUNBUFFERED"] = "1"
@@ -1357,6 +1407,8 @@ class LocalPipelineController:
         settings: ControlSettings,
         runtime_config: Path,
         output_dir: Path,
+        *,
+        effective_pose_model: Optional[str] = None,
     ):
         stem = settings.session_name
         session_id = generate_session_id(stem)
@@ -1396,8 +1448,19 @@ class LocalPipelineController:
         ]
         command.extend(['--racket-pose-mode', settings.racket_pose_mode,
                         '--inference-schedule', settings.inference_schedule,'--racket-ipc',settings.racket_ipc])
+        if settings.pose_model != "configured":
+            command.extend(['--pose-model', effective_pose_model or settings.pose_model])
         if settings.processing_mode != 'auto':
             command.extend(['--processing-mode', settings.processing_mode])
+        if (
+            settings.processing_mode == "offline"
+            and settings.racket_pose_mode == "legacy"
+            and settings.algo2_dual_view
+            and settings.inference_schedule == "barrier"
+        ):
+            pose_name = str(effective_pose_model or settings.pose_model or "").lower()
+            auto_det_workers = 2 if "yolo26n" in pose_name else 1
+            command.extend(["--det-workers", str(auto_det_workers)])
         target_stream_id = (
             settings.mapped_stream_id
             if settings.stream_id == LOCAL_VIDEO_ID

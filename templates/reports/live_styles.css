@@ -14,6 +14,7 @@
     .refresh-button:hover:not(:disabled),.refresh-button:focus-visible { border-color:#6f8fb6; outline:none; }
     .refresh-button-stop { background:#2a2112; border-color:#725f2d; color:#f4d995; }
     .refresh-button:disabled { opacity:.42; cursor:not-allowed; }
+    .back-to-workbench { display:inline-flex; align-items:center; gap:4px; text-decoration:none; background:#142033; }
     main { display:grid; gap:18px; padding-bottom:40px; }
     .session-monitor { border:1px solid #365d8c; border-radius:14px; background:#111d2d; padding:16px; }
     .session-monitor-head { display:flex; justify-content:space-between; gap:16px; align-items:start; }

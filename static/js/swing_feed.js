@@ -71,8 +71,9 @@
       if (!hasAny) {
         return `<div class="radar-box"><span style="color:var(--muted);font-size:11px;text-align:center;">5维力学雷达<br><small>待动作识别</small></span></div>`;
       }
-      const width = 140, height = 135;
-      const cx = width / 2, cy = height / 2 + 2, rMax = 44;
+      const width = 192, height = 146;
+      const cx = width / 2, cy = height / 2 + 3, rMax = 42;
+      const rLabel = rMax + 10;
       const n = axes.length;
       let ringsSvg = [0.33, 0.66, 1.0].map(lvl => {
         let pts = [];
@@ -98,16 +99,16 @@
         let dx = cx + rVal * cosA, dy = cy + rVal * sinA;
         dataPts.push(`${dx.toFixed(1)},${dy.toFixed(1)}`);
         dots.push(`<circle cx="${dx.toFixed(1)}" cy="${dy.toFixed(1)}" r="2.5" fill="#00f0ff" stroke="#0a0f1a" stroke-width="1"/>`);
-        let lx = cx + (rMax + 14) * cosA, ly = cy + (rMax + 14) * sinA;
+        let lx = cx + rLabel * cosA, ly = cy + rLabel * sinA;
         let anchor = Math.abs(cosA) < 0.15 ? "middle" : (cosA > 0 ? "start" : "end");
         let displayScore = sub[k] != null ? Math.round(score) : '—';
-        labels.push(`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="central" font-size="8" font-weight="600" fill="#94a3b8">${escapeHtml(label)}${displayScore}</text>`);
+        labels.push(`<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="central" font-size="8.5" font-weight="600" fill="#94a3b8">${escapeHtml(label)} ${displayScore}</text>`);
       }
       const poly = `<polygon points="${dataPts.join(' ')}" fill="rgba(0, 240, 255, 0.22)" stroke="#00f0ff" stroke-width="1.8"/>`;
       return `
         <div class="radar-box">
           <div style="font-size:9.5px;font-weight:600;color:var(--muted);margin-bottom:1px;letter-spacing:0.3px;">五维模型观测雷达</div>
-          <svg viewBox="0 0 ${width} ${height}" style="width:130px;height:125px;display:block;">
+          <svg viewBox="0 0 ${width} ${height}" style="width:100%;max-width:168px;height:auto;display:block;">
             ${ringsSvg}${spokes.join('')}${poly}${dots.join('')}${labels.join('')}
           </svg>
         </div>`;
@@ -487,7 +488,20 @@
       };
       let label = labels[cross.status] || "未验证 · 需复核";
       let badgeClass = "unvalidated";
-      if (cross.status === "unavailable" && cross.reason === "cadence_sensitive_peak") {
+      const reg = seq.cadence_regularized_reference;
+      const hasRegRef = cross.status === "unavailable"
+        && cross.reason === "cadence_sensitive_peak"
+        && reg
+        && typeof reg.latency_hip_to_shoulder_ms === "number"
+        && Number.isFinite(reg.latency_hip_to_shoulder_ms);
+      if (hasRegRef) {
+        badgeClass = "cadence_sensitive";
+        const regHasCand = reg.racket_candidate_peak_frame != null || reg.candidate_latency_shoulder_to_racket_ms != null;
+        label = "等帧率参考 · 已抑制PTS抖动";
+        if (reg.racket_peak_frame == null) {
+          label += regHasCand ? " · 含候选拍峰" : " · 缺拍峰";
+        }
+      } else if (cross.status === "unavailable" && cross.reason === "cadence_sensitive_peak") {
         label = "短时间间隔敏感 · 暂停判定";
         badgeClass = "cadence_sensitive";
       } else if (unresolved) {
@@ -497,26 +511,37 @@
         badgeClass = seq.sequence_quality === "DISCONNECTED" ? "disconnected" : "optimal";
       }
       const hasCandidateRacket = seq.racket_candidate_peak_frame != null || seq.candidate_latency_shoulder_to_racket_ms != null;
-      if (seq.racket_peak_frame === null && (seq.latency_hip_to_shoulder_ms != null || seq.candidate_latency_hip_to_shoulder_ms != null)) {
+      if (!hasRegRef && seq.racket_peak_frame === null && (seq.latency_hip_to_shoulder_ms != null || seq.candidate_latency_hip_to_shoulder_ms != null)) {
         label += hasCandidateRacket ? " · 含候选拍峰" : " · 缺拍峰";
       }
       const intervals = [];
-      const hipVal = seq.latency_hip_to_shoulder_ms;
-      const candHipVal = seq.candidate_latency_hip_to_shoulder_ms;
-      if (typeof hipVal === "number" && Number.isFinite(hipVal)) {
-        intervals.push(`髋—肩 ${hipVal > 0 ? "+" : ""}${hipVal.toFixed(1)} ms`);
-      } else if (typeof candHipVal === "number" && Number.isFinite(candHipVal)) {
-        intervals.push(`髋—肩(候选F${seq.candidate_hip_peak_frame ?? "—"}) ${candHipVal > 0 ? "+" : ""}${candHipVal.toFixed(1)} ms`);
+      if (hasRegRef) {
+        intervals.push(`髋—肩(等帧率) ${reg.latency_hip_to_shoulder_ms > 0 ? "+" : ""}${reg.latency_hip_to_shoulder_ms.toFixed(1)} ms`);
+        if (typeof reg.latency_shoulder_to_racket_ms === "number" && Number.isFinite(reg.latency_shoulder_to_racket_ms)) {
+          intervals.push(`肩—拍(等帧率) ${reg.latency_shoulder_to_racket_ms > 0 ? "+" : ""}${reg.latency_shoulder_to_racket_ms.toFixed(1)} ms`);
+        } else if (typeof reg.candidate_latency_shoulder_to_racket_ms === "number" && Number.isFinite(reg.candidate_latency_shoulder_to_racket_ms)) {
+          intervals.push(`肩—拍(等帧率候选F${reg.racket_candidate_peak_frame ?? "—"}) ${reg.candidate_latency_shoulder_to_racket_ms > 0 ? "+" : ""}${reg.candidate_latency_shoulder_to_racket_ms.toFixed(1)} ms`);
+        }
+      } else {
+        const hipVal = seq.latency_hip_to_shoulder_ms;
+        const candHipVal = seq.candidate_latency_hip_to_shoulder_ms;
+        if (typeof hipVal === "number" && Number.isFinite(hipVal)) {
+          intervals.push(`髋—肩 ${hipVal > 0 ? "+" : ""}${hipVal.toFixed(1)} ms`);
+        } else if (typeof candHipVal === "number" && Number.isFinite(candHipVal)) {
+          intervals.push(`髋—肩(候选F${seq.candidate_hip_peak_frame ?? "—"}) ${candHipVal > 0 ? "+" : ""}${candHipVal.toFixed(1)} ms`);
+        }
+        const rktVal = seq.latency_shoulder_to_racket_ms;
+        const candRktVal = seq.candidate_latency_shoulder_to_racket_ms;
+        if (typeof rktVal === "number" && Number.isFinite(rktVal)) {
+          intervals.push(`肩—拍 ${rktVal > 0 ? "+" : ""}${rktVal.toFixed(1)} ms`);
+        } else if (typeof candRktVal === "number" && Number.isFinite(candRktVal)) {
+          const candSpeed = typeof seq.racket_candidate_peak_speed === "number" ? ` @ ${seq.racket_candidate_peak_speed.toFixed(0)}px/s` : "";
+          intervals.push(`肩—拍(候选F${seq.racket_candidate_peak_frame ?? "—"}) ${candRktVal > 0 ? "+" : ""}${candRktVal.toFixed(1)} ms${candSpeed}`);
+        }
       }
-      const rktVal = seq.latency_shoulder_to_racket_ms;
-      const candRktVal = seq.candidate_latency_shoulder_to_racket_ms;
-      if (typeof rktVal === "number" && Number.isFinite(rktVal)) {
-        intervals.push(`肩—拍 ${rktVal > 0 ? "+" : ""}${rktVal.toFixed(1)} ms`);
-      } else if (typeof candRktVal === "number" && Number.isFinite(candRktVal)) {
-        const candSpeed = typeof seq.racket_candidate_peak_speed === "number" ? ` @ ${seq.racket_candidate_peak_speed.toFixed(0)}px/s` : "";
-        intervals.push(`肩—拍(候选F${seq.racket_candidate_peak_frame ?? "—"}) ${candRktVal > 0 ? "+" : ""}${candRktVal.toFixed(1)} ms${candSpeed}`);
-      }
-      let explanation = "二维峰值参考；未验证结果不用于技术纠错。";
+      let explanation = hasRegRef
+        ? "原始 PTS 存在极短帧间隔触发敏感审计，以上为按名义帧率等间隔规则化的诊断参考（未改写原始 PTS 审计记录）。"
+        : "二维峰值参考；未验证结果不用于技术纠错。";
       if (unresolved) explanation = "峰值落在同帧或定位范围重叠，当前采样无法分辨真实先后；0 ms 不代表动作错误或真实同步。";
       if (typeof seq.sampling_interval_ms === "number") explanation += ` 采样间隔约 ${seq.sampling_interval_ms.toFixed(1)} ms。`;
       if (typeof seq.peak_time_uncertainty_ms === "number") explanation += ` 峰值定位范围约 ${seq.peak_time_uncertainty_ms.toFixed(1)} ms（非统计置信区间）。`;
@@ -635,7 +660,13 @@
             </div>
           </details>` : "";
         const speed = ext.racket_head_speed || {};
-        const speedContact = speed.contact_px_s != null ? `${speed.contact_px_s.toFixed(0)} <small>px/s · 候选触球帧<br>原始峰值 ${speed.max_px_s?.toFixed(0) ?? "—"} px/s（未验证）</small>` : "未观测 · km/h 未标定";
+        const speedContact = speed.contact_px_s != null
+          ? `${speed.contact_px_s.toFixed(0)} <small>px/s · 候选触球帧<br>事件峰值 ${speed.max_px_s?.toFixed(0) ?? "—"} px/s（未标定）</small>`
+          : (speed.contact_window_px_s != null
+            ? `${speed.contact_window_px_s.toFixed(0)} <small>px/s · 触球±2帧峰值（触球帧遮挡）<br>事件峰值 ${speed.max_px_s?.toFixed(0) ?? "—"} px/s（未标定）</small>`
+            : (speed.max_px_s != null
+              ? `${speed.max_px_s.toFixed(0)} <small>px/s · 事件峰值（触球窗口遮挡 · km/h 未标定）</small>`
+              : "未观测 · km/h 未标定"));
         
         const brush = ext.brush_angle || {};
         const brushAngle = qualifiedObservation(brush, 'low_to_high_angle_deg');

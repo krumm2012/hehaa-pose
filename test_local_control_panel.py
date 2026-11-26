@@ -1478,6 +1478,163 @@ print("FAKE_PIPELINE_STOPPED", flush=True)
                 server.server_close()
                 thread.join(timeout=2)
 
+    def test_pose_model_config_validation_and_offline_det_workers(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "yolo26n-pose.mlpackage").mkdir()
+            (root / "models" / "yolo26m-pose.mlpackage").mkdir(parents=True)
+            controller = self.make_controller(root)
+
+            cfg = controller.public_config()
+            self.assertEqual(cfg["defaults"]["pose_model"], "yolo26n-pose.mlpackage")
+            self.assertEqual(cfg["defaults"]["analysis_mode"], "lite")
+            self.assertIn("label", cfg["detector_model"])
+            self.assertTrue(cfg["pose_models"]["configured"]["available"])
+            self.assertTrue(cfg["pose_models"]["yolo26n-pose.mlpackage"]["available"])
+            self.assertTrue(cfg["pose_models"]["yolo26m-pose.mlpackage"]["available"])
+
+            with self.assertRaises(ValueError):
+                ControlSettings.from_payload({"stream_id": "court01-main", "pose_model": "invalid-pose.mlpackage"})
+
+            settings_live_n = ControlSettings.from_payload({
+                "stream_id": "court01-main",
+                "pose_model": "yolo26n-pose.mlpackage",
+                "processing_mode": "buffered",
+                "racket_pose_mode": "legacy",
+                "algo2_dual_view": True,
+            })
+            cmd_live_n, _ = controller._build_command(
+                settings_live_n, root / "runtime.yaml", root / "out", effective_pose_model="yolo26n-pose.mlpackage"
+            )
+            self.assertEqual(cmd_live_n[cmd_live_n.index("--pose-model") + 1], "yolo26n-pose.mlpackage")
+            self.assertNotIn("--det-workers", cmd_live_n)
+
+            settings_off_n = ControlSettings.from_payload({
+                "stream_id": "local_video",
+                "pose_model": "yolo26n-pose.mlpackage",
+                "processing_mode": "offline",
+                "racket_pose_mode": "legacy",
+                "algo2_dual_view": True,
+            })
+            cmd_off_n, _ = controller._build_command(
+                settings_off_n, root / "runtime.yaml", root / "out", effective_pose_model="yolo26n-pose.mlpackage"
+            )
+            self.assertEqual(cmd_off_n[cmd_off_n.index("--det-workers") + 1], "2")
+
+            settings_off_m = ControlSettings.from_payload({
+                "stream_id": "local_video",
+                "pose_model": "yolo26m-pose.mlpackage",
+                "processing_mode": "offline",
+                "racket_pose_mode": "legacy",
+                "algo2_dual_view": True,
+            })
+            cmd_off_m, _ = controller._build_command(
+                settings_off_m, root / "runtime.yaml", root / "out", effective_pose_model="models/yolo26m-pose.mlpackage"
+            )
+            self.assertEqual(cmd_off_m[cmd_off_m.index("--pose-model") + 1], "models/yolo26m-pose.mlpackage")
+            self.assertEqual(cmd_off_m[cmd_off_m.index("--det-workers") + 1], "1")
+
+    def test_analysis_mode_defaults_and_mapping(self) -> None:
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "yolo26n-pose.mlpackage").mkdir()
+            (
+                root
+                / "models"
+                / "racket_pose"
+                / "candidates"
+                / "bn-repaired-640-v1"
+                / "racket_pose_bounded_fp16_640.mlpackage"
+            ).mkdir(parents=True)
+            controller = self.make_controller(root)
+            cfg = controller.public_config()
+            self.assertEqual(cfg["defaults"]["analysis_mode"], "standard")
+            self.assertEqual(cfg["defaults"]["pose_model"], "yolo26n-pose.mlpackage")
+
+            with self.assertRaises(ValueError):
+                ControlSettings.from_payload({"stream_id": "court01-main", "analysis_mode": "unknown"})
+
+            std_live = ControlSettings.from_payload({"stream_id": "court01-main", "analysis_mode": "standard"})
+            self.assertEqual(std_live.analysis_mode, "standard")
+            self.assertEqual(std_live.racket_pose_mode, "shadow")
+            self.assertEqual(std_live.racket_model_profile, "640_shadow")
+            self.assertEqual(std_live.racket_ipc, "shared_memory")
+            self.assertEqual(std_live.processing_mode, "buffered")
+
+            std_local = ControlSettings.from_payload({"stream_id": "local_video", "analysis_mode": "standard"})
+            self.assertEqual(std_local.processing_mode, "offline")
+            self.assertEqual(std_local.racket_pose_mode, "shadow")
+
+            lite_local = ControlSettings.from_payload({
+                "stream_id": "local_video",
+                "analysis_mode": "lite",
+                "pose_model": "yolo26n-pose.mlpackage",
+                "algo2_dual_view": True,
+            })
+            self.assertEqual(lite_local.racket_pose_mode, "legacy")
+            self.assertEqual(lite_local.processing_mode, "offline")
+            cmd_lite, _ = controller._build_command(
+                lite_local, root / "runtime.yaml", root / "out", effective_pose_model="yolo26n-pose.mlpackage"
+            )
+            self.assertEqual(cmd_lite[cmd_lite.index("--det-workers") + 1], "2")
+
+    def test_report_back_to_workbench_link_injection_and_template(self) -> None:
+        from control_panel.http_handler import _inject_workbench_back_link
+        from report_rendering import get_jinja_environment, get_live_styles
+
+        live_legacy = '<body><header><div><h1>Live Swing Events</h1></div><div class="header-tools"><strong id="report-summary">0 events</strong></div></header></body>'
+        injected_live = _inject_workbench_back_link(live_legacy)
+        self.assertEqual(injected_live.count('back-to-workbench'), 1)
+        self.assertIn('href="/"', injected_live)
+        self.assertIn('← 返回工作台', injected_live)
+        self.assertEqual(_inject_workbench_back_link(injected_live), injected_live)
+
+        standalone_legacy = '<body><header><div><h1>Swing Analysis Report</h1></div><div class="summary">frames.json</div></header></body>'
+        injected_standalone = _inject_workbench_back_link(standalone_legacy)
+        self.assertEqual(injected_standalone.count('back-to-workbench'), 1)
+        self.assertIn('← 返回工作台</a></header>', injected_standalone)
+        self.assertEqual(_inject_workbench_back_link(injected_standalone), injected_standalone)
+
+        env = get_jinja_environment()
+        template = env.get_template("live_report.html.j2")
+        rendered = template.render(
+            styles=get_live_styles(),
+            version_html="",
+            summary_event_count=1,
+            summary_latest_frame=10,
+            session_dashboard="",
+            mirror_depth_block="",
+            stream_content="",
+            cards_content="",
+            event_json_href="events.json",
+            model_event_ids=[1],
+            script="",
+        )
+        self.assertEqual(rendered.count('<a class="refresh-button back-to-workbench" href="/">'), 1)
+        self.assertIn('← 返回工作台', rendered)
+
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller = self.make_controller(root)
+            report_dir = root / "data" / "analysis_results" / "control_panel" / "sess_test"
+            report_dir.mkdir(parents=True)
+            report_file = report_dir / "test_swing_report.html"
+            report_file.write_text(live_legacy, encoding="utf-8")
+            server = ThreadingHTTPServer(("127.0.0.1", 0), create_handler(controller))
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                url = f"http://127.0.0.1:{server.server_port}/artifacts/data/analysis_results/control_panel/sess_test/test_swing_report.html"
+                with urllib.request.urlopen(url) as response:
+                    body = response.read().decode("utf-8")
+                self.assertEqual(body.count("back-to-workbench"), 1)
+                self.assertIn("← 返回工作台", body)
+                self.assertEqual(report_file.read_text(encoding="utf-8"), live_legacy)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
 
 if __name__ == "__main__":
     unittest.main()

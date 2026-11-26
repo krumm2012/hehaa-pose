@@ -23,6 +23,7 @@
         <a id="header-player-compare-link" href="/player-compare" target="_blank" rel="noopener" class="button" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.55);color:var(--text);font-weight:600;">
           📊 学员挥拍对比 ↗
         </a>
+        <button id="toggle-sidebar-btn" class="button sidebar-toggle-btn" type="button" aria-controls="settings-sidebar" aria-expanded="true" title="收起或展开右侧参数设置栏">隐藏侧边栏</button>
         <span id="sse-status-badge" class="sse-badge connecting" title="实时事件流推送通道状态">🟡 连接中…</span>
         <span id="status-pill" class="status-pill">已停止</span>
         <button id="start-button" class="button primary">启动分析</button>
@@ -30,7 +31,7 @@
       </div>
     </header>
 
-    <div class="layout">
+    <div id="workspace-layout" class="layout">
       <div class="main-column" style="display: flex; flex-direction: column; gap: 18px; min-width: 0;">
         <main class="card">
           <div class="card-heading">
@@ -80,32 +81,40 @@
         </main>
 
         <section class="card" id="live-swings-card">
-          <div class="card-heading">
-            <div>
-              <h2>实时击球动态流 (Live Swing Feed)</h2>
-              <p id="swings-summary-text">AI 实时检测击球动作、高级生物力学遥测与慢动作切片复盘</p>
+          <div class="card-heading swings-card-heading">
+            <div class="swings-heading-top">
+              <div>
+                <h2>实时击球动态流 (Live Swing Feed)</h2>
+                <p id="swings-summary-text">AI 实时检测击球动作、高级生物力学遥测与慢动作切片复盘</p>
+              </div>
+              <div class="swings-heading-right">
+                <span id="swings-count-badge" class="swings-count-badge">0 次挥拍候选</span>
+                <button id="refresh-swings-btn" class="toolbar-btn" type="button">刷新</button>
+              </div>
             </div>
-            <div class="actions">
-              <div class="session-history-wrapper" style="display: inline-flex; align-items: center; gap: 5px;">
-                <label for="history-session-select" style="font-size: 11px; color: var(--muted); white-space: nowrap;">历史会话:</label>
-                <select id="history-session-select" class="session-select" style="font-size: 11px; height: 26px; padding: 2px 6px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 4px; color: var(--text); max-width: 230px;" title="自由切换历史已处理的会话">
-                  <option value="">⚡ 实时 / 最新会话</option>
-                </select>
+            <div class="swings-toolbar">
+              <div class="swings-toolbar-group">
+                <div class="toolbar-field">
+                  <label for="history-session-select">历史会话</label>
+                  <select id="history-session-select" class="toolbar-select history-select" title="自由切换历史已处理的会话">
+                    <option value="">⚡ 实时 / 最新会话</option>
+                  </select>
+                </div>
+                <div class="toolbar-field">
+                  <label for="session-player-select">球员</label>
+                  <select id="session-player-select" class="toolbar-select player-select" title="绑定当前会话归属球员（新启动会话也会自动绑定）">
+                    <option value="default">默认球员</option>
+                  </select>
+                  <button id="add-player-btn" class="toolbar-btn toolbar-btn-icon" type="button" title="新增球员档案">+</button>
+                  <button id="toggle-player-compare-btn" class="toolbar-btn" type="button" title="在新页面打开同人跨会话挥拍趋势对比">历史对比 ↗</button>
+                </div>
               </div>
-              <div class="session-player-wrapper" style="display: inline-flex; align-items: center; gap: 4px;">
-                <label for="session-player-select" style="font-size: 11px; color: var(--muted); white-space: nowrap;">球员:</label>
-                <select id="session-player-select" class="session-select" style="font-size: 11px; height: 26px; padding: 2px 6px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 4px; color: var(--text); max-width: 120px;" title="绑定当前会话归属球员（新启动会话也会自动绑定）">
-                  <option value="default">默认球员</option>
-                </select>
-                <button id="add-player-btn" class="button" type="button" style="height: 26px; padding: 0 7px; font-size: 12px;" title="新增球员档案">+</button>
-                <button id="toggle-player-compare-btn" class="button" type="button" style="height: 26px; padding: 0 8px; font-size: 11px;" title="在新页面打开同人跨会话挥拍趋势对比">📊 历史对比 ↗</button>
+              <div class="swings-toolbar-group">
+                <div class="swing-filter-toggle" role="group" aria-label="击球过滤模式">
+                  <button id="filter-valid-btn" class="filter-btn active" type="button" title="隐藏已确认空挥；候选仍需人工复核">查看挥拍候选</button>
+                  <button id="filter-all-btn" class="filter-btn" type="button" title="完整记录：显示包含空挥试拍在内的所有检测事件">全部记录</button>
+                </div>
               </div>
-              <div class="swing-filter-toggle" role="group" aria-label="击球过滤模式">
-                <button id="filter-valid-btn" class="filter-btn active" type="button" title="隐藏已确认空挥；候选仍需人工复核">🎯 查看挥拍候选</button>
-                <button id="filter-all-btn" class="filter-btn" type="button" title="完整记录：显示包含空挥试拍在内的所有检测事件">全部记录</button>
-              </div>
-              <span id="swings-count-badge" class="status-pill" style="border-color: var(--blue); color: var(--blue);">0 次挥拍候选</span>
-              <button id="refresh-swings-btn" class="button" type="button">刷新</button>
             </div>
           </div>
           <!-- Session Coaching Summary Dashboard -->
@@ -119,7 +128,7 @@
         </section>
       </div>
 
-      <aside class="side">
+      <aside id="settings-sidebar" class="side">
         <form id="settings-form" class="card" autocomplete="off">
           <div class="section">
             <div class="section-title"><h3>摄像头</h3><span>支持本机凭据配置</span></div>
@@ -171,18 +180,31 @@
           </div>
 
           <div class="section">
-            <div class="section-title"><h3>性能与显示</h3><span>一键预设 · 细节可展开</span></div>
+            <div class="section-title"><h3>性能与显示</h3><span>正式模式 · 自动适配实时与本地</span></div>
             <div class="fields">
               <div class="field wide">
-                <label for="engine_preset">分析模式预设</label>
-                <select id="engine_preset">
-                  <option value="legacy_stable">默认稳定版（960 主链路 · 连续不丢帧）</option>
-                  <option value="640_shadow_stable">640 七点球拍影子模式（已验收 25FPS · 共享源帧）</option>
-                  <option value="640_shadow_offline">640 七点球拍完整分析（本地视频 · 不节流）</option>
-                  <option value="custom">自定义高级组合</option>
+                <label for="analysis_mode">分析模式</label>
+                <select id="analysis_mode">
+                  <option value="standard">标准增强版（默认 · 含七点球拍）</option>
+                  <option value="lite">轻量极速版（仅 960 主链路 · 更低延迟）</option>
                 </select>
-                <small id="engine-preset-hint">默认稳定版：960 球拍/球检测 + 连续不丢帧，适合日常训练与实时分析。</small>
-                <small id="running-racket-model" style="display:block; margin-top:2px;">最近启动模型：暂无</small>
+                <small id="analysis-mode-hint">启用 640 七点球拍并行叠加（共享源帧），事件与 Coach 由 960 主链路稳健输出。</small>
+              </div>
+              <div class="field">
+                <label for="pose_model">人体姿态模型</label>
+                <select id="pose_model">
+                  <option value="yolo26n-pose.mlpackage">yolo26n-pose · 轻量</option>
+                  <option value="yolo26m-pose.mlpackage">yolo26m-pose · 高精</option>
+                </select>
+                <small id="pose-model-hint">25FPS 实时码流推荐 yolo26n-pose（余量更充足）。</small>
+              </div>
+              <div class="field">
+                <label for="output_fps">目标 FPS</label>
+                <input id="output_fps" name="output_fps" type="number" min="1" max="60" step="1">
+              </div>
+              <div class="field wide">
+                <div id="active-models-summary" style="font-size:12px; color:var(--muted); padding:7px 10px; background:rgba(255,255,255,0.025); border:1px solid var(--border); border-radius:8px; line-height:1.5;">球检测：exp004-960 · 姿态：yolo26n-pose · 球拍：七点 640（并行增强）</div>
+                <small id="running-racket-model" style="display:block; margin-top:4px;">最近启动：暂无</small>
               </div>
             </div>
             <div class="switches">
@@ -199,40 +221,6 @@
                 <input id="display_origin_y" type="number" min="-10000" max="10000">
               </div>
             </div>
-            <details id="advanced-engine-details" style="margin-top: 10px; padding: 8px 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 8px;">
-              <summary style="cursor: pointer; font-size: 12px; color: var(--muted);">⚙️ 高级引擎参数（预设已自动联动，一般无需改动）</summary>
-              <div class="fields" style="margin-top: 10px;">
-                <div class="field">
-                  <label for="racket_pose_mode">球拍方案</label>
-                  <select id="racket_pose_mode"><optgroup label="启动方案"><option value="legacy">旧版（默认）</option><option value="exclusive">新版：七点球拍独占</option></optgroup><optgroup label="兼容诊断"><option value="shadow">影子对照（不改旧选择）</option><option value="active">兼容增强（新旧混用）</option></optgroup></select>
-                  <small id="racket-mode-hint">下次启动生效</small>
-                </div>
-                <div class="field">
-                  <label for="processing_mode">处理方式</label>
-                  <select id="processing_mode"><option value="buffered">连续处理（不丢帧，允许启动缓冲）</option><option value="auto">沿用配置</option><option value="realtime">旧版低延迟预览（会丢旧帧）</option><option value="offline">完整分析（本地视频）</option></select>
-                </div>
-                <div class="field">
-                  <label for="racket_model_profile">启动球拍模型</label>
-                  <select id="racket_model_profile"><option value="configured">当前已配置模型（默认960）</option><option value="640_shadow">640 ALL：七点球拍（影子）</option></select>
-                  <div class="hint" id="racket-model-hint">模型在下次启动时加载。</div>
-                </div>
-                <div class="field">
-                  <label for="racket_ipc">球拍图像传输</label>
-                  <select id="racket_ipc"><option value="queue">当前：独立图像队列</option><option value="shared_memory">实验：共享源帧（连续模式）</option></select>
-                </div>
-                <div class="field">
-                  <label for="output_fps">目标 FPS</label>
-                  <input id="output_fps" name="output_fps" type="number" min="1" max="60" step="1">
-                </div>
-              </div>
-              <div id="live-mode-field" class="switches" hidden style="margin-top: 8px; grid-template-columns: 1fr;">
-                <label class="switch"><input id="live_mode" type="checkbox">低延迟直播模式</label>
-              </div>
-              <div id="legacy-engine-compat" hidden>
-                <select id="inference_schedule"><option value="barrier">当前：同帧并行</option><option value="interframe">实验：两阶段跨帧（新版独占）</option></select>
-                <input id="inference_workers" type="number" min="1" max="32">
-              </div>
-            </details>
           </div>
 
           <div class="section">
@@ -419,9 +407,12 @@
             <div class="fields">
               <div class="field wide">
                 <label for="session_name">会话名称</label>
-                <input id="session_name" maxlength="64">
+                <div class="session-name-row">
+                  <input id="session_name" maxlength="64">
+                  <button id="refresh-session-name-btn" class="toolbar-btn session-suffix-btn" type="button" title="重新生成唯一时间后缀">↻ 新后缀</button>
+                </div>
                 <span class="help" style="font-size: 11px; color: var(--muted); display: block; margin-top: 4px;">
-                  统一保存至 <code>data/analysis_results/control_panel</code>，可在顶部历史会话列表回看。
+                  自动追加时间戳后缀以保持唯一性；统一保存至 <code>data/analysis_results/control_panel</code>，可在顶部历史会话列表回看。
                 </span>
               </div>
               <input id="output_dir" type="hidden" value="data/analysis_results/control_panel">

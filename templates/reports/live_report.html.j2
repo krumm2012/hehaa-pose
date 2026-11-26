@@ -12,6 +12,7 @@
   <header>
     <div><h1>Live Swing Events</h1><p class="summary">Coach 建议每 200 ms 增量更新。</p>{{ version_html | safe }}</div>
     <div class="header-tools">
+      <a class="refresh-button back-to-workbench" href="/">← 返回工作台</a>
       <strong id="report-summary">{{ summary_event_count }} events · frame {{ summary_latest_frame }}</strong>
       <div class="refresh-controls" role="group" aria-label="页面刷新控制">
         <span id="refresh-status" class="refresh-status" data-state="running" aria-live="polite">自动刷新中</span>

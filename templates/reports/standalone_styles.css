@@ -18,6 +18,9 @@ header, main { max-width: 1280px; margin: 0 auto; padding: 24px; }
 header { display: flex; justify-content: space-between; gap: 16px; align-items: end; }
 h1 { margin: 0; font-size: 30px; letter-spacing: 0; }
 .summary { color: var(--muted); }
+.header-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.back-to-workbench { display: inline-flex; align-items: center; gap: 4px; padding: 6px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); text-decoration: none; font-weight: 600; white-space: nowrap; }
+.back-to-workbench:hover, .back-to-workbench:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
 .layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(340px, .55fr); gap: 18px; }
 video { width: 100%; background: #111; border: 1px solid var(--line); }
 .panel, .event-card { background: rgba(255,250,240,.92); border: 1px solid var(--line); border-radius: 8px; }

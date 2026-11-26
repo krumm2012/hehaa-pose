@@ -199,6 +199,8 @@ class ControlSettings:
     inference_schedule: str = "barrier"
     racket_ipc: str = "queue"
     racket_model_profile: str = "configured"
+    pose_model: str = "configured"
+    analysis_mode: str = "standard"
 
     @classmethod
     def from_payload(cls, payload: Dict[str, Any]) -> "ControlSettings":
@@ -232,13 +234,40 @@ class ControlSettings:
         roi_enabled = _bool(payload, "roi_enabled", True)
         if stream_id == LOCAL_VIDEO_ID and not mapped_stream_id:
             roi_enabled = False
-        racket_pose_mode = str(payload.get('racket_pose_mode') or 'legacy')
-        racket_model_profile = str(payload.get('racket_model_profile') or 'configured')
+        raw_analysis_mode = str(payload.get("analysis_mode") or "").strip()
+        if raw_analysis_mode:
+            if raw_analysis_mode not in ("standard", "lite"):
+                raise ValueError("无效的分析模式")
+            analysis_mode = raw_analysis_mode
+            explicit_proc = str(payload.get("processing_mode") or "").strip()
+            processing_mode = explicit_proc if explicit_proc else (
+                "offline" if stream_id == LOCAL_VIDEO_ID else "buffered"
+            )
+            inference_schedule = "barrier"
+            if analysis_mode == "standard":
+                racket_pose_mode = "shadow"
+                racket_model_profile = "640_shadow"
+                racket_ipc = "shared_memory"
+            else:
+                racket_pose_mode = "legacy"
+                racket_model_profile = "configured"
+                racket_ipc = "queue"
+        else:
+            racket_pose_mode = str(payload.get('racket_pose_mode') or 'legacy')
+            racket_model_profile = str(payload.get('racket_model_profile') or 'configured')
+            processing_mode = str(payload.get('processing_mode') or 'buffered')
+            inference_schedule = str(payload.get('inference_schedule') or 'barrier')
+            racket_ipc = str(payload.get('racket_ipc') or 'queue')
+            analysis_mode = (
+                "standard"
+                if (racket_model_profile == "640_shadow" and racket_pose_mode == "shadow")
+                else "lite"
+            )
+
         if racket_model_profile not in ('configured', '640_shadow'):
             raise ValueError('无效的球拍模型选择')
         if racket_model_profile == '640_shadow' and racket_pose_mode != 'shadow':
             raise ValueError('640候选尚未通过检测质量验收，请选择影子性能预览')
-        processing_mode = str(payload.get('processing_mode') or 'buffered')
         if racket_model_profile == '640_shadow' and processing_mode not in ('buffered', 'offline'):
             raise ValueError('640性能预览需逐帧连续处理或完整分析')
         if racket_pose_mode not in ('legacy', 'exclusive', 'shadow', 'active'):
@@ -247,8 +276,6 @@ class ControlSettings:
             raise ValueError('无效的处理模式')
         if racket_pose_mode == 'exclusive' and processing_mode == 'realtime':
             raise ValueError('新版七点球拍方案要求连续处理或完整分析，不支持丢帧预览')
-        inference_schedule = str(payload.get('inference_schedule') or 'barrier')
-        racket_ipc = str(payload.get('racket_ipc') or 'queue')
         if inference_schedule not in ('barrier', 'interframe') or racket_ipc not in ('queue', 'shared_memory'):
             raise ValueError('无效的推理调度或图像传输方式')
         if inference_schedule == 'interframe' and (racket_pose_mode != 'exclusive' or processing_mode == 'realtime'):
@@ -257,12 +284,17 @@ class ControlSettings:
             raise ValueError('共享源帧仅支持连续处理或完整分析')
         if processing_mode == 'offline' and stream_id != LOCAL_VIDEO_ID:
             raise ValueError('完整分析模式仅支持本地视频')
+        pose_model = str(payload.get('pose_model') or 'configured').strip()
+        if pose_model not in ('configured', 'yolo26n-pose.mlpackage', 'yolo26m-pose.mlpackage', 'models/yolo26m-pose.mlpackage'):
+            raise ValueError('无效的姿态模型选择')
 
         return cls(
             stream_id=stream_id,
             mapped_stream_id=mapped_stream_id,
+            analysis_mode=analysis_mode,
             racket_pose_mode=racket_pose_mode,
             racket_model_profile=racket_model_profile,
+            pose_model=pose_model,
             processing_mode=processing_mode,
             inference_schedule=inference_schedule,
             racket_ipc=racket_ipc,

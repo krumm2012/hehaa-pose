@@ -9,6 +9,9 @@ import unittest
 @unittest.skipUnless(shutil.which('node'), 'Node is required for frontend regression')
 class ControlPanelKinematicDisplayTests(unittest.TestCase):
     def render(self, sequence):
+        return self.render_event({'event_id': 3, 'extended_biomechanics': {'kinematic_sequence': sequence}})
+
+    def render_event(self, event):
         static_feed = Path(__file__).parent / 'static' / 'js' / 'swing_feed.js'
         page = static_feed.read_text(encoding='utf-8') if static_feed.exists() else Path(__file__).with_name('local_control_panel.html').read_text()
         start = page.find('    function kinematicDisplay(')
@@ -24,7 +27,6 @@ class ControlPanelKinematicDisplayTests(unittest.TestCase):
             code = page[start:end]
         else:
             code = page[start:]
-        event = {'event_id': 3, 'extended_biomechanics': {'kinematic_sequence': sequence}}
         harness = '''
 const elements = {};
 const makeEl = (id = '') => ({
@@ -137,6 +139,39 @@ const escapeHtml = s => String(s).replaceAll('&','&amp;').replaceAll('<','&lt;')
         self.assertIn('badge-seq cadence_sensitive', page)
         self.assertIn('髋—肩(候选F103) 0.0 ms', page)
         self.assertIn('肩—拍(候选F102) -14.8 ms @ 3181px/s', page)
+
+    def test_cadence_regularized_reference_shows_nominal_fps_reference(self):
+        page = self.render({'sequence_quality': None,
+                            'latency_hip_to_shoulder_ms': None,
+                            'cross_validation': {'status': 'unavailable', 'reason': 'cadence_sensitive_peak'},
+                            'cadence_regularized_reference': {
+                                'cross_validation_status': 'single_view',
+                                'hip_peak_frame': 98,
+                                'shoulder_peak_frame': 100,
+                                'racket_peak_frame': 102,
+                                'latency_hip_to_shoulder_ms': 80.0,
+                                'latency_shoulder_to_racket_ms': 80.0,
+                            }})
+        self.assertIn('等帧率参考 · 已抑制PTS抖动', page)
+        self.assertIn('badge-seq cadence_sensitive', page)
+        self.assertIn('髋—肩(等帧率) +80.0 ms', page)
+        self.assertIn('肩—拍(等帧率) +80.0 ms', page)
+
+    def test_speed_card_three_tier_display(self):
+        win_page = self.render_event({'event_id': 4, 'extended_biomechanics': {
+            'racket_head_speed': {'contact_px_s': None, 'contact_window_px_s': 4200, 'max_px_s': 6500},
+            'kinematic_sequence': {},
+        }})
+        self.assertIn('4200', win_page)
+        self.assertIn('触球±2帧峰值', win_page)
+        self.assertIn('事件峰值 6500 px/s', win_page)
+
+        max_page = self.render_event({'event_id': 5, 'extended_biomechanics': {
+            'racket_head_speed': {'contact_px_s': None, 'contact_window_px_s': None, 'max_px_s': 6500},
+            'kinematic_sequence': {},
+        }})
+        self.assertIn('6500', max_page)
+        self.assertIn('事件峰值（触球窗口遮挡 · km/h 未标定）', max_page)
 
 
 if __name__ == '__main__':

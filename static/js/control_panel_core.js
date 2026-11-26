@@ -3,18 +3,72 @@
       "roi_enabled", "show_roi_boundary", "show_roi_fill", "show_roi_points",
       "analysis_interval", "settle_frames", "max_suggestions", "min_confidence",
       "realtime_swing_events", "realtime_coach", "coach_tts", "coach_tts_playback", "deepseek_coach",
-      "realtime_frame_output", "evidence_bundle", "inference_workers", "display_origin_x",
-      "display_origin_y", "live_mode", "save_video", "hdmi_output", "algo2_dual_view",
-      "output_dir", "session_name", "racket_pose_mode", "racket_model_profile", "processing_mode", "inference_schedule", "racket_ipc"
+      "realtime_frame_output", "evidence_bundle", "display_origin_x",
+      "display_origin_y", "save_video", "hdmi_output", "algo2_dual_view",
+      "output_dir", "session_name", "analysis_mode", "pose_model"
     ];
     const checkboxIds = new Set([
       "roi_enabled", "show_roi_boundary", "show_roi_fill", "show_roi_points",
       "realtime_swing_events", "realtime_coach", "coach_tts", "coach_tts_playback", "deepseek_coach",
-      "realtime_frame_output", "evidence_bundle", "live_mode", "save_video", "hdmi_output", "algo2_dual_view"
+      "realtime_frame_output", "evidence_bundle", "save_video", "hdmi_output", "algo2_dual_view"
     ]);
     const CUSTOM_STREAM_ID = "custom";
+    const SIDEBAR_COLLAPSED_KEY = "tennis_ai_sidebar_collapsed_v1";
     const state = { token: "", streams: [], status: "stopped", previewUrl: null };
     const $ = id => document.getElementById(id);
+
+    function setSidebarCollapsed(collapsed, { persist = true } = {}) {
+      const isCollapsed = Boolean(collapsed);
+      const layout = $("workspace-layout");
+      const sidebar = $("settings-sidebar");
+      const toggleBtn = $("toggle-sidebar-btn");
+      if (layout) layout.classList.toggle("sidebar-collapsed", isCollapsed);
+      if (sidebar) sidebar.setAttribute("aria-hidden", isCollapsed ? "true" : "false");
+      if (toggleBtn) {
+        toggleBtn.textContent = isCollapsed ? "显示侧边栏" : "隐藏侧边栏";
+        toggleBtn.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+      }
+      if (persist) {
+        try {
+          localStorage.setItem(SIDEBAR_COLLAPSED_KEY, isCollapsed ? "1" : "0");
+        } catch {}
+      }
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+      }
+    }
+
+    const SESSION_SUFFIX_RE = /(?:_\d{8}_\d{6}(?:_[a-z0-9]{2,4})?|_\d{8}T\d{6}Z_[a-z0-9]{4,8})$/i;
+    let lastGeneratedSessionName = "";
+    let lastSubmittedSessionName = "";
+
+    function stripSessionSuffix(raw) {
+      const base = String(raw || "").trim().replace(SESSION_SUFFIX_RE, "").replace(/_+$/g, "");
+      return base || "live_session";
+    }
+
+    function buildSessionSuffix(date = new Date()) {
+      const pad = n => String(n).padStart(2, "0");
+      return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+    }
+
+    function ensureUniqueSessionName(raw, { forceRefresh = false } = {}) {
+      const cleaned = String(raw || "").trim();
+      if (!forceRefresh && cleaned && SESSION_SUFFIX_RE.test(cleaned) && cleaned !== lastSubmittedSessionName) {
+        return cleaned.slice(0, 64);
+      }
+      const base = stripSessionSuffix(cleaned);
+      const suffix = buildSessionSuffix();
+      const maxBaseLen = Math.max(1, 64 - suffix.length - 1);
+      let candidate = `${base.slice(0, maxBaseLen)}_${suffix}`;
+      if (candidate === lastGeneratedSessionName || candidate === lastSubmittedSessionName || candidate === cleaned) {
+        const tie = Math.random().toString(36).slice(2, 5);
+        const tieMaxBase = Math.max(1, 64 - suffix.length - tie.length - 2);
+        candidate = `${base.slice(0, tieMaxBase)}_${suffix}_${tie}`;
+      }
+      lastGeneratedSessionName = candidate;
+      return candidate;
+    }
 
     function showToast(message, error = false) {
       const toast = $("toast");
@@ -47,6 +101,7 @@
       if ($("stream_id").value === "local_video") payload.video_id = state.videoId || "";
       for (const id of ids) {
         const element = $(id);
+        if (!element) continue;
         payload[id] = checkboxIds.has(id) ? element.checked : element.value;
       }
       if ($("stream_id").value !== "local_video") {
@@ -98,70 +153,38 @@
       }
     }
 
-    function syncEnginePresetFromFields() {
-      const presetEl = $("engine_preset");
-      if (!presetEl) return;
-      const mode = $("racket_pose_mode")?.value || "legacy";
-      const profile = $("racket_model_profile")?.value || "configured";
-      const proc = $("processing_mode")?.value || "buffered";
-      const sched = $("inference_schedule")?.value || "barrier";
-      const ipc = $("racket_ipc")?.value || "queue";
+    function syncEngineDisplay() {
+      const modeVal = $("analysis_mode")?.value || "standard";
+      const poseVal = $("pose_model")?.value || "yolo26n-pose.mlpackage";
+      const isVideo = $("stream_id")?.value === "local_video";
 
-      let detected = "custom";
-      if (profile === "configured" && mode === "legacy" && proc === "buffered" && sched === "barrier" && ipc === "queue") {
-        detected = "legacy_stable";
-      } else if (profile === "640_shadow" && mode === "shadow" && proc === "buffered" && sched === "barrier" && ipc === "shared_memory") {
-        detected = "640_shadow_stable";
-      } else if (profile === "640_shadow" && mode === "shadow" && proc === "offline" && sched === "barrier" && ipc === "shared_memory") {
-        detected = "640_shadow_offline";
-      }
-      presetEl.value = detected;
-
-      const hintEl = $("engine-preset-hint");
-      if (hintEl) {
-        const hints = {
-          legacy_stable: "默认稳定版：960 球拍/球检测 + 连续不丢帧，适合日常训练与实时分析。",
-          "640_shadow_stable": "已匹配 640-shadow-stable 验收组合（25FPS）：640 ALL 七点旁路 + 连续处理 + 共享源帧；事件与 Coach 沿用 960 主链路。",
-          "640_shadow_offline": "离线极速分析：640 ALL 七点旁路 + 不节流满速处理（6–12 共享缓冲槽）+ 仅保存击球切片（关闭全片重编码以提速）。",
-          custom: "当前使用自定义高级参数组合（可在下方展开查看或微调）。",
-        };
-        hintEl.textContent = hints[detected] || hints.custom;
-      }
-    }
-
-    function applyEnginePreset() {
-      const presetEl = $("engine_preset");
-      if (!presetEl) return;
-      const val = presetEl.value;
-      if (val === "legacy_stable") {
-        if ($("racket_model_profile")) $("racket_model_profile").value = "configured";
-        if ($("racket_pose_mode")) $("racket_pose_mode").value = "legacy";
-        if ($("processing_mode")) $("processing_mode").value = "buffered";
-        if ($("inference_schedule")) $("inference_schedule").value = "barrier";
-        if ($("racket_ipc")) $("racket_ipc").value = "queue";
-      } else if (val === "640_shadow_stable") {
-        if ($("racket_model_profile")) $("racket_model_profile").value = "640_shadow";
-        if ($("racket_pose_mode")) $("racket_pose_mode").value = "shadow";
-        if ($("processing_mode")) $("processing_mode").value = "buffered";
-        if ($("inference_schedule")) $("inference_schedule").value = "barrier";
-        if ($("racket_ipc")) $("racket_ipc").value = "shared_memory";
-      } else if (val === "640_shadow_offline") {
-        if ($("racket_model_profile")) $("racket_model_profile").value = "640_shadow";
-        if ($("racket_pose_mode")) $("racket_pose_mode").value = "shadow";
-        if ($("processing_mode")) $("processing_mode").value = "offline";
-        if ($("inference_schedule")) $("inference_schedule").value = "barrier";
-        if ($("racket_ipc")) $("racket_ipc").value = "shared_memory";
-        if ($("save_video")) $("save_video").checked = false;
-        if ($("live_mode")) $("live_mode").checked = false;
-        if ($("stream_id") && $("stream_id").value !== "local_video") {
-          $("stream_id").value = "local_video";
+      const modeHint = $("analysis-mode-hint");
+      if (modeHint) {
+        if (modeVal === "standard") {
+          modeHint.textContent = isVideo
+            ? "本地视频将自动全速离线处理：启用 640 七点球拍并行叠加（共享源帧），事件与 Coach 由 960 主链路稳健输出。"
+            : "实时码流将自动连续不丢帧处理：启用 640 七点球拍并行叠加（共享源帧），事件与 Coach 由 960 主链路稳健输出。";
+        } else {
+          modeHint.textContent = isVideo
+            ? "本地视频将自动全速离线处理并启用多进程 ANE 检测池：仅运行 960 主链路（不加载七点球拍），吞吐更高。"
+            : "实时码流将自动连续不丢帧处理：仅运行 960 主链路（不加载七点球拍），25FPS 实时延迟最低。";
         }
-      } else if (val === "custom") {
-        const adv = $("advanced-engine-details");
-        if (adv) adv.open = true;
       }
-      updateStreamMeta();
-      savePreset();
+
+      const poseHint = $("pose-model-hint");
+      if (poseHint) {
+        poseHint.textContent = poseVal.includes("yolo26m")
+          ? "高精度 yolo26m-pose：关节稳定性更高，适合离线分析或低并发场景。"
+          : "25FPS 实时码流推荐 yolo26n-pose（单帧推理省约 10ms，余量更充足）。";
+      }
+
+      const summaryEl = $("active-models-summary");
+      if (summaryEl) {
+        const detLabel = state.detectorModel?.label || "exp004-960";
+        const poseLabel = poseVal.includes("yolo26m") ? "yolo26m-pose" : "yolo26n-pose";
+        const racketLabel = modeVal === "standard" ? "七点 640（并行增强）" : "960 主检测（未启七点）";
+        summaryEl.textContent = `球检测：${detLabel} · 姿态：${poseLabel} · 球拍：${racketLabel}`;
+      }
     }
 
     function syncConditionalFields() {
@@ -186,49 +209,10 @@
       if (hdmiOriginFields) {
         hdmiOriginFields.hidden = !Boolean($("hdmi_output")?.checked);
       }
-
-      const liveModeField = $("live-mode-field");
-      if (liveModeField) {
-        const procMode = $("processing_mode")?.value || "buffered";
-        liveModeField.hidden = video || !["auto", "realtime"].includes(procMode);
-      }
     }
 
     function updateStreamMeta() {
-      const model640 = $("racket_model_profile")?.value === "640_shadow";
-      const racketSelect = $("racket_pose_mode");
-      if (model640 && racketSelect) racketSelect.value = "shadow";
-      if (racketSelect?.options) {
-        for (const option of racketSelect.options) option.disabled = model640 && option.value !== "shadow";
-      }
-      const modelHint = $("racket-model-hint");
-      if (modelHint) modelHint.textContent = model640
-        ? "640×640 / ALL 七点旁路；正式Shadow验收使用连续逐帧、同帧并行和共享源帧。事件沿用旧链路，active/exclusive检测质量尚未放行。"
-        : "使用项目已配置的模型；启动日志会记录实际尺寸、后端和路径。";
-      const modeHint = $("racket-mode-hint");
-      if (modeHint) modeHint.textContent = racketSelect?.value === "shadow"
-        ? "下次启动生效；七点逐帧旁路运行，事件和 Coach 沿用旧链路。"
-        : racketSelect?.value === "exclusive" ? "下次启动生效；七点独占不回退旧拍框，逐帧处理，跟不上时会积压。"
-        : "下次启动生效；旧版不启动七点模型，兼容增强保留原有选择逻辑。";
-      const exclusive = $("racket_pose_mode")?.value === "exclusive";
-      const processing = $("processing_mode");
-      const schedule = $("inference_schedule");
-      const ipc = $("racket_ipc");
-      if (schedule) {
-        schedule.disabled = !exclusive;
-        if (!exclusive) schedule.value = "barrier";
-      }
-      if (processing) {
-        const freshness = processing.querySelector('option[value="realtime"]');
-        if (freshness) freshness.disabled = exclusive || model640;
-        if ((exclusive || model640) && ["auto", "realtime"].includes(processing.value)) processing.value = "buffered";
-      }
-      if (ipc) {
-        const legacy = $("racket_pose_mode")?.value === "legacy";
-        ipc.disabled = legacy || processing?.value === "realtime";
-        if (ipc.disabled) ipc.value = "queue";
-      }
-      syncEnginePresetFromFields();
+      syncEngineDisplay();
       syncConditionalFields();
       const video = $("stream_id").value === "local_video";
       $("local-video-field").hidden = !video;
@@ -241,7 +225,6 @@
       $("password").placeholder = configured ? "当前通道已配置，无需重复输入" : "不在浏览器中保存";
       $("custom-stream-field").hidden = !custom;
       $("custom_stream_source").required = custom;
-      $("live_mode").disabled = video || ["buffered", "offline"].includes($("processing_mode")?.value);
       if (video) {
         const mappedId = $("mapped_stream_id") ? $("mapped_stream_id").value : "";
         const mappedStream = mappedId ? state.streams.find(item => item.stream_id === mappedId) : null;
@@ -253,9 +236,7 @@
           ).join("") || "<span>已绑定机位，但该机位未配置有效ROI</span>";
         } else {
           $("stream-meta").textContent = "本地视频 · " + (state.videoName || "请先选择视频文件");
-          $("point-list").textContent = $("processing_mode")?.value === "realtime"
-            ? "全画面实时预览 · 未绑定机位 ROI · 跟不上时跳过旧帧"
-            : "全画面连续处理 · 未绑定机位 ROI · 逐帧处理，积压会增加延迟";
+          $("point-list").textContent = "全画面离线完整分析 · 未绑定机位 ROI";
         }
         updateRoiBoundaryEditor(mappedStream);
         savePreset();
@@ -349,7 +330,11 @@
     }
 
     async function refreshPreview(manual = true, clean = null) {
-      if (!$("settings-form").reportValidity()) return false;
+      const settingsForm = $("settings-form");
+      if (typeof settingsForm.checkValidity === "function" && !settingsForm.checkValidity() && typeof setSidebarCollapsed === "function") {
+        setSidebarCollapsed(false, { persist: false });
+      }
+      if (!settingsForm.reportValidity()) return false;
       const requestId = state.previewRequestId = (state.previewRequestId || 0) + 1;
       const payload = formPayload();
       const shouldClean = (clean !== null) ? Boolean(clean) : Boolean(typeof roiEditorState !== "undefined" && roiEditorState.active);
@@ -414,7 +399,15 @@
         showToast("请先选择视频并等待上传完成", true);
         return;
       }
-      if (!$("settings-form").reportValidity()) return;
+      const settingsForm = $("settings-form");
+      if (typeof settingsForm.checkValidity === "function" && !settingsForm.checkValidity() && typeof setSidebarCollapsed === "function") {
+        setSidebarCollapsed(false, { persist: false });
+      }
+      if (!settingsForm.reportValidity()) return;
+      const sessionInput = $("session_name");
+      if (sessionInput) {
+        sessionInput.value = ensureUniqueSessionName(sessionInput.value, { forceRefresh: false });
+      }
       savePreset();
       $("start-button").disabled = true;
       try {
@@ -428,6 +421,11 @@
           body: JSON.stringify(startPayload)
         });
         updateStatus(await response.json());
+        if (sessionInput) {
+          lastSubmittedSessionName = startPayload.session_name || sessionInput.value;
+          sessionInput.value = ensureUniqueSessionName(sessionInput.value, { forceRefresh: true });
+          savePreset();
+        }
         showToast("分析进程已启动");
       } catch (error) {
         showToast(`启动失败：${error.message}`, true);
@@ -464,8 +462,9 @@
       const modelStatus = $("running-racket-model");
       if (modelStatus && status.racket_model) {
         const model = status.racket_model;
-        modelStatus.textContent = model.mode === "legacy" ? "最近启动：旧版，不加载七点球拍模型"
-          : `最近启动：${model.imgsz}×${model.imgsz} / ${model.compute_units} / ${model.mode === "shadow" ? "影子预览" : model.mode}`;
+        modelStatus.textContent = model.mode === "legacy"
+          ? "最近启动：轻量极速版（仅 960 主链路）"
+          : `最近启动：标准增强版（七点球拍 ${model.imgsz}×${model.imgsz} / ${model.compute_units}）`;
       }
       const pill = $("status-pill");
       pill.textContent = stateLabel(status.state);
@@ -617,29 +616,67 @@
             savePreset();
           });
         }
+        state.detectorModel = config.detector_model || { label: "exp004-960" };
         applyValues(config.defaults);
-        const model640Option = $("racket_model_profile")?.querySelector('option[value="640_shadow"]');
         const model640Available = Boolean(config.racket_model_profiles?.["640_shadow"]?.available);
-        if (model640Option) model640Option.disabled = !model640Available;
-        ["640_shadow_stable", "640_shadow_offline"].forEach(presetKey => {
-          const opt = $("engine_preset")?.querySelector(`option[value="${presetKey}"]`);
-          if (opt) opt.disabled = !model640Available;
-        });
+        const modeSelect = $("analysis_mode");
+        if (modeSelect) {
+          const stdOpt = modeSelect.querySelector('option[value="standard"]');
+          if (stdOpt) stdOpt.disabled = !model640Available;
+          if (!model640Available) modeSelect.value = "lite";
+        }
+        const poseSelect = $("pose_model");
+        if (poseSelect && config.pose_models) {
+          for (const key of ["yolo26n-pose.mlpackage", "yolo26m-pose.mlpackage"]) {
+            const opt = poseSelect.querySelector(`option[value="${key}"]`);
+            if (opt && config.pose_models[key] && config.pose_models[key].available === false) {
+              opt.disabled = true;
+            }
+          }
+        }
         try {
           const saved = JSON.parse(localStorage.getItem("tennis-control-preset-v1") || "null");
           if (saved) {
             if (saved.stream_id === CUSTOM_STREAM_ID) delete saved.stream_id;
             if (saved.stream_id !== "local_video") delete saved.mapped_stream_id;
             delete saved.output_dir;
-            // Migrate the prior implicit dropping default once; later explicit
-            // mode selections continue to persist in the same control panel.
-            if (!localStorage.getItem("tennis-continuous-default-v1")) {
-              saved.processing_mode = "buffered";
+            if (!localStorage.getItem("tennis-panel-v2")) {
+              saved.analysis_mode = saved.racket_pose_mode === "legacy"
+                ? "lite"
+                : (config.defaults?.analysis_mode || "standard");
+              if (!saved.pose_model || saved.pose_model === "configured") {
+                saved.pose_model = config.defaults?.pose_model || "yolo26n-pose.mlpackage";
+              }
+            }
+            for (const staleKey of [
+              "racket_pose_mode", "racket_model_profile", "processing_mode",
+              "inference_schedule", "racket_ipc", "live_mode", "inference_workers",
+            ]) {
+              delete saved[staleKey];
+            }
+            if (modeSelect && "analysis_mode" in saved) {
+              const opt = saved.analysis_mode ? modeSelect.querySelector(`option[value="${saved.analysis_mode}"]`) : null;
+              if (!opt || opt.disabled) delete saved.analysis_mode;
+            }
+            if (poseSelect && "pose_model" in saved) {
+              const opt = saved.pose_model ? poseSelect.querySelector(`option[value="${saved.pose_model}"]`) : null;
+              if (!opt || opt.disabled) delete saved.pose_model;
             }
             applyValues(saved);
           }
+          localStorage.setItem("tennis-panel-v2", "1");
           localStorage.setItem("tennis-continuous-default-v1", "1");
         } catch (_) {}
+        if (modeSelect && !modeSelect.value) {
+          modeSelect.value = config.defaults?.analysis_mode || (model640Available ? "standard" : "lite");
+        }
+        if (poseSelect && !poseSelect.value) {
+          poseSelect.value = config.defaults?.pose_model || "yolo26n-pose.mlpackage";
+        }
+        const sessionInput = $("session_name");
+        if (sessionInput) {
+          sessionInput.value = ensureUniqueSessionName(sessionInput.value, { forceRefresh: true });
+        }
         updateStreamMeta();
         const filterValidBtn = $("filter-valid-btn");
         const filterAllBtn = $("filter-all-btn");
@@ -716,14 +753,10 @@
       if (stp) stp.addEventListener("click", stopAnalysis);
       const sid = $("stream_id");
       if (sid) sid.addEventListener("change", updateStreamMeta);
-      const processingMode = $("processing_mode");
-      if (processingMode) processingMode.addEventListener("change", updateStreamMeta);
-      const racketMode = $("racket_pose_mode");
-      if (racketMode) racketMode.addEventListener("change", updateStreamMeta);
-      const racketModel = $("racket_model_profile");
-      if (racketModel) racketModel.addEventListener("change", updateStreamMeta);
-      const enginePreset = $("engine_preset");
-      if (enginePreset) enginePreset.addEventListener("change", applyEnginePreset);
+      const analysisMode = $("analysis_mode");
+      if (analysisMode) analysisMode.addEventListener("change", updateStreamMeta);
+      const poseModel = $("pose_model");
+      if (poseModel) poseModel.addEventListener("change", updateStreamMeta);
       const coachTts = $("coach_tts");
       if (coachTts) coachTts.addEventListener("change", syncConditionalFields);
       const hdmiOutput = $("hdmi_output");
@@ -734,6 +767,28 @@
       if (sf) {
         sf.addEventListener("change", savePreset);
         sf.addEventListener("submit", event => event.preventDefault());
+      }
+      const toggleSidebarBtn = $("toggle-sidebar-btn");
+      if (toggleSidebarBtn) {
+        let initialCollapsed = false;
+        try {
+          initialCollapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+        } catch {}
+        setSidebarCollapsed(initialCollapsed, { persist: false });
+        toggleSidebarBtn.addEventListener("click", () => {
+          const layout = $("workspace-layout");
+          const currentlyCollapsed = Boolean(layout && layout.classList.contains("sidebar-collapsed"));
+          setSidebarCollapsed(!currentlyCollapsed);
+        });
+      }
+      const refreshSessionNameBtn = $("refresh-session-name-btn");
+      if (refreshSessionNameBtn) {
+        refreshSessionNameBtn.addEventListener("click", () => {
+          const sessionInput = $("session_name");
+          if (!sessionInput) return;
+          sessionInput.value = ensureUniqueSessionName(sessionInput.value, { forceRefresh: true });
+          savePreset();
+        });
       }
       initialize();
     }
