@@ -14,9 +14,10 @@ class SourceMediaClock:
     Stream device timestamps are unavailable through the current reader.
     """
 
-    def __init__(self, fps, source_kind="video_file"):
+    def __init__(self, fps, source_kind="video_file", allow_stream_nominal_fps=False):
         self.fps = float(fps or 0)
         self.source_kind = source_kind
+        self.allow_stream_nominal_fps = bool(allow_stream_nominal_fps)
         self.previous_pts = None
 
     def observe(self, frame_id, position_ms=None):
@@ -25,7 +26,16 @@ class SourceMediaClock:
                   "timestamp_seconds": None, "basis": "unavailable",
                   "quality": "unavailable", "exposure_time_verified": False}
         if self.source_kind == "stream":
-            record["reason"] = "device_media_time_unavailable"
+            if self.allow_stream_nominal_fps and math.isfinite(self.fps) and self.fps > 0:
+                record.update(
+                    timestamp_seconds=frame_id / self.fps,
+                    basis="nominal_fps",
+                    quality="estimated",
+                    reason="stream_nominal_fps_configured",
+                    nominal_fps=self.fps,
+                )
+            else:
+                record["reason"] = "device_media_time_unavailable"
             return record
         try:
             pts = float(position_ms) / 1000

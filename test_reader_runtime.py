@@ -68,6 +68,14 @@ class SourceMediaClockTests(unittest.TestCase):
         self.assertIsNone(row['timestamp_seconds'])
         self.assertEqual(row['basis'], 'unavailable')
 
+    def test_fixed_rate_stream_nominal_fps_ignores_receipt_and_backend_time(self):
+        row = SourceMediaClock(25, 'stream', allow_stream_nominal_fps=True).observe(5, 9999)
+        self.assertEqual(row['source_kind'], 'stream')
+        self.assertEqual(row['basis'], 'nominal_fps')
+        self.assertEqual(row['quality'], 'estimated')
+        self.assertAlmostEqual(row['timestamp_seconds'], 0.2)
+        self.assertFalse(row['exposure_time_verified'])
+
     def test_missing_rate_and_pts_stay_unavailable(self):
         row = SourceMediaClock(0).observe(5, None)
         self.assertIsNone(row['timestamp_seconds'])

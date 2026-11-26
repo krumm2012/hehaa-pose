@@ -102,6 +102,33 @@ class BodySourceWindowTests(unittest.TestCase):
         self.assertIsNone(metric['value'])
         self.assertIn('reported_source_time_unavailable', metric['contract']['missing_reasons'])
 
+    def test_fixed_rate_stream_nominal_fps_authorizes_windows_and_speed_without_claiming_pts(self):
+        from image_motion_measurements import racket_image_velocity
+
+        rows = []
+        for i in range(7):
+            r = row(i, i / 25.0, 10 + i * 10)
+            r['source_time'].update(source_kind='stream', basis='nominal_fps', quality='estimated')
+            r['shoulder_line_angle_deg'] = i * 5.0
+            for side in ('left', 'right'):
+                flex = math.radians(i * 8)
+                r['pose'][side + '_hip'] = [0, 0]
+                r['pose'][side + '_knee'] = [0, 100]
+                r['pose'][side + '_ankle'] = [100 * math.sin(flex), 100 + 100 * math.cos(flex)]
+            rows.append(r)
+        event = {'start_frame': 0, 'contact_frame': 3, 'peak_frame': 3, 'end_frame': 6,
+                 'quality_flags': {'pose_frame_ratio': 1}}
+        agg = aggregate_event_biomechanics(event, rows, rows)
+        metrics = agg['metrics']
+        self.assertEqual(metrics['arm_extension']['value'], 40)
+        self.assertIsNotNone(metrics['shoulder_turn_change']['value'])
+        self.assertIsNotNone(metrics['preparation_knee_flexion']['value'])
+        self.assertFalse(metrics['arm_extension']['contract']['window_evidence']['source_time_qualified'])
+        self.assertEqual(metrics['arm_extension']['contract']['window_evidence']['basis'], 'nominal_fps')
+        speed, basis = racket_image_velocity(rows[2], rows[3], [100.0, 200.0], [120.0, 200.0])
+        self.assertAlmostEqual(speed, 500.0)
+        self.assertEqual(basis, 'nominal_fps')
+
     def test_source_identity_gaps_are_disclosed_without_temporal_coverage_claim(self):
         event, rows = self.fixture(stride=10)
         evidence = aggregate_event_biomechanics(event, rows, rows)['metrics']['arm_extension']['window_evidence']

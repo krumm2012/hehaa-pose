@@ -370,7 +370,7 @@ class MultiprocessPipeline:
             int(
                 realtime_frame_flush_interval
                 if realtime_frame_flush_interval is not None
-                else realtime_cfg.get('frame_flush_interval', 5)
+                else realtime_cfg.get('frame_flush_interval', 25)
             ),
         )
         self.realtime_coach = bool(
@@ -704,7 +704,15 @@ class MultiprocessPipeline:
             max_lag_intervals=max_lag_intervals,
         )
         frame_clock = SourceFrameClock()
-        media_clock = SourceMediaClock(self.fps, "stream" if self.is_stream_source else "video_file")
+        stream_nominal_fps = bool(
+            self.is_stream_source
+            and (self.config.get('pipeline_perf') or {}).get('stream_nominal_fps_enabled', True)
+        )
+        media_clock = SourceMediaClock(
+            self.fps,
+            "stream" if self.is_stream_source else "video_file",
+            allow_stream_nominal_fps=stream_nominal_fps,
+        )
         if self.live_mode:
             print(
                 f"⚡ [Reader] 直播缓冲槽: {self.shm_num} | "

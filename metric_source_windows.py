@@ -37,11 +37,25 @@ class MetricWindowContext:
         monotonic = monotonic and all(b > a for a, b in zip(times, times[1:]))
         self.qualified = (self.declared and not self.reasons and monotonic
             and bases == {'media_pts'} and all('source_time' in r for r in rows))
+        self.stream_estimated = (
+            self.declared
+            and not self.reasons
+            and monotonic
+            and bases == {'nominal_fps'}
+            and all(
+                isinstance(r.get('source_time'), dict)
+                and r['source_time'].get('source_kind') == 'stream'
+                for r in rows
+            )
+        )
         legacy_timed = not self.declared and not self.reasons and monotonic
-        self.timed = self.qualified or legacy_timed
+        self.timed = self.qualified or self.stream_estimated or legacy_timed
         self.times = dict(zip(self.ids, times)) if self.timed else {}
         if self.qualified:
             self.basis = 'media_pts'
+        elif self.stream_estimated:
+            self.basis = 'nominal_fps'
+            self.reasons.append('stream_nominal_fps_estimated')
         elif self.declared:
             self.basis = 'unavailable'
             self.reasons.append('reported_source_time_unavailable')
@@ -66,7 +80,7 @@ class MetricWindowContext:
                legacy_after=2, exclude_anchor=False):
         request = {'anchor_frame_id': anchor, 'before_seconds': before,
                    'after_seconds': after, 'exclude_anchor': exclude_anchor}
-        if self.declared and not self.qualified:
+        if self.declared and not self.qualified and not self.stream_estimated:
             return self._selection([], request)
         if anchor not in self.by_id:
             return self._selection([], request, ['missing_window_anchor_record'])
@@ -83,7 +97,7 @@ class MetricWindowContext:
     def between(self, start, end, end_fraction=1., max_duration=None):
         request = {'start_frame_id': start, 'end_frame_id': end,
                    'end_fraction': end_fraction, 'maximum_seconds': max_duration}
-        if self.declared and not self.qualified:
+        if self.declared and not self.qualified and not self.stream_estimated:
             return self._selection([], request)
         if start not in self.by_id or end not in self.by_id or end < start:
             return self._selection([], request, ['missing_or_invalid_window_anchor'])

@@ -232,18 +232,77 @@ def select_pose_candidate(observation, frame_id, wrists, frame_size, config):
     return result
 
 
-def draw_racket_pose(canvas, observation):
-    if not observation or observation.get('status')!='observed':return canvas
-    overlay = canvas.copy()
-    for candidate in observation.get('candidates',[]):
-        pts=candidate.get('keypoints') or {}
-        for a,b in SKELETON_EDGES:
-            p,q=pts.get(KEYPOINT_NAMES[a],{}),pts.get(KEYPOINT_NAMES[b],{})
-            if p.get('observed') and q.get('observed'):
-                cv2.line(overlay,(round(p['x']),round(p['y'])),(round(q['x']),round(q['y'])),(0,210,245),1,cv2.LINE_AA)
-        for name,p in pts.items():
-            if p.get('observed'):
-                r = 3 if name=='sweet_spot' else 2
-                cv2.circle(overlay,(round(p['x']),round(p['y'])),r,(0,0,240) if name=='sweet_spot' else (0,210,245),-1,cv2.LINE_AA)
-    cv2.addWeighted(overlay, 0.45, canvas, 0.55, 0, canvas)
+def draw_racket_pose(canvas, observation, coord_mapper=None):
+    if not observation or observation.get('status') != 'observed':
+        return canvas
+    h, w = canvas.shape[:2]
+    if h <= 0 or w <= 0:
+        return canvas
+
+    mapped_candidates = []
+    all_pts = []
+    for candidate in observation.get('candidates', []):
+        pts = candidate.get('keypoints') or {}
+        mapped = {}
+        has_in_bounds = False
+        for name, p in pts.items():
+            if not p or not p.get('observed'):
+                continue
+            try:
+                px, py = (
+                    coord_mapper(float(p['x']), float(p['y']))
+                    if coord_mapper is not None
+                    else (float(p['x']), float(p['y']))
+                )
+            except (TypeError, ValueError):
+                continue
+            if not (math.isfinite(px) and math.isfinite(py)):
+                continue
+            mapped[name] = (px, py)
+            if 0.0 <= px < w and 0.0 <= py < h:
+                has_in_bounds = True
+        if not mapped or (coord_mapper is not None and not has_in_bounds):
+            continue
+        mapped_candidates.append(mapped)
+        all_pts.extend(mapped.values())
+
+    if not all_pts:
+        return canvas
+
+    pad = 8
+    xs = [pt[0] for pt in all_pts]
+    ys = [pt[1] for pt in all_pts]
+    x0 = max(0, int(math.floor(min(xs))) - pad)
+    y0 = max(0, int(math.floor(min(ys))) - pad)
+    x1 = min(w, int(math.ceil(max(xs))) + pad + 1)
+    y1 = min(h, int(math.ceil(max(ys))) + pad + 1)
+    if x1 <= x0 or y1 <= y0:
+        return canvas
+
+    roi = canvas[y0:y1, x0:x1]
+    overlay = roi.copy()
+    for mapped in mapped_candidates:
+        for a, b in SKELETON_EDGES:
+            p = mapped.get(KEYPOINT_NAMES[a])
+            q = mapped.get(KEYPOINT_NAMES[b])
+            if p is not None and q is not None:
+                cv2.line(
+                    overlay,
+                    (round(p[0]) - x0, round(p[1]) - y0),
+                    (round(q[0]) - x0, round(q[1]) - y0),
+                    (0, 210, 245),
+                    1,
+                    cv2.LINE_AA,
+                )
+        for name, p in mapped.items():
+            r = 3 if name == 'sweet_spot' else 2
+            cv2.circle(
+                overlay,
+                (round(p[0]) - x0, round(p[1]) - y0),
+                r,
+                (0, 0, 240) if name == 'sweet_spot' else (0, 210, 245),
+                -1,
+                cv2.LINE_AA,
+            )
+    cv2.addWeighted(overlay, 0.45, roi, 0.55, 0, roi)
     return canvas

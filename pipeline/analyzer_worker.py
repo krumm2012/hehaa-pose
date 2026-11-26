@@ -368,7 +368,7 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
             pipeline.q_free.put(slot)
             slot_released = True
         else:
-            # 双视角且无需在 4K 全图叠画 7 点骨架时，直接只读切片并提前归还 shm 槽，省去每帧 24.9MB 4K 拷贝
+            # 双视角可先只读切片并提前归还 shm 槽，省去每帧 11–25MB 原图拷贝；7点球拍骨架与 2D 叠加在切片后绘制
             draw_full_frame_racket = bool(
                 data.get('racket_pose') and pipeline.racket_pose_config.get('render_skeleton', True)
             )
@@ -377,7 +377,6 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
                 and dual_view_mgr is not None
                 and dual_view_renderer is not None
                 and data.get('dual_pose_res') is not None
-                and not draw_full_frame_racket
             )
             canvas = shared_frames[slot] if zero_copy_dual_view else shared_frames[slot].copy()
             slot_released = False
@@ -488,7 +487,7 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
             render_stages = {}
             render_features = {}
             overlay_started = time.perf_counter_ns()
-            if data.get('racket_pose') and pipeline.racket_pose_config.get('render_skeleton', True):
+            if draw_full_frame_racket and not zero_copy_dual_view:
                 from racket_pose_detector import draw_racket_pose
                 draw_racket_pose(canvas, data['racket_pose'])
             joint_diagnostic = None
@@ -521,9 +520,25 @@ def run_analyzer_process(pipeline, ignore_child_interrupts_fn=None):
                 if zero_copy_dual_view and not slot_released:
                     pipeline.q_free.put(slot)
                     slot_released = True
+                render_stages['split_wall_ms'] = (time.perf_counter_ns() - split_started) / 1e6
+                post_overlay_started = time.perf_counter_ns()
+                if draw_full_frame_racket and zero_copy_dual_view:
+                    from racket_pose_detector import draw_racket_pose
+                    if getattr(dual_frame, "front_frame", None) is not None and getattr(dual_frame, "front_info", None) is not None:
+                        draw_racket_pose(
+                            dual_frame.front_frame,
+                            data['racket_pose'],
+                            coord_mapper=dual_frame.front_info.map_from_original,
+                        )
+                    if getattr(dual_frame, "back_frame", None) is not None and getattr(dual_frame, "back_info", None) is not None:
+                        draw_racket_pose(
+                            dual_frame.back_frame,
+                            data['racket_pose'],
+                            coord_mapper=dual_frame.back_info.map_from_original,
+                        )
                 if joint_diagnostic is not None and getattr(dual_frame, "front_info", None) is not None:
                     joint_2d_live.draw_source(dual_frame.front_frame, coord_mapper=dual_frame.front_info.map_from_original)
-                render_stages['split_wall_ms'] = (time.perf_counter_ns() - split_started) / 1e6
+                render_stages['racket_overlay_wall_ms'] += (time.perf_counter_ns() - post_overlay_started) / 1e6
                 rendered_canvas = dual_view_renderer.render_dual_frame(
                     dual_frame,
                     pose_res,

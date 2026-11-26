@@ -114,6 +114,7 @@ pipeline_perf:
   reader_read_timeout_ms: 2000                 # 实时码流单次读取超时
   live_reconnect: true                         # 直播断流后自动重连
   live_reconnect_delay: 0.5                    # 重连间隔（秒）
+  stream_nominal_fps_enabled: true             # 固定帧率实时码流（如25FPS摄像头）按源帧序号/标称FPS推算源时间，不受传输延迟影响
   video_encoder_backend: auto                  # macOS优先VideoToolbox，不可用时回退OpenCV
   video_encoder_bitrate: 12M                   # 1440p H.264目标码率
   dual_view_enabled: true                      # 双窗口对比显示（关闭可明显提速）
@@ -137,7 +138,7 @@ realtime_swing:
   clip_jpeg_quality: 85                        # 实时片段缓存质量
   frame_output_enabled: false                  # 异步输出逐帧JSONL和最近帧JSON
   frame_snapshot_size: 200                     # 最近帧JSON保留数量
-  frame_flush_interval: 5                      # 每5个处理帧刷新逐帧文件
+  frame_flush_interval: 25                     # 每25个处理帧（约1秒）刷新快照与磁盘缓冲，降低实时GIL与I/O抖动
   coach_enabled: false                         # 为每个确认挥拍生成1-3条本地动作纠错
   coach_max_chars: 15                          # 建议硬上限15字
   coach_max_suggestions: 3                     # 每次挥拍最多输出3条，coach_advice仍保留第一条
