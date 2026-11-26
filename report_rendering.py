@@ -218,13 +218,25 @@ def render_standalone_report_html(payload: Dict, output_path: str) -> str:
                     kmh_text += ' <span style="font-size:10px;color:#d97706;font-weight:normal;display:block;margin-top:2px;">⚠️ [地面单应性投影 · 缺失高度去偏] (建议核验站位高度)</span>'
             elif "degraded" in speed_status:
                 speed_label = "球拍像面像素速度 (单应性已自动降级)"
-                kmh_text = f"{contact_px_s:.0f} px/s" if contact_px_s is not None else "未观测"
+                contact_window_px_s = rkt.get("contact_window_px_s")
+                if contact_px_s is not None:
+                    kmh_text = f"{contact_px_s:.0f} px/s"
+                elif contact_window_px_s is not None:
+                    kmh_text = f"{float(contact_window_px_s):.0f} px/s（触球±2帧峰值）"
+                else:
+                    kmh_text = "未观测"
                 if max_px_s is not None:
                     kmh_text += f" · 原始峰值 {max_px_s:.0f} px/s"
                 kmh_text += ' <span style="font-size:10px;color:#d97706;font-weight:normal;display:block;margin-top:2px;">⚠️ [单应性几何退化/越界 · 已平滑降级至像面像素]</span>'
             else:
                 speed_label = "球拍框中心像素速度 (未标定)"
-                kmh_text = f"{contact_px_s:.0f} px/s" if contact_px_s is not None else "未观测"
+                contact_window_px_s = rkt.get("contact_window_px_s")
+                if contact_px_s is not None:
+                    kmh_text = f"{contact_px_s:.0f} px/s"
+                elif contact_window_px_s is not None:
+                    kmh_text = f"{float(contact_window_px_s):.0f} px/s（触球±2帧峰值）"
+                else:
+                    kmh_text = "未观测"
                 if max_px_s is not None:
                     kmh_text += f" · 原始峰值 {max_px_s:.0f} px/s"
                 kmh_text += ' <span style="font-size:10px;color:#dc2626;font-weight:normal;display:block;margin-top:2px;">⚠️ [缺少机位场地标定矩阵 H · km/h 未标定]</span>'
@@ -692,6 +704,7 @@ def render_live_report_html(document: Dict, manager: Any) -> str:
             return display_value(section, field) if section.get('measurement_evidence') else None
 
         contact_px_s, max_px_s = rkt.get('contact_px_s'), rkt.get('max_px_s')
+        contact_window_px_s = rkt.get('contact_window_px_s')
         contact_kmh = rkt.get('contact_kmh') if rkt.get('contact_kmh') is not None else rkt.get('contact_speed_kmh')
         max_kmh = rkt.get('max_kmh') if rkt.get('max_kmh') is not None else rkt.get('max_speed_kmh')
         speed_status = rkt.get('status', 'uncalibrated')
@@ -722,13 +735,23 @@ def render_live_report_html(document: Dict, manager: Any) -> str:
                 speed_text += ' <span style="font-size:10px;color:#fbbf24;font-weight:normal;display:block;margin-top:2px;">⚠️ [地面单应性投影 · 缺失高度去偏] (建议核验站位高度)</span>'
         elif "degraded" in speed_status:
             speed_label = "球拍像面像素速度 (单应性已自动降级)"
-            speed_text = f"{float(contact_px_s):.0f} px/s" if contact_px_s is not None else "未观测"
+            if contact_px_s is not None:
+                speed_text = f"{float(contact_px_s):.0f} px/s"
+            elif contact_window_px_s is not None:
+                speed_text = f"{float(contact_window_px_s):.0f} px/s（触球±2帧峰值）"
+            else:
+                speed_text = "未观测"
             if max_px_s is not None:
                 speed_text += f" · 事件峰值 {float(max_px_s):.0f} px/s"
             speed_text += ' <span style="font-size:10px;color:#fbbf24;font-weight:normal;display:block;margin-top:2px;">⚠️ [单应性几何退化/越界 · 已平滑降级至像面像素]</span>'
         else:
             speed_label = '球拍框中心像素速度 (未标定)'
-            speed_text = f"{float(contact_px_s):.0f} px/s" if contact_px_s is not None else '未观测'
+            if contact_px_s is not None:
+                speed_text = f"{float(contact_px_s):.0f} px/s"
+            elif contact_window_px_s is not None:
+                speed_text = f"{float(contact_window_px_s):.0f} px/s（触球±2帧峰值）"
+            else:
+                speed_text = '未观测'
             if max_px_s is not None:
                 speed_text += f" · 事件峰值 {float(max_px_s):.0f} px/s"
             speed_text += ' <span style="font-size:10px;color:#f87171;font-weight:normal;display:block;margin-top:2px;">⚠️ [缺少机位场地标定矩阵 H · km/h 未标定]</span>'

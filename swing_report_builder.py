@@ -109,12 +109,31 @@ def _build_kinematic_sequence_html(sequence: Dict) -> str:
         "unavailable": "证据不足 · 需复核",
         "legacy_single_view": "历史单视角 · 未验证",
     }
+    reg_ref = details.get("cadence_regularized_reference")
+    reg_ref = reg_ref if isinstance(reg_ref, dict) else None
     if not qualified and cross_status in labels:
         status = labels[cross_status]
         if cross_status == "unavailable" and cross.get("reason") == "cadence_sensitive_peak":
-            status = "短间隔敏感 · 暂停判定"
+            if reg_ref and number(reg_ref.get("latency_hip_to_shoulder_ms")) is not None:
+                status = "等帧率参考 · 已抑制PTS抖动"
+            else:
+                status = "短间隔敏感 · 暂停判定"
             badge_class = "cadence-sensitive"
     view_rows = []
+    if reg_ref and number(reg_ref.get("latency_hip_to_shoulder_ms")) is not None:
+        reg_hip = number(reg_ref.get("latency_hip_to_shoulder_ms"))
+        reg_parts = [f"髋—肩 {reg_hip:+.1f} ms"]
+        reg_sh = number(reg_ref.get("latency_shoulder_to_racket_ms"))
+        reg_cand_sh = number(reg_ref.get("candidate_latency_shoulder_to_racket_ms"))
+        if reg_sh is not None:
+            reg_parts.append(f"肩—拍 {reg_sh:+.1f} ms")
+        elif reg_cand_sh is not None:
+            reg_parts.append(f"候选肩—拍 {reg_cand_sh:+.1f} ms")
+        view_rows.append(
+            "<div>等帧率规则化参考（已抑制PTS短间隔抖动，未改写原始PTS）："
+            + html.escape(" · ".join(reg_parts))
+            + "。</div>"
+        )
     audit = details.get('cadence_audit') or {}
     if audit:
         frames = audit.get('short_interval_source_frames', [])

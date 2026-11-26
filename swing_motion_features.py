@@ -288,14 +288,14 @@ def extract_motion_features(
             primary.get('observed') is False or
             ('confidence' in primary and (finite_number(primary['confidence']) is None or not 0 <= primary['confidence'] <= 1)) or
             (primary.get('source_frame_id') is not None and (type(primary['source_frame_id']) is not int or primary['source_frame_id'] != frame.get('frame_id')))))
-        ss_7pt, ht_7pt = (None, None) if invalid_primary else _extract_7pt_racket_keypoints(frame, dominant_hand)
+        ss_7pt, ht_7pt = _extract_7pt_racket_keypoints(frame, dominant_hand)
         if ss_7pt is not None or ht_7pt is not None:
             rkt = ss_7pt if ss_7pt is not None else ht_7pt
             pt_type = "sweet_spot_7pt" if ss_7pt is not None else "head_top_7pt"
         else:
             box = None if invalid_primary else frame.get("racket")
             rkt = _racket_center([{"box": box}]) if isinstance(box, (list, tuple)) and len(box) == 4 else _point(box)
-            if rkt is None:
+            if rkt is None and not invalid_container:
                 rkt = _racket_center([d for d in detections if isinstance(d, dict) and
                     (d.get('source_frame_id') is None or (type(d['source_frame_id']) is int and d['source_frame_id'] == frame.get('frame_id')))])
             pt_type = "box_center" if rkt is not None else "unavailable"

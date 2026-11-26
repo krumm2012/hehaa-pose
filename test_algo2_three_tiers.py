@@ -166,6 +166,94 @@ class TestAlgo2ThreeTiers(unittest.TestCase):
         )
         self.assertEqual(out.shape, (720, 1080, 3))
 
+    def test_fresh_7pt_racket_pose_not_blocked_by_unobserved_legacy_box(self):
+        """7 点独立新鲜观测不应被旧 960 恢复占位框连坐丢弃，而畸形容器仍应拦截 legacy 回退。"""
+        frames = [
+            {
+                "frame_id": 1,
+                "source_time": {
+                    "schema_version": "tennis.source-time.v1",
+                    "source_kind": "video_file",
+                    "source_frame_id": 1,
+                    "timestamp_seconds": 0.04,
+                    "basis": "media_pts",
+                    "quality": "reported",
+                },
+                "rackets": [{"box": [10, 10, 50, 50], "confidence": 0.3, "observed": False, "source_frame_id": 0}],
+                "racket": [10, 10, 50, 50],
+                "racket_pose": {
+                    "frame_id": 1,
+                    "status": "observed",
+                    "candidates": [
+                        {
+                            "observed": True,
+                            "source_frame_id": 1,
+                            "confidence": 0.85,
+                            "keypoints": {
+                                "sweet_spot": {"x": 300.0, "y": 200.0, "confidence": 0.9, "observed": True, "source_frame_id": 1}
+                            },
+                        }
+                    ],
+                },
+            },
+            {
+                "frame_id": 2,
+                "source_time": {
+                    "schema_version": "tennis.source-time.v1",
+                    "source_kind": "video_file",
+                    "source_frame_id": 2,
+                    "timestamp_seconds": 0.08,
+                    "basis": "media_pts",
+                    "quality": "reported",
+                },
+                "rackets": "malformed",
+                "racket": [10, 10, 50, 50],
+            },
+        ]
+        feats = extract_motion_features(frames, dominant_hand="right")
+        self.assertEqual(feats[0]["racket_measurement_point"], (300.0, 200.0))
+        self.assertEqual(feats[0]["racket_measurement_point_type"], "sweet_spot_7pt")
+        self.assertIsNone(feats[1]["racket_measurement_point"])
+        self.assertEqual(feats[1]["racket_measurement_point_type"], "unavailable")
+
+    def test_contact_window_speed_fallback_when_contact_frame_speed_missing(self):
+        """触球帧速度缺失时应保留 contact_px_s=None，同时计算触球邻近窗口峰值 contact_window_px_s。"""
+        features_in_event = []
+        for f in range(18):
+            speed = None
+            if f == 9:
+                speed = 1800.0
+            elif f == 15:
+                speed = 2400.0
+            features_in_event.append({
+                "frame_id": f,
+                "source_time": {
+                    "schema_version": "tennis.source-time.v1",
+                    "source_kind": "video_file",
+                    "source_frame_id": f,
+                    "timestamp_seconds": f * 0.04,
+                    "basis": "media_pts",
+                    "quality": "reported",
+                },
+                "racket_speed_px_s": speed,
+                "racket_center": (300.0 + f * 10.0, 400.0),
+            })
+        ext = _calculate_extended_tier_biomechanics(
+            features_in_event=features_in_event,
+            start_frame=0,
+            contact_frame=10,
+            end_frame=17,
+            body_width=120.0,
+            fps=25.0,
+        )
+        rhs = ext["racket_head_speed"]
+        self.assertIsNone(rhs["contact_px_s"])
+        self.assertEqual(rhs["contact_window_px_s"], 1800.0)
+        self.assertEqual(rhs["contact_window_frame_id"], 9)
+        self.assertEqual(rhs["display_px_s"], 1800.0)
+        self.assertEqual(rhs["display_speed_source"], "contact_window_peak")
+        self.assertEqual(rhs["max_px_s"], 2400.0)
+
 
 if __name__ == "__main__":
     unittest.main()

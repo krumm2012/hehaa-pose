@@ -491,6 +491,28 @@ def _calculate_extended_tier_biomechanics(
     image_peak = max((f["racket_speed_px_s"] for f in speed_samples), default=None)
     contact_image_speed = contact_f.get("racket_speed_px_s")
 
+    contact_speed_window = windows.around(contact_frame, before=0.08, after=0.08, legacy_before=2, legacy_after=2)
+    contact_window_speed_samples = [
+        features_by_id[fid]
+        for fid in contact_speed_window.frame_ids
+        if fid in features_by_id and features_by_id[fid].get("racket_speed_px_s") is not None
+    ]
+    contact_window_best = max(
+        contact_window_speed_samples,
+        key=lambda f: f["racket_speed_px_s"],
+        default=None,
+    )
+    contact_window_px_s = contact_window_best["racket_speed_px_s"] if contact_window_best is not None else None
+    contact_window_frame_id = int(contact_window_best["frame_id"]) if contact_window_best is not None else None
+    if contact_image_speed is not None:
+        display_px_s, display_speed_source = contact_image_speed, "contact_frame"
+    elif contact_window_px_s is not None:
+        display_px_s, display_speed_source = contact_window_px_s, "contact_window_peak"
+    elif image_peak is not None:
+        display_px_s, display_speed_source = image_peak, "event_peak"
+    else:
+        display_px_s, display_speed_source = None, None
+
     kmh_samples = [f["racket_head_speed_kmh"] for f in features_in_event if f.get("racket_head_speed_kmh") is not None]
     max_kmh = max(kmh_samples, default=None)
     contact_kmh = contact_f.get("racket_head_speed_kmh")
@@ -563,6 +585,11 @@ def _calculate_extended_tier_biomechanics(
             "max_kmh": round(max_kmh, 1) if max_kmh is not None else None,
             "contact_kmh": round(contact_kmh, 1) if contact_kmh is not None else None,
             "contact_px_s": contact_image_speed,
+            "contact_window_px_s": contact_window_px_s,
+            "contact_window_frame_id": contact_window_frame_id,
+            "contact_window_sample_count": len(contact_window_speed_samples),
+            "display_px_s": display_px_s,
+            "display_speed_source": display_speed_source,
             "max_px_s": image_peak,
             "sample_count": len(speed_samples),
             "source_frames": [f["frame_id"] for f in speed_samples],
@@ -887,6 +914,36 @@ def aggregate_event_biomechanics(
             fps_val,
             window_seconds=(-0.60, follow_through_win),
         )
+        ks_cross_reason = (ext["kinematic_sequence"].get("cross_validation") or {}).get("reason")
+        ks_racket_status = (ext["kinematic_sequence"].get("racket_evidence") or {}).get("status")
+        if ks_cross_reason == "cadence_sensitive_peak" or ks_racket_status == "cadence_sensitive_peak":
+            reg_seq = analyze_kinematic_sequence(
+                frames,
+                contact_frame,
+                fps_val,
+                window_seconds=(-0.60, follow_through_win),
+                regularize_cadence=True,
+            )
+            if (reg_seq.get("cross_validation") or {}).get("status") in ("agree", "single_view"):
+                ext["kinematic_sequence"]["cadence_regularized_reference"] = {
+                    "policy": "nominal_fps_cadence_regularized_reference_v1",
+                    "fps": round(fps_val, 3),
+                    "cross_validation_status": (reg_seq.get("cross_validation") or {}).get("status"),
+                    "sequence_quality": reg_seq.get("sequence_quality"),
+                    "hip_peak_frame": reg_seq.get("hip_peak_frame"),
+                    "shoulder_peak_frame": reg_seq.get("shoulder_peak_frame"),
+                    "racket_peak_frame": reg_seq.get("racket_peak_frame"),
+                    "racket_candidate_peak_frame": reg_seq.get("racket_candidate_peak_frame"),
+                    "racket_candidate_peak_speed": reg_seq.get("racket_candidate_peak_speed"),
+                    "latency_hip_to_shoulder_ms": reg_seq.get("latency_hip_to_shoulder_ms"),
+                    "latency_shoulder_to_racket_ms": reg_seq.get("latency_shoulder_to_racket_ms"),
+                    "candidate_latency_shoulder_to_racket_ms": reg_seq.get("candidate_latency_shoulder_to_racket_ms"),
+                    "sampling_interval_ms": reg_seq.get("sampling_interval_ms"),
+                    "peak_time_uncertainty_ms": reg_seq.get("peak_time_uncertainty_ms"),
+                    "pair_timing": reg_seq.get("pair_timing"),
+                    "accuracy_validated": False,
+                    "original_timestamps_preserved": True,
+                }
     else:
         ext["kinematic_sequence"].update(
             evidence_confidence=0.0,
