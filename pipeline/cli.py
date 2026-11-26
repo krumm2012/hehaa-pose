@@ -88,6 +88,12 @@ def build_argument_parser():
         default=None,
         help='独立 Core ML 检测子进程数（offline+legacy+dual_view 饱和 ANE；0=关闭，默认离线headless自动选择）',
     )
+    parser.add_argument(
+        '--shm-slots',
+        type=int,
+        default=None,
+        help='覆盖共享内存帧缓冲槽数（offline headless 默认自动压缩至最低安全槽数）',
+    )
     parser.add_argument('--analyze-swings', action='store_true',
                         help='逐帧 JSON 写完后自动生成 Swing 事件 JSON/CSV；不可与 --live-mode 或 --no-frame-results 同用')
     parser.add_argument('--swing-output-json',
@@ -232,6 +238,7 @@ def main_cli(argv=None, pipeline_cls=None):
         output_fps=args.output_fps,
         inference_workers=args.inference_workers,
         det_workers=args.det_workers,
+        shm_slots=args.shm_slots,
         analyze_swings=args.analyze_swings,
         swing_output_json=args.swing_output_json,
         swing_events_csv=args.swing_events_csv,

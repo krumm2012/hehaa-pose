@@ -48,6 +48,24 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
             and not use_interframe
         )
 
+        perf_cfg = pipeline.config.get('pipeline_perf', {})
+        recovery_config = pipeline.config.get("unified_detection", {})
+        max_in_flight = 0
+        if use_det_pool:
+            max_in_flight = max(det_workers + 1, min(pipeline.shm_num - 3, det_workers * 2 + 1))
+            det_pool = DetWorkerPool(
+                num_workers=det_workers,
+                cfg_dict=pipeline.config,
+                roi_profile=pipeline.roi_profile,
+                frame_size=(pipeline.width, pipeline.height),
+                algo2_dual_view=pipeline.algo2_dual_view,
+                shm_names=pipeline.shm_names,
+                retain_racket_candidates=bool(recovery_config.get("racket_temporal_recovery_enabled", False)),
+                warmup=True,
+                opencv_threads=perf_cfg.get('opencv_threads'),
+            )
+            det_pool.launch()
+
         detector = YOLO26nUnifiedDetector(
             pipeline.config['unified_detection']['model_path'],
             pipeline.config['unified_detection'],
@@ -66,7 +84,6 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
                 config_path=pipeline.algo2_config_path,
                 stream_profile=pipeline.roi_profile,
             )
-            perf_cfg = pipeline.config.get('pipeline_perf', {})
             dual_pose_estimator = DualPoseEstimator(
                 model_path=pipeline.config.get('yolo_pose_model_path'),
                 dominant_hand=pipeline.swing_analysis_options.get('dominant_hand', 'right'),
@@ -92,7 +109,6 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
             np.ndarray((pipeline.height, pipeline.width, 3), dtype=np.uint8, buffer=s.buf)
             for s in shms
         ]
-        perf_cfg = pipeline.config.get('pipeline_perf', {})
         unified_workers = (
             pipeline.config.get('unified_detection', {}).get('max_workers')
             or pipeline.config.get('performance_optimization', {}).get('max_workers')
@@ -105,20 +121,21 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
         print(f"⚙️ [Inference] 启动调度: {pipeline.inference_schedule} | 球拍 IPC: {pipeline.racket_pose_config['ipc_transport']}")
         if pipeline.algo2_dual_view:
             print("⚙️ [Inference] 人体ROI缩放: " + perf_cfg.get('pose_resize_policy', 'legacy'))
+        if pipeline.lossless_realtime or use_det_pool:
+            from pipeline_startup import warm_coreml_wrappers
+            if dual_pose_estimator is not None:
+                pose_wrappers = (
+                    [dual_pose_estimator.model_front]
+                    if dual_pose_estimator.model_front is dual_pose_estimator.model_back
+                    else [dual_pose_estimator.model_front, dual_pose_estimator.model_back]
+                )
+            else:
+                pose_wrappers = [pose_estimator]
+            wrappers = pose_wrappers if use_det_pool else [detector, *pose_wrappers]
+            warming = warm_coreml_wrappers(wrappers)
+            print(f'🔥 [Inference] 源帧开始前完成 Core ML 内核预热: {warming} ms')
         if use_det_pool:
-            max_in_flight = min(pipeline.shm_num - 3, det_workers * 3 + 2)
-            det_pool = DetWorkerPool(
-                num_workers=det_workers,
-                cfg_dict=pipeline.config,
-                roi_profile=pipeline.roi_profile,
-                frame_size=(pipeline.width, pipeline.height),
-                algo2_dual_view=pipeline.algo2_dual_view,
-                shm_names=pipeline.shm_names,
-                retain_racket_candidates=bool(pipeline.config.get("unified_detection", {}).get("racket_temporal_recovery_enabled", False)),
-                warmup=True,
-                opencv_threads=perf_cfg.get('opencv_threads'),
-            )
-            det_pool.start()
+            det_pool.wait_ready()
             print(
                 f"⚡ [Inference] 多进程 ANE 检测池已就绪 | Det进程: {det_workers} + 主进程顺序Pose | "
                 f"在途窗口: {max_in_flight}"
@@ -144,19 +161,6 @@ def run_inference_process(pipeline, ignore_child_interrupts_fn=None):
             )
             if racket_pose_runtime.disabled_reason:
                 print('⚠️ [RacketPose] 旁路停用，保留旧链路: ' + racket_pose_runtime.disabled_reason)
-        if pipeline.lossless_realtime or use_det_pool:
-            from pipeline_startup import warm_coreml_wrappers
-            if dual_pose_estimator is not None:
-                pose_wrappers = (
-                    [dual_pose_estimator.model_front]
-                    if dual_pose_estimator.model_front is dual_pose_estimator.model_back
-                    else [dual_pose_estimator.model_front, dual_pose_estimator.model_back]
-                )
-            else:
-                pose_wrappers = [pose_estimator]
-            wrappers = pose_wrappers if use_det_pool else [detector, *pose_wrappers]
-            warming = warm_coreml_wrappers(wrappers)
-            print(f'🔥 [Inference] 源帧开始前完成 Core ML 内核预热: {warming} ms')
         pipeline.inf_ready.set()
 
         from racket_temporal_tracker import RacketTemporalTracker

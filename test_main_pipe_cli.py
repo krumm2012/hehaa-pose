@@ -178,6 +178,7 @@ class MainPipeCliTests(unittest.TestCase):
             '--racket-pose-mode', 'shadow',
             '--racket-model-profile', '640_shadow',
             '--det-workers', '2',
+            '--shm-slots', '10',
             '--analyze-swings',
         ])
 
@@ -187,6 +188,7 @@ class MainPipeCliTests(unittest.TestCase):
         self.assertEqual(kwargs['pose_model'], 'yolo26n-pose.mlpackage')
         self.assertEqual(kwargs['racket_model_profile'], '640_shadow')
         self.assertEqual(kwargs['det_workers'], 2)
+        self.assertEqual(kwargs['shm_slots'], 10)
 
     def test_headless_mode_disables_render_and_realtime_sidecars(self):
         import tempfile
@@ -225,8 +227,9 @@ class MainPipeCliTests(unittest.TestCase):
             self.assertEqual(pipe.racket_pose_config['imgsz'], 640)
             self.assertEqual(pipe.racket_pose_config['mode'], 'shadow')
             self.assertEqual(pipe.det_workers, 0)
+            self.assertEqual(pipe.shm_num, 4)
 
-            # Auto det_workers selection for offline headless legacy dual-view
+            # Auto det_workers & tight headless shm_num selection for offline headless legacy dual-view
             with patch.object(MultiprocessPipeline, '_open_capture', return_value=fake_cap):
                 pipe_auto_n = MultiprocessPipeline(
                     'configs/yolo26_tennis_config.yaml',
@@ -240,7 +243,7 @@ class MainPipeCliTests(unittest.TestCase):
                     racket_pose_mode='legacy',
                 )
             self.assertEqual(pipe_auto_n.det_workers, 2)
-            self.assertGreaterEqual(pipe_auto_n.shm_num, 16)
+            self.assertEqual(pipe_auto_n.shm_num, 8)
 
             with patch.object(MultiprocessPipeline, '_open_capture', return_value=fake_cap):
                 pipe_auto_m = MultiprocessPipeline(
@@ -255,7 +258,37 @@ class MainPipeCliTests(unittest.TestCase):
                     racket_pose_mode='legacy',
                 )
             self.assertEqual(pipe_auto_m.det_workers, 1)
-            self.assertGreaterEqual(pipe_auto_m.shm_num, 12)
+            self.assertEqual(pipe_auto_m.shm_num, 6)
+
+            with patch.object(MultiprocessPipeline, '_open_capture', return_value=fake_cap):
+                pipe_custom_slots = MultiprocessPipeline(
+                    'configs/yolo26_tennis_config.yaml',
+                    input_path='data/example.mp4',
+                    output_path=out_path,
+                    processing_mode='offline',
+                    algo2_dual_view=True,
+                    headless=True,
+                    analyze_swings=True,
+                    pose_model='yolo26n-pose.mlpackage',
+                    racket_pose_mode='legacy',
+                    shm_slots=10,
+                )
+            self.assertEqual(pipe_custom_slots.shm_num, 10)
+
+            with patch.object(MultiprocessPipeline, '_open_capture', return_value=fake_cap):
+                with self.assertRaises(ValueError):
+                    MultiprocessPipeline(
+                        'configs/yolo26_tennis_config.yaml',
+                        input_path='data/example.mp4',
+                        output_path=out_path,
+                        processing_mode='offline',
+                        algo2_dual_view=True,
+                        headless=True,
+                        pose_model='yolo26n-pose.mlpackage',
+                        racket_pose_mode='legacy',
+                        det_workers=2,
+                        shm_slots=5,
+                    )
 
             with patch.object(MultiprocessPipeline, '_open_capture', return_value=fake_cap):
                 pipe_non_headless = MultiprocessPipeline(

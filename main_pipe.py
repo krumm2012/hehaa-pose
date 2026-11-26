@@ -68,6 +68,7 @@ class MultiprocessPipeline:
         output_fps=None,
         inference_workers=None,
         det_workers=None,
+        shm_slots=None,
         analyze_swings=False,
         swing_output_json=None,
         swing_events_csv=None,
@@ -609,12 +610,29 @@ class MultiprocessPipeline:
             self.output_fps = self.fps
 
         # --- 共享内存池 ---
-        min_normal_slots = 6 if self.processing_mode == 'offline' else 3
-        normal_slots = max(min_normal_slots, int(perf_cfg.get('reader_buffer_slots', 12)))
-        if getattr(self, 'det_workers', 0) > 0:
-            normal_slots = max(normal_slots, self.det_workers * 4 + 8)
+        det_worker_count = max(0, int(getattr(self, 'det_workers', 0) or 0))
+        min_safe_slots = (det_worker_count + 4) if det_worker_count > 0 else 3
+        configured_shm_slots = shm_slots if shm_slots is not None else perf_cfg.get('shm_slots')
         live_slots = max(3, int(perf_cfg.get('live_reader_buffer_slots', 3)))
-        self.shm_num = live_slots if self.live_mode else normal_slots
+        if configured_shm_slots is not None:
+            requested_slots = int(configured_shm_slots)
+            if requested_slots < min_safe_slots:
+                raise ValueError(
+                    f"shm_slots={requested_slots} is below minimum safe count {min_safe_slots}"
+                )
+            self.shm_num = requested_slots
+        elif self.live_mode:
+            self.shm_num = live_slots
+        elif self.headless:
+            self.shm_num = (det_worker_count * 2 + 4) if det_worker_count > 0 else 4
+        else:
+            min_normal_slots = 6 if self.processing_mode == 'offline' else 3
+            normal_slots = max(
+                min_normal_slots,
+                int(perf_cfg.get('reader_buffer_slots', 12)),
+                min_safe_slots,
+            )
+            self.shm_num = normal_slots
         run_token = f"{os.getpid():x}{uuid.uuid4().hex[:4]}"
         self.shm_names = [f"tns3_{run_token}_{i}" for i in range(self.shm_num)]
         self.frame_size = self.height * self.width * 3

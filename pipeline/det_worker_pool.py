@@ -80,15 +80,9 @@ def _det_worker_main(
         ]
 
         if warmup:
-            blank = np.zeros((height, width, 3), dtype=np.uint8)
-            for _ in range(2):
-                raw_detector.detect_unified(
-                    blank,
-                    coordinate_offset=(0, 0),
-                    full_frame_size=(width, height),
-                    retain_racket_candidates=retain_racket_candidates,
-                    racket_source="raw_legacy",
-                )
+            from pipeline_startup import warm_coreml_wrappers
+
+            warm_coreml_wrappers([detector])
 
         ready_q.put(("ready", rank))
     except BaseException:
@@ -156,6 +150,7 @@ class DetWorkerPool:
         self._ready_q = self._ctx.Queue()
         self._ready: Dict[int, Tuple[Dict[str, Any], float, int]] = {}
         self._procs: List[Any] = []
+        self._launched = False
         self._closed = False
         self._worker_args = (
             cfg_dict,
@@ -168,8 +163,11 @@ class DetWorkerPool:
             opencv_threads,
         )
 
-    def start(self, timeout: float = 60.0) -> None:
-        """Spawn all detection worker processes and wait until Core ML models are warmed up."""
+    def launch(self) -> None:
+        """Spawn all detection worker processes without waiting for Core ML readiness."""
+        if self._launched or self._closed:
+            return
+        self._launched = True
         (
             cfg_dict,
             roi_profile,
@@ -202,6 +200,10 @@ class DetWorkerPool:
             proc.start()
             self._procs.append(proc)
 
+    def wait_ready(self, timeout: float = 60.0) -> None:
+        """Wait until all launched detection workers report Core ML readiness."""
+        if not self._launched:
+            self.launch()
         deadline = time.monotonic() + max(1.0, float(timeout))
         ready_count = 0
         while ready_count < self.num_workers:
@@ -224,6 +226,11 @@ class DetWorkerPool:
                 raise RuntimeError(f"Detection worker #{rank} startup failed:\n{tb}")
             if status == "ready":
                 ready_count += 1
+
+    def start(self, timeout: float = 60.0) -> None:
+        """Spawn all detection worker processes and wait until Core ML models are warmed up."""
+        self.launch()
+        self.wait_ready(timeout=timeout)
 
     def submit(self, idx: int, slot: int) -> None:
         """Enqueue a shared-memory slot for stateless detection."""

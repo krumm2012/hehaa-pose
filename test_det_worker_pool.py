@@ -175,6 +175,61 @@ class TestVectorizedParsersAndPool(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "boom"):
             pool.get_result(3)
 
+    def test_launch_and_wait_ready_are_idempotent_and_propagate_errors(self):
+        started = []
+
+        class FakeProc:
+            def __init__(self, target=None, args=(), name=None):
+                self.name = name
+                self.alive = False
+
+            def start(self):
+                self.alive = True
+                started.append(self.name)
+
+            def is_alive(self):
+                return self.alive
+
+            def join(self, timeout=None):
+                self.alive = False
+
+        pool = object.__new__(DetWorkerPool)
+        pool.num_workers = 2
+        pool._ctx = SimpleNamespace(Process=FakeProc)
+        pool._in_q = queue.Queue()
+        pool._out_q = queue.Queue()
+        pool._ready_q = queue.Queue()
+        pool._ready = {}
+        pool._procs = []
+        pool._launched = False
+        pool._closed = False
+        pool._worker_args = ({}, None, (640, 480), True, ["s0"], False, True, None)
+
+        pool.launch()
+        pool.launch()  # idempotent second call
+        self.assertEqual(started, ["tennis-det-0", "tennis-det-1"])
+
+        pool._ready_q.put(("ready", 0))
+        pool._ready_q.put(("ready", 1))
+        pool.wait_ready(timeout=2.0)
+        pool.close()
+
+        # Error from a worker aborts wait_ready cleanly
+        pool_err = object.__new__(DetWorkerPool)
+        pool_err.num_workers = 1
+        pool_err._ctx = SimpleNamespace(Process=FakeProc)
+        pool_err._in_q = queue.Queue()
+        pool_err._out_q = queue.Queue()
+        pool_err._ready_q = queue.Queue()
+        pool_err._ready = {}
+        pool_err._procs = []
+        pool_err._launched = False
+        pool_err._closed = False
+        pool_err._worker_args = ({}, None, (640, 480), True, ["s0"], False, True, None)
+        pool_err._ready_q.put(("error", 0, "init_boom"))
+        with self.assertRaisesRegex(RuntimeError, "init_boom"):
+            pool_err.start(timeout=2.0)
+
 
 if __name__ == "__main__":
     unittest.main()
