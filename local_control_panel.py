@@ -1101,6 +1101,7 @@ class LocalPipelineController:
         return _auto_calibrate(
             self.manual_review_paths(report_path),
             payload,
+            config_path=self.config_path,
         )
 
     def _stream(self, stream_id: str) -> Dict[str, Any]:

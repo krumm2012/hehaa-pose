@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from urllib.parse import unquote, urlsplit
 
 from control_panel.settings import MAX_REQUEST_BYTES, MAX_VIDEO_BYTES, VIDEO_SUFFIXES
-from manual_review_workflow import MAX_ANNOTATION_BYTES
+from manual_review_workflow import MAX_ANNOTATION_BYTES, llm_review_request_is_local
 
 if TYPE_CHECKING:
     from local_control_panel import LocalPipelineController
@@ -453,6 +453,9 @@ def create_handler(controller: LocalPipelineController):
                         )
                     )
                 elif path == "/api/manual-review/auto-calibrate":
+                    if payload.get("use_llm") is True and not llm_review_request_is_local(self.headers):
+                        self._send_json({"error": "llm_requires_local_json_request"}, status=HTTPStatus.FORBIDDEN)
+                        return
                     self._send_json(
                         controller.auto_calibrate_manual_review(
                             payload,

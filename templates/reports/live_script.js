@@ -17,11 +17,10 @@
     const evaluateImportedReview = document.getElementById('evaluate-imported-review');
     const evaluateCurrentReview = document.getElementById('evaluate-current-review');
     const autoCalibrateBtn = document.getElementById('auto-calibrate-review');
-    const autoCalibrateAndSave = document.getElementById('auto-calibrate-and-save');
+    const autoCalibrateLlm = document.getElementById('auto-calibrate-llm');
     const autoCalibrateSummary = document.getElementById('auto-calibrate-summary');
     const autoCalibrateSummaryText = document.getElementById('auto-calibrate-summary-text');
     const autoCalibrateCommit = document.getElementById('auto-calibrate-commit');
-    const manuallyEditedEventIds = new Set();
     const annotationStorageKey = `tennis.swing.annotations.v2:${location.pathname}:${eventJsonUrl}`;
     const refreshStorageKey = `tennis.swing.auto-refresh.v1:${location.pathname}`;
     let autoRefreshEnabled = true;
@@ -72,6 +71,8 @@
       return {
         ...humanReviewFromCard(card),
         annotation_id: card.dataset.annotationId,
+        annotation_origin: card.dataset.annotationOrigin || (sourceEventId === null ? 'human' : 'model_prefill'),
+        ...(card.dataset.llmSuggestion ? {llm_suggestion: JSON.parse(card.dataset.llmSuggestion)} : {}),
         source_event_id: sourceEventId,
         predicted_stroke_type: card.dataset.predictedStrokeType || null,
         actual_stroke_type: card.querySelector('[data-field="actual_stroke_type"]').value,
@@ -146,6 +147,8 @@
       validateHumanReview(imported);
       applyHumanReview(card, imported);
       card.dataset.annotationId = identity.annotation_id;
+      card.dataset.annotationOrigin = imported.annotation_origin || 'human';
+      card.dataset.llmSuggestion = imported.llm_suggestion ? JSON.stringify(imported.llm_suggestion) : '';
       card.dataset.peakFrame = frames.peak == null ? '' : String(frames.peak);
       setAnnotationField(card, 'actual_stroke_type', imported.actual_stroke_type);
       setAnnotationField(card, 'count_correct', imported.count_correct);
@@ -231,13 +234,10 @@
     }
 
     function handleAnnotationEdit(event) {
-      if (event.target?.id === 'auto-calibrate-and-save') return;
+      if (event.target?.id === 'auto-calibrate-llm') return;
       const card = event.target?.closest('[data-annotation-card]');
       if (card || annotationWorkspace.contains(event.target)) {
-        if (card?.dataset?.sourceEventId) {
-          const sid = Number(card.dataset.sourceEventId);
-          if (Number.isInteger(sid)) manuallyEditedEventIds.add(sid);
-        }
+        if (card) card.dataset.annotationOrigin = 'human';
         importedReviewPayload = null;
         evaluateImportedReview.disabled = true;
         saveAnnotations();
@@ -300,6 +300,7 @@
       if (!payload) return null;
       const rows = payload.events.map(row => ({
         id:row.annotation_id, source:row.source_event_id ?? null, frames:validateAnnotationFrames(row),
+        origin:row.annotation_origin || 'human',
         type:row.actual_stroke_type, valid:row.valid_hit ?? true, count:row.count_correct ?? true,
         pending:row.needs_review ?? false, tags:[...(row.issue_tags || [])].sort(), note:row.note || '',
         contact:row.contact_review || 'unreviewed',
@@ -404,7 +405,7 @@
       }
     }
 
-    function applyImportedReviewToEditor(payload) {
+    function applyImportedReviewToEditor(payload, markAsHuman = false) {
       if (!payload || !Array.isArray(payload.events)) return;
       let plan;
       try { plan = prepareAnnotationImport(payload); }
@@ -413,6 +414,7 @@
       timelineReviewComplete.checked = Boolean(payload.timeline_review_complete);
       manualEvents.replaceChildren();
       for (const {annotation: imported, card} of plan.assignments) {
+        if (markAsHuman) imported.annotation_origin = 'human';
         if (card) applyAnnotation(card, imported);
         else addMissedEvent(imported, false);
       }
@@ -485,7 +487,7 @@
         if (payload.schema_version !== 'swing_manual_annotations_v2' || !Array.isArray(payload.events)) {
           throw new Error('请选择 swing_manual_annotations_v2 JSON');
         }
-        const applied = applyImportedReviewToEditor(payload);
+        const applied = applyImportedReviewToEditor(payload, true);
         if (!applied) throw new Error('标注身份或帧号未通过校验，原草稿保留');
         importedReviewPayload = applied;
         const pending = payload.events.filter(item => item.needs_review).length;
@@ -506,6 +508,7 @@
       if (!itemDiffs || typeof itemDiffs !== 'object') return;
       const statusLabels = {
         auto_calibrated: { text: '已自动校订', cls: 'auto-badge-ok' },
+        llm_suggested: { text: 'LLM 建议 · 待复核', cls: 'auto-badge-warn' },
         needs_review: { text: '低置信 · 待人工确认', cls: 'auto-badge-warn' },
         filtered_invalid: { text: '已标空挥/误检', cls: 'auto-badge-muted' },
         preserved_manual: { text: '保留人工修改', cls: 'auto-badge-keep' },
@@ -548,16 +551,23 @@
       autoCalibrateBtn.textContent = '正在校订…';
       lastAnnotationInteraction = Date.now();
       try {
+        const currentAnnotations = collectAnnotations();
+        const requestedDraft = reviewFingerprint(currentAnnotations);
         const response = await fetch('/api/manual-review/auto-calibrate', {
           method: 'POST',
           headers: await manualReviewRequestHeaders(),
-          body: JSON.stringify({
-            current_annotations: collectAnnotations(),
-            edited_event_ids: [...manuallyEditedEventIds],
-          }),
+          body: JSON.stringify({ current_annotations: currentAnnotations, use_llm: autoCalibrateLlm?.checked === true }),
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.message || result.error || '自动校订失败');
+        if (result.llm_review?.status === 'stale') {
+          annotationStatus.textContent = '会话证据或已保存的复核已更新，请重新校订。';
+          return;
+        }
+        if (reviewFingerprint(collectAnnotations()) !== requestedDraft) {
+          annotationStatus.textContent = '标注已更新，本次校订结果未回填。';
+          return;
+        }
         const applied = applyImportedReviewToEditor(result.annotations);
         if (!applied) throw new Error('自动校订结果未通过前端校验');
         renderAutoCalibrateBadges(result.item_diffs);
@@ -565,19 +575,21 @@
         const frameEdits = (s.boundary_adjusted_count || 0) + (s.contact_adjusted_count || 0);
         const parts = [
           `共 ${s.total_events || 0} 拍`,
-          `自动确认 ${s.auto_calibrated_count || 0} 拍`,
+          `规则校订 ${s.auto_calibrated_count || 0} 拍`,
           `精修边界/触球 ${frameEdits} 处`,
           `修正类型 ${s.type_corrected_count || 0} 拍`,
           `标为空挥 ${s.filtered_invalid_count || 0} 拍`,
           `待人工确认 ${s.pending_review_count || 0} 拍`,
         ];
+        const llm = result.llm_review;
+        if (llm?.status === 'reviewed') parts.push(`LLM 建议 ${llm.applied_count} 拍`);
+        else if (llm?.status === 'no_candidates') parts.push('没有可发给 LLM 的本地候选');
+        else if (llm?.status === 'not_configured') parts.push('LLM 未配置，已保留规则草稿');
+        else if (llm) parts.push('LLM 未返回可用结果，已保留规则草稿');
         if (s.preserved_manual_count) parts.push(`保留人工修改 ${s.preserved_manual_count} 拍`);
         if (autoCalibrateSummaryText) autoCalibrateSummaryText.textContent = parts.join(' · ');
         if (autoCalibrateSummary) autoCalibrateSummary.hidden = false;
-        annotationStatus.textContent = '已完成一键自动校订并回填表单';
-        if (autoCalibrateAndSave && autoCalibrateAndSave.checked) {
-          await submitManualReview(collectAnnotations());
-        }
+        annotationStatus.textContent = '已回填校订草稿，请复核后再保存评测。';
       } catch (error) {
         annotationStatus.textContent = `自动校订失败：${error.message || String(error)}`;
       } finally {
