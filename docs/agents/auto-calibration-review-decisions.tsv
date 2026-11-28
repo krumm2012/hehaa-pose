@@ -1,0 +1,4 @@
+ts	phase	decision	why	evidence	result
+2026-11-28T01:28:17Z	scope	分两轮提交。先修校订与人工复核，再接入按不确定性路由的 LLM 草稿	本地规则需要独立可用，模型回退和人工保护要能分别复验	manual_review_workflow.py; test_auto_calibrate_manual_review.py	验收包括真实 HTTP、合法和异常模型回复、快速回归与提交
+2026-11-28T01:30:28Z	repro	加三条回归断言确认现有故障	先证明能量为零、低置信被当成无需复核，以及人工行未受保护	test_auto_calibrate_manual_review.py	旧实现退出 1，3 条失败
+2026-11-28T01:31:37Z	rules	复用分段能量，持久化人工修改来源，自动结果保持草稿	有运动但无球证据的事件需要复核。人工确认及已保存修改不由规则推断	swing_event_segmenter.py, manual_review_workflow.py, templates/reports/live_script.js, test_auto_calibrate_manual_review.py	定向 69 项通过，包含规则全部通过但依然不定稿

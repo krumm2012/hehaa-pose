@@ -6,6 +6,7 @@ from pathlib import Path
 from manual_review_workflow import (
     auto_calibrate_manual_review,
     discover_session_paths,
+    process_manual_review,
     validate_manual_annotations,
 )
 
@@ -107,11 +108,36 @@ class AutoCalibrateManualReviewTests(unittest.TestCase):
 
             self.assertFalse(ev2["valid_hit"])
             self.assertFalse(ev2["count_correct"])
-            self.assertFalse(ev2["needs_review"])
+            self.assertTrue(ev2["needs_review"])
+            self.assertGreater(summary["boundary_adjusted_count"], 0)
 
-            # Must pass strict manual annotation validation
             validation = validate_manual_annotations(events_doc, ann, frames, event_path=paths["events"])
-            self.assertTrue(validation["metrics_finalizable"])
+            self.assertFalse(validation["metrics_finalizable"])
+            state = process_manual_review(paths, ann)
+            self.assertFalse(state["evaluation"]["summary"]["metrics_finalized"])
+
+    def test_strong_swing_with_no_ball_stays_open_for_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, _, frames = self._build_session(Path(tmp))
+            for frame in frames:
+                frame["ball"] = None
+            paths["frames"].write_text("".join(json.dumps(row) + "\n" for row in frames))
+            result = auto_calibrate_manual_review(paths)
+            event = result["item_diffs"]["1"]
+            self.assertGreater(event["peak_energy"], 12)
+            self.assertTrue(event["valid_hit"])
+            self.assertTrue(event["needs_review"])
+
+    def test_all_clear_rule_results_do_not_complete_human_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, events, _ = self._build_session(Path(tmp))
+            events["events"] = events["events"][:1]
+            paths["events"].write_text(json.dumps(events))
+            result = auto_calibrate_manual_review(paths)
+            self.assertEqual(result["summary"]["pending_review_count"], 0)
+            self.assertFalse(result["annotations"]["timeline_review_complete"])
+            state = process_manual_review(paths, result["annotations"])
+            self.assertFalse(state["evaluation"]["summary"]["metrics_finalized"])
 
     def test_auto_calibrate_preserves_manually_edited_events(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -135,7 +161,6 @@ class AutoCalibrateManualReviewTests(unittest.TestCase):
                 paths,
                 {
                     "current_annotations": {"schema_version": "swing_manual_annotations_v2", "events": [custom_ev1]},
-                    "edited_event_ids": [1],
                 },
             )
             self.assertEqual(result["summary"]["preserved_manual_count"], 1)
@@ -143,6 +168,12 @@ class AutoCalibrateManualReviewTests(unittest.TestCase):
             self.assertEqual(ev1["actual_stroke_type"], "Serve")
             self.assertEqual(ev1["note"], "人工手改备注")
             self.assertEqual(result["item_diffs"]["1"]["status"], "preserved_manual")
+            self.assertFalse(result["annotations"]["timeline_review_complete"])
+
+            paths["annotations"].write_text(json.dumps(result["annotations"]))
+            prefill = {**custom_ev1, "annotation_origin": "model_prefill", "note": ""}
+            rerun = auto_calibrate_manual_review(paths, {"current_annotations": {"events": [prefill]}})
+            self.assertEqual(rerun["annotations"]["events"][0]["note"], "人工手改备注")
 
 
 if __name__ == "__main__":

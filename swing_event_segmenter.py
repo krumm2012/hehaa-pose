@@ -63,6 +63,16 @@ def _motion_energy(feature: Dict) -> float:
     return max(wrist, racket * 0.75, accel * 0.6, contact)
 
 
+def _smoothed_motion_energy(features, timing):
+    times = [row['timestamp'] for row in features] if timing['source_time_qualified'] else None
+    return _smooth([_motion_energy(row) for row in features], window=3, times=times)
+
+
+def motion_energy_by_frame(features):
+    prepared, timing = candidate_timeline(features)
+    return dict(zip((row['frame_id'] for row in prepared), _smoothed_motion_energy(prepared, timing)))
+
+
 def _median_absolute_deviation(values: List[float]) -> float:
     if not values:
         return 0.0
@@ -709,8 +719,7 @@ def summarize_manual_event_range(
                         'status':'observed' if len(matches)==1 else ('missing' if not matches else 'ambiguous')}
     contacts = [idx for idx in indices if features[idx]['frame_id'] == contact_frame]
     contact_idx = contacts[0] if len(contacts)==1 else None
-    energy = _smooth([_motion_energy(feature) for feature in features], window=3,
-                     times=[f['timestamp'] for f in features] if timing['source_time_qualified'] else None)
+    energy = _smoothed_motion_energy(features, timing)
     peak_idx = max(indices, key=lambda index: float(energy[index]))
     classification = {
         "evidence": dict(classification_evidence or {}),
@@ -995,8 +1004,7 @@ def segment_swing_events(
     features, timing = candidate_timeline(features)
     source_timed = timing['source_time_qualified']
     times = [f['timestamp'] for f in features]
-    energy = _smooth([_motion_energy(f) for f in features], window=3,
-                     times=times if source_timed else None)
+    energy = _smoothed_motion_energy(features, timing)
     fps = _estimate_fps(features)
     if fps:
         peak_result = _segment_by_peaks(

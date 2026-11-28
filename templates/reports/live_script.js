@@ -21,7 +21,6 @@
     const autoCalibrateSummary = document.getElementById('auto-calibrate-summary');
     const autoCalibrateSummaryText = document.getElementById('auto-calibrate-summary-text');
     const autoCalibrateCommit = document.getElementById('auto-calibrate-commit');
-    const manuallyEditedEventIds = new Set();
     const annotationStorageKey = `tennis.swing.annotations.v2:${location.pathname}:${eventJsonUrl}`;
     const refreshStorageKey = `tennis.swing.auto-refresh.v1:${location.pathname}`;
     let autoRefreshEnabled = true;
@@ -72,6 +71,7 @@
       return {
         ...humanReviewFromCard(card),
         annotation_id: card.dataset.annotationId,
+        annotation_origin: card.dataset.annotationOrigin || (sourceEventId === null ? 'human' : 'model_prefill'),
         source_event_id: sourceEventId,
         predicted_stroke_type: card.dataset.predictedStrokeType || null,
         actual_stroke_type: card.querySelector('[data-field="actual_stroke_type"]').value,
@@ -146,6 +146,7 @@
       validateHumanReview(imported);
       applyHumanReview(card, imported);
       card.dataset.annotationId = identity.annotation_id;
+      card.dataset.annotationOrigin = imported.annotation_origin || 'human';
       card.dataset.peakFrame = frames.peak == null ? '' : String(frames.peak);
       setAnnotationField(card, 'actual_stroke_type', imported.actual_stroke_type);
       setAnnotationField(card, 'count_correct', imported.count_correct);
@@ -234,10 +235,7 @@
       if (event.target?.id === 'auto-calibrate-and-save') return;
       const card = event.target?.closest('[data-annotation-card]');
       if (card || annotationWorkspace.contains(event.target)) {
-        if (card?.dataset?.sourceEventId) {
-          const sid = Number(card.dataset.sourceEventId);
-          if (Number.isInteger(sid)) manuallyEditedEventIds.add(sid);
-        }
+        if (card) card.dataset.annotationOrigin = 'human';
         importedReviewPayload = null;
         evaluateImportedReview.disabled = true;
         saveAnnotations();
@@ -300,6 +298,7 @@
       if (!payload) return null;
       const rows = payload.events.map(row => ({
         id:row.annotation_id, source:row.source_event_id ?? null, frames:validateAnnotationFrames(row),
+        origin:row.annotation_origin || 'human',
         type:row.actual_stroke_type, valid:row.valid_hit ?? true, count:row.count_correct ?? true,
         pending:row.needs_review ?? false, tags:[...(row.issue_tags || [])].sort(), note:row.note || '',
         contact:row.contact_review || 'unreviewed',
@@ -548,16 +547,19 @@
       autoCalibrateBtn.textContent = '正在校订…';
       lastAnnotationInteraction = Date.now();
       try {
+        const currentAnnotations = collectAnnotations();
+        const requestedDraft = reviewFingerprint(currentAnnotations);
         const response = await fetch('/api/manual-review/auto-calibrate', {
           method: 'POST',
           headers: await manualReviewRequestHeaders(),
-          body: JSON.stringify({
-            current_annotations: collectAnnotations(),
-            edited_event_ids: [...manuallyEditedEventIds],
-          }),
+          body: JSON.stringify({ current_annotations: currentAnnotations }),
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.message || result.error || '自动校订失败');
+        if (reviewFingerprint(collectAnnotations()) !== requestedDraft) {
+          annotationStatus.textContent = '标注已更新，本次校订结果未回填。';
+          return;
+        }
         const applied = applyImportedReviewToEditor(result.annotations);
         if (!applied) throw new Error('自动校订结果未通过前端校验');
         renderAutoCalibrateBadges(result.item_diffs);
@@ -565,7 +567,7 @@
         const frameEdits = (s.boundary_adjusted_count || 0) + (s.contact_adjusted_count || 0);
         const parts = [
           `共 ${s.total_events || 0} 拍`,
-          `自动确认 ${s.auto_calibrated_count || 0} 拍`,
+          `规则校订 ${s.auto_calibrated_count || 0} 拍`,
           `精修边界/触球 ${frameEdits} 处`,
           `修正类型 ${s.type_corrected_count || 0} 拍`,
           `标为空挥 ${s.filtered_invalid_count || 0} 拍`,
