@@ -37,6 +37,8 @@ from event_source_timing import analyze_event_source_timing
 
 MAX_ANNOTATION_BYTES = 5 * 1024 * 1024
 AUTO_REVIEW_MIN_CONFIDENCE = 0.70
+AUTO_REVIEW_MIN_CONTACT_SCORE = 0.35
+AUTO_REVIEW_MAX_CONTACT_OFFSET = 8
 DEFAULT_REVIEW_CONFIG = Path(__file__).resolve().parent / "configs" / "yolo26_tennis_config.yaml"
 # Serialize review publication across HTTP handler threads in this process.
 _REVIEW_LOCK = threading.RLock()
@@ -503,7 +505,8 @@ def _review_source_revision(paths):
     return tuple(fingerprint(paths[key]) for key in ("events", "frames", "annotations", "state"))
 
 
-def _build_llm_case(event_id, row, votes, contact_feats, original_contact, model_conf, review_reasons, peak_energy):
+def _build_llm_case(event_id, row, votes, contact_feats, original_contact, model_conf,
+                    review_reasons, peak_energy, *, allow_contact_changes):
     current_type = row["actual_stroke_type"]
     contact = row["frames"]["contact"]
     choices = {}
@@ -512,17 +515,19 @@ def _build_llm_case(event_id, row, votes, contact_feats, original_contact, model
             choices[f"stroke:{len(choices) + 1}"] = ReviewChoice(
                 "actual_stroke_type", stroke, {"votes": count},
             )
-    observed = sorted(
-        (item for item in contact_feats if item["frame_id"] != contact
-         and abs(item["frame_id"] - original_contact) <= 8
-         and item.get("ball_racket_distance") is not None and item["contact_score"] >= 0.35),
-        key=lambda item: (-item["contact_score"], abs(item["frame_id"] - contact)),
-    )
-    for index, item in enumerate(observed[:3], 1):
-        choices[f"contact:{index}"] = ReviewChoice("contact", item["frame_id"], {
-            "offset_from_draft_contact": item["frame_id"] - contact,
-            "local_contact_score": round(item["contact_score"], 3),
-        })
+    if allow_contact_changes:
+        observed = sorted(
+            (item for item in contact_feats if item["frame_id"] != contact
+             and abs(item["frame_id"] - original_contact) <= AUTO_REVIEW_MAX_CONTACT_OFFSET
+             and item.get("ball_racket_distance") is not None
+             and item["contact_score"] >= AUTO_REVIEW_MIN_CONTACT_SCORE),
+            key=lambda item: (-item["contact_score"], abs(item["frame_id"] - contact)),
+        )
+        for index, item in enumerate(observed[:3], 1):
+            choices[f"contact:{index}"] = ReviewChoice("contact", item["frame_id"], {
+                "offset_from_draft_contact": item["frame_id"] - contact,
+                "local_contact_score": round(item["contact_score"], 3),
+            })
     if not choices:
         return None
     return ReviewCase(event_id, {
@@ -689,11 +694,28 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict,
         if orig_peak is None:
             orig_peak = (orig_start + orig_end) // 2
 
-        next_start = sorted_events[idx + 1]["start_frame"] if idx + 1 < len(sorted_events) else None
+        next_event = sorted_events[idx + 1] if idx + 1 < len(sorted_events) else None
+        next_start = None
+        if next_event is not None:
+            next_start = next_event["start_frame"]
+            next_protected = protected_rows.get(next_event["event_id"])
+            if next_protected is not None:
+                try:
+                    next_start, _, _ = _annotation_frames(next_protected)
+                except ValueError:
+                    pass
         next_start_limit = next_start - 1 if next_start is not None else (max_fid if feat_by_frame else orig_end)
         lower_bound = max(min_fid, prev_committed_end + 1)
         upper_bound = min(max_fid if feat_by_frame else orig_end, next_start_limit)
         range_conflict = lower_bound > min(orig_end, upper_bound)
+        anchor_within_limits = (
+            not range_conflict and lower_bound <= orig_contact <= upper_bound
+            and orig_contact in feat_by_frame
+        )
+        protect_contact = (
+            anchor_within_limits
+            and feat_by_frame[orig_contact]["contact_score"] >= AUTO_REVIEW_MIN_CONTACT_SCORE
+        )
         if range_conflict:
             lower_bound, upper_bound = orig_start, orig_end
 
@@ -725,28 +747,31 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict,
         if new_end - new_start < 6 and orig_end - orig_start >= 6:
             new_start = max(lower_bound, min(orig_start, upper_bound))
             new_end = max(new_start, min(orig_end, upper_bound))
+        if protect_contact:
+            new_start = min(new_start, orig_contact)
+            new_end = max(new_end, orig_contact)
 
-        # 2. Contact frame refinement: prefer physical ball-racket contact score, else racket/wrist speed peak
-        new_contact = max(new_start, min(orig_contact, new_end))
+        # 2. Keep the observed source anchor or refine a weak anchor with nearby contact evidence.
         contact_feats = [feat_by_frame[f] for f in range(new_start, new_end + 1) if f in feat_by_frame]
-        if contact_feats and not range_conflict:
-            scored = [r for r in contact_feats if float(r.get("contact_score") or 0.0) >= 0.35]
-            if scored:
-                best_c = max(scored, key=lambda r: (float(r.get("contact_score") or 0.0), float(r.get("racket_speed") or 0.0)))
-                cand_contact = best_c["frame_id"]
-            else:
-                near_peak = [r for r in contact_feats if abs(r["frame_id"] - orig_peak) <= 5] or contact_feats
-                best_c = max(
-                    near_peak,
-                    key=lambda r: 0.65 * float(r.get("racket_speed") or 0.0) + 0.35 * float(r.get("wrist_speed") or 0.0),
+        new_contact = None
+        if anchor_within_limits and new_start <= orig_contact <= new_end:
+            new_contact = orig_contact
+            if not protect_contact:
+                best_contact = max(
+                    (row for row in contact_feats
+                     if abs(row["frame_id"] - orig_contact) <= AUTO_REVIEW_MAX_CONTACT_OFFSET
+                     and row["contact_score"] >= AUTO_REVIEW_MIN_CONTACT_SCORE),
+                    key=lambda row: (row["contact_score"], row["racket_speed"]),
+                    default=None,
                 )
-                cand_contact = best_c["frame_id"]
-            if abs(cand_contact - orig_contact) <= 8:
-                new_contact = max(new_start, min(cand_contact, new_end))
+                if best_contact is not None:
+                    new_contact = best_contact["frame_id"]
 
         # 3. Stroke type calibration from frame-level votes & two-hand wrist proximity
         new_type = orig_type if orig_type in VALID_STROKE_TYPES else "Unclear"
-        vote_feats = [feat_by_frame[f] for f in range(max(new_start, new_contact - 6), min(new_end, new_contact + 4) + 1) if f in feat_by_frame]
+        vote_feats = []
+        if new_contact is not None:
+            vote_feats = [feat_by_frame[f] for f in range(max(new_start, new_contact - 6), min(new_end, new_contact + 4) + 1) if f in feat_by_frame]
         votes = Counter(
             str(r.get("raw_swing_type"))
             for r in vote_feats
@@ -789,11 +814,12 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict,
             issue_tags.append("event_boundary")
             changes.append(f"边界 {orig_start}-{orig_end}→{new_start}-{new_end}")
             stats["boundary_adjusted_count"] += 1
-        if abs(new_contact - orig_contact) >= 2:
+        if new_contact is None:
             issue_tags.append("contact_timing")
-            changes.append(f"触球 {orig_contact}→{new_contact}")
-            stats["contact_adjusted_count"] += 1
+            changes.append(f"原触球帧 {orig_contact} 无法保留，触球留空待复核")
         elif new_contact != orig_contact:
+            if abs(new_contact - orig_contact) >= 2:
+                issue_tags.append("contact_timing")
             changes.append(f"触球 {orig_contact}→{new_contact}")
             stats["contact_adjusted_count"] += 1
         if new_type != orig_type:
@@ -815,6 +841,7 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict,
         review_reasons = [reason for condition, reason in (
             (not core_feats, "missing_frame_evidence"),
             (range_conflict, "overlapping_event_range"),
+            (new_contact is None, "contact_anchor_unavailable"),
             (severe_warnings, "event_quality_warning"),
             (not model_conf >= AUTO_REVIEW_MIN_CONFIDENCE, "low_model_confidence"),
             (valid_hit and new_type in {"Unknown", "Unclear"}, "uncertain_stroke_type"),
@@ -830,8 +857,8 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict,
         rationale_parts = list(changes)
         if not rationale_parts:
             rationale_parts.append("与物理证据一致")
-        if needs_review:
-            rationale_parts.append("置信偏低待人工复核")
+        if needs_review and new_contact is not None:
+            rationale_parts.append("待人工复核")
         note_text = "[自动校订] " + "；".join(rationale_parts)
 
         annotation_row = {
@@ -867,9 +894,10 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict,
             "review_reasons": review_reasons,
             "peak_energy": round(peak_energy, 2),
         }
-        if prepare_llm and needs_review and valid_hit and not range_conflict and core_feats:
+        if prepare_llm and needs_review and valid_hit and new_contact is not None and core_feats:
             case = _build_llm_case(event_id, annotation_row, votes, contact_feats, orig_contact,
-                                   model_conf, review_reasons, peak_energy)
+                                   model_conf, review_reasons, peak_energy,
+                                   allow_contact_changes=not protect_contact)
             if case is not None:
                 llm_cases.append(case)
 

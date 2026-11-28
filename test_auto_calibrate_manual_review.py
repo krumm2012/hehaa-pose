@@ -10,6 +10,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from manual_review_llm import ReviewOutcome
 from manual_review_workflow import (
     auto_calibrate_manual_review,
     discover_session_paths,
@@ -171,6 +172,87 @@ class AutoCalibrateManualReviewTests(unittest.TestCase):
             self.assertIsNone(row["frames"]["contact"])
             self.assertTrue(row["needs_review"])
             self.assertEqual(result["llm_review"]["status"], "no_candidates")
+
+    def test_trim_preserves_supported_original_contact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, events, frames = self._build_session(Path(tmp))
+            events["events"][0].update(contact_frame=10, stroke_type="Forehand")
+            frames[10] = _frame(10, 300, 260, ball=[384, 260], racket=[280, 230, 340, 290])
+            frames[16]["ball"] = [310, 196]
+            paths["events"].write_text(json.dumps(events))
+            paths["frames"].write_text("".join(json.dumps(row) + "\n" for row in frames))
+
+            result = auto_calibrate_manual_review(paths)
+            row = result["annotations"]["events"][0]
+            self.assertEqual(row["frames"]["contact"], 10)
+            self.assertEqual(row["frames"]["start"], 10)
+            self.assertLess(row["frames"]["end"], 40)
+            self.assertFalse(row["needs_review"])
+
+    def test_contact_blocked_by_manual_event_stays_blank_for_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, events, frames = self._build_session(Path(tmp))
+            earlier = {**events["events"][0], "event_id": 99, "start_frame": 0, "contact_frame": 3,
+                       "peak_frame": 3, "end_frame": 7}
+            events["events"][0].update(contact_frame=10, stroke_type="Forehand")
+            events["events"].insert(0, earlier)
+            frames[10] = _frame(10, 300, 260, ball=[384, 260], racket=[280, 230, 340, 290])
+            paths["events"].write_text(json.dumps(events))
+            paths["frames"].write_text("".join(json.dumps(row) + "\n" for row in frames))
+            protected = {"source_event_id": 99, "annotation_origin": "human",
+                         "frames": {"start": 0, "contact": 3, "end": 12}}
+            request = {"current_annotations": {"events": [protected]}, "use_llm": True}
+
+            result = auto_calibrate_manual_review(paths, request)
+            rows = {row["source_event_id"]: row for row in result["annotations"]["events"]}
+            self.assertEqual(rows[99], protected)
+            self.assertGreater(rows[1]["frames"]["start"], 12)
+            self.assertIsNone(rows[1]["frames"]["contact"])
+            self.assertTrue(rows[1]["needs_review"])
+            self.assertIn("contact_timing", rows[1]["issue_tags"])
+            self.assertIn("contact_anchor_unavailable", result["item_diffs"]["1"]["review_reasons"])
+            self.assertEqual(result["llm_review"]["status"], "no_candidates")
+
+    def test_missing_contact_observation_stays_blank_for_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, events, frames = self._build_session(Path(tmp))
+            events["events"][0].update(contact_frame=24, stroke_type="Forehand")
+            paths["events"].write_text(json.dumps(events))
+            paths["frames"].write_text("".join(json.dumps(row) + "\n" for row in frames if row["frame_id"] != 24))
+
+            result = auto_calibrate_manual_review(paths)
+            row = result["annotations"]["events"][0]
+            self.assertIsNone(row["frames"]["contact"])
+            self.assertTrue(row["needs_review"])
+            self.assertIn("contact_anchor_unavailable", result["item_diffs"]["1"]["review_reasons"])
+
+    def test_contact_blocked_by_next_manual_event_stays_blank_for_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, events, _ = self._build_session(Path(tmp))
+            events["events"][0].update(contact_frame=24, stroke_type="Forehand")
+            paths["events"].write_text(json.dumps(events))
+            protected = {"source_event_id": 2, "annotation_origin": "human",
+                         "frames": {"start": 20, "contact": 66, "end": 72}}
+
+            result = auto_calibrate_manual_review(paths, {"current_annotations": {"events": [protected]}})
+            adjusted, preserved = result["annotations"]["events"]
+            self.assertEqual(preserved, protected)
+            self.assertLess(adjusted["frames"]["end"], 20)
+            self.assertIsNone(adjusted["frames"]["contact"])
+            self.assertTrue(adjusted["needs_review"])
+
+    def test_llm_cannot_replace_supported_contact_in_low_confidence_event(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, events, _ = self._build_session(Path(tmp))
+            events["events"][0].update(contact_frame=24, stroke_type="Forehand", confidence=0.45)
+            paths["events"].write_text(json.dumps(events))
+
+            with patch("manual_review_workflow.review_uncertain_events",
+                       return_value=ReviewOutcome("no_candidates")) as review:
+                result = auto_calibrate_manual_review(paths, {"use_llm": True})
+
+            self.assertEqual(result["annotations"]["events"][0]["frames"]["contact"], 24)
+            self.assertEqual(review.call_args.args[0], [])
 
     def test_auto_calibrate_preserves_manually_edited_events(self):
         with tempfile.TemporaryDirectory() as tmp:
