@@ -24,10 +24,11 @@ from typing import Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlparse
 
 from local_realtime_coach import LocalRealtimeCoach
+from manual_review_llm import MAX_REVIEW_CASES, ReviewCase, ReviewChoice, review_uncertain_events
 from swing_biomechanics import aggregate_event_biomechanics
 from swing_coach_calibration import calibrate_coaching_event
 from swing_evaluation import evaluate_swing_events
-from evaluation_identity_contract import normalize_evaluation_inputs
+from evaluation_identity_contract import normalize_evaluation_inputs, normalize_model_event_document
 from swing_event_segmenter import motion_energy_by_frame, summarize_manual_event_range
 from swing_motion_features import extract_motion_features
 from swing_session_quality import build_session_quality_dashboard
@@ -36,6 +37,7 @@ from event_source_timing import analyze_event_source_timing
 
 MAX_ANNOTATION_BYTES = 5 * 1024 * 1024
 AUTO_REVIEW_MIN_CONFIDENCE = 0.70
+DEFAULT_REVIEW_CONFIG = Path(__file__).resolve().parent / "configs" / "yolo26_tennis_config.yaml"
 # Serialize review publication across HTTP handler threads in this process.
 _REVIEW_LOCK = threading.RLock()
 VALID_STROKE_TYPES = {
@@ -444,15 +446,125 @@ def process_manual_review(paths: Dict[str, Path], annotation_document: Dict) -> 
 def auto_calibrate_manual_review(
     paths: Dict[str, Path],
     request_payload: Optional[Dict] = None,
+    *,
+    config_path: Path = DEFAULT_REVIEW_CONFIG,
 ) -> Dict:
-    """Auto-calibrate review annotations from per-frame physical and motion evidence."""
-    with _REVIEW_LOCK, (paths['session_dir'] / '.manual_review.lock').open('a') as lock:
+    """Build a rule-based draft and optionally refine it using bounded LLM choices."""
+    payload = request_payload or {}
+    use_llm = payload.get("use_llm") is True
+    lock_path = paths['session_dir'] / '.manual_review.lock'
+    with _REVIEW_LOCK, lock_path.open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
             _recover_review_publication(paths)
-            return _auto_calibrate_manual_review(paths, request_payload or {})
+            revision = _review_source_revision(paths) if use_llm else None
+            result, cases = _auto_calibrate_manual_review(paths, payload, prepare_llm=use_llm)
         finally:
             fcntl.flock(lock, fcntl.LOCK_UN)
+
+    if not use_llm:
+        return result
+    cases.sort(key=lambda case: (case.facts["model_confidence"], case.event_id))
+    cases = cases[:MAX_REVIEW_CASES]
+    outcome = review_uncertain_events(cases, config_path)
+    with _REVIEW_LOCK, lock_path.open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            if _review_source_revision(paths) != revision:
+                return {"schema_version": result["schema_version"], "llm_review": {"status": "stale"}}
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+    _apply_llm_choices(result, cases, outcome)
+    return result
+
+
+def llm_review_request_is_local(headers):
+    host = headers.get("Host", "")
+    try:
+        address = urlparse(f"http://{host}")
+    except ValueError:
+        return False
+    return (
+        address.hostname in {"127.0.0.1", "localhost", "::1"}
+        and address.username is None and not (address.path or address.params or address.query or address.fragment)
+        and headers.get_content_type() == "application/json"
+        and headers.get("Origin") in (None, f"http://{host}")
+    )
+
+
+def _review_source_revision(paths):
+    def fingerprint(path):
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            return None
+        return stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+
+    return tuple(fingerprint(paths[key]) for key in ("events", "frames", "annotations", "state"))
+
+
+def _build_llm_case(event_id, row, votes, contact_feats, original_contact, model_conf, review_reasons, peak_energy):
+    current_type = row["actual_stroke_type"]
+    contact = row["frames"]["contact"]
+    choices = {}
+    for stroke, count in votes.most_common(2):
+        if stroke != current_type and count >= 2:
+            choices[f"stroke:{len(choices) + 1}"] = ReviewChoice(
+                "actual_stroke_type", stroke, {"votes": count},
+            )
+    observed = sorted(
+        (item for item in contact_feats if item["frame_id"] != contact
+         and abs(item["frame_id"] - original_contact) <= 8
+         and item.get("ball_racket_distance") is not None and item["contact_score"] >= 0.35),
+        key=lambda item: (-item["contact_score"], abs(item["frame_id"] - contact)),
+    )
+    for index, item in enumerate(observed[:3], 1):
+        choices[f"contact:{index}"] = ReviewChoice("contact", item["frame_id"], {
+            "offset_from_draft_contact": item["frame_id"] - contact,
+            "local_contact_score": round(item["contact_score"], 3),
+        })
+    if not choices:
+        return None
+    return ReviewCase(event_id, {
+        "current_stroke_type": current_type,
+        "stroke_votes": dict(votes),
+        "draft_contact_score": next((item["contact_score"] for item in contact_feats
+                                     if item["frame_id"] == contact), None),
+        "model_confidence": model_conf,
+        "motion_energy_peak": round(peak_energy, 2),
+        "review_reasons": review_reasons,
+    }, choices)
+
+
+def _apply_llm_choices(result, cases, outcome):
+    result["llm_review"] = {
+        "status": outcome.status, "model": outcome.model, "candidate_count": len(cases), "applied_count": 0,
+    }
+    by_id = {row["source_event_id"]: row for row in result["annotations"]["events"] if row.get("needs_review")}
+    for case in cases:
+        selected = outcome.selections.get(case.event_id)
+        if not selected:
+            continue
+        row = by_id[case.event_id]
+        diff = result["item_diffs"][str(case.event_id)]
+        changes = []
+        for key in selected:
+            choice = case.choices[key]
+            if choice.field == "contact":
+                old = row["frames"]["contact"]
+                row["frames"]["contact"] = choice.value
+                diff["changes"].append(f"LLM 建议触球候选 {old}→{choice.value}")
+                tag = "contact_timing"
+            else:
+                old = row["actual_stroke_type"]
+                row["actual_stroke_type"] = choice.value
+                diff["changes"].append(f"LLM 建议类型 {old}→{choice.value}")
+                tag = "wrong_type"
+            row["issue_tags"] = sorted({*row["issue_tags"], tag})
+            changes.append({"field": choice.field, "from": old, "to": choice.value, "evidence": choice.evidence})
+        row["llm_suggestion"] = {"model": outcome.model, "changes": changes}
+        diff["status"] = "llm_suggested"
+        result["llm_review"]["applied_count"] += 1
 
 
 def _default_human_review_fields(existing: Optional[Dict]) -> Dict:
@@ -485,8 +597,8 @@ def _default_human_review_fields(existing: Optional[Dict]) -> Dict:
     }
 
 
-def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict) -> Dict:
-    event_document = _load_json(paths["events"])
+def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict, *, prepare_llm=False):
+    event_document = normalize_model_event_document(_load_json(paths["events"]))
     frame_records = _load_jsonl(paths["frames"]) if paths["frames"].exists() else []
     model_events = list(event_document.get("events") or [])
     thresholds = (event_document.get("summary") or {}).get("thresholds") or {}
@@ -515,6 +627,7 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict)
                            if isinstance(row, dict) and row.get("source_event_id") is None]
 
     calibrated_events: List[Dict] = []
+    llm_cases = []
     item_diffs: Dict[str, Dict] = {}
     stats = {
         "total_events": len(model_events),
@@ -528,13 +641,10 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict)
     }
 
     prev_committed_end = -1
-    sorted_events = sorted(model_events, key=lambda e: (int(e.get("start_frame", 0)), int(e.get("event_id", 0))))
+    sorted_events = sorted(model_events, key=lambda e: (e["start_frame"] is None, e["start_frame"] or 0, e["event_id"]))
     for idx, event in enumerate(sorted_events):
-        event_id = int(event["event_id"])
-        orig_start = int(event["start_frame"])
-        orig_end = int(event["end_frame"])
-        orig_peak = int(event.get("peak_frame") if event.get("peak_frame") is not None else (orig_start + orig_end) // 2)
-        orig_contact = int(event["contact_frame"]) if event.get("contact_frame") is not None else orig_peak
+        event_id = event["event_id"]
+        orig_start, orig_contact, orig_end = event["start_frame"], event["contact_frame"], event["end_frame"]
         orig_type = str(event.get("stroke_type") or "Unknown")
 
         protected = protected_rows.get(event_id)
@@ -545,7 +655,8 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict)
                 _, _, p_end = _annotation_frames(preserved)
                 prev_committed_end = max(prev_committed_end, p_end)
             except ValueError:
-                prev_committed_end = max(prev_committed_end, orig_end)
+                if orig_end is not None:
+                    prev_committed_end = max(prev_committed_end, orig_end)
             stats["preserved_manual_count"] += 1
             if preserved.get("needs_review"):
                 stats["pending_review_count"] += 1
@@ -558,11 +669,28 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict)
             }
             continue
 
-        next_start_limit = (
-            int(sorted_events[idx + 1]["start_frame"]) - 1
-            if idx + 1 < len(sorted_events)
-            else (max_fid if feat_by_frame else orig_end)
-        )
+        orig_peak = event.get("peak_frame", event["frames"].get("peak"))
+        if None in (orig_start, orig_contact, orig_end):
+            calibrated_events.append({
+                **_default_human_review_fields(None),
+                "annotation_id": f"model-{event_id}", "source_event_id": event_id,
+                "annotation_origin": "auto_calibration", "predicted_stroke_type": orig_type,
+                "actual_stroke_type": orig_type if orig_type in VALID_STROKE_TYPES else "Unclear",
+                "valid_hit": True, "count_correct": False, "needs_review": True,
+                "issue_tags": [], "note": "[自动校订] 缺少源帧锚点，待人工复核",
+                "frames": {"start": orig_start, "contact": orig_contact, "peak": orig_peak, "end": orig_end},
+            })
+            item_diffs[str(event_id)] = {
+                "event_id": event_id, "status": "needs_review", "changes": ["缺少源帧锚点"],
+                "needs_review": True, "valid_hit": True, "review_reasons": ["missing_source_anchor"],
+            }
+            stats["pending_review_count"] += 1
+            continue
+        if orig_peak is None:
+            orig_peak = (orig_start + orig_end) // 2
+
+        next_start = sorted_events[idx + 1]["start_frame"] if idx + 1 < len(sorted_events) else None
+        next_start_limit = next_start - 1 if next_start is not None else (max_fid if feat_by_frame else orig_end)
         lower_bound = max(min_fid, prev_committed_end + 1)
         upper_bound = min(max_fid if feat_by_frame else orig_end, next_start_limit)
         range_conflict = lower_bound > min(orig_end, upper_bound)
@@ -681,7 +809,9 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict)
             w in {"source_end_without_settle_confirmation", "overlapping_event_range", "missing_pose_window"}
             for w in warnings
         )
-        model_conf = float(event.get("confidence") or 0.0)
+        reported_confidence = event.get("confidence")
+        model_conf = (float(reported_confidence) if type(reported_confidence) in (int, float)
+                      and 0 <= reported_confidence <= 1 else 0.0)
         review_reasons = [reason for condition, reason in (
             (not core_feats, "missing_frame_evidence"),
             (range_conflict, "overlapping_event_range"),
@@ -737,6 +867,11 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict)
             "review_reasons": review_reasons,
             "peak_energy": round(peak_energy, 2),
         }
+        if prepare_llm and needs_review and valid_hit and not range_conflict and core_feats:
+            case = _build_llm_case(event_id, annotation_row, votes, contact_feats, orig_contact,
+                                   model_conf, review_reasons, peak_energy)
+            if case is not None:
+                llm_cases.append(case)
 
     for extra in extra_manual_events:
         calibrated_events.append(extra)
@@ -759,7 +894,7 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict)
         "summary": stats,
         "item_diffs": item_diffs,
         "annotations": annotation_document,
-    }
+    }, llm_cases
 
 
 def _process_manual_review(paths: Dict[str, Path], annotation_document: Dict) -> Dict:
@@ -874,7 +1009,7 @@ def refresh_realtime_report(paths: Dict[str, Path]) -> None:
     os.replace(temporary, paths["report"])
 
 
-def make_handler(paths: Dict[str, Path]):
+def make_handler(paths: Dict[str, Path], config_path: Path = DEFAULT_REVIEW_CONFIG):
     session_dir = paths["session_dir"]
 
     class ManualReviewHandler(SimpleHTTPRequestHandler):
@@ -907,7 +1042,10 @@ def make_handler(paths: Dict[str, Path]):
                 if not isinstance(payload, dict):
                     raise ValueError("JSON 根节点必须是对象")
                 if path == "/api/manual-review/auto-calibrate":
-                    state = auto_calibrate_manual_review(paths, payload)
+                    if payload.get("use_llm") is True and not llm_review_request_is_local(self.headers):
+                        self._send_json(403, {"error": "llm_requires_local_json_request"})
+                        return
+                    state = auto_calibrate_manual_review(paths, payload, config_path=config_path)
                 else:
                     if content_length <= 0:
                         raise ValueError("标注文件为空或超过 5 MB")
@@ -940,6 +1078,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Serve a local human-review workflow for one realtime Swing session."
     )
     parser.add_argument("--session-dir", required=True)
+    parser.add_argument("--config", type=Path, default=DEFAULT_REVIEW_CONFIG, help="LLM review configuration")
     parser.add_argument("--host", default="127.0.0.1", choices=["127.0.0.1", "localhost"])
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--open", action="store_true")
@@ -952,7 +1091,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     paths = discover_session_paths(Path(args.session_dir))
     if not args.no_refresh_report:
         refresh_realtime_report(paths)
-    server = ThreadingHTTPServer((args.host, args.port), make_handler(paths))
+    server = ThreadingHTTPServer((args.host, args.port), make_handler(paths, args.config))
     url = f"http://{args.host}:{server.server_port}/{paths['report'].name}"
     print(f"Manual review page: {url}")
     if args.open:

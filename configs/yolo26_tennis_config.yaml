@@ -127,6 +127,11 @@ pipeline_perf:
   drop_stale_frames: false                     # 处理滞后时丢弃旧帧以降低直播延迟
 
 # ==================== 🎾 实时挥拍事件闭环 ====================
+manual_review:
+  llm:
+    provider: deepseek                        # deepseek 或 openai，页面勾选后才调用
+    timeout_seconds: 12
+
 realtime_swing:
   enabled: false                               # 推荐通过 --realtime-swing-events 显式开启
   analysis_interval_frames: 5                  # 每5个已处理帧刷新滚动事件分析

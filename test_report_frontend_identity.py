@@ -189,3 +189,37 @@ function updatePlaybackState(){}
 seekFrame(null);assert.equal(video.currentTime,77);assert.equal(scrubber.value,'previous');
 seekFrame('0');assert.ok(video.currentTime<0.001);
 ''')
+
+    def test_llm_provenance_survives_editor_round_trip(self):
+        self.execute('live', ['integerField', 'setAnnotationField', 'applyAnnotation', 'annotationFromCard'], '''
+const suggestion={model:'stub',changes:[{field:'contact',from:8,to:9}]};
+applyAnnotation(cards[0], {...importPayload.events[0],annotation_origin:'auto_calibration',llm_suggestion:suggestion});
+assert.equal(annotationFromCard(cards[0]).annotation_origin,'auto_calibration');
+assert.deepEqual(annotationFromCard(cards[0]).llm_suggestion,suggestion);
+''')
+
+    def test_calibrate_ignores_results_when_the_editor_changes(self):
+        code = function_source(self.pages['live'], 'runAutoCalibrate').split('\n    if (autoCalibrateBtn)')[0]
+        script = '''
+const assert=require('node:assert/strict');
+const location={protocol:'http:'}, autoCalibrateBtn={textContent:'start'}, autoCalibrateLlm={checked:true};
+const annotationStatus={textContent:''};
+let lastAnnotationInteraction=0, draft={version:1}, applied=0;
+const collectAnnotations=()=>draft, reviewFingerprint=JSON.stringify;
+const manualReviewRequestHeaders=async()=>({});
+function applyImportedReviewToEditor(){applied++;}
+async function fetch(path, options){
+  assert.equal(path,'/api/manual-review/auto-calibrate');
+  assert.deepEqual(JSON.parse(options.body),{current_annotations:{version:1},use_llm:true});
+  draft={version:2};
+  return {ok:true,json:async()=>({annotations:{version:1}})};
+}
+''' + code + '''
+runAutoCalibrate().then(()=>{
+  assert.equal(applied,0);
+  assert.match(annotationStatus.textContent,/标注已更新/);
+  assert.equal(autoCalibrateBtn.disabled,false);
+}).catch(error=>{ console.error(error); process.exitCode=1; });
+'''
+        result = subprocess.run(['node', '-'], input=script, text=True, capture_output=True, timeout=8)
+        self.assertEqual(result.returncode, 0, result.stderr)

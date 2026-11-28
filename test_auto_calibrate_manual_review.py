@@ -1,14 +1,34 @@
 import json
+import os
 import tempfile
+import threading
 import unittest
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
 from manual_review_workflow import (
     auto_calibrate_manual_review,
     discover_session_paths,
+    make_handler,
     process_manual_review,
     validate_manual_annotations,
 )
+
+
+@contextmanager
+def _run_server(handler):
+    with ThreadingHTTPServer(("127.0.0.1", 0), handler) as server:
+        thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+        thread.start()
+        try:
+            yield f"http://127.0.0.1:{server.server_port}"
+        finally:
+            server.shutdown()
+            thread.join()
 
 
 def _frame(fid: int, wrist_x: float, wrist_y: float, ball=None, racket=None, swing_type="Forehand"):
@@ -139,6 +159,19 @@ class AutoCalibrateManualReviewTests(unittest.TestCase):
             state = process_manual_review(paths, result["annotations"])
             self.assertFalse(state["evaluation"]["summary"]["metrics_finalized"])
 
+    def test_missing_anchors_stay_blank_and_are_not_sent_to_the_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths, events, _ = self._build_session(Path(tmp))
+            events["events"] = [events["events"][0]]
+            events["events"][0].update(start_frame=None, contact_frame=None)
+            paths["events"].write_text(json.dumps(events))
+            result = auto_calibrate_manual_review(paths, {"use_llm": True})
+            row = result["annotations"]["events"][0]
+            self.assertIsNone(row["frames"]["start"])
+            self.assertIsNone(row["frames"]["contact"])
+            self.assertTrue(row["needs_review"])
+            self.assertEqual(result["llm_review"]["status"], "no_candidates")
+
     def test_auto_calibrate_preserves_manually_edited_events(self):
         with tempfile.TemporaryDirectory() as tmp:
             paths, _, _ = self._build_session(Path(tmp))
@@ -174,6 +207,89 @@ class AutoCalibrateManualReviewTests(unittest.TestCase):
             prefill = {**custom_ev1, "annotation_origin": "model_prefill", "note": ""}
             rerun = auto_calibrate_manual_review(paths, {"current_annotations": {"events": [prefill]}})
             self.assertEqual(rerun["annotations"]["events"][0]["note"], "人工手改备注")
+
+    def test_llm_draft_http_uses_only_candidates_and_falls_back(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            paths, events, _ = self._build_session(root)
+            events["events"][0].update(event_id=41, stroke_type="Backhand", confidence=0.45)
+            paths["events"].write_text(json.dumps(events))
+            received = []
+            provider_state = {"mode": "valid"}
+
+            class Provider(BaseHTTPRequestHandler):
+                def do_POST(self):
+                    packet = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                    received.append((self.path, packet))
+                    mode = provider_state["mode"]
+                    if mode == "offline":
+                        self.send_error(503)
+                        return
+                    if mode == "stale":
+                        paths["events"].write_text(json.dumps({**events, "updated": True}))
+                    candidates = ["stroke:1", "contact:1"] if mode != "invalid" else ["contact:999"]
+                    content = json.dumps({"reviews": [{"event_id": 1, "candidate_ids": candidates}]})
+                    body = json.dumps({"choices": [{"finish_reason": "stop", "message": {"content": content}}]}).encode()
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(body)
+
+                def log_message(self, *_args):
+                    pass
+
+            with _run_server(Provider) as provider_url, patch.dict(os.environ, {"TENNIS_TEST_REVIEW_KEY": "test-key"}):
+                config = root / "config.yaml"
+                config.write_text(json.dumps({"manual_review": {"llm": {
+                    "provider": "deepseek", "base_url": provider_url, "model": "test-review-model",
+                    "api_key_env": "TENNIS_TEST_REVIEW_KEY",
+                }}}))
+                with _run_server(make_handler(paths, config)) as review_url:
+                    def calibrate(use_llm, headers=None):
+                        draft = {"events": [{"source_event_id": 41, "annotation_origin": "model_prefill",
+                                              "note": "PRIVATE EDITOR NOTE"}]}
+                        body = json.dumps({"current_annotations": draft, "use_llm": use_llm}).encode()
+                        request = Request(review_url + "/api/manual-review/auto-calibrate", data=body,
+                                          headers={"Content-Type": "application/json", **(headers or {})})
+                        with urlopen(request, timeout=5) as response:
+                            return json.load(response)
+
+                    local = calibrate(False)
+                    for headers in ({"Origin": "http://example.test"}, {"Host": "example.test"},
+                                    {"Content-Type": "text/plain"}):
+                        with self.assertRaises(HTTPError) as denied:
+                            calibrate(True, headers)
+                        self.assertEqual(denied.exception.code, 403)
+                    self.assertEqual(received, [])
+                    self.assertEqual(local["annotations"]["events"][0]["actual_stroke_type"], "Backhand")
+                    suggested = calibrate(True)
+                    self.assertEqual(suggested["llm_review"], {
+                        "status": "reviewed", "model": "test-review-model", "candidate_count": 1, "applied_count": 1,
+                    })
+                    row = suggested["annotations"]["events"][0]
+                    self.assertEqual(row["actual_stroke_type"], "Forehand")
+                    self.assertNotEqual(row["frames"]["contact"], local["annotations"]["events"][0]["frames"]["contact"])
+                    self.assertTrue(row["needs_review"])
+                    self.assertEqual(row["contact_review"], "unreviewed")
+                    self.assertEqual(row["llm_suggestion"]["model"], "test-review-model")
+                    self.assertFalse(suggested["annotations"]["timeline_review_complete"])
+                    self.assertFalse(paths["annotations"].exists())
+                    self.assertEqual(received[0][0], "/chat/completions")
+                    outbound = received[0][1]["messages"][-1]["content"]
+                    self.assertNotIn("PRIVATE EDITOR NOTE", outbound)
+                    self.assertNotIn("demo_swing", outbound)
+                    self.assertEqual([case["event_id"] for case in json.loads(outbound)["cases"]], [1])
+
+                    for mode, status in (("invalid", "invalid_response"), ("offline", "unavailable")):
+                        with self.subTest(mode=mode):
+                            provider_state["mode"] = mode
+                            fallback = calibrate(True)
+                            self.assertEqual(fallback["llm_review"]["status"], status)
+                            self.assertEqual(fallback["annotations"], local["annotations"])
+
+                    provider_state["mode"] = "stale"
+                    stale = calibrate(True)
+                    self.assertEqual(stale["llm_review"]["status"], "stale")
+                    self.assertNotIn("annotations", stale)
 
 
 if __name__ == "__main__":
