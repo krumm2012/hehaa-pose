@@ -203,15 +203,18 @@ class AutoCalibrateManualReviewTests(unittest.TestCase):
                          "frames": {"start": 0, "contact": 3, "end": 12}}
             request = {"current_annotations": {"events": [protected]}, "use_llm": True}
 
-            result = auto_calibrate_manual_review(paths, request)
-            rows = {row["source_event_id"]: row for row in result["annotations"]["events"]}
-            self.assertEqual(rows[99], protected)
-            self.assertGreater(rows[1]["frames"]["start"], 12)
-            self.assertIsNone(rows[1]["frames"]["contact"])
-            self.assertTrue(rows[1]["needs_review"])
-            self.assertIn("contact_timing", rows[1]["issue_tags"])
-            self.assertIn("contact_anchor_unavailable", result["item_diffs"]["1"]["review_reasons"])
-            self.assertEqual(result["llm_review"]["status"], "no_candidates")
+            for contact in (3, None):
+                with self.subTest(neighbor_contact=contact):
+                    protected["frames"]["contact"] = contact
+                    result = auto_calibrate_manual_review(paths, request)
+                    rows = {row["source_event_id"]: row for row in result["annotations"]["events"]}
+                    self.assertEqual(rows[99], protected)
+                    self.assertGreater(rows[1]["frames"]["start"], 12)
+                    self.assertIsNone(rows[1]["frames"]["contact"])
+                    self.assertTrue(rows[1]["needs_review"])
+                    self.assertIn("contact_timing", rows[1]["issue_tags"])
+                    self.assertIn("contact_anchor_unavailable", result["item_diffs"]["1"]["review_reasons"])
+                    self.assertEqual(result["llm_review"]["status"], "no_candidates")
 
     def test_missing_contact_observation_stays_blank_for_review(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -234,12 +237,15 @@ class AutoCalibrateManualReviewTests(unittest.TestCase):
             protected = {"source_event_id": 2, "annotation_origin": "human",
                          "frames": {"start": 20, "contact": 66, "end": 72}}
 
-            result = auto_calibrate_manual_review(paths, {"current_annotations": {"events": [protected]}})
-            adjusted, preserved = result["annotations"]["events"]
-            self.assertEqual(preserved, protected)
-            self.assertLess(adjusted["frames"]["end"], 20)
-            self.assertIsNone(adjusted["frames"]["contact"])
-            self.assertTrue(adjusted["needs_review"])
+            for contact in (66, None):
+                with self.subTest(neighbor_contact=contact):
+                    protected["frames"]["contact"] = contact
+                    result = auto_calibrate_manual_review(paths, {"current_annotations": {"events": [protected]}})
+                    adjusted, preserved = result["annotations"]["events"]
+                    self.assertEqual(preserved, protected)
+                    self.assertLess(adjusted["frames"]["end"], 20)
+                    self.assertIsNone(adjusted["frames"]["contact"])
+                    self.assertTrue(adjusted["needs_review"])
 
     def test_llm_cannot_replace_supported_contact_in_low_confidence_event(self):
         with tempfile.TemporaryDirectory() as tmp:

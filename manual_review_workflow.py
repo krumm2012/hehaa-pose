@@ -168,15 +168,24 @@ def discover_session_paths(session_dir: Path) -> Dict[str, Path]:
     }
 
 
-def _annotation_frames(annotation: Dict) -> Tuple[int, int, int]:
+def _annotation_frame(annotation: Dict, name: str):
     frames = annotation.get("frames")
     if frames is None:
         frames = {}
     if not isinstance(frames, dict):
         raise ValueError('标注frames必须是对象')
-    start = frames.get("start", annotation.get("start_frame"))
-    contact = frames.get("contact", annotation.get("contact_frame"))
-    end = frames.get("end", annotation.get("end_frame"))
+    return frames.get(name, annotation.get(f"{name}_frame"))
+
+
+def _manual_boundary(annotation: Dict, name: str, fallback: Optional[int]) -> Optional[int]:
+    try:
+        return require_manual_frame_id(_annotation_frame(annotation, name))
+    except ValueError:
+        return fallback
+
+
+def _annotation_frames(annotation: Dict) -> Tuple[int, int, int]:
+    start, contact, end = (_annotation_frame(annotation, name) for name in ("start", "contact", "end"))
     if start is None or contact is None or end is None:
         raise ValueError(
             f"标注 {annotation.get('annotation_id') or '?'} 缺少开始/触球/结束帧"
@@ -656,12 +665,9 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict,
         if protected is not None:
             preserved = {**deepcopy(protected), "annotation_origin": "human"}
             calibrated_events.append(preserved)
-            try:
-                _, _, p_end = _annotation_frames(preserved)
-                prev_committed_end = max(prev_committed_end, p_end)
-            except ValueError:
-                if orig_end is not None:
-                    prev_committed_end = max(prev_committed_end, orig_end)
+            protected_end = _manual_boundary(preserved, "end", orig_end)
+            if protected_end is not None:
+                prev_committed_end = max(prev_committed_end, protected_end)
             stats["preserved_manual_count"] += 1
             if preserved.get("needs_review"):
                 stats["pending_review_count"] += 1
@@ -700,10 +706,7 @@ def _auto_calibrate_manual_review(paths: Dict[str, Path], request_payload: Dict,
             next_start = next_event["start_frame"]
             next_protected = protected_rows.get(next_event["event_id"])
             if next_protected is not None:
-                try:
-                    next_start, _, _ = _annotation_frames(next_protected)
-                except ValueError:
-                    pass
+                next_start = _manual_boundary(next_protected, "start", next_start)
         next_start_limit = next_start - 1 if next_start is not None else (max_fid if feat_by_frame else orig_end)
         lower_bound = max(min_fid, prev_committed_end + 1)
         upper_bound = min(max_fid if feat_by_frame else orig_end, next_start_limit)
